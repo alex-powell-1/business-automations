@@ -1,0 +1,1 @@
+resize_photos("//mainserver/Share/Landscape Design/Resize Folder", mode="design")
