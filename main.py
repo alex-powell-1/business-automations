@@ -22,22 +22,13 @@ from product_tools import inventory_upload
 # Date: February 6, 2024
 # Description: A series of programmatic automations to serve business needs of retail and e-comm store.
 
-# Includes:
-# 1. Automated data manipulation for enhanced integration with Big Commerce e-commerce platform
-#   - including data for inventory, bestsellers, featured products, sort order, availability, and product brands
-# 2. Recurring SMS/MMS Automations for four customer segments based on customer purchase behaviors
-# 3. Setting Tiered pricing profile codes for wholesale clients based on last-six-months revenue
-# 4. Automated Photo manipulation and formatting for e-commerce platform requirements
-# 5. Administrative Report - an automatically emailed report of key business insights for administrative teams
-# 6. Revenue Report - an automatically emailed report of requested data metrics for accounting department
-# 7. Inventory Upload to Big Commerce with buffered quantity available
-
 now = datetime.now()
 day = now.day
 hour = now.hour
 minute = now.minute
 
-sms_test_mode = True  # if true, will only write generated messages write to logs
+sms_test_mode = False  # if true, will only write generated messages write to logs
+sms_test_customer = True  # if true, will only send to single employee for testing
 
 # -----------------
 # EVERY HOUR TASKS
@@ -131,15 +122,18 @@ if hour == 9:
                                              image_url=birthdays.BIRTHDAY_COUPON,
                                              send_rwd_bal=False,
                                              log_location=creds.birthday_coupon_log,
-                                             test_mode=sms_test_mode)
+                                             test_mode=sms_test_mode,
+                                             test_customer=sms_test_customer)
 # 10:30 AM TASKS
 if hour == 10 and minute == 30:
     # WHOLESALE CUSTOMER TEXT MESSAGE 1 - RANDOM MESSAGE CHOICE
     sms_automations.create_customer_text(query=sms_queries.wholesale_1,
                                          msg_descr=wholesale_sms_messages.message_1_descr,
                                          msg=wholesale_sms_messages.message_1,
+                                         send_rwd_bal=False,
                                          log_location=creds.wholesale_log,
-                                         test_mode=sms_test_mode)
+                                         test_mode=sms_test_mode,
+                                         test_customer=sms_test_customer)
 
 # 11:30 AM TASKS
 if hour == 11 and minute == 30:
@@ -147,15 +141,19 @@ if hour == 11 and minute == 30:
     sms_automations.create_customer_text(query=sms_queries.ftc_text_3,
                                          msg_descr=first_time_customers.ftc_3_descr,
                                          msg=first_time_customers.ftc_3_body,
+                                         send_rwd_bal=True,
                                          log_location=creds.first_time_customer_log,
-                                         test_mode=sms_test_mode)
+                                         test_mode=sms_test_mode,
+                                         test_customer=sms_test_customer)
 
     # RETURNING CUSTOMER TEXT MESSAGE 1 - THANK YOU
     sms_automations.create_customer_text(query=sms_queries.rc_1,
                                          msg_descr=returning_customers.rc_1_descr,
                                          msg=returning_customers.rc_1_body,
+                                         send_rwd_bal=True,
                                          log_location=creds.returning_customer_log,
-                                         test_mode=sms_test_mode)
+                                         test_mode=sms_test_mode,
+                                         test_customer=sms_test_customer)
 
 # 3:30 PM TASKS
 if hour == 15 and minute == 30:
@@ -163,8 +161,10 @@ if hour == 15 and minute == 30:
     sms_automations.create_customer_text(query=sms_queries.rc_3,
                                          msg_descr=returning_customers.rc_3_descr,
                                          msg=returning_customers.rc_3_body,
+                                         send_rwd_bal=True,
                                          log_location=creds.returning_customer_log,
-                                         test_mode=sms_test_mode)
+                                         test_mode=sms_test_mode,
+                                         test_customer=sms_test_customer)
 
 # 6:30 PM TASKS
 if hour == 18 and minute == 30:
@@ -172,8 +172,10 @@ if hour == 18 and minute == 30:
     sms_automations.create_customer_text(query=sms_queries.ftc_text_1,
                                          msg_descr=first_time_customers.ftc_1_descr,
                                          msg=first_time_customers.ftc_1_body,
+                                         send_rwd_bal=True,
                                          log_location=creds.first_time_customer_log,
-                                         test_mode=sms_test_mode)
+                                         test_mode=sms_test_mode,
+                                         test_customer=sms_test_customer)
 
 # 7:00 PM TASKS
 if hour == 19:
@@ -181,12 +183,16 @@ if hour == 19:
     sms_automations.create_customer_text(query=sms_queries.ftc_text_2,
                                          msg_descr=first_time_customers.ftc_2_descr,
                                          msg=first_time_customers.ftc_2_body,
+                                         send_rwd_bal=True,
                                          log_location=creds.first_time_customer_log,
-                                         test_mode=sms_test_mode)
+                                         test_mode=sms_test_mode,
+                                         test_customer=sms_test_customer)
 
     # RETURNING CUSTOMER TEXT 2 - 5 OFF COUPON (MMS)
     sms_automations.create_customer_text(query=sms_queries.rc_2,
                                          msg_descr=returning_customers.rc_2_descr,
                                          msg=returning_customers.rc_2_body,
+                                         send_rwd_bal=True,
                                          log_location=creds.returning_customer_log,
-                                         test_mode=sms_test_mode)
+                                         test_mode=sms_test_mode,
+                                         test_customer=sms_test_customer)

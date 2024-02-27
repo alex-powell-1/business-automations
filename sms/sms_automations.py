@@ -42,4 +42,4 @@ def create_customer_text(query, msg_descr, msg, log_location, rewards_msg="",
                    msg + random.choice(salutations.farewell) + rewards_msg)
         # Send Text
         engine = SMSEngine()
-        engine.send_text(cust_no, to_phone, message, url=image_url, log_code=log_code, test_mode=test_mode)
+        engine.send_text(cust_no, to_phone, message, url=image_url, log_code=log_location, test_mode=test_mode)
