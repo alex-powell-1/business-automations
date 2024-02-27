@@ -27,7 +27,7 @@ day = now.day
 hour = now.hour
 minute = now.minute
 
-sms_test_mode = True  # if true, will only write generated messages write to logs
+sms_test_mode = False  # if true, will only write generated messages write to logs
 sms_test_customer = False  # if true, will only send to single employee for testing
 
 # -----------------
