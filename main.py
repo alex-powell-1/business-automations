@@ -27,8 +27,8 @@ day = now.day
 hour = now.hour
 minute = now.minute
 
-sms_test_mode = False  # if true, will only write generated messages write to logs
-sms_test_customer = True  # if true, will only send to single employee for testing
+sms_test_mode = True  # if true, will only write generated messages write to logs
+sms_test_customer = False  # if true, will only send to single employee for testing
 
 # -----------------
 # EVERY HOUR TASKS
@@ -114,7 +114,7 @@ if hour == 5:
 
 # 9 AM TASKS
 if hour == 9:
-    # BIRTHDAY MMS CUSTOMER COUPON ON FIRST DAY OF MONTH
+    # BIRTHDAY MMS CUSTOMER COUPON ON FIRST DAY OF MONTH (MMS)
     if day == 1:
         sms_automations.create_customer_text(query=sms_queries.birthday,
                                              msg_descr=f"Birthday Text - {now.month} {now.year}",
@@ -126,10 +126,11 @@ if hour == 9:
                                              test_customer=sms_test_customer)
 # 10:30 AM TASKS
 if hour == 10 and minute == 30:
-    # WHOLESALE CUSTOMER TEXT MESSAGE 1 - RANDOM MESSAGE CHOICE
+    # WHOLESALE CUSTOMER TEXT MESSAGE 1 - RANDOM MESSAGE CHOICE (SMS)
     sms_automations.create_customer_text(query=sms_queries.wholesale_1,
                                          msg_descr=wholesale_sms_messages.message_1_descr,
                                          msg=wholesale_sms_messages.message_1,
+                                         msg_prefix=True,
                                          send_rwd_bal=False,
                                          log_location=creds.wholesale_log,
                                          test_mode=sms_test_mode,
@@ -137,7 +138,7 @@ if hour == 10 and minute == 30:
 
 # 11:30 AM TASKS
 if hour == 11 and minute == 30:
-    # FIRST-TIME CUSTOMER TEXT MESSAGE 3 - ASK FOR GOOGLE REVIEW
+    # FIRST-TIME CUSTOMER TEXT MESSAGE 3 - ASK FOR GOOGLE REVIEW (SMS)
     sms_automations.create_customer_text(query=sms_queries.ftc_text_3,
                                          msg_descr=first_time_customers.ftc_3_descr,
                                          msg=first_time_customers.ftc_3_body,
@@ -146,7 +147,7 @@ if hour == 11 and minute == 30:
                                          test_mode=sms_test_mode,
                                          test_customer=sms_test_customer)
 
-    # RETURNING CUSTOMER TEXT MESSAGE 1 - THANK YOU
+    # RETURNING CUSTOMER TEXT MESSAGE 1 - THANK YOU (SMS)
     sms_automations.create_customer_text(query=sms_queries.rc_1,
                                          msg_descr=returning_customers.rc_1_descr,
                                          msg=returning_customers.rc_1_body,
@@ -157,7 +158,7 @@ if hour == 11 and minute == 30:
 
 # 3:30 PM TASKS
 if hour == 15 and minute == 30:
-    # RETURNING CUSTOMER TEXT MESSAGE 3 - ASK FOR GOOGLE REVIEW
+    # RETURNING CUSTOMER TEXT MESSAGE 3 - ASK FOR GOOGLE REVIEW (SMS)
     sms_automations.create_customer_text(query=sms_queries.rc_3,
                                          msg_descr=returning_customers.rc_3_descr,
                                          msg=returning_customers.rc_3_body,
@@ -168,7 +169,7 @@ if hour == 15 and minute == 30:
 
 # 6:30 PM TASKS
 if hour == 18 and minute == 30:
-    # FIRST-TIME CUSTOMER TEXT 1 - WELCOME
+    # FIRST-TIME CUSTOMER TEXT 1 - WELCOME (SMS)
     sms_automations.create_customer_text(query=sms_queries.ftc_text_1,
                                          msg_descr=first_time_customers.ftc_1_descr,
                                          msg=first_time_customers.ftc_1_body,
@@ -183,6 +184,7 @@ if hour == 19:
     sms_automations.create_customer_text(query=sms_queries.ftc_text_2,
                                          msg_descr=first_time_customers.ftc_2_descr,
                                          msg=first_time_customers.ftc_2_body,
+                                         image_url=creds.five_off_coupon,
                                          send_rwd_bal=True,
                                          log_location=creds.first_time_customer_log,
                                          test_mode=sms_test_mode,
@@ -192,6 +194,7 @@ if hour == 19:
     sms_automations.create_customer_text(query=sms_queries.rc_2,
                                          msg_descr=returning_customers.rc_2_descr,
                                          msg=returning_customers.rc_2_body,
+                                         image_url=creds.five_off_coupon,
                                          send_rwd_bal=True,
                                          log_location=creds.returning_customer_log,
                                          test_mode=sms_test_mode,

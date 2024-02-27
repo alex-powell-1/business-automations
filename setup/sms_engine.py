@@ -13,7 +13,7 @@ class SMSEngine:
         self.sid = creds.twilio_account_sid
         self.token = creds.twilio_auth_token
 
-    def send_text(self, cust_no, to_phone, message, log_code, url="", create_log=True, test_mode=False):
+    def send_text(self, cust_no, to_phone, message, log_code, url=None, create_log=True, test_mode=False):
         twilio_response = ""
         if test_mode:
             print(f"Sending test sms text to {cust_no}: {message}")
@@ -22,11 +22,20 @@ class SMSEngine:
             # for SMS Messages
             client = Client(self.sid, self.token)
             try:
-                twilio_message = client.messages.create(
-                    from_=self.phone,
-                    to=to_phone,
-                    media_url=url,
-                    body=message)
+                # MMS
+                if url is not None:
+                    twilio_message = client.messages.create(
+                        from_=self.phone,
+                        to=to_phone,
+                        media_url=url,
+                        body=message)
+                # SMS
+                else:
+                    twilio_message = client.messages.create(
+                        from_=self.phone,
+                        to=to_phone,
+                        body=message)
+
             except TwilioRestException as err:
                 if str(err)[-22:] == "is not a mobile number":
                     twilio_response = "landline"
