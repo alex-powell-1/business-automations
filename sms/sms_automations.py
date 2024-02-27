@@ -43,36 +43,3 @@ def create_customer_text(query, msg_descr, msg, log_location, rewards_msg="",
         # Send Text
         engine = SMSEngine()
         engine.send_text(cust_no, to_phone, message, url=image_url, log_code=log_code, test_mode=test_mode)
-
-
-def sms_automations():
-    # Get the hour
-    get_time = datetime.now()
-    day = get_time.day
-    hour = get_time.hour
-
-    # 9:30 AM Birthday Coupon Text Message
-    if hour == 9:
-        if day == 1:
-            create_customer_text(sms_queries.birthday)
-
-    # # 10:30 AM Wholesale Automation #1
-    # if hour == 10:
-    #     wholesale_customer_text_1()
-    # # 11:45 AM Morning Automations
-    # if hour == 11:
-    #     first_time_customer_text_3()
-    #     returning_customer_text_1()
-    #
-    # # 3:00 PM Returning Customer Text 1
-    # if hour == 15:
-    #     returning_customer_text_3()
-    #
-    # # 6:15 PM Evening Automations
-    # if hour == 18:
-    #     first_time_customer_text_1()
-    #
-    # # 7:00 PM - 5OFF Coupons!
-    # if hour == 19:
-    #     first_time_customer_text_2()
-    #     returning_customer_text_2()
