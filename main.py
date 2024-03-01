@@ -103,10 +103,10 @@ if hour == 4:
     featured.update_featured_items()
 
 # 5 AM TASKS
-if hour == 14:
+if hour == 16:
     # ADMINISTRATIVE REPORT
     # Generate report in styled html/css and email to administrative team list
-    product_reports.administrative_report(recipients=creds.admin_team)
+    product_reports.administrative_report(recipients=creds.alex_only)
     # REVENUE REPORT
     # sent to accounting department
     if datetime.today().isoweekday() == 7:  # only on Sunday
@@ -115,7 +115,7 @@ if hour == 14:
 # 9 AM TASKS
 if hour == 9:
     # BIRTHDAY MMS CUSTOMER COUPON ON FIRST DAY OF MONTH (MMS)
-    if day == 1:
+    if day == 1 and minute == 0:
         sms_automations.create_customer_text(query=sms_queries.birthday,
                                              msg_descr=f"Birthday Text - {now.month} {now.year}",
                                              msg=birthdays.birthday_coupon_1,

@@ -18,5 +18,6 @@ rc_3 = f"FST_SAL_DAT != '{one_week_ago} 00:00:00.000' AND LST_SAL_DAT = '{one_we
 # Wholesale
 wholesale_1 = f"CATEG_COD = 'WHOLESALE' AND LST_SAL_DAT = '{one_day_ago} 00:00:00.000'"
 
+month = datetime.now().month
 # Birthday
-birthday = "(PROF_COD_2 = '{month}' OR PROF_COD_3 = '{month}')"
+birthday = f"(PROF_COD_2 = '{month}' OR PROF_COD_3 = '{month}')"
