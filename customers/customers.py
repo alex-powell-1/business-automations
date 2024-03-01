@@ -1,7 +1,8 @@
 from setup.query_engine import QueryEngine
 from datetime import datetime
-from setup.creds import unsubscribed_sms
+from setup import creds
 from setup.create_log import create_customer_log
+import requests
 
 db = QueryEngine()
 
@@ -77,6 +78,40 @@ class Customer:
             self.spouse_birth_month = response[0][19]
             self.sms_subscribe = response[0][20]
 
+    def add_to_mailerlite(self):
+        url = "https://connect.mailerlite.com/api/subscribers/"
+
+        headers = {
+            "Authorization": f"Bearer {creds.mailerlite_token}",
+            "Content-Type": "application/json",
+            "Accept": "application/json"
+        }
+
+        if self.category == 'WHOLESALE':
+            payload = {
+                "email": self.email_1,
+                "groups": [creds.wholesale_mailing_list],
+                "fields": {
+                    "name": self.first_name,
+                    "last_name": self.last_name,
+                    "company": self.name,
+                    "phone": self.phone_1
+                }
+            }
+        else:
+            payload = {
+                "email": self.email_1,
+                "groups": [creds.retail_all_mailing_list],
+                "fields": {
+                    "name": self.first_name,
+                    "last_name": self.last_name,
+                    "phone": self.phone_1
+                }
+            }
+
+        response = requests.post(url, headers=headers, json=payload)
+        print(response.json())
+
     def unsubscribe_from_sms(self):
         query = f"""
         UPDATE AR_CUST
@@ -91,7 +126,7 @@ class Customer:
                             phone_1=self.phone_1,
                             status_1_col_name="unsubscribed",
                             status_1_data=f"Unsubscribed on {datetime.now().strftime("%x")}",
-                            log_location=unsubscribed_sms)
+                            log_location=creds.unsubscribed_sms)
 
     def subscribe_to_sms(self):
         query = f"""
@@ -103,3 +138,26 @@ class Customer:
 
     def get_total_spent(self, start_date, stop_date):
         pass
+
+
+def get_customers_by_category(category):
+    query = f"""
+    SELECT CUST_NO
+    FROM AR_CUST
+    WHERE CATEG_COD = '{category}' AND EMAIL_ADRS_1 IS NOT NULL
+    """
+    db = QueryEngine()
+    response = db.query_db(query)
+    if response is not None:
+        customer_list = []
+        for x in response:
+            cust_no = x[0]
+            customer_list.append(cust_no)
+        return customer_list
+
+
+def add_all_customers_to_mailerlite(category):
+    customer_list = get_customers_by_category(category)
+    for x in customer_list:
+        customer = Customer(x)
+        customer.add_to_mailerlite()

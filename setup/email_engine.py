@@ -18,17 +18,16 @@ def send_html_email(from_name, from_address, recipients_list, subject, content, 
         msg["Subject"] = subject
 
         msg_html = MIMEText(content, 'html')
+        msg.attach(msg_html)
 
         if logo:
             with open(creds.logo, 'rb') as logo_file:
                 logo = logo_file.read()
                 msg_logo = MIMEImage(logo, 'jpg')
                 msg_logo.add_header('Content-ID', '<image1>')
-                msg_logo.add_header('Content-Disposition', 'inline', filename='logo.jpg')
+                msg_logo.add_header('Content-Disposition', 'inline', filename='Logo.jpg')
 
             msg.attach(msg_logo)
-
-        msg.attach(msg_html)
 
         with smtplib.SMTP("smtp.gmail.com", port=587) as connection:
             connection.ehlo()

@@ -65,16 +65,16 @@ def revenue_sales_report(start_date, stop_date, split=True, anna_mode=False, sho
         # for reports with combined reporting
         else:
             if short:
-                return (f"{datetime.strptime(start_date[0:10], '%Y-%m-%d').strftime("%B %Y")}: "
+                return (f"<p>{datetime.strptime(start_date[0:10], '%Y-%m-%d').strftime("%B %Y")}: "
                         f"${(retail_sales + web_sales) -
                             (web_valid_returns + web_nonvalid_returns) -
-                            (retail_valid_returns + retail_nonvalid_returns)}\n")
+                            (retail_valid_returns + retail_nonvalid_returns)}</p>")
             else:
-                return (f"{datetime.strptime(start_date[0:10], '%Y-%m-%d').strftime(date_format)} - "
+                return (f"<p>{datetime.strptime(start_date[0:10], '%Y-%m-%d').strftime(date_format)} - "
                         f"{datetime.strptime(stop_date[0:10], '%Y-%m-%d').strftime(date_format)}: "
                         f"${(retail_sales + web_sales) -
                             (web_valid_returns + web_nonvalid_returns) -
-                            (retail_valid_returns + retail_nonvalid_returns)}\n")
+                            (retail_valid_returns + retail_nonvalid_returns)}</p>")
     else:
         return "No Revenue Data Today"
 
@@ -188,8 +188,7 @@ def create_top_items_report(beginning_date, ending_date, mode="sales", merged=Fa
             counter += 1
         return result
     else:
-        if mode == 1:
-            return f"<p>Top Items by {mode.title()} - No Data Today</p>"
+        return f"<p>Top Items by {mode.title()} - No Data Today</p>"
 
 
 def get_top_categories_by_sales(start, end, number_of_categories):
@@ -585,10 +584,8 @@ def report_generator(revenue=False, last_week_report=False, mtd_month_report=Fal
         report += f"<h2><strong>{section_header}</strong></h2>"
         # Add Last Month's Total Revenue with 3 year comparison
         if datetime.now().day == 1:
-            section_header = f"{datetime.strptime(last_month_start, "%Y-%m-%d").strftime("%B")} Total Revenue\n"
-            report += f"\n{'-' * len(section_header)}\n"
+            section_header = f"<h4><strong>{datetime.strptime(last_month_start, "%Y-%m-%d").strftime("%B")} Total Revenue</strong></h4>"
             report += section_header
-            report += f"{'-' * len(section_header)}\n"
             for x in range(years_to_show):
                 report += revenue_sales_report(
                     start_date=str((datetime.strptime(last_month_start, "%Y-%m-%d") + relativedelta(years=(x * -1)))),
@@ -714,11 +711,12 @@ def report_generator(revenue=False, last_week_report=False, mtd_month_report=Fal
             report += (f"<p><strong>Category Rank #{counter}: {x[0]}</strong></p>"
                        f"<p>Total Revenue: {x[1]} from "
                        f"{reformat_time(last_week_start)} - "
-                       f"{reformat_time(last_week_end)}<br><br></p>")
+                       f"{reformat_time(last_week_end)}<br></p>")
             report += create_top_items_report(last_week_start, last_week_end, number_of_items=10, mode='sales',
                                               category=x[0])
             report += create_top_items_report(last_week_start, last_week_end, number_of_items=10, mode='quantity',
                                               category=x[0])
+            report += "<p><br></p>"
             counter += 1
 
     if missing_images_report:
