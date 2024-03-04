@@ -103,10 +103,10 @@ if hour == 4:
     featured.update_featured_items()
 
 # 5 AM TASKS
-if hour == 16:
+if hour == 5:
     # ADMINISTRATIVE REPORT
     # Generate report in styled html/css and email to administrative team list
-    product_reports.administrative_report(recipients=creds.alex_only)
+    product_reports.administrative_report(recipients=creds.admin_team)
     # REVENUE REPORT
     # sent to accounting department
     if datetime.today().isoweekday() == 7:  # only on Sunday

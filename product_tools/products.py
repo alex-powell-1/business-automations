@@ -386,6 +386,16 @@ class Product:
                                status_2_data=f"Item: {self.item_no} failed to update to featured",
                                log_location=creds.featured_products)
 
+    def set_sale_price(self, discount):
+        sale_price = round(float(self.price_1 * (100 - discount)/100), 2)
+        query = f"""
+        UPDATE IM_PRC
+        SET PRC_2 = '{sale_price}', LST_MAINT_DT = GETDATE()
+        WHERE ITEM_NO = '{self.item_no}'
+        """
+        db.query_db(query, commit=True)
+        print(f"updated {self.long_descr} from ${self.price_1} to ${sale_price}")
+
     def get_top_child_product(self):
         """Get Top Performing child product of merged product (by sales in last year window)"""
         top_child = create_top_items_report(beginning_date=one_year_ago,
@@ -754,3 +764,12 @@ def export_html_descr():
                 df.to_csv(log, mode='a', header=True, index=False)
             else:
                 df.to_csv(log, mode='a', header=False, index=False)
+
+
+def set_sale_price(query, discount_percentage):
+    """takes a sql query and discount percentage and sets PRC_2 and updates lst_modified."""
+    response = db.query_db(query)
+    if response is not None:
+        for x in response:
+            item = Product(x[0])
+            item.set_sale_price(discount=discount_percentage)
