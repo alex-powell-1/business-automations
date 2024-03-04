@@ -128,9 +128,14 @@ def add_ecomm_flags():
             else:
                 web_visible_message = f"From {old_web_visible} to {new_web_visible}"
 
-            create_product_log(item_number, long_descr, qty_avail,
-                               "web_enabled", "web_visible",
-                               web_enabled_message, web_visible_message, creds.e_comm_flag_product_log)
+            create_product_log(item_no=item_number,
+                               product_name=long_descr,
+                               qty_avail=qty_avail,
+                               status_1_col_name="web_enabled",
+                               status_2_col_name="web_visible",
+                               status_1_data=web_enabled_message,
+                               status_2_data=web_visible_message,
+                               log_location=creds.e_comm_flag_product_log)
 
     else:
         print("No E-Commerce Flags to Add")

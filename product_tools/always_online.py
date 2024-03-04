@@ -88,6 +88,9 @@ def set_always_online(item_list, parent=False):
                 """
                 db.query_db(query, commit=True)
                 always_online_status = get_product_details(x)[2]
-                create_log.create_product_log(item_number, descr, qty,
-                                              "always_online_status", "",
-                                              always_online_status, "", creds.always_online_log)
+                create_log.create_product_log(item_no=item_number,
+                                              product_name=descr,
+                                              qty_avail=qty,
+                                              status_1_col_name="always_online_status",
+                                              status_1_data=always_online_status,
+                                              log_location=creds.always_online_log)
