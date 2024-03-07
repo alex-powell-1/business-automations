@@ -1,3 +1,4 @@
+import customers.stop_sms
 from setup import creds
 from setup import date_presets
 from datetime import datetime
@@ -199,3 +200,6 @@ if hour == 19:
                                          log_location=creds.returning_customer_log,
                                          test_mode=sms_test_mode,
                                          test_customer=sms_test_customer)
+
+if hour == 21:
+    customers.stop_sms.remove_refunds_from_sms_funnel()

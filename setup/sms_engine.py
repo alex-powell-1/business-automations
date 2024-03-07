@@ -62,4 +62,9 @@ def move_phone_1_to_mbl_phone_1(cust_no, phone_number):
         WHERE MBL_PHONE_1 = '{cp_phone}'
     """
     db.query_db(move_landline_query, commit=True)
-    create_sms_log(cust_no=cust_no, phone=cp_phone, sent_message="Landline", response="Changed in CP", log_code=4)
+    create_sms_log(cust_no=cust_no,
+                   phone=cp_phone,
+                   sent_message="Landline",
+                   response="Changed in CP",
+                   log_location=creds.landline_log)
+
