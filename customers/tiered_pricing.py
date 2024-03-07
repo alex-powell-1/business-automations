@@ -96,6 +96,15 @@ def update_tiered_pricing(start_date, end_date):
                 if console_logging:
                     print(f"{business_name} moved from level: {previous_pricing_tier} to level: {new_pricing_tier}")
 
+        # Set all remaining wholesale accounts with no sales history to 'E'
+        query = f"""
+                UPDATE AR_CUST
+                SET {target_profile_code} = 'E'
+                WHERE CATEG_COD = 'WHOLESALE' and {target_profile_code} IS NULL
+                """
+
+        db.query_db(query, commit=True)
+
         print(f"Wholesale Accounts Tiered Pricing: Completed at {datetime.now()}")
         return
 

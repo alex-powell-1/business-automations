@@ -353,38 +353,58 @@ class Product:
                                    log_location=creds.sort_order_log)
 
     def set_featured(self, status):
-        query = f"""
-        UPDATE IM_ITEM
-        SET ECOMM_NEW = '{status}', LST_MAINT_DT = '{str(datetime.now())[:-6] + "000"}'
-        WHERE ITEM_NO = '{self.item_no}'
-        """
+        if self.binding_key is None:
+            query = f"""
+            UPDATE IM_ITEM
+            SET ECOMM_NEW = '{status}', LST_MAINT_DT = '{str(datetime.now())[:-6] + "000"}'
+            WHERE ITEM_NO = '{self.item_no}'
+            """
+        else:
+            query = f"""
+            UPDATE IM_ITEM
+            SET ECOMM_NEW = '{status}', LST_MAINT_DT = '{str(datetime.now())[:-6] + "000"}'
+            WHERE USR_PROF_ALPHA_16 = '{self.binding_key}' AND IS_ADM_TKT = 'Y'
+            """
         db.query_db(query, commit=True)
         # Update the item details
         self.get_product_details()
-        # Check if write was successful
-        if self.featured == 'Y':
-            print(f"Item: {self.item_no} updated to featured")
-            # Write Success Log
-            create_product_log(item_no=self.item_no,
-                               product_name=self.long_descr,
-                               qty_avail=self.quantity_available,
-                               status_1_col_name="featured",
-                               status_1_data=self.featured,
-                               status_2_col_name="Message",
-                               status_2_data=f"Item: {self.item_no} updated to featured",
-                               log_location=creds.featured_products)
-        # If Unsuccessful
+        if status == 'Y':
+            # Check if write was successful
+            if self.featured == 'Y':
+                print(f"Item: {self.item_no} updated to featured")
+                # Write Success Log
+                create_product_log(item_no=self.item_no,
+                                   product_name=self.long_descr,
+                                   qty_avail=self.quantity_available,
+                                   status_1_col_name="featured",
+                                   status_1_data=self.featured,
+                                   status_2_col_name="Message",
+                                   status_2_data=f"Item: {self.item_no} updated to featured",
+                                   log_location=creds.featured_products)
+            # If Unsuccessful
+            else:
+                print(f"Item: {self.item_no} failed to update to featured")
+                # Write failure Log
+                create_product_log(item_no=self.item_no,
+                                   product_name=self.long_descr,
+                                   qty_avail=self.quantity_available,
+                                   status_1_col_name="featured",
+                                   status_1_data=status,
+                                   status_2_col_name="Message",
+                                   status_2_data=f"Item: {self.item_no} failed to update to featured",
+                                   log_location=creds.featured_products)
         else:
-            print(f"Item: {self.item_no} failed to update to featured")
-            # Write failure Log
-            create_product_log(item_no=self.item_no,
-                               product_name=self.long_descr,
-                               qty_avail=self.quantity_available,
-                               status_1_col_name="featured",
-                               status_1_data=status,
-                               status_2_col_name="Message",
-                               status_2_data=f"Item: {self.item_no} failed to update to featured",
-                               log_location=creds.featured_products)
+            if self.featured == 'N':
+                print(f"Item: {self.item_no} updated to NOT featured")
+                # Write Success Log
+                create_product_log(item_no=self.item_no,
+                                   product_name=self.long_descr,
+                                   qty_avail=self.quantity_available,
+                                   status_1_col_name="featured",
+                                   status_1_data=self.featured,
+                                   status_2_col_name="Message",
+                                   status_2_data=f"Item: {self.item_no} updated to featured",
+                                   log_location=creds.featured_products)
 
     def set_sale_price(self, discount):
         sale_price = round(float(self.price_1 * (100 - discount)/100), 2)

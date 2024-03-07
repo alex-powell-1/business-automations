@@ -1,9 +1,13 @@
+import datetime
+
 from setup import creds
 from setup import email_engine
 from setup.date_presets import *
 from setup.query_engine import QueryEngine
 from setup.admin_report_html import boiler_plate, css, body_start, body_end
 import os
+import pandas
+import matplotlib.pyplot as plt
 
 db = QueryEngine()
 
@@ -579,15 +583,23 @@ def report_generator(revenue=False, last_week_report=False, mtd_month_report=Fal
     if revenue:
         section_header = "Revenue Report"
         report += f"\n<h2><strong>{section_header}</strong></h2>"
-        # Add Last Month's Total Revenue with 3 year comparison
+        # for all days but Monday: Give yesterday's total
+        if datetime.today().isoweekday() > 1:
+            report += f"\n<h4><strong>Yesterday's Total Revenue</strong></h4>"
+            report += revenue_sales_report(
+                start_date=str((datetime.strptime(yesterday, "%Y-%m-%d"))),
+                stop_date=str((datetime.strptime(yesterday, "%Y-%m-%d"))),
+                split=False, short=True)
+
+        # For first week of each month: add Last Month's Total Revenue with 3 year comparison
         day = datetime.now().day
-        if 1 <= day <= 7:
+        if 1 <= day <= 8:
             section_header = f"\n<h4><strong>{datetime.strptime(last_month_start, "%Y-%m-%d").strftime("%B")} Total Revenue</strong></h4>"
             report += section_header
             for x in range(years_to_show):
                 report += revenue_sales_report(
                     start_date=str((datetime.strptime(last_month_start, "%Y-%m-%d") + relativedelta(years=(x * -1)))),
-                    stop_date=str((datetime.strptime(yesterday, "%Y-%m-%d") + relativedelta(years=(x * -1)))),
+                    stop_date=str((datetime.strptime(last_month_end, "%Y-%m-%d") + relativedelta(years=(x * -1)))),
                     split=False, short=True)
 
         # Add Last Six Weeks of Weekly Revenue (Sunday - Saturday each week)
@@ -784,3 +796,81 @@ def revenue_report(recipients):
                                  content=html_contents,
                                  logo=True)
     print(f"Revenue Report: Completed at {datetime.now()}")
+
+
+def sales_over_time(item_no):
+    "Data Visualizations for item sales over time"
+    query = f"""
+    SELECT BUS_DAT, QTY_SOLD 
+    FROM PS_TKT_HIST_LIN
+    WHERE ITEM_NO = '{item_no}' AND BUS_DAT >= '2023-04-01 00:00:00' and BUS_DAT <= '2023-04-30 00:00:00'
+    """
+    response = db.query_db(query)
+    if response is not None:
+        sale_dict = {}
+        dates = []
+        sales = []
+        for x in response:
+            sale_dict[x[0].strftime("%m-%d")] = 0
+        for x in response:
+            sale_dict[x[0].strftime("%m-%d")] += int(x[1])
+
+        for k, v in sale_dict.items():
+            dates.append(k)
+            sales.append(v)
+
+        plt.title(f'Sales Over Time\nItem: {item_no}\n{dates[0]} - {dates[-1]}')
+        plt.plot(dates, sales)
+        plt.xlabel('Dates')
+        plt.ylabel('Qty Sold')
+        plt.show()
+
+
+def sales_over_time_multi(items, start_date, end_date, mode="quantity"):
+    """Takes an array of item numbers and creates a data visualization for qty sold over a given time period"""
+    result = {}
+    if mode == "sales":
+        key_data = "CALC_EXT_PRC"
+        y_label = "Revenue"
+
+    elif mode == "quantity":
+        key_data = "QTY_SOLD"
+        y_label = 'Qty Sold'
+
+    for x in items:
+        query = f"""
+        SELECT BUS_DAT, ITEM_NO, {key_data} 
+        FROM PS_TKT_HIST_LIN
+        WHERE ITEM_NO = '{x}' AND BUS_DAT >= '{start_date} 00:00:00' and BUS_DAT <= '{end_date}'
+        """
+        response = db.query_db(query)
+        if response is not None:
+            for y in response:
+                date = y[0].strftime("%m-%d")
+                item = y[1]
+                qty_sold = int(y[2])
+                try:
+                    result[date][item] += qty_sold
+                except KeyError:
+                    try:
+                        result[date][item] = 0
+                    except KeyError:
+                        result[date] = {item:0}
+    dates = list(result.keys())
+    legend = []
+    for x in items:
+        result_list = []
+        for y in dates:
+            try:
+                result_list.append(result[y][x])
+            except KeyError:
+                result[y][x] = 0
+                result_list.append(result[y][x])
+        plt.plot(dates, result_list)
+        legend.append(str(x))
+    # Prepare the chart
+    plt.title(f'Item Sales by {mode.title()}\n{start_date} - {end_date}')
+    plt.xlabel('Dates')
+    plt.ylabel(y_label)
+    plt.legend(legend)
+    plt.show()

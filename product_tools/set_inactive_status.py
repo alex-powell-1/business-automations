@@ -67,11 +67,12 @@ def set_products_to_inactive():
     active_products = get_active_products_with_no_stock()
     if active_products is not None:
         order_products = get_products_on_open_order()
-        hold_quote_products = get_products_on_quotes_or_holds()
+        # hold_quote_products = get_products_on_quotes_or_holds()
         for x in active_products:
             item_number = x[0]
             # If item is on open order, hold, or quote, skip this iteration
-            if item_number in order_products or item_number in hold_quote_products:
+            # if item_number in order_products or item_number in hold_quote_products:
+            if item_number in order_products:
                 continue
             else:
                 set_inactive(item_number)
@@ -84,4 +85,3 @@ def set_products_to_inactive():
                                    log_location=inactive_product_log)
 
     print(f"Setting inactive products: completed at {datetime.now()}")
-
