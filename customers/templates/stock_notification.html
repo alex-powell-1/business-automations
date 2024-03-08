@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>{{title}}</title>
+</head>
+<body>
+    <header>
+        <img src="cid:image1">
+        <h1>Stock Notification Alert!</h1>
+    </header>
+
+    <section>
+        <p>Greetings!</p>
+
+        <p>You requested to be notified when {{item}} was back in stock.</p>
+
+        <p>We are excited to share that we have <strong>{{ qty }} available now!</strong> <br>
+            <a href="{{ item_url }}">You can purchase it here on our web store.</a></p>
+
+            {% if item_description is not none and item_description|length > 25 %}
+                <h2>Read more about {{item}}:</h2>
+                {{ item_description }}
+            {% endif %}
+
+        <p>Please feel free to reach out if we can be of help with your landscape!</p>
+    </section>
+
+    <section>
+        <p>Thanks,<br>
+        <strong>{{ signature_name }}</strong><br>
+        {{ signature_title }}<br>
+        {{ company_phone }}<br>
+        {{ company }}<br>
+        {{ company_address }}<br>
+        <a href={{company_url}}>{{company}}</a><br>
+        <a href={{company_reviews}}>Recent Google Reviews</a></p>
+    </section>
+</body>
+</html>

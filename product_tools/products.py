@@ -53,14 +53,14 @@ class Product:
         self.custom_field_size = ""
         self.search_key = ""
         self.sort_order = 0
-        self.custom_url = ""
+        self.item_url = ""
         self.preorder_message = ""
         self.availability_description = ""
         self.e_comm_category = ""
         self.web_description = ""
         self.featured = ""
         self.get_product_details()
-        self.product_id = self.get_product_id()
+        self.product_id = get_bc_product_id(self.item_no)
         self.variant_id = self.get_variant_id()
 
     def get_product_details(self):
@@ -133,7 +133,7 @@ class Product:
                 self.search_key = x[40]
                 if x[41] is not None:
                     self.sort_order = int(x[41])
-                self.custom_url = x[42]
+                self.item_url = creds.company_url + bc_get_product(self.get_product_id())['data']['custom_url']['url']
                 self.preorder_message = x[43]
                 self.availability_description = x[44]
                 self.e_comm_category = x[45]

@@ -50,10 +50,12 @@ def bc_get_product(product_id):
         'Accept': 'application/json'
     }
 
-    response = (requests.get(url, headers=headers)).content
-    response = json.loads(response)
-    pretty_print = json.dumps(response, indent=4)
-    return pretty_print
+    response = (requests.get(url, headers=headers))
+    json_version = response.json()
+    pretty = response.content
+    pretty = json.loads(pretty)
+    pretty = json.dumps(pretty, indent=4)
+    return json_version
 
 
 def bc_get_variant(product_id, variant_id):
@@ -66,7 +68,10 @@ def bc_get_variant(product_id, variant_id):
         'Accept': 'application/json'
     }
 
-    response = (requests.get(url, headers=headers)).content
-    response = json.loads(response)
-    pretty_print = json.dumps(response, indent=4)
-    return pretty_print
+    response = (requests.get(url, headers=headers))
+    json = response.json()
+    pretty = response.content
+    pretty = json.loads(response)
+    pretty = json.dumps(response, indent=4)
+    return json
+
