@@ -26,7 +26,7 @@ def bc_create_product(name, product_type, sku, weight, price):
     return pretty_print
 
 
-def bc_update_product(product_id, payload):
+def bc_update_product(product_id, payload, pretty=False):
     url = f" https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/products/{product_id}"
 
     headers = {
@@ -35,30 +35,42 @@ def bc_update_product(product_id, payload):
         'Accept': 'application/json'
     }
 
-    response = (requests.put(url, headers=headers, json=payload)).content
-    response = json.loads(response)
-    pretty_print = json.dumps(response, indent=4)
-    return pretty_print
+    response = (requests.put(url, headers=headers, json=payload))
+    json_response = response.json()
+    if pretty:
+        pretty = response.content
+        pretty = json.loads(pretty)
+        pretty = json.dumps(pretty, indent=4)
+        return pretty
+    if json_response['status'] != '404':
+        return json_response
 
 
-def bc_get_product(product_id):
-    url = f" https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/products/{product_id}"
+def bc_get_product(product_id, pretty=False):
+    if product_id is not None:
+        url = f" https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/products/{product_id}"
 
-    headers = {
-        'X-Auth-Token': creds.big_access_token,
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
-    }
+        headers = {
+            'X-Auth-Token': creds.big_access_token,
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+        }
 
-    response = (requests.get(url, headers=headers))
-    json_version = response.json()
-    pretty = response.content
-    pretty = json.loads(pretty)
-    pretty = json.dumps(pretty, indent=4)
-    return json_version
+        response = (requests.get(url, headers=headers))
+        json_response = response.json()
+        if pretty:
+            pretty = response.content
+            pretty = json.loads(pretty)
+            pretty = json.dumps(pretty, indent=4)
+            return pretty
+        if 'status' in json_response:
+            if json_response['status'] == 404:
+                return None
+        else:
+            return json_response
 
 
-def bc_get_variant(product_id, variant_id):
+def bc_get_variant(product_id, variant_id, pretty=False):
     url = (f"https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/"
            f"products/{product_id}/variants/{variant_id}")
 
@@ -69,9 +81,10 @@ def bc_get_variant(product_id, variant_id):
     }
 
     response = (requests.get(url, headers=headers))
-    json = response.json()
-    pretty = response.content
-    pretty = json.loads(response)
-    pretty = json.dumps(response, indent=4)
-    return json
-
+    json_response = response.json()
+    if pretty:
+        pretty = response.content
+        pretty = json.loads(pretty)
+        pretty = json.dumps(pretty, indent=4)
+        return pretty
+    return json_response

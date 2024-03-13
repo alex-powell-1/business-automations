@@ -6,13 +6,13 @@ from email.mime.image import MIMEImage
 from email.utils import formataddr
 
 
-def send_html_email(from_name, from_address, recipients_list, subject, content, logo=True):
+def send_html_email(from_name, from_address, from_pw, recipients_list, subject, content, product_photo, mode, logo=True):
     # Dictionary of recipients in creds
     for k, v in recipients_list.items():
         to_name = k
         to_address = v
 
-        msg = MIMEMultipart('related')
+        msg = MIMEMultipart(mode)
         msg['From'] = formataddr((from_name, from_address))
         msg['To'] = formataddr((to_name, to_address))
         msg["Subject"] = subject
@@ -26,13 +26,20 @@ def send_html_email(from_name, from_address, recipients_list, subject, content, 
                 msg_logo = MIMEImage(logo, 'jpg')
                 msg_logo.add_header('Content-ID', '<image1>')
                 msg_logo.add_header('Content-Disposition', 'inline', filename='Logo.jpg')
+                msg.attach(msg_logo)
 
-            msg.attach(msg_logo)
+        if product_photo is not None:
+            with open(product_photo, 'rb') as item_photo:
+                product = item_photo.read()
+                msg_product_photo = MIMEImage(product, 'jpg')
+                msg_product_photo.add_header('Content-ID', '<image2>')
+                msg_product_photo.add_header('Content-Disposition', 'inline', filename='product.jpg')
+                msg.attach(msg_product_photo)
 
         with smtplib.SMTP("smtp.gmail.com", port=587) as connection:
             connection.ehlo()
             connection.starttls()
             connection.ehlo()
-            connection.login(user=creds.gmail_user, password=creds.gmail_pw)
+            connection.login(user=from_address, password=from_pw)
             connection.sendmail(from_address, to_address, msg.as_string().encode('utf-8'))
             connection.quit()

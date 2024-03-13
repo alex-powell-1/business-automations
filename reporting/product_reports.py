@@ -1,5 +1,4 @@
 import datetime
-
 from setup import creds
 from setup import email_engine
 from setup.date_presets import *
@@ -25,18 +24,18 @@ def get_quantity_available(item):
 
 def revenue_sales_report(start_date, stop_date, split=True, anna_mode=False, short=False):
     query = f"""
-    "{creds.DATABASE}"."dbo"."USP_RPT_SA_BY_X";1 
-    'select distinct PS_STR.STR_ID as GRP_ID, PS_STR.DESCR as GRP_DESCR 
-    from PS_STR 
-    where ( (1=1) ) 
-    union 
-    select distinct VI_PS_TKT_HIST.STR_ID as GRP_ID, NULL as GRP_DESCR 
-    from %HISTORY% 
-    where not exists(select 1 from PS_STR where PS_STR.STR_ID = VI_PS_TKT_HIST.STR_ID) and ( (1=1) ) and 
-    ( (1=1) ) and %ANYPERIODFILTER%', 
-    'select VI_PS_TKT_HIST.STR_ID as GRP_ID, %HISTCOLUMNS% 
-    from %HISTORY% where ( (1=1) ) and ( (1=1) ) and %PERIODFILTER%', ' 
-    (VI_PS_TKT_HIST.POST_DAT >= ''{start_date}'') and (VI_PS_TKT_HIST.POST_DAT <= ''{stop_date}'')', ' 
+    "{creds.DATABASE}"."dbo"."USP_RPT_SA_BY_X";1
+    'select distinct PS_STR.STR_ID as GRP_ID, PS_STR.DESCR as GRP_DESCR
+    from PS_STR
+    where ( (1=1) )
+    union
+    select distinct VI_PS_TKT_HIST.STR_ID as GRP_ID, NULL as GRP_DESCR
+    from %HISTORY%
+    where not exists(select 1 from PS_STR where PS_STR.STR_ID = VI_PS_TKT_HIST.STR_ID) and ( (1=1) ) and
+    ( (1=1) ) and %ANYPERIODFILTER%',
+    'select VI_PS_TKT_HIST.STR_ID as GRP_ID, %HISTCOLUMNS%
+    from %HISTORY% where ( (1=1) ) and ( (1=1) ) and %PERIODFILTER%', '
+    (VI_PS_TKT_HIST.POST_DAT >= ''{start_date}'') and (VI_PS_TKT_HIST.POST_DAT <= ''{stop_date}'')', '
     (1=0) ', ' (1=0) ', 0, 0, 'GRP_ID', 2
     """
     results = db.query_db(query)
@@ -58,8 +57,13 @@ def revenue_sales_report(start_date, stop_date, split=True, anna_mode=False, sho
                     f"E-Comm Sales: ${web_sales - web_valid_returns - web_nonvalid_returns}</p>")
 
         elif anna_mode:
-            return (f"\n<p>{datetime.strptime(start_date[0:10], '%Y-%m-%d').strftime(date_format)} - "
-                    f"{datetime.strptime(stop_date[0:10], '%Y-%m-%d').strftime(date_format)}:<br>"
+            if start_date == stop_date:
+                date_prefix = f"\n<p>{datetime.strptime(start_date[0:10], '%Y-%m-%d').strftime(date_format)}<br>"
+            else:
+                date_prefix = (f"\n<p>{datetime.strptime(start_date[0:10], '%Y-%m-%d').strftime(date_format)} - "
+                               f"{datetime.strptime(stop_date[0:10], '%Y-%m-%d').strftime(date_format)}:<br>")
+
+            return (date_prefix +
                     f"In-Store Sales: ${retail_sales - retail_valid_returns - retail_nonvalid_returns}<br>"
                     f"E-Comm Sales: ${web_sales - web_valid_returns - web_nonvalid_returns}<br>"
                     f"Total: ${(retail_sales + web_sales) -
@@ -131,18 +135,18 @@ def create_top_items_report(beginning_date, ending_date, mode="sales", merged=Fa
     else:
         item_filter = "(1=1)"
     top_items_query = f"""
-        "{creds.DATABASE}"."dbo"."USP_RPT_SA_BY_X";1 
-        'select distinct IM_ITEM.ITEM_NO as GRP_ID, IM_ITEM.DESCR as GRP_DESCR 
-        from IM_ITEM 
-        where ( {item_filter} ) 
-        union select distinct VI_PS_TKT_HIST_LIN.ITEM_NO as GRP_ID, NULL as GRP_DESCR 
-        from %HISTORY% 
-        where not exists(select 1 from IM_ITEM where IM_ITEM.ITEM_NO = VI_PS_TKT_HIST_LIN.ITEM_NO) 
-        and ( (1=1) ) and (({category_var})) and %ANYPERIODFILTER%', 
-        'select VI_PS_TKT_HIST_LIN.ITEM_NO as GRP_ID, %HISTCOLUMNS% 
-        from %HISTORY% 
-        where ( (1=1) ) and (({category_var})) and %PERIODFILTER%', ' 
-        (VI_PS_TKT_HIST.POST_DAT >= ''{beginning_date}'') and (VI_PS_TKT_HIST.POST_DAT <= ''{ending_date}'')', ' 
+        "{creds.DATABASE}"."dbo"."USP_RPT_SA_BY_X";1
+        'select distinct IM_ITEM.ITEM_NO as GRP_ID, IM_ITEM.DESCR as GRP_DESCR
+        from IM_ITEM
+        where ( {item_filter} )
+        union select distinct VI_PS_TKT_HIST_LIN.ITEM_NO as GRP_ID, NULL as GRP_DESCR
+        from %HISTORY%
+        where not exists(select 1 from IM_ITEM where IM_ITEM.ITEM_NO = VI_PS_TKT_HIST_LIN.ITEM_NO)
+        and ( (1=1) ) and (({category_var})) and %ANYPERIODFILTER%',
+        'select VI_PS_TKT_HIST_LIN.ITEM_NO as GRP_ID, %HISTCOLUMNS%
+        from %HISTORY%
+        where ( (1=1) ) and (({category_var})) and %PERIODFILTER%', '
+        (VI_PS_TKT_HIST.POST_DAT >= ''{beginning_date}'') and (VI_PS_TKT_HIST.POST_DAT <= ''{ending_date}'')', '
         (1=0) ', ' (1=0) ', {number_of_items}, 0, '{rank_filter}', 2
         """
 
@@ -196,19 +200,19 @@ def create_top_items_report(beginning_date, ending_date, mode="sales", merged=Fa
 
 def get_top_categories_by_sales(start, end, number_of_categories):
     query = f"""
-    "{creds.DATABASE}"."dbo"."USP_RPT_SA_BY_X";1 
-    'SELECT distinct IM_CATEG_COD.CATEG_COD as GRP_ID, IM_CATEG_COD.DESCR as GRP_DESCR 
-    FROM IM_CATEG_COD 
-    where ( (1=1) ) 
-    union 
-    select distinct VI_PS_TKT_HIST_LIN.CATEG_COD as GRP_ID, NULL as GRP_DESCR 
-    from %HISTORY% 
+    "{creds.DATABASE}"."dbo"."USP_RPT_SA_BY_X";1
+    'SELECT distinct IM_CATEG_COD.CATEG_COD as GRP_ID, IM_CATEG_COD.DESCR as GRP_DESCR
+    FROM IM_CATEG_COD
+    where ( (1=1) )
+    union
+    select distinct VI_PS_TKT_HIST_LIN.CATEG_COD as GRP_ID, NULL as GRP_DESCR
+    from %HISTORY%
     where not exists(
-    select 1 from IM_CATEG_COD 
-    where IM_CATEG_COD.CATEG_COD = VI_PS_TKT_HIST_LIN.CATEG_COD) and ((VI_PS_TKT_HIST.STR_ID = ''1'')) and 
-    ( (1=1) ) and %ANYPERIODFILTER%', 'select VI_PS_TKT_HIST_LIN.CATEG_COD as GRP_ID, %HISTCOLUMNS% 
-    from %HISTORY% where ((VI_PS_TKT_HIST.STR_ID = ''1'')) and ( (1=1) ) and %PERIODFILTER%', ' 
-    (VI_PS_TKT_HIST.POST_DAT >= ''{start}'') and (VI_PS_TKT_HIST.POST_DAT <= ''{end}'')', ' 
+    select 1 from IM_CATEG_COD
+    where IM_CATEG_COD.CATEG_COD = VI_PS_TKT_HIST_LIN.CATEG_COD) and ((VI_PS_TKT_HIST.STR_ID = ''1'')) and
+    ( (1=1) ) and %ANYPERIODFILTER%', 'select VI_PS_TKT_HIST_LIN.CATEG_COD as GRP_ID, %HISTCOLUMNS%
+    from %HISTORY% where ((VI_PS_TKT_HIST.STR_ID = ''1'')) and ( (1=1) ) and %PERIODFILTER%', '
+    (VI_PS_TKT_HIST.POST_DAT >= ''{start}'') and (VI_PS_TKT_HIST.POST_DAT <= ''{end}'')', '
     (1=0) ', ' (1=0) ', {number_of_categories}, 0, 'SLS_EXT_PRC_A - RTN_EXT_PRC_VALID_A - RTN_EXT_PRC_NONVALID_A', 2
     """
     result = db.query_db(query)
@@ -217,19 +221,19 @@ def get_top_categories_by_sales(start, end, number_of_categories):
 
 def get_sales_rep_report():
     query = f"""
-    "{creds.DATABASE}"."dbo"."USP_RPT_SA_BY_X";1 'select distinct SY_USR.USR_ID as GRP_ID, SY_USR.NAM as GRP_DESCR 
-    from SY_USR where ( (1=1) ) and IS_SLS_REP = ''Y'' 
-    union 
-    select distinct VI_PS_TKT_HIST_LIN.SLS_REP as GRP_ID, NULL as GRP_DESCR 
-    from %HISTORY% 
-    where not exists(select 1 from SY_USR where SY_USR.USR_ID = VI_PS_TKT_HIST_LIN.SLS_REP and 
-    SY_USR.IS_SLS_REP = ''Y'') and ((VI_PS_TKT_HIST.STR_ID = ''1'')) and ( (1=1) ) and 
-    %ANYPERIODFILTER%', 
-    'select VI_PS_TKT_HIST_LIN.SLS_REP as GRP_ID, %HISTCOLUMNS% 
-    from %HISTORY% 
-    where ((VI_PS_TKT_HIST.STR_ID = ''1'')) and ( (1=1) ) and %PERIODFILTER%', 
-    ' (VI_PS_TKT_HIST.POST_DAT >= ''{last_week_start}'') and 
-    (VI_PS_TKT_HIST.POST_DAT <= ''{last_week_end}'')', ' (1=0) ', ' (1=0) ', 10, 0, 
+    "{creds.DATABASE}"."dbo"."USP_RPT_SA_BY_X";1 'select distinct SY_USR.USR_ID as GRP_ID, SY_USR.NAM as GRP_DESCR
+    from SY_USR where ( (1=1) ) and IS_SLS_REP = ''Y''
+    union
+    select distinct VI_PS_TKT_HIST_LIN.SLS_REP as GRP_ID, NULL as GRP_DESCR
+    from %HISTORY%
+    where not exists(select 1 from SY_USR where SY_USR.USR_ID = VI_PS_TKT_HIST_LIN.SLS_REP and
+    SY_USR.IS_SLS_REP = ''Y'') and ((VI_PS_TKT_HIST.STR_ID = ''1'')) and ( (1=1) ) and
+    %ANYPERIODFILTER%',
+    'select VI_PS_TKT_HIST_LIN.SLS_REP as GRP_ID, %HISTCOLUMNS%
+    from %HISTORY%
+    where ((VI_PS_TKT_HIST.STR_ID = ''1'')) and ( (1=1) ) and %PERIODFILTER%',
+    ' (VI_PS_TKT_HIST.POST_DAT >= ''{last_week_start}'') and
+    (VI_PS_TKT_HIST.POST_DAT <= ''{last_week_end}'')', ' (1=0) ', ' (1=0) ', 10, 0,
     'SLS_EXT_PRC_A - RTN_EXT_PRC_VALID_A - RTN_EXT_PRC_NONVALID_A', 2
     """
     sales_rep_data = db.query_db(query)
@@ -251,20 +255,20 @@ def get_sales_rep_report():
 def top_customer_report(start_date, stop_date, category, number=10):
     """Creates a list of top customers (by sales) within a given time frame. Sorted by revenue. """
     query = f"""
-    "{creds.DATABASE}"."dbo"."USP_RPT_SA_BY_X";1 
-    'select distinct AR_CUST.CUST_NO as GRP_ID, AR_CUST.NAM as GRP_DESCR 
-    from AR_CUST 
-    where ((AR_CUST.CUST_NO <> ''CASH'' and AR_CUST.CATEG_COD = ''{category}'')) 
-    union 
-    select distinct VI_PS_TKT_HIST.CUST_NO as GRP_ID, NULL as GRP_DESCR 
-    from %HISTORY% 
+    "{creds.DATABASE}"."dbo"."USP_RPT_SA_BY_X";1
+    'select distinct AR_CUST.CUST_NO as GRP_ID, AR_CUST.NAM as GRP_DESCR
+    from AR_CUST
+    where ((AR_CUST.CUST_NO <> ''CASH'' and AR_CUST.CATEG_COD = ''{category}''))
+    union
+    select distinct VI_PS_TKT_HIST.CUST_NO as GRP_ID, NULL as GRP_DESCR
+    from %HISTORY%
     where not exists(
-    select 1 from AR_CUST where AR_CUST.CUST_NO = VI_PS_TKT_HIST.CUST_NO) and ((VI_PS_TKT_HIST.STR_ID = ''1'')) and 
-    ( (1=1) ) and %ANYPERIODFILTER%', 
-    'select VI_PS_TKT_HIST.CUST_NO as GRP_ID, %HISTCOLUMNS% 
-    from %HISTORY% 
-    where ((VI_PS_TKT_HIST.STR_ID = ''1'')) and ( (1=1) ) and %PERIODFILTER%', ' 
-    (VI_PS_TKT_HIST.POST_DAT >= ''{start_date}'') and (VI_PS_TKT_HIST.POST_DAT <= ''{stop_date}'')', ' 
+    select 1 from AR_CUST where AR_CUST.CUST_NO = VI_PS_TKT_HIST.CUST_NO) and ((VI_PS_TKT_HIST.STR_ID = ''1'')) and
+    ( (1=1) ) and %ANYPERIODFILTER%',
+    'select VI_PS_TKT_HIST.CUST_NO as GRP_ID, %HISTCOLUMNS%
+    from %HISTORY%
+    where ((VI_PS_TKT_HIST.STR_ID = ''1'')) and ( (1=1) ) and %PERIODFILTER%', '
+    (VI_PS_TKT_HIST.POST_DAT >= ''{start_date}'') and (VI_PS_TKT_HIST.POST_DAT <= ''{stop_date}'')', '
     (1=0) ', ' (1=0) ', {number}, 0, 'SLS_EXT_PRC_A - RTN_EXT_PRC_VALID_A - RTN_EXT_PRC_NONVALID_A', 2"""
     results = db.query_db(query)
     top_customer_id_list = []
@@ -322,7 +326,7 @@ def get_missing_image_list():
     SELECT IM_ITEM.ITEM_NO, IM_ITEM.ADDL_DESCR_1, IM_ITEM.USR_PROF_ALPHA_17, IM_INV.QTY_AVAIL, IM_ITEM.USR_PROF_ALPHA_16
     FROM IM_ITEM
     INNER JOIN IM_INV ON IM_ITEM.ITEM_NO = IM_INV.ITEM_NO
-    WHERE IM_ITEM.STAT = 'A' and IM_ITEM.IS_ECOMM_ITEM = 'Y' AND 
+    WHERE IM_ITEM.STAT = 'A' and IM_ITEM.IS_ECOMM_ITEM = 'Y' AND
     IM_INV.QTY_AVAIL > 0 AND ADDL_DESCR_1 != 'EXCLUDE'
     ORDER BY IM_INV.QTY_AVAIL DESC
     """
@@ -418,8 +422,8 @@ def get_items_with_no_ecomm_category():
     ON item.ITEM_NO=inv.item_no
     LEFT JOIN EC_CATEG_ITEM ecomm
     ON item.ITEM_NO=ecomm.ITEM_NO
-    WHERE ecomm.CATEG_ID IS NULL AND 
-    STAT = 'A' AND 
+    WHERE ecomm.CATEG_ID IS NULL AND
+    STAT = 'A' AND
     ADDL_DESCR_1 != 'EXCLUDE' AND
     item.CATEG_COD != 'services'
     ORDER BY inv.QTY_AVAIL DESC
@@ -444,20 +448,20 @@ def get_low_stock_items(number_of_items):
     """Creates a sorted list of items with low stock. Sorted from the greatest revenue generated during a similar
     time period last year."""
     top_items_query = f"""
-    "{creds.DATABASE}"."dbo"."USP_RPT_SA_BY_X";1 
+    "{creds.DATABASE}"."dbo"."USP_RPT_SA_BY_X";1
     'select distinct IM_ITEM.ITEM_NO as GRP_ID, IM_ITEM.DESCR as GRP_DESCR
     from IM_ITEM
-    INNER JOIN IM_INV on IM_ITEM.ITEM_NO = IM_INV.ITEM_NO where ( (1=1) ) 
-    union 
+    INNER JOIN IM_INV on IM_ITEM.ITEM_NO = IM_INV.ITEM_NO where ( (1=1) )
+    union
     select distinct VI_PS_TKT_HIST_LIN.ITEM_NO as GRP_ID, NULL as GRP_DESCR
-    from %HISTORY% 
-    WHERE NOT EXISTS(select 1 from IM_ITEM where IM_ITEM.ITEM_NO = VI_PS_TKT_HIST_LIN.ITEM_NO) and 
-    ((VI_PS_TKT_HIST.STR_ID = ''1'')) and ( (1=1) ) 
-    and %ANYPERIODFILTER%', 
-    'select VI_PS_TKT_HIST_LIN.ITEM_NO as GRP_ID, %HISTCOLUMNS% 
-    from %HISTORY% 
-    where ( (1=1) ) and %PERIODFILTER%', ' (VI_PS_TKT_HIST.POST_DAT >= ''{one_year_ago}'') and 
-    (VI_PS_TKT_HIST.POST_DAT <= ''{last_year_forecast}'')', ' (1=0) ', ' (1=0) ', 500, 0, 
+    from %HISTORY%
+    WHERE NOT EXISTS(select 1 from IM_ITEM where IM_ITEM.ITEM_NO = VI_PS_TKT_HIST_LIN.ITEM_NO) and
+    ((VI_PS_TKT_HIST.STR_ID = ''1'')) and ( (1=1) )
+    and %ANYPERIODFILTER%',
+    'select VI_PS_TKT_HIST_LIN.ITEM_NO as GRP_ID, %HISTCOLUMNS%
+    from %HISTORY%
+    where ( (1=1) ) and %PERIODFILTER%', ' (VI_PS_TKT_HIST.POST_DAT >= ''{one_year_ago}'') and
+    (VI_PS_TKT_HIST.POST_DAT <= ''{last_year_forecast}'')', ' (1=0) ', ' (1=0) ', 500, 0,
     'SLS_EXT_PRC_A - RTN_EXT_PRC_VALID_A - RTN_EXT_PRC_NONVALID_A', 2
     """
     top_items = db.query_db(top_items_query)
@@ -511,9 +515,9 @@ def get_non_ecomm_enabled_items():
     """Creates a list of items with positive stock that are not e-commerce enabled for review by staff"""
     query = """
     SELECT item.item_no, item.ADDL_DESCR_1, inv.qty_avail
-    FROM im_item item 
-    inner join IM_INV inv 
-    ON item.ITEM_NO=inv.ITEM_NO 
+    FROM im_item item
+    inner join IM_INV inv
+    ON item.ITEM_NO=inv.ITEM_NO
     LEFT JOIN EC_CATEG_ITEM ecomm
     ON item.ITEM_NO=ecomm.ITEM_NO
     WHERE STAT = 'A' AND
@@ -584,12 +588,20 @@ def report_generator(revenue=False, last_week_report=False, mtd_month_report=Fal
         section_header = "Revenue Report"
         report += f"\n<h2><strong>{section_header}</strong></h2>"
         # for all days but Monday: Give yesterday's total
-        if datetime.today().isoweekday() > 1:
+        day_of_week = datetime.today().isoweekday()
+        if day_of_week > 1:
             report += f"\n<h4><strong>Yesterday's Total Revenue</strong></h4>"
             report += revenue_sales_report(
                 start_date=str((datetime.strptime(yesterday, "%Y-%m-%d"))),
                 stop_date=str((datetime.strptime(yesterday, "%Y-%m-%d"))),
-                split=False, short=True)
+                split=False, anna_mode=True)
+        elif day_of_week == 1:
+            saturday = str((datetime.strptime(yesterday, "%Y-%m-%d") + relativedelta(days=-1)))[:-9]
+            report += f"\n<h4><strong>Saturday's Total Revenue</strong></h4>"
+            report += revenue_sales_report(
+                start_date=str((datetime.strptime(saturday, "%Y-%m-%d"))),
+                stop_date=str((datetime.strptime(saturday, "%Y-%m-%d"))),
+                split=False, anna_mode=True)
 
         # For first week of each month: add Last Month's Total Revenue with 3 year comparison
         day = datetime.now().day
@@ -643,9 +655,9 @@ def report_generator(revenue=False, last_week_report=False, mtd_month_report=Fal
         for x in range(years_to_show):
             # Create Dynamic YTD Header
             report += f"""\n<h5>{str((datetime.strptime(year_start, "%Y-%m-%d") +
-                                    relativedelta(years=(x * -1))).strftime(date_format)) + " - " +
-                               str((datetime.strptime(today, "%Y-%m-%d") +
-                                    relativedelta(years=(x * -1))).strftime(date_format))}</h5>"""
+                                      relativedelta(years=(x * -1))).strftime(date_format)) + " - " +
+                                 str((datetime.strptime(today, "%Y-%m-%d") +
+                                      relativedelta(years=(x * -1))).strftime(date_format))}</h5>"""
             # Get Data
             report += f"""\n{(
                 revenue_sales_report(str((datetime.strptime(year_start, "%Y-%m-%d") +
@@ -776,11 +788,14 @@ def administrative_report(recipients):
                                    inactive_items_report=True)
     html_contents = boiler_plate + css + body_start + report_data + body_end
     email_engine.send_html_email(from_name=creds.company_name,
-                                 from_address=creds.gmail_user,
+                                 from_address=creds.gmail_alex_user,
+                                 from_pw=creds.gmail_alex_pw,
                                  recipients_list=recipients,
                                  subject=subject,
                                  content=html_contents,
-                                 logo=True)
+                                 logo=True,
+                                 mode='related',
+                                 product_photo=None)
     print(f"Administrative Report: Completed at {datetime.now()}")
 
 
@@ -790,10 +805,13 @@ def revenue_report(recipients):
     report_data = report_generator(revenue=True, title="Revenue Report")
     html_contents = boiler_plate + css + body_start + report_data + body_end
     email_engine.send_html_email(from_name=creds.company_name,
-                                 from_address=creds.gmail_user,
+                                 from_address=creds.gmail_alex_user,
+                                 from_pw=creds.gmail_alex_pw,
                                  recipients_list=recipients,
                                  subject=subject,
                                  content=html_contents,
+                                 mode='related',
+                                 product_photo=None,
                                  logo=True)
     print(f"Revenue Report: Completed at {datetime.now()}")
 
@@ -801,7 +819,7 @@ def revenue_report(recipients):
 def sales_over_time(item_no):
     "Data Visualizations for item sales over time"
     query = f"""
-    SELECT BUS_DAT, QTY_SOLD 
+    SELECT BUS_DAT, QTY_SOLD
     FROM PS_TKT_HIST_LIN
     WHERE ITEM_NO = '{item_no}' AND BUS_DAT >= '2023-04-01 00:00:00' and BUS_DAT <= '2023-04-30 00:00:00'
     """
@@ -839,7 +857,7 @@ def sales_over_time_multi(items, start_date, end_date, mode="quantity"):
 
     for x in items:
         query = f"""
-        SELECT BUS_DAT, ITEM_NO, {key_data} 
+        SELECT BUS_DAT, ITEM_NO, {key_data}
         FROM PS_TKT_HIST_LIN
         WHERE ITEM_NO = '{x}' AND BUS_DAT >= '{start_date} 00:00:00' and BUS_DAT <= '{end_date}'
         """
@@ -855,7 +873,7 @@ def sales_over_time_multi(items, start_date, end_date, mode="quantity"):
                     try:
                         result[date][item] = 0
                     except KeyError:
-                        result[date] = {item:0}
+                        result[date] = {item: 0}
     dates = list(result.keys())
     legend = []
     for x in items:

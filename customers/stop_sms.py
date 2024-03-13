@@ -116,7 +116,7 @@ def remove_refunds_from_sms_funnel():
             else:
                 query = f"""
                 UPDATE AR_CUST
-                SET LST_SAL_DAT = NULL, FST_SAL_DAT = NULL, LST_SAL_AMT = NULL, LOY_PTS_BAL = '0'
+                SET LST_SAL_DAT = NULL, FST_SAL_DAT = NULL, LST_SAL_AMT = NULL
                 WHERE CUST_NO = '{customer_number}'
                 """
                 db.query_db(query, commit=True)

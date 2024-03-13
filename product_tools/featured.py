@@ -11,6 +11,3 @@ def update_featured_items():
             item.set_featured(status='Y')
         else:
             item.set_featured(status='N')
-
-
-update_featured_items()

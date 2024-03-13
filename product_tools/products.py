@@ -133,7 +133,10 @@ class Product:
                 self.search_key = x[40]
                 if x[41] is not None:
                     self.sort_order = int(x[41])
-                self.item_url = creds.company_url + bc_get_product(self.get_product_id())['data']['custom_url']['url']
+                if bc_get_product(self.get_product_id()) is not None:
+                    self.item_url = creds.company_url + bc_get_product(self.get_product_id())['data']['custom_url']['url']
+                else:
+                    self.item_url = None
                 self.preorder_message = x[43]
                 self.availability_description = x[44]
                 self.e_comm_category = x[45]
@@ -793,3 +796,4 @@ def set_sale_price(query, discount_percentage):
         for x in response:
             item = Product(x[0])
             item.set_sale_price(discount=discount_percentage)
+

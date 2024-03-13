@@ -18,6 +18,17 @@ def get_customer_number_by_phone(phone):
         return response[0][0]
 
 
+def get_customer_number_by_email(email):
+    query = f"""
+    SELECT CUST_NO
+    FROM AR_CUST
+    WHERE EMAIL_ADRS_1 = '{email}'
+    """
+    response = db.query_db(query)
+    if response is not None:
+        return response[0][0]
+
+
 class Customer:
     def __init__(self, number):
         self.number = number
