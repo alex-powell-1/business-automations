@@ -18,6 +18,7 @@ from sms import sms_automations
 from sms import sms_queries
 from sms.sms_messages import birthdays, first_time_customers, returning_customers, wholesale_sms_messages
 from product_tools import inventory_upload
+from analysis.web_scraping import scrape_competitor_prices
 
 # # Business Automations
 # # Author: Alex Powell
@@ -32,44 +33,42 @@ minute = now.minute
 sms_test_mode = False  # if true, will only write generated messages write to logs
 sms_test_customer = False  # if true, will only send to single employee for testing
 
+
+print(f"Business Automations Starting at {datetime.now()}")
+print("-----------------------\n")
+
 # -----------------
 # EVERY HOUR TASKS
 # -----------------
 
-if minute == 35:
+if minute == 0:
     # UPLOAD CURRENT INVENTORY STOCK LEVELS TO WEBDAV SERVER
     inventory_upload.upload_inventory()
-    print("DONE")
     # TIERED PRICING
     # Move wholesale customers into pricing tiers based on
     # total sales over the last 6 months
-    #tiered_pricing.update_tiered_pricing(date_presets.six_months_ago, date_presets.today)
+    # tiered_pricing.update_tiered_pricing(date_presets.six_months_ago, date_presets.today)
 
     # PRODUCT STATUS CODES
     # Move active product_tools with zero stock into inactive status
     # unless they are on order, hold, quote
     set_inactive_status.set_products_to_inactive()
-    print("DONE")
     # BRANDS
     # Set all items with no brand to the company brand
     # Set all products with specific keywords to correct e-commerce brand
     brands.update_brands()
-    print("DONE")
     # ECOMMERCE FLAGS
     # Adds e-comm web enabled status and web visible to active product_tools with stock
     # Remove web-enabled status for single product_tools that haven't sold in two years
     # and are not 'Always Online'
     ecomm_flags.set_ecommerce_flags()
-    print("DONE")
     # STOCK BUFFER
     # Set stock buffers based on rules by vendor, category
     stock_buffer.stock_buffer_updates()
-    print("DONE")
     # PHOTO RESIZE/FORMATTING
     # Resizes large photos in the item images folder to a max resolution of 1280 by 1280 pixels
     # Re-formats .png to .jpg and .jpeg to .jpg while preserving aspect ratio and rotation data
     resize_photos.resize_photos(creds.photo_path, mode="big")
-    print("DONE")
 # -----------------
 # ONE PER DAY TASKS
 # -----------------
@@ -212,3 +211,9 @@ if hour == 21:
     customers.stop_sms.remove_refunds_from_sms_funnel()
     # Delete Automatically Created Coupons from BigCommerce
     delete_expired_coupons()
+    # Scape competitors prices and render to csv for analysis
+    scrape_competitor_prices()
+
+print("-----------------------")
+print(f"Business Automations Complete at {datetime.now()}")
+print("-----------------------")

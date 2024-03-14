@@ -10,6 +10,9 @@ photo_path = creds.photo_path
 
 
 def resize_photos(path, mode="big"):
+    print("-------------")
+    print("Resize Photos")
+    print("-------------")
     list_of_files = os.listdir(path)
     if mode == "big":
         size = BIGCOMMERCE_SIZE

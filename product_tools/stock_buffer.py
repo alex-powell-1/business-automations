@@ -33,6 +33,10 @@ def get_stock_buffer(item_number):
 
 
 def stock_buffer_updates():
+    print("-------------")
+    print("Stock Buffers")
+    print("-------------")
+    print(f"Stock Buffers: complete at {datetime.now()}")
     # Vendor Updates
     vendor_dict = {
         "EVERGREEN": 0
@@ -40,3 +44,4 @@ def stock_buffer_updates():
 
     for k, v in vendor_dict.items():
         set_stock_buffer(v, "ITEM_VEND_NO", k)
+    print(f"Stock Buffers: complete at {datetime.now()}\n")

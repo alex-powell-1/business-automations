@@ -83,7 +83,10 @@ def get_products_on_quotes_or_holds():
 
 
 def set_products_to_inactive():
-    print(f"Setting inactive products: Starting\n")
+    print("-------------")
+    print("Inactive Products")
+    print("-------------")
+    print(f"Inactive Products: Completed at {datetime.now()}")
     active_products = get_active_products_with_no_stock()
     if active_products is not None:
         order_products = get_products_on_open_order()
@@ -109,5 +112,4 @@ def set_products_to_inactive():
                                    status_1_col_name="status",
                                    status_1_data=item.status,
                                    log_location=inactive_product_log)
-
-    print(f"\nSetting inactive products: completed at {datetime.now()}")
+    print(f"Inactive Products: Completed at {datetime.now()}\n")

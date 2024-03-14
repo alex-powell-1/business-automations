@@ -6,7 +6,7 @@ db = QueryEngine()
 
 
 def set_company_brand():
-    print(f"Set Company Brand: Starting")
+    print(f"Set Company Brand: Starting at {datetime.now()}")
     query = f"""
     UPDATE IM_ITEM
     SET PROF_COD_1 = '{creds.db_brand}', LST_MAINT_DT = '{str(datetime.now())[:-6] + "000"}'
@@ -17,6 +17,7 @@ def set_company_brand():
 
 
 def set_product_brand():
+    print(f"Set Product Brand: Starting at {datetime.now()}")
     brand_list = creds.brand_list
 
     for k, v in brand_list.items():
@@ -26,6 +27,7 @@ def set_product_brand():
         WHERE LONG_DESCR like '%{k}%'
         """
         db.query_db(query, commit=True)
+    print(f"Set Product Brand: Completed at {datetime.now()}")
 
 
 def get_branded_products(brand):
@@ -61,5 +63,10 @@ def get_product_brand(item_number):
 
 
 def update_brands():
+    print("--------")
+    print("Brands")
+    print("--------")
+    print(f"Brands: Starting at {datetime.now()}")
     set_company_brand()
     set_product_brand()
+    print(f"Brands: Completed at {datetime.now()}\n")

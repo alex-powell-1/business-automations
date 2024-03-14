@@ -51,17 +51,20 @@ def create_inventory_csv(retail=True):
 
 def upload_inventory():
     """Uploads csv of inventory for retail and wholesale availability data tables"""
+    print("-------------")
+    print("Inventory Upload")
+    print("-------------")
     print(f"Inventory upload starting at {datetime.now()}")
     print("Creating inventory csv for upload to Retail Availability")
     create_inventory_csv(retail=True)
     print("Uploading to WebDav Server")
     upload_file(file=creds.retail_inventory_csv, server_url=creds.web_dav_server)
-    print(f"Retail Inventory Uploaded to WebDav Server\n")
+    print(f"Retail Inventory Uploaded to WebDav Server")
 
     print("Creating inventory csv for upload to Wholesale Availability")
     create_inventory_csv(retail=False)
     print("Uploading to WebDav Server")
     upload_file(file=creds.wholesale_inventory_csv, server_url=creds.web_dav_server)
-    print(f"Wholesale Inventory Uploaded to WebDav Server\n")
+    print(f"Wholesale Inventory Uploaded to WebDav Server")
 
-    print(f"Inventory upload complete at {datetime.now()}")
+    print(f"Inventory upload complete at {datetime.now()}\n")

@@ -19,5 +19,5 @@ ftc_2_image = five_off_coupon
 # Message 3
 # Seven Days after initial purchase
 ftc_3_descr = "First-Time Customer: Message 3 Review"
-ftc_3_body = ("Thanks for coming in last week! We hope your experience was more than satisfactory. "
+ftc_3_body = ("Thanks for shopping with us last week! We hope your experience was more than satisfactory. "
               f"If you haven't had a chance, please drop us a review here: {review_link} ")

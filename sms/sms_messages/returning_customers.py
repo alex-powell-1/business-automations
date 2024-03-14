@@ -7,7 +7,7 @@ import random
 # MESSAGE 1
 # 1 Day after last purchase - Sends SMS message with brief thank you
 rc_1_descr = "Returning Customer Message 1: Thank you"
-rc_1_body = ("Thanks for coming by yesterday! "
+rc_1_body = ("Thanks for shopping with us yesterday! "
              "Please let us know if you have any questions about your purchase. ")
 
 # MESSAGE 2
@@ -20,7 +20,7 @@ rc_2_image = five_off_coupon
 # MESSAGE 3
 # 7 Day after most recent purchase - Random choice asking for Google Review
 rc_3_descr = "Returning Customer Message 3: Google Review"
-rc_3_choice_1 = ("Thanks for coming in last week! "
+rc_3_choice_1 = ("Thanks for shopping with us last week! "
                  "We hope your experience was more than satisfactory. "
                  f"If you haven't had a chance, please drop us a review here: {review_link} ")
 
@@ -28,8 +28,8 @@ rc_3_choice_2 = ("Thanks for shopping with us last week! "
                  f"We hope you had a great experience at {company_name}. "
                  f"If you haven't had a chance, please leave us a review here: {review_link} ")
 
-rc_3_choice_3 = (f"It was good seeing you last week! We hope you had a great time at {company_name}. "
-                 f"If you haven't had a chance, please leave us a review here: {review_link} ")
+# rc_3_choice_3 = (f"It was good seeing you last week! We hope you had a great time at {company_name}. "
+#                  f"If you haven't had a chance, please leave us a review here: {review_link} ")
 
 rc_3_body = random.choice([rc_3_choice_1, rc_3_choice_2, rc_3_choice_3])
 

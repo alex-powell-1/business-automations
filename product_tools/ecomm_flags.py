@@ -60,9 +60,9 @@ def remove_web_enabled_flags():
             create_product_log(item_number, descr, qty,
                                "web_enabled", "lst_sal_dat",
                                status, last_sale_date, creds.e_comm_flag_product_log)
-            print(f"Removed Web Enabled for {item_number}")
+            print(f"Removed Web Enabled for {item_number} at {datetime.now()}")
     else:
-        print("No E-commerce Flags to Remove")
+        print(f"No E-commerce Flags to Remove at {datetime.now()}")
         return
 
 
@@ -120,13 +120,16 @@ def add_ecomm_flags():
             new_web_enabled, new_web_visible = get_ecomm_flags(item_number)
             if old_web_enabled == new_web_enabled:
                 web_enabled_message = "No Change"
+                print(f"No Change for {item_number}")
             else:
                 web_enabled_message = f"From {old_web_enabled} to {new_web_enabled}"
+                print(f"Change for {item_number}: From {old_web_enabled} to {new_web_enabled}")
 
             if old_web_visible == new_web_visible:
                 web_visible_message = "No Change"
             else:
                 web_visible_message = f"From {old_web_visible} to {new_web_visible}"
+                print(f"Change for {item_number}: From {old_web_enabled} to {new_web_enabled}")
 
             create_product_log(item_no=item_number,
                                product_name=long_descr,
@@ -138,11 +141,15 @@ def add_ecomm_flags():
                                log_location=creds.e_comm_flag_product_log)
 
     else:
-        print("No E-Commerce Flags to Add")
+        print(f"No E-Commerce Flags to Add at {datetime.now()}")
         return
 
 
 def set_ecommerce_flags():
-    print("Setting E-Commerce Flags")
+    print("-------------")
+    print("Ecommerce Flags")
+    print("-------------")
+    print(f"E-Commerce Flags: Starting at {datetime.now()}")
     remove_web_enabled_flags()
     add_ecomm_flags()
+    print(f"E-Commerce Flags: Completed at {datetime.now()}\n")
