@@ -31,6 +31,6 @@ minute = now.minute
 sms_test_mode = False  # if true, will only write generated messages write to logs
 sms_test_customer = False  # if true, will only send to single employee for testing
 
-# product_reports.administrative_report(recipients=creds.alex_only)
+product_reports.administrative_report(recipients=creds.admin_team)
 #customers.stock_notification.send_stock_notification_emails()
 # set_inactive_status.set_products_to_inactive()
