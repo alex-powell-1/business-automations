@@ -13,6 +13,8 @@ class Product:
         self.item_no = item_number
         self.binding_key = ""
         self.variant_name = ""
+        self.product_id = ""
+        self.variant_id = ""
         self.is_parent = ""
         self.descr = ""
         self.long_descr = ""
@@ -60,8 +62,6 @@ class Product:
         self.web_description = ""
         self.featured = ""
         self.get_product_details()
-        self.product_id = get_bc_product_id(self.item_no)
-        self.variant_id = self.get_variant_id()
 
     def get_product_details(self):
         query = f"""
@@ -133,15 +133,32 @@ class Product:
                 self.search_key = x[40]
                 if x[41] is not None:
                     self.sort_order = int(x[41])
-                if bc_get_product(self.get_product_id()) is not None:
-                    self.item_url = creds.company_url + bc_get_product(self.get_product_id())['data']['custom_url']['url']
-                else:
-                    self.item_url = None
                 self.preorder_message = x[43]
                 self.availability_description = x[44]
                 self.e_comm_category = x[45]
                 self.web_description = x[46]
                 self.featured = x[47]
+                self.product_id = self.get_product_id()
+                self.variant_id = self.get_variant_id()
+                # ITEM URL
+                # If data already on the local server, use it
+                if x[42] is not None:
+                    self.item_url = x[42]
+                else:
+                    # Else, get live URL from API
+                    bc_data = bc_get_product(self.product_id)
+                    if bc_data is not None:
+                        # Get live url from big, assign to object
+                        self.item_url = creds.company_url + bc_data['data']['custom_url']['url']
+                        # Store in SQL for future, faster access
+                        query = f"""
+                        UPDATE IM_ITEM
+                        SET USR_PROF_ALPHA_18 = '{self.item_url}'
+                        WHERE ITEM_NO = '{self.item_no}'
+                        """
+                        response = db.query_db(query, commit=True)
+
+
 
         else:
             return "No Item Matching that SKU"
@@ -290,12 +307,12 @@ class Product:
         if self.binding_key is not None:
             query = f"""
             SELECT TOP 1 PRODUCT_ID FROM CPI_BC_PRODUCTS
-            WHERE ITEM_NO = '{self.binding_key}'
+            WHERE ITEM_NO = '{self.binding_key}' AND WEB_ID = '1'
             ORDER BY CREATE_DATE DESC"""
         else:
             query = f"""
             SELECT TOP 1 PRODUCT_ID FROM CPI_BC_PRODUCTS
-            WHERE ITEM_NO = '{self.item_no}'
+            WHERE ITEM_NO = '{self.item_no}' AND WEB_ID = '1'
             ORDER BY CREATE_DATE DESC"""
         response = db.query_db(query)
         if response is not None:
@@ -797,3 +814,5 @@ def set_sale_price(query, discount_percentage):
             item = Product(x[0])
             item.set_sale_price(discount=discount_percentage)
 
+
+Product('202774')
