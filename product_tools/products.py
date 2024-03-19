@@ -329,6 +329,49 @@ class Product:
             if response is not None:
                 return response[0][0]
 
+    def set_buffer(self, buffer):
+        initial_buffer = self.buffer
+        if buffer == initial_buffer:
+            print(f"Buffer for item: {self.item_no} - {self.long_descr} already at {self.buffer}")
+            return
+        else:
+            query = f"""
+            UPDATE IM_ITEM
+            SET PROF_NO_1 = '{buffer}', LST_MAINT_DT = '{str(datetime.now())[:-6] + "000"}'
+            WHERE ITEM_NO = '{self.item_no}'"""
+            # Update SQL Table
+            db.query_db(query, commit=True)
+            # Update Object Properties
+            self.get_product_details()
+            # Check for success
+            if self.buffer == buffer:
+                # Success!
+                print(f"{self.item_no}: {self.long_descr} sort order changed from "
+                      f"{initial_buffer} to {buffer}")
+                # Write Success Log
+                create_product_log(item_no=self.item_no,
+                                   product_name=self.long_descr,
+                                   qty_avail=self.quantity_available,
+                                   status_1_col_name="buffer",
+                                   status_1_data=self.buffer,
+                                   status_2_col_name="Message",
+                                   status_2_data=f"Item: {self.item_no} buffer updated from "
+                                                 f"{initial_buffer} to {self.buffer}",
+                                   log_location=creds.buffer_log)
+                # If unsuccessful:
+            else:
+                print(f"{self.item_no}: {self.long_descr} failed to change sort order to {buffer}")
+                # Write failure log
+                create_product_log(item_no=self.item_no,
+                                   product_name=self.long_descr,
+                                   qty_avail=self.quantity_available,
+                                   status_1_col_name="buffer",
+                                   status_1_data=self.buffer,
+                                   status_2_col_name="Message",
+                                   status_2_data=f"Item: {self.item_no} buffer failed to update to {buffer}.",
+                                   log_location=creds.buffer_log)
+
+
     def set_sort_order(self, target_sort_order=0):
         old_sort_order = self.sort_order
         # Check if item already has the correct sort order

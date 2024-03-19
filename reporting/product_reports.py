@@ -762,7 +762,7 @@ def report_generator(revenue=False, last_week_report=False, mtd_month_report=Fal
                           f"\n<h5>{reformat_time(last_week_start)} - {reformat_time(last_week_end)}</h5>")
         report += section_header
         report += f"\n<p>Store 1: ${"{:,}".format(cost_of_goods_sold(last_week_start, last_week_end, "1"))}<br>"
-        report += f"\nStore Web: ${"{:,}".format(cost_of_goods_sold(last_week_start, last_week_end, "WEB"))}</p"
+        report += f"\nStore Web: ${"{:,}".format(cost_of_goods_sold(last_week_start, last_week_end, "WEB"))}</p>"
 
     if sales_rep_report:
         section_header = (f"\n<h2><strong>Sales Rep Report</strong></h2>"

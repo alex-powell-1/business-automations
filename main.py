@@ -100,7 +100,7 @@ if hour == 4:
     sort_order.sort_order_engine()
 
     # FEATURED PRODUCTSs
-    # Update Featured Products at 4 AM
+    # Update Featured Products at 4 AMs
     featured.update_featured_items()
 
 # 5 AM TASKS

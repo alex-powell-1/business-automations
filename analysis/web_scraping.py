@@ -34,5 +34,3 @@ def scrape_competitor_prices():
         df.to_csv(v['log_location'], header=["Name", "Available", "Size", "Price"], index=False)
 
     driver.quit()
-
-scrape_competitor_prices()

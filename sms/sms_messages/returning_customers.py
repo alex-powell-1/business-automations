@@ -31,7 +31,7 @@ rc_3_choice_2 = ("Thanks for shopping with us last week! "
 # rc_3_choice_3 = (f"It was good seeing you last week! We hope you had a great time at {company_name}. "
 #                  f"If you haven't had a chance, please leave us a review here: {review_link} ")
 
-rc_3_body = random.choice([rc_3_choice_1, rc_3_choice_2, rc_3_choice_3])
+rc_3_body = random.choice([rc_3_choice_1, rc_3_choice_2])
 
 # MESSAGE 4
 # Day 14, target higher frequency customers

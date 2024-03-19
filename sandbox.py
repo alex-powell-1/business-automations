@@ -36,3 +36,6 @@ sms_test_customer = False  # if true, will only send to single employee for test
 # administrative_report(recipients=creds.alex_only)
 # customers.stock_notification.send_stock_notification_emails()
 # set_inactive_status.set_products_to_inactive()
+
+# from customers import stock_notification
+# stock_notification.send_stock_notification_emails()
