@@ -1,7 +1,6 @@
 from setup.query_engine import QueryEngine
 from setup.date_presets import *
 from setup.create_log import *
-from reporting.product_reports import create_top_items_report
 from big_commerce.big_products import *
 import pandas
 
@@ -371,7 +370,6 @@ class Product:
                                    status_2_data=f"Item: {self.item_no} buffer failed to update to {buffer}.",
                                    log_location=creds.buffer_log)
 
-
     def set_sort_order(self, target_sort_order=0):
         old_sort_order = self.sort_order
         # Check if item already has the correct sort order
@@ -481,6 +479,7 @@ class Product:
 
     def get_top_child_product(self):
         """Get Top Performing child product of merged product (by sales in last year window)"""
+        from reporting.product_reports import create_top_items_report
         top_child = create_top_items_report(beginning_date=one_year_ago,
                                             ending_date=last_year_forecast,
                                             merged=True,
@@ -856,6 +855,3 @@ def set_sale_price(query, discount_percentage):
         for x in response:
             item = Product(x[0])
             item.set_sale_price(discount=discount_percentage)
-
-
-Product('202774')

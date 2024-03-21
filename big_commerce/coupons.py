@@ -4,8 +4,7 @@ import secrets
 import string
 import json
 from email import utils
-from datetime import datetime, timezone, UTC
-import pytz
+from datetime import datetime, timezone
 
 class Coupon():
     def __init__(self, coupon_id):
@@ -51,7 +50,6 @@ class Coupon():
             self.restricted_to = json_response['restricted_to']
             self.shipping_methods = json_response['shipping_methods']
             self.date_created = json_response['date_created']
-        
 
 
 def bc_get_all_coupons(pretty=False):

@@ -1,4 +1,6 @@
 import datetime
+
+from product_tools.products import get_ecomm_items
 from setup import creds
 from setup import email_engine
 from setup.date_presets import *
@@ -336,15 +338,7 @@ def get_missing_variant_names():
 def get_missing_image_list():
     from product_tools.products import Product
     """Returns a sorted list of e-commerce items with missing images"""
-    sql_query = """
-    SELECT IM_ITEM.ITEM_NO, IM_ITEM.ADDL_DESCR_1, IM_ITEM.USR_PROF_ALPHA_17, IM_INV.QTY_AVAIL, IM_ITEM.USR_PROF_ALPHA_16
-    FROM IM_ITEM
-    INNER JOIN IM_INV ON IM_ITEM.ITEM_NO = IM_INV.ITEM_NO
-    WHERE IM_ITEM.STAT = 'A' and IM_ITEM.IS_ECOMM_ITEM = 'Y' AND
-    IM_INV.QTY_AVAIL > 0 AND ADDL_DESCR_1 != 'EXCLUDE'
-    ORDER BY IM_INV.QTY_AVAIL DESC
-    """
-    all_e_comm_items = db.query_db(sql_query)
+    all_e_comm_items = get_ecomm_items(mode=2)
     all_current_photos = get_list_of_current_photo_sku()
 
     missing_image_list_child = []
@@ -353,15 +347,20 @@ def get_missing_image_list():
 
     if all_e_comm_items is not None:
         if all_e_comm_items is not None:
-            for item in all_e_comm_items:
-                item_number = item[0]
-                binding_key = item[4]
+            for x in all_e_comm_items:
+                item = Product(x)
+                item_number = item.item_no
+                binding_key = item.binding_key
                 # All Single and Children 202578
-                if item_number not in all_current_photos:
-                    missing_image_list_child.append(item)
-                if binding_key is not None and binding_key not in all_current_photos and binding_key not in check_list:
-                    missing_image_list_parent.append(item)
-                    check_list.append(binding_key)
+                if item.buffered_quantity_available > 0:
+                    if item_number not in all_current_photos:
+                        # Add item objects to either list
+                        missing_image_list_child.append(item)
+                    if binding_key != "" and binding_key not in all_current_photos and binding_key not in check_list:
+                        missing_image_list_parent.append(item)
+                        check_list.append(binding_key)
+                    else:
+                        continue
                 else:
                     continue
         else:
@@ -374,8 +373,7 @@ def get_missing_image_list():
 
     # Get Missing Child Images
     if len(missing_image_list_child) > 0:
-        for x in missing_image_list_child:
-            item = Product(x[0])
+        for item in missing_image_list_child:
             # Single Items
             if item.variant_name is None:
                 if item.web_title is None:
@@ -385,7 +383,8 @@ def get_missing_image_list():
             # Parent Items
             else:
                 if item.web_title is None:
-                    contents += f"\n<p>{item.item_no}, Missing Web Title, {item.variant_name}, Current Stock: {item.quantity_available}</p>"
+                    contents += (f"\n<p>{item.item_no}, Missing Web Title, "
+                                 f"{item.variant_name}, Current Stock: {item.buffered_quantity_available}</p>")
                 else:
                     contents += (f'\n<p>{item.item_no}, <a href="{item.item_url}">{item.web_title}, '
                                  f'{item.variant_name}</a>, Current Stock: {item.quantity_available}</p>')
@@ -397,10 +396,11 @@ def get_missing_image_list():
         # Section Header
         contents += f"\n<p><u>Total binding IDs with no image</u>: <b>{len(missing_image_list_parent)}\n</b></p>"
         for item in missing_image_list_parent:
-            if item[1] is None:
-                contents += f"\n<p>{item[4]}, Missing Web Title, {item[2]}, Current Stock: {int(item[3])}</p>"
+            if item.web_title is None:
+                contents += (f"\n<p>{item.binding_key}, Missing Web Title, "
+                             f"{item.variant_name}, Current Stock: {item.buffered_quantity_available}</p>")
             else:
-                contents += f"\n<p>{item[4]}, {item[1]}</p>"
+                contents += f'\n<p>{item.binding_key}, <a href="{item.item_url}">{item.web_title}</a></p>'
 
         return contents
     else:
@@ -639,7 +639,7 @@ def get_missing_item_descriptions(min_length):
     INNER JOIN IM_INV
     ON IM_ITEM.ITEM_NO = IM_INV.ITEM_NO
     WHERE IM_ITEM.STAT = 'A' and IM_ITEM.IS_ECOMM_ITEM = 'Y' AND
-    IM_INV.QTY_AVAIL > 0 AND ADDL_DESCR_1 != 'EXCLUDE' AND (DATALENGTH(HTML_DESCR) IS NULL
+    (IM_INV.QTY_AVAIL - IM_ITEM.PROF_NO_1 > 0) AND ADDL_DESCR_1 != 'EXCLUDE' AND (DATALENGTH(HTML_DESCR) IS NULL
     or DATALENGTH(HTML_DESCR) < {min_length}) AND (IM_ITEM.IS_ADM_TKT = 'Y' OR IM_ITEM.USR_PROF_ALPHA_16 IS NULL)
     ORDER BY IM_INV.QTY_AVAIL DESC"""
 
@@ -653,13 +653,15 @@ def get_missing_item_descriptions(min_length):
         counter = 1
         for x in response:
             item = Product(x[0])
-            if item.item_url is not None:
-                print(f"{counter}/{list_size}: {item.item_no}, {item.web_title}")
-                result += (f'\n<p>#{counter}: {item.item_no}, <a href="{item.item_url}">{item.web_title}</a>, '
-                           f'Current Stock: {item.quantity_available}</p>')
-            else:
-                result += (f'\n<p>#{counter}: {item.item_no}, {item.web_title}, Current Stock: {item.quantity_available}</p>')
-            counter += 1
+            if item.buffered_quantity_available > 0:
+                if item.item_url is not None:
+                    print(f"{counter}/{list_size}: {item.item_no}, {item.web_title}")
+                    result += (f'\n<p>#{counter}: {item.item_no}, <a href="{item.item_url}">{item.web_title}</a>, '
+                               f'Current Stock: {item.quantity_available}</p>')
+                else:
+                    result += (f'\n<p>#{counter}: {item.item_no}, {item.web_title}, '
+                               f'Current Stock: {item.quantity_available}</p>')
+                counter += 1
         return result
 
 
@@ -918,3 +920,5 @@ def revenue_report(recipients):
                                  product_photo=None,
                                  logo=True)
     print(f"Revenue Report: Completed at {datetime.now()}")
+
+

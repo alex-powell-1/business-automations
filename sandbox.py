@@ -14,7 +14,7 @@ from datetime import datetime
 # from product_tools import brands
 # from product_tools import featured
 # from product_tools import related_items
-from reporting.product_reports import administrative_report, revenue_report, get_all_ecommerce_items, get_missing_item_descriptions
+from reporting.product_reports import administrative_report, get_missing_image_list, revenue_report, get_all_ecommerce_items, get_missing_item_descriptions
 # from sms import sms_automations
 # from sms import sms_queries
 # from sms.sms_messages import birthdays, first_time_customers, returning_customers, wholesale_sms_messages
@@ -34,8 +34,13 @@ sms_test_mode = False  # if true, will only write generated messages write to lo
 sms_test_customer = False  # if true, will only send to single employee for testing
 
 # administrative_report(recipients=creds.alex_only)
+
 # customers.stock_notification.send_stock_notification_emails()
+
 # set_inactive_status.set_products_to_inactive()
 
 # from customers import stock_notification
 # stock_notification.send_stock_notification_emails()
+# print(get_missing_image_list())
+from analysis.web_scraping import scrape_competitor_prices
+scrape_competitor_prices()

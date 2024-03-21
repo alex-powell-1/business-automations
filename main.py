@@ -19,6 +19,7 @@ from sms import sms_queries
 from sms.sms_messages import birthdays, first_time_customers, returning_customers, wholesale_sms_messages
 from product_tools import inventory_upload
 from analysis.web_scraping import scrape_competitor_prices
+import setup import network
 
 # # Business Automations
 # # Author: Alex Powell
@@ -42,6 +43,9 @@ print("-----------------------\n")
 # -----------------
 
 if minute == 0:
+    # Check server for internet connection. Restart is there is no connection to internet.
+    network.restart_server_if_disconnected()
+
     # UPLOAD CURRENT INVENTORY STOCK LEVELS TO WEBDAV SERVER
     inventory_upload.upload_inventory()
     # TIERED PRICING
