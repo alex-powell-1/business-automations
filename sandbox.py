@@ -33,7 +33,7 @@ minute = now.minute
 sms_test_mode = False  # if true, will only write generated messages write to logs
 sms_test_customer = False  # if true, will only send to single employee for testing
 
-# administrative_report(recipients=creds.alex_only)
+#administrative_report(recipients=creds.alex_only)
 
 # customers.stock_notification.send_stock_notification_emails()
 
@@ -42,5 +42,6 @@ sms_test_customer = False  # if true, will only send to single employee for test
 # from customers import stock_notification
 # stock_notification.send_stock_notification_emails()
 # print(get_missing_image_list())
-from analysis.web_scraping import scrape_competitor_prices
-scrape_competitor_prices()
+# from analysis.web_scraping import scrape_competitor_prices
+# scrape_competitor_prices()
+

@@ -12,6 +12,7 @@ from product_tools import stock_buffer
 from product_tools import brands
 from product_tools import featured
 from product_tools import related_items
+from reporting import lead_generator_notification
 from big_commerce.coupons import delete_expired_coupons
 from reporting import product_reports
 from sms import sms_automations
@@ -19,7 +20,7 @@ from sms import sms_queries
 from sms.sms_messages import birthdays, first_time_customers, returning_customers, wholesale_sms_messages
 from product_tools import inventory_upload
 from analysis.web_scraping import scrape_competitor_prices
-import setup import network
+from setup import network
 
 # # Business Automations
 # # Author: Alex Powell
@@ -116,6 +117,10 @@ if hour == 5:
     # sent to accounting department
     if datetime.today().isoweekday() == 7:  # only on Sunday
         product_reports.revenue_report(recipients=creds.flash_sales_recipients)
+
+if hour == 7:
+    # Customer Followup Email to Sales Team
+    lead_generator_notification.lead_notification_email()
 
 # 9 AM TASKS
 if hour == 9:
