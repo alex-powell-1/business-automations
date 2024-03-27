@@ -1,73 +1,85 @@
 <!DOCTYPE html>
-<html lang="en" style="background-color: white;">
-
+<html lang="en" style="background-color: white; height: 100%;">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ title }}</title>
-    <style>
-        tr td {
-            padding-left: 20px;
-            padding-right: 20px;
-        }
-    </style>
 </head>
-
 <body>
     <div style="
     background-color: white;
+    display: block;
+    height: 100%;
     width: 600px;
     margin-left: auto;
     margin-right: auto;
-    border-width: px;
+    border-width: 2px;
     border-style: solid;
     border-color: darkgreen;
     border-radius: 15px;
     box-shadow: 5px 5px 5px darkgrey;">
-        <table role="presentation" cellspacing="0" width="100%">
+
+        <table role="presentation" cellspacing="0" width="100%" >
             <tr>
-                <td>
+                <td style="
+                padding-left: 20px;
+                padding-right: 20px;">
                     <div class="header" style="text-align: center;">
+
                         <a href="{{ company_url }}"><img src="cid:image1" style="width: 50%;
                                 margin-bottom: 15px;"></a>
+
                     </div>
                 </td>
             </tr>
-        </table>
-
-        <table role="presentation" cellspacing="0" width="100%">
             <tr>
-                <td>
+                <td style="
+                padding-left: 20px;
+                padding-right: 20px;">
                     <div class="body">
                         <div style="
                             padding-left: 20px;
                             padding-right: 20px;">
-                            <section>
-                                <p>The following people requested a follow-up on landscape design.</p>
-                                <ul>
-                                    {% for item in leads: %}
-                                        <li><h2>{{ item['first_name'] }} {{ item['last_name'] }}</h2></li>
-                                            <ul>
-                                                <li><p>Date: {{ item['date'] }}</p></li>
-                                                <li><p>Email: {{ item['email'] }}</p></li>
-                                                <li><p>Phone: {{ item['phone']|int }}</p></li>
-                                                <li><p>Interested in:</p></li>
-                                                    <ul>
-                                                        {% for item in item['interested_in'].replace("['", "").replace("']", "").replace("'", "").split(", ") %}
-                                                            <li><p>{{ item }}</p></li>
-                                                        {% endfor %}
+                            <p>The following people requested information about landscape design.</p>
+                            <ul>
+                                {% for item in leads: %}
+                                    <li><h2>{{ item['first_name'] }} {{ item['last_name'] }}</h2></li>
+                                        <ul>
+                                            <li><p>Date: {{ date_format.strptime(item['date'], "%Y-%m-%d %H:%M:%S").strftime("%m/%d/%Y %I:%M:%S %p") }}</p></li>
 
-                                                    </ul>
-                                                <li><p>Timeline: {{ item['timeline'] }}</p></li>
-                                            </ul>
-                                    {% endfor %}
-                                </ul>
-                            </section>
+                                            <li><p>Email: {{ item['email'] }}</p></li>
+
+                                            {% if item['phone'] != None %}
+                                            <li><p>Phone: {{ format.format_phone(item['phone']) }}</p></li>
+                                            {% endif %}
+
+                                            {% if item['street'] != None %}
+                                            <li><p>Address: <br>
+                                                {{ item['street'] }} <br>
+                                                {{ item['city'] }}, {{ item['state'] }} {{ item['zip_code']|int }}
+                                            </p></li>
+                                            {% endif %}
+
+                                            <li><p>Interested in:</p></li>
+                                                <ul>
+                                                    {% for item in item['interested_in'].replace("['", "").replace("']", "").replace("'", "").split(", ") %}
+                                                        <li><p>{{ item }}</p></li>
+                                                    {% endfor %}
+                                                </ul>
+                                            {% if item['timeline'] == 'Today' %}
+                                            <li><p>Timeline: <span style="font-size: 1.5em; color: red;"><b>{{ item['timeline'] }}</b></span></p></li>
+                                            {% else %}
+                                            <li><p>Timeline: {{ item['timeline'] }}</p></li>
+                                            {% endif %}
+                                        </ul>
+                                {% endfor %}
+                            </ul>
                         </div>
                     </div>
                 </td>
             </tr>
         </table>
+        <div style="display: block; height: 35px;"></div>
     </div>
 </body>
 </html>

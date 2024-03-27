@@ -51,7 +51,7 @@ class SMSEngine:
 
 
 def move_phone_1_to_mbl_phone_1(cust_no, phone_number):
-    cp_phone = format_phone(phone_number, mode="Counterpoint")
+    cp_phone = format_phone(phone_number, mode="counterpoint")
     move_landline_query = f"""
         UPDATE AR_CUST
         SET MBL_PHONE_1 = '{cp_phone}'

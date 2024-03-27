@@ -1,13 +1,15 @@
-from customers.customers import get_customer_number_by_email, Customer
-from setup import creds
-import pandas
-from setup.email_engine import send_html_email
-from product_tools.products import Product
-from big_commerce.coupons import generate_random_code, bc_create_coupon
-from jinja2 import Template
-from email import utils
 from datetime import datetime
+from email import utils
+
+import pandas
 from dateutil.relativedelta import relativedelta
+from jinja2 import Template
+
+from big_commerce.coupons import generate_random_code, bc_create_coupon
+from customers.customers import get_customer_number_by_email, Customer
+from product_tools.products import Product
+from setup import creds
+from setup.email_engine import send_html_email
 
 
 def send_email(greeting, email, item_number, coupon_code, photo):
@@ -133,7 +135,8 @@ def send_stock_notification_emails():
                                    index=False, mode='a')
 
                 # Send Email to User about their desired SKU
-                send_email(greeting=greeting, email=email, item_number=sku, coupon_code=random_coupon_code, photo=product_photo)
+                send_email(greeting=greeting, email=email, item_number=sku, coupon_code=random_coupon_code,
+                           photo=product_photo)
 
                 # Delete Row from
                 df = df.drop(df.index[counter])

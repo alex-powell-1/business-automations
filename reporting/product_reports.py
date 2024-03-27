@@ -670,7 +670,7 @@ def report_generator(revenue=False, last_week_report=False, mtd_month_report=Fal
                      negatives_report=False, ecomm_category_report=False, non_web_enabled_report=False,
                      low_stock_items_report=False, sales_rep_report=False, wholesale_report=False,
                      inactive_items_report=False, cogs_report=False, missing_descriptions_report=False,
-                     title="Administrative Report"):
+                     year_to_date=False, title="Administrative Report"):
     """Produces Text for Email Report"""
 
     # Title
@@ -869,6 +869,13 @@ def report_generator(revenue=False, last_week_report=False, mtd_month_report=Fal
         report += section_header
         report += get_missing_item_descriptions(60)
 
+    if year_to_date:
+        for x in range(90):
+            report += f"\n{revenue_sales_report(
+                start_date=str((datetime.strptime(today, "%Y-%m-%d") + relativedelta(days=(x * -1)))),
+                stop_date=str((datetime.strptime(today, "%Y-%m-%d") + relativedelta(days=(x * -1)))),
+                split=False, anna_mode=True)}"
+
     return report
 
 
@@ -921,4 +928,20 @@ def revenue_report(recipients):
                                  logo=True)
     print(f"Revenue Report: Completed at {datetime.now()}")
 
+
+def year_to_date_revenue_report(recipients):
+    print(f"Generating Revenue Report Data - Starting at {datetime.now()}")
+    subject = f'Revenue Report - {now}'
+    report_data = report_generator(year_to_date=True, title="Daily Revenue Report")
+    html_contents = boiler_plate + css + body_start + report_data + body_end
+    email_engine.send_html_email(from_name=creds.company_name,
+                                 from_address=creds.gmail_alex_user,
+                                 from_pw=creds.gmail_alex_pw,
+                                 recipients_list=recipients,
+                                 subject=subject,
+                                 content=html_contents,
+                                 mode='related',
+                                 product_photo=None,
+                                 logo=True)
+    print(f"Revenue Report: Completed at {datetime.now()}")
 

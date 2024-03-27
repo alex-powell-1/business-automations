@@ -1,8 +1,11 @@
-from setup import creds
+import numpy as np
 import pandas
+from jinja2 import Template
+
+from setup import create_log
+from setup import creds
 from setup.date_presets import *
 from setup.email_engine import send_html_email
-from jinja2 import Template
 
 
 def lead_notification_email():
@@ -10,6 +13,7 @@ def lead_notification_email():
     with open(creds.design_lead_log) as lead_file:
         # Dataframe for Log
         df = pandas.read_csv(lead_file)
+        df = df.replace({np.nan: None})
         entries = df.to_dict("records")
         # Get yesterday submissions
         yesterday_entries = []
@@ -26,9 +30,14 @@ def lead_notification_email():
             email_data = {
                 "title": "Customer Followup Email",
                 "company": creds.company_name,
-                "leads": yesterday_entries
+                "leads": yesterday_entries,
+                "format": create_log,
+                "date_format": datetime,
             }
 
+            for x in yesterday_entries:
+                print(datetime.strptime(x['date'], "%Y-%m-%d %H:%M:%S").strftime("%m/%d/%Y %I:%M:%S %p"))
+                print(x['street'], x['city'], x['state'], x['zip_code'])
             email_content = jinja_template.render(email_data)
             send_html_email(from_name=creds.company_name,
                             from_address=creds.gmail_sales_user,

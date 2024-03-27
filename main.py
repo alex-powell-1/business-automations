@@ -2,7 +2,7 @@ import customers.stop_sms
 from setup import creds
 from setup import date_presets
 from datetime import datetime
-from customers import tiered_pricing, stock_notification
+from customers import stock_notification
 from product_tools import set_inactive_status
 from product_tools import ecomm_flags
 from product_tools import always_online
