@@ -57,7 +57,7 @@ if minute == 0:
     # PRODUCT STATUS CODES
     # Move active product_tools with zero stock into inactive status
     # unless they are on order, hold, quote
-    set_inactive_status.set_products_to_inactive()
+    #set_inactive_status.set_products_to_inactive()
     # BRANDS
     # Set all items with no brand to the company brand
     # Set all products with specific keywords to correct e-commerce brand
@@ -66,7 +66,7 @@ if minute == 0:
     # Adds e-comm web enabled status and web visible to active product_tools with stock
     # Remove web-enabled status for single product_tools that haven't sold in two years
     # and are not 'Always Online'
-    ecomm_flags.set_ecommerce_flags()
+    #ecomm_flags.set_ecommerce_flags()
     # STOCK BUFFER
     # Set stock buffers based on rules by vendor, category
     stock_buffer.stock_buffer_updates()

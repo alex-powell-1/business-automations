@@ -71,6 +71,12 @@
                                             {% else %}
                                             <li><p>Timeline: {{ item['timeline'] }}</p></li>
                                             {% endif %}
+
+                                            {% if item['comments'] != None %}
+                                            <li><p>Comments: <br>
+                                                {{ item['comments'] }}
+                                            </p></li>
+                                            {% endif %}
                                         </ul>
                                 {% endfor %}
                             </ul>

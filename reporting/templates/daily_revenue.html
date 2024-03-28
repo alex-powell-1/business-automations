@@ -46,10 +46,6 @@
             font-size: 13px;
         }
 
-            .preheader {
-                visibility: hidden;
-        }
-
         p {
             margin: 5px 0px 10px 0px;
         }
@@ -57,7 +53,7 @@
         </style>
 </head>
 <body style="background-color:#ffffff;">
-    <span class="preheader">Administrative Report</span>
+    <span class="preheader" style="display: none; overflow: hidden;">Daily Revenue Report</span>
         <div>
             <div id="logo">
                 <img class="logo" src="cid:image1">
@@ -69,14 +65,21 @@
             </div>
 
             <div id="main">
+                <h4>Total Revenue All Stores: ${{ "{:,.2f}".format(total['revenue']) }} ({{ total['tickets'] }} {% if total['tickets'] > 1 %}tickets{% else %}ticket{% endif %})</h4>
                 {% for x in store_data %}
                 <h4>Store: {{ x['store'] }}</h4>
                 <ul>
-                    {% if x['cash']['revenue'] != None %}<li> Cash: ${{ x['cash']['revenue'] }}</li> {% endif %}
-                    {% if x['check']['revenue'] != None %}<li> Check: ${{ x['check']['revenue'] }}</li> {% endif %}
-                    {% if x['credit']['revenue'] != None %}<li> Credit: ${{ x['credit']['revenue'] }}</li> {% endif %}
-                    {% if x['gift']['revenue'] != None %}<li> Gift Card: ${{ x['gift']['revenue'] }}</li> {% endif %}
-                    {% if x['loyalty']['revenue'] != None %}<li> Loyalty: ${{ x['loyalty']['revenue'] }}</li> {% endif %}
+                    <li>Revenue: ${{ "{:,.2f}".format(x['store_total']['revenue']) }} ({{ x['store_total']['tickets'] }} tickets)</li>
+                    <li>Average Order Value: ${{ "{:,.2f}".format(x['store_total']['revenue'] / x['store_total']['tickets']) }}</li>
+                    <li>Revenue by Pay Code</li>
+                        <ul>
+                            {% if x['cash']['revenue'] != None %}<li> Cash: ${{ "{:,.2f}".format(x['cash']['revenue']) }} ({{ x['cash']['tickets'] }} {% if x['cash']['tickets'] > 1 %}tickets{% else %}ticket{% endif %})</li> {% endif %}
+                            {% if x['check']['revenue'] != None %}<li> Check: ${{ "{:,.2f}".format(x['check']['revenue']) }} ({{ x['check']['tickets'] }} {% if x['check']['tickets'] > 1 %}tickets{% else %}ticket{% endif %})</li> {% endif %}
+                            {% if x['credit']['revenue'] != None %}<li> Credit: ${{ "{:,.2f}".format(x['credit']['revenue']) }} ({{ x['credit']['tickets'] }} {% if x['credit']['tickets'] > 1 %}tickets{% else %}ticket{% endif %})</li> {% endif %}
+                            {% if x['gift']['revenue'] != None %}<li> Gift Card: ${{ "{:,.2f}".format(x['gift']['revenue']) }} ({{ x['gift']['tickets'] }} {% if x['gift']['tickets'] > 1 %}tickets{% else %}ticket{% endif %})</li> {% endif %}
+                            {% if x['loyalty']['revenue'] != None %}<li> Loyalty: ${{ "{:,.2f}".format(x['loyalty']['revenue']) }} ({{ x['loyalty']['tickets'] }} {% if x['loyalty']['tickets'] > 1 %}tickets{% else %}ticket{% endif %})</li> {% endif %}
+                            {% if x['store_credit']['revenue'] != None %}<li> Store Credit: ${{ "{:,.2f}".format(x['store_credit']['revenue']) }} ({{ x['store_credit']['tickets'] }} {% if x['store_credit']['tickets'] > 1 %}tickets{% else %}ticket{% endif %})</li> {% endif %}
+                        </ul>
                 </ul>
                 {% endfor %}
             </div>

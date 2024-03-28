@@ -1,5 +1,6 @@
-from datetime import datetime
+import datetime
 
+from dateutil.relativedelta import relativedelta
 from jinja2 import Template
 
 from setup import creds
@@ -101,7 +102,51 @@ def get_transactions_by_pay_code(store, date):
         loyalty_results = {"revenue": loyalty_revenue, "tickets": loyalty_tickets}
         result.update({"loyalty": loyalty_results})
 
+    # Get Store Credit
+    query = f"""
+    SELECT SUM(NET_PMT_AMT), SUM(TKT_COUNT)
+    FROM VI_TKT_HIST_PAY_COD
+    WHERE POST_DAT = '{date} 00:00:00' and PAY_COD = 'STORE CRED'
+    AND STR_ID = '{store}'
+    """
+    db = query_engine.QueryEngine()
+    response = db.query_db(query)
+    if response is not None:
+        store_credit_revenue = float(response[0][0]) if response[0][0] else None
+        store_credit_tickets = int(response[0][1]) if response[0][1] else None
+        store_credit_results = {"revenue": store_credit_revenue, "tickets": store_credit_tickets}
+        result.update({"store_credit": store_credit_results})
+
+    # Get Total
+    query = f"""
+    SELECT SUM(NET_PMT_AMT), SUM(TKT_COUNT)
+    FROM VI_TKT_HIST_PAY_COD
+    WHERE POST_DAT = '{date} 00:00:00'
+    AND STR_ID = '{store}'
+    """
+    db = query_engine.QueryEngine()
+    response = db.query_db(query)
+    if response is not None:
+        store_total_revenue = float(response[0][0]) if response[0][0] else None
+        store_total_tickets = int(response[0][1]) if response[0][1] else None
+        store_total_results = {"revenue": store_total_revenue, "tickets": store_total_tickets}
+        result.update({"store_total": store_total_results})
+
     return result
+
+
+def get_total_revenue(date):
+    query = f"""
+    SELECT SUM(NET_PMT_AMT), SUM(TKT_COUNT)
+    FROM VI_TKT_HIST_PAY_COD
+    WHERE POST_DAT = '{date} 00:00:00'
+    """
+    db = query_engine.QueryEngine()
+    response = db.query_db(query)
+    if response is not None:
+        total_revenue = float(response[0][0]) if response[0][0] else None
+        total_tickets = int(response[0][1]) if response[0][1] else None
+        return {"revenue": total_revenue, "tickets": total_tickets}
 
 
 def get_all_stores_sales_by_paycode(date):
@@ -112,15 +157,16 @@ def get_all_stores_sales_by_paycode(date):
     return result
 
 
-def daily_revenue_report(store_data):
+def daily_revenue_report(date):
     with open("./reporting/templates/daily_revenue.html", "r") as file:
         template_str = file.read()
 
     jinja_template = Template(template_str)
 
     email_data = {
-        "date": str(datetime.now().strftime("%A %B %d, %Y")),
-        "store_data": store_data
+        "date": str((datetime.datetime.now() + relativedelta(days=-1)).strftime("%A %B %d, %Y")),
+        "total": get_total_revenue(date),
+        "store_data": get_all_stores_sales_by_paycode(date)
     }
 
     email_content = jinja_template.render(email_data)
@@ -129,11 +175,12 @@ def daily_revenue_report(store_data):
                                  from_address=creds.gmail_sales_user,
                                  from_pw=creds.gmail_sales_pw,
                                  recipients_list=creds.alex_only,
-                                 subject="Test",
+
+                                 subject=f"Daily Revenue Report for "
+                                         f"{str((datetime.datetime.now() + 
+                                                 relativedelta(days=-1)).strftime("%B %d, %Y"))}",
+
                                  content=email_content,
                                  product_photo=None,
                                  mode="related",
                                  logo=True)
-
-
-

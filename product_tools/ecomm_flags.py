@@ -153,3 +153,6 @@ def set_ecommerce_flags():
     remove_web_enabled_flags()
     add_ecomm_flags()
     print(f"E-Commerce Flags: Completed at {datetime.now()}\n")
+
+
+set_ecommerce_flags()

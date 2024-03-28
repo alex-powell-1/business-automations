@@ -28,7 +28,7 @@ def lead_notification_email():
             jinja_template = Template(template_str)
 
             email_data = {
-                "title": "Customer Followup Email",
+                "title": "Design Lead Followup Email",
                 "company": creds.company_name,
                 "leads": yesterday_entries,
                 "format": create_log,

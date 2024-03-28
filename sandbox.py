@@ -49,4 +49,6 @@ from reporting import product_reports
 # lead_generator_notification.lead_notification_email()
 from reporting import daily_revenue
 from setup.date_presets import yesterday
-daily_revenue.daily_revenue_report(daily_revenue.get_all_stores_sales_by_paycode(yesterday))
+#daily_revenue.daily_revenue_report(yesterday)
+
+lead_generator_notification.lead_notification_email()
