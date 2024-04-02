@@ -46,9 +46,5 @@ from reporting import product_reports
 # from analysis.web_scraping import scrape_competitor_prices
 # scrape_competitor_prices()
 
-# lead_generator_notification.lead_notification_email()
-from reporting import daily_revenue
-from setup.date_presets import yesterday
-#daily_revenue.daily_revenue_report(yesterday)
-
 lead_generator_notification.lead_notification_email()
+

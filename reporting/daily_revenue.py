@@ -117,7 +117,42 @@ def get_transactions_by_pay_code(store, date):
         store_credit_results = {"revenue": store_credit_revenue, "tickets": store_credit_tickets}
         result.update({"store_credit": store_credit_results})
 
-    # Get Total
+    # Get Deposits (liability, not revenue)
+    query = f"""
+        SELECT PAY_COD, AMT
+        FROM PS_DOC_PMT
+        WHERE PAY_DAT = '{date} 00:00:00' AND FINAL_PMT = 'N' AND STR_ID = '{store}'
+        """
+    db = query_engine.QueryEngine()
+    response = db.query_db(query)
+    if response is not None:
+        deposit_dict = {}
+        deposit_total = 0
+
+        for x in response:
+            pay_code = x[0].lower()
+            amount = float(x[1])
+            deposit_total += amount
+            #deposit_list.append({"pay_code": pay_code, "amount": amount})
+            deposits = {pay_code: amount}
+            deposit_dict.update(deposits)
+
+        deposit_dict.update({"total_deposits": deposit_total})
+
+        result.update({"deposits": deposit_dict})
+
+    # Get Gift Card Purchases (liability not revenue)
+    query = f"""
+    SELECT SUM(ORIG_AMT)
+    FROM SY_GFC
+    WHERE ORIG_DAT = '{date}' AND ORIG_STR_ID = '{store}'
+    """
+    db = query_engine.QueryEngine()
+    response = db.query_db(query)
+    if response is not None:
+        result.update({"gc_liability": float(response[0][0]) if response[0][0] else None})
+
+    # Get Store Total
     query = f"""
     SELECT SUM(NET_PMT_AMT), SUM(TKT_COUNT)
     FROM VI_TKT_HIST_PAY_COD
@@ -149,6 +184,19 @@ def get_total_revenue(date):
         return {"revenue": total_revenue, "tickets": total_tickets}
 
 
+def get_order_deposit_total(date):
+    # Get all partial order deposits from all pay codes and stores
+    query = f"""
+        SELECT SUM(AMT)
+        FROM PS_DOC_PMT
+        WHERE PAY_DAT = '{date} 00:00:00' AND FINAL_PMT = 'N'
+        """
+    db = query_engine.QueryEngine()
+    response = db.query_db(query)
+    if response is not None:
+        return response[0][0]
+
+
 def get_all_stores_sales_by_paycode(date):
     stores = get_stores()
     result = []
@@ -157,7 +205,19 @@ def get_all_stores_sales_by_paycode(date):
     return result
 
 
-def daily_revenue_report(date):
+def get_gc_purchase_total(date):
+    query = f"""
+        SELECT SUM(ORIG_AMT)
+        FROM SY_GFC
+        WHERE ORIG_DAT = '{date}'
+        """
+    db = query_engine.QueryEngine()
+    response = db.query_db(query)
+    if response is not None:
+        return float(response[0][0])
+
+
+def daily_revenue_report(date=date_presets.yesterday):
     with open("./reporting/templates/daily_revenue.html", "r") as file:
         template_str = file.read()
 
@@ -166,7 +226,9 @@ def daily_revenue_report(date):
     email_data = {
         "date": str((datetime.datetime.now() + relativedelta(days=-1)).strftime("%A %B %d, %Y")),
         "total": get_total_revenue(date),
-        "store_data": get_all_stores_sales_by_paycode(date)
+        "store_data": get_all_stores_sales_by_paycode(date),
+        "deposit_total": float(get_order_deposit_total(date)),
+        "gc_purchase_total": float(get_gc_purchase_total(date))
     }
 
     email_content = jinja_template.render(email_data)
@@ -174,10 +236,10 @@ def daily_revenue_report(date):
     email_engine.send_html_email(from_name=creds.company_name,
                                  from_address=creds.gmail_sales_user,
                                  from_pw=creds.gmail_sales_pw,
-                                 recipients_list=creds.alex_only,
+                                 recipients_list=creds.flash_sales_recipients,
 
                                  subject=f"Daily Revenue Report for "
-                                         f"{str((datetime.datetime.now() + 
+                                         f"{str((datetime.datetime.now() +
                                                  relativedelta(days=-1)).strftime("%B %d, %Y"))}",
 
                                  content=email_content,

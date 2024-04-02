@@ -37,20 +37,19 @@ class SMSEngine:
                         body=message)
 
             except TwilioRestException as err:
-                if str(err)[-22:] == "is not a mobile number":
-                    twilio_response = "landline"
+                if err.code in [21614, 30003, 30005, 30006]:
+                    move_phone_1_to_landline(cust_no, to_phone)
+                    twilio_response = err.msg
+
             else:
                 twilio_response = twilio_message.sid
                 print(twilio_message.to, twilio_message.body)
 
-        if create_log:
-            create_sms_log(cust_no, to_phone, message, twilio_response, log_code)
-
-        if twilio_response == "landline":
-            move_phone_1_to_mbl_phone_1(cust_no, to_phone)
+            finally:
+                create_sms_log(cust_no, to_phone, message, twilio_response, log_code)
 
 
-def move_phone_1_to_mbl_phone_1(cust_no, phone_number):
+def move_phone_1_to_landline(cust_no, phone_number):
     cp_phone = format_phone(phone_number, mode="counterpoint")
     move_landline_query = f"""
         UPDATE AR_CUST

@@ -70,6 +70,3 @@ def set_reg_price_by_category(category, percentage_discount):
             db.query_db(query, commit=True)
         finally:
             counter += 1
-
-
-

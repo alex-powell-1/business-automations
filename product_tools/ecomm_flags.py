@@ -155,4 +155,10 @@ def set_ecommerce_flags():
     print(f"E-Commerce Flags: Completed at {datetime.now()}\n")
 
 
-set_ecommerce_flags()
+def remove_ecommerce_flags_from_merged_items():
+    query = f"""
+    UPDATE IM_ITEM
+    SET IS_ECOMM_ITEM = 'N', LST_MAINT_DT = GETDATE()
+    WHERE USR_PROF_ALPHA_17 IS NOT NULL
+    """
+    db.query_db(query, commit=True)

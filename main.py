@@ -12,7 +12,7 @@ from product_tools import stock_buffer
 from product_tools import brands
 from product_tools import featured
 from product_tools import related_items
-from reporting import lead_generator_notification
+from reporting import lead_generator_notification, daily_revenue
 from big_commerce.coupons import delete_expired_coupons
 from reporting import product_reports
 from sms import sms_automations
@@ -33,7 +33,7 @@ hour = now.hour
 minute = now.minute
 
 sms_test_mode = False  # if true, will only write generated messages write to logs
-sms_test_customer = False  # if true, will only send to single employee for testing
+sms_test_customer = True  # if true, will only send to single employee for testing
 
 
 print(f"Business Automations Starting at {datetime.now()}")
@@ -57,7 +57,7 @@ if minute == 0:
     # PRODUCT STATUS CODES
     # Move active product_tools with zero stock into inactive status
     # unless they are on order, hold, quote
-    #set_inactive_status.set_products_to_inactive()
+    set_inactive_status.set_products_to_inactive()
     # BRANDS
     # Set all items with no brand to the company brand
     # Set all products with specific keywords to correct e-commerce brand
@@ -66,7 +66,7 @@ if minute == 0:
     # Adds e-comm web enabled status and web visible to active product_tools with stock
     # Remove web-enabled status for single product_tools that haven't sold in two years
     # and are not 'Always Online'
-    #ecomm_flags.set_ecommerce_flags()
+    ecomm_flags.set_ecommerce_flags()
     # STOCK BUFFER
     # Set stock buffers based on rules by vendor, category
     stock_buffer.stock_buffer_updates()
@@ -74,6 +74,7 @@ if minute == 0:
     # Resizes large photos in the item images folder to a max resolution of 1280 by 1280 pixels
     # Re-formats .png to .jpg and .jpeg to .jpg while preserving aspect ratio and rotation data
     resize_photos.resize_photos(creds.photo_path, mode="big")
+
 # -----------------
 # ONE PER DAY TASKS
 # -----------------
@@ -119,8 +120,12 @@ if hour == 5:
         product_reports.revenue_report(recipients=creds.flash_sales_recipients)
 
 if hour == 7:
+    # Create new Counterpoint customers from yesterday's marketing leads
+    lead_generator_notification.create_new_customers()
     # Customer Followup Email to Sales Team
     lead_generator_notification.lead_notification_email()
+    # Daily revenue report for accounting
+    daily_revenue.daily_revenue_report()
 
 # 9 AM TASKS
 if hour == 9:
@@ -223,6 +228,17 @@ if hour == 21:
     # Scape competitors prices and render to csv for analysis
     scrape_competitor_prices()
 
+
+sms_automations.create_customer_text(query=sms_queries.ftc_text_2,
+                                     msg_descr=first_time_customers.ftc_2_descr,
+                                     msg=first_time_customers.ftc_2_body,
+                                     image_url=creds.five_off_coupon,
+                                     send_rwd_bal=True,
+                                     log_location=creds.first_time_customer_log,
+                                     test_mode=sms_test_mode,
+                                     test_customer=sms_test_customer)
+
 print("-----------------------")
 print(f"Business Automations Complete at {datetime.now()}")
 print("-----------------------")
+

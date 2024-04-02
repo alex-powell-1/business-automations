@@ -17,13 +17,7 @@ def create_product_log(item_no, product_name, qty_avail, status_1_col_name,
         df = pandas.DataFrame(log_data, columns=["date", "item_no", "product_name",
                                                  "qty_avail", status_1_col_name, status_2_col_name])
 
-    # Looks for file. If it has been deleted, it will recreate it.
-    try:
-        pandas.read_csv(log_location)
-    except FileNotFoundError:
-        df.to_csv(log_location, mode='a', header=True, index=False)
-    else:
-        df.to_csv(log_location, mode='a', header=False, index=False)
+    write_log(df, log_location)
 
 
 def create_customer_log(customer_number, first_name, last_name, name, phone_1, status_1_col_name,
@@ -43,13 +37,7 @@ def create_customer_log(customer_number, first_name, last_name, name, phone_1, s
         df = pandas.DataFrame(log_data, columns=["date", "cust_no", "first_name", "last_name",
                                                  "name", "phone_1", status_1_col_name, status_2_col_name])
 
-    # Looks for file. If it has been deleted, it will recreate it.
-    try:
-        pandas.read_csv(log_location)
-    except FileNotFoundError:
-        df.to_csv(log_location, mode='a', header=True, index=False)
-    else:
-        df.to_csv(log_location, mode='a', header=False, index=False)
+    write_log(df, log_location)
 
 
 def create_sms_log(cust_no, phone, sent_message, response, log_location):
@@ -60,12 +48,7 @@ def create_sms_log(cust_no, phone, sent_message, response, log_location):
     df = pandas.DataFrame(log_data, columns=["date", "cust_no", "to_phone", "body", "response"])
     # Looks for file. If it has been deleted, it will recreate.
 
-    try:
-        pandas.read_csv(log_location)
-    except FileNotFoundError:
-        df.to_csv(log_location, mode='a', header=True, index=False)
-    else:
-        df.to_csv(log_location, mode='a', header=False, index=False)
+    write_log(df, log_location)
 
 
 def format_phone(phone_number, mode="clickable", prefix=False):
@@ -94,3 +77,14 @@ def format_phone(phone_number, mode="clickable", prefix=False):
             return formatted_phone
     else:
         return None
+
+
+def write_log(dataframe, log_location):
+    """Writes CSV log to share location"""
+    # Looks for file. If it has been deleted, it will recreate.
+    try:
+        pandas.read_csv(log_location)
+    except FileNotFoundError:
+        dataframe.to_csv(log_location, mode='a', header=True, index=False)
+    else:
+        dataframe.to_csv(log_location, mode='a', header=False, index=False)

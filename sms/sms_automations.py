@@ -17,7 +17,7 @@ def create_customer_text(query, msg_descr, msg, log_location, rewards_msg="",
     if msg_prefix:
         prefix = message_prefix = f"{creds.company_name}: "
     if test_customer:
-        customer_list = creds.test_customer
+        customer_list = creds.test_landline
     else:
         # Get List of Customers
         response = db.query_db(sms_queries.query_start + query)

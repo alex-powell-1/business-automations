@@ -3,8 +3,35 @@ from setup.query_engine import QueryEngine
 from setup.create_log import create_product_log
 from setup.creds import inactive_product_log
 from product_tools.products import Product
-db = QueryEngine()
 
+# Inactive Product Automation
+#
+# Author: Alex Powell
+#
+# This automation is a part of the suite of automations.
+
+# This automation (written in Python) will determine if a product should be inactive and set it to inactive status (V).
+# Inactive products are automatically filtered out of the checkout choices at our POS touchscreen.
+# This prevents sales team members from having to sift through and/or selling out of stock items.
+#
+# This script is carried out hourly at minute 0.
+#
+# When products are set to inactive, their status is logged in the inactive product log.
+#
+# Determining Inactive Product Status:
+#
+# A product is selected to be processed by this script when:
+# - Qty available is < 1 and status is active and category is not 'SERVICES'
+# - Product is not on an open order
+# - Product is not in category 'BONNIE'
+#
+#
+# Technical Considerations:
+# This automation makes use a class in the business-automations setup module called QueryEngine.
+# QueryEngine has one method, query_db that takes a SQL query as a argument. It has a parameter called 'commit'
+# that must be set to True for SQL update queries like the one used in this script.
+
+db = QueryEngine()
 
 def set_inactive(item_number):
     query = f"""
@@ -89,17 +116,17 @@ def set_products_to_inactive():
     print(f"Inactive Products: Completed at {datetime.now()}")
     active_products = get_active_products_with_no_stock()
     if active_products is not None:
-        order_products = get_products_on_open_order()
+        #order_products = get_products_on_open_order()
         bonnie_products = get_bonnie_items()
         # hold_quote_products = get_products_on_quotes_or_holds()
         for x in active_products:
             item = Product(x)
             # If item is on open order, hold, or quote, skip this iteration
             # if item_number in order_products or item_number in hold_quote_products:
-            if item.item_no in order_products:
-                print(f"Skipping {item.item_no}: {item.long_descr} - On Open Order")
-                continue
-            elif item.item_no in bonnie_products:
+            # if item.item_no in order_products:
+            #     print(f"Skipping {item.item_no}: {item.long_descr} - On Open Order")
+            #     continue
+            if item.item_no in bonnie_products:
                 print(f"Skipping {item.item_no}: {item.long_descr} - Bonnie Product")
                 continue
             else:

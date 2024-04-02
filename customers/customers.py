@@ -1,8 +1,11 @@
-from setup.query_engine import QueryEngine
+import json
 from datetime import datetime
+
+import requests
+
 from setup import creds
 from setup.create_log import create_customer_log
-import requests
+from setup.query_engine import QueryEngine
 
 db = QueryEngine()
 
@@ -172,3 +175,66 @@ def add_all_customers_to_mailerlite(category):
     for x in customer_list:
         customer = Customer(x)
         customer.add_to_mailerlite()
+
+
+def lookup_customer_by_email(email_address):
+    query = f"""
+    SELECT TOP 1 CUST_NO
+    FROM AR_CUST
+    WHERE EMAIL_ADRS_1 = '{email_address}' or EMAIL_ADRS_2 = '{email_address}'
+    """
+    response = db.query_db(query)
+    if response is not None:
+        return response[0][0]
+
+
+def lookup_customer_by_phone(phone_number):
+    query = f"""
+    SELECT TOP 1 CUST_NO
+    FROM AR_CUST
+    WHERE PHONE_1 = '{phone_number}' or MBL_PHONE_1 = '{phone_number}'
+    """
+    response = db.query_db(query)
+    if response is not None:
+        return response[0][0]
+
+
+def is_customer(email_address, phone_number):
+    """Checks to see if an email or phone number belongs to a current customer"""
+    return (lookup_customer_by_email(email_address) is not None or
+            lookup_customer_by_phone(phone_number) is not None)
+
+
+def add_new_customer(first_name, last_name, phone_number,
+                     email_address, street_address, city, state, zip_code):
+    if not is_customer(email_address=email_address, phone_number=phone_number):
+        url = f'{creds.cp_api_server}/CUSTOMER/'
+        headers = {
+            'Authorization': f'Basic {creds.cp_api_user}',
+            'APIKey': creds.cp_api_key,
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+        }
+        payload = {
+            "Workgroup": "1",
+            "AR_CUST": {
+                "FST_NAM": first_name,
+                "LST_NAM": last_name,
+                "STR_ID": "1",
+                'EMAIL_ADRS_1': email_address,
+                'PHONE_1': phone_number,
+                'ADRS_1': street_address,
+                'CITY': city,
+                'STATE': state,
+                'ZIP_COD': zip_code,
+            }
+        }
+
+        response = requests.post(url, headers=headers, verify=False, json=payload)
+        pretty = response.content
+        pretty = json.loads(pretty)
+        pretty = json.dumps(pretty, indent=4)
+        # print(pretty)
+        return response.json()['CUST_NO']
+    else:
+        return "Already a customer"
