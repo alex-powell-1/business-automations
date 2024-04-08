@@ -1,12 +1,15 @@
-from setup import creds
-import requests
+import json
 import secrets
 import string
-import json
-from email import utils
 from datetime import datetime, timezone
+from email import utils
 
-class Coupon():
+import requests
+
+from setup import creds
+
+
+class Coupon:
     def __init__(self, coupon_id):
         self.id = coupon_id
         self.name = ""
@@ -24,7 +27,7 @@ class Coupon():
         self.shipping_methods = ""
         self.date_created = ""
         self.get_coupon_details()
-        
+
     def get_coupon_details(self):
         url = f"https://api.bigcommerce.com/stores/{creds.big_store_hash}/v2/coupons/{self.id}"
         headers = {
@@ -71,7 +74,8 @@ def bc_get_all_coupons(pretty=False):
     return json_response
 
 
-def bc_create_coupon(name, type, amount, min_purchase, code, max_uses_per_customer, max_uses, expiration, enabled=True):
+def bc_create_coupon(name, coupon_type, amount, min_purchase, code,
+                     max_uses_per_customer, max_uses, expiration, enabled=True):
     url = f"https://api.bigcommerce.com/stores/{creds.big_store_hash}/v2/coupons"
 
     headers = {
@@ -82,7 +86,7 @@ def bc_create_coupon(name, type, amount, min_purchase, code, max_uses_per_custom
 
     payload = {
         'name': name,
-        'type': type,
+        'type': coupon_type,
         'amount': str(amount),
         'min_purchase': min_purchase,
         'enabled': enabled,
@@ -99,7 +103,7 @@ def bc_create_coupon(name, type, amount, min_purchase, code, max_uses_per_custom
     return response.json()
 
 
-def bc_delete_coupon(coupon_id, pretty=False):
+def bc_delete_coupon(coupon_id):
     url = f"https://api.bigcommerce.com/stores/{creds.big_store_hash}/v2/coupons/{coupon_id}"
     headers = {
         'X-Auth-Token': creds.big_access_token,
@@ -109,10 +113,8 @@ def bc_delete_coupon(coupon_id, pretty=False):
     return requests.delete(url=url, headers=headers)
 
 
-
 def generate_random_code(length):
-    res = ''.join(secrets.choice(string.ascii_uppercase + string.digits)
-                  for i in range(length))
+    res = ''.join(secrets.choice(string.ascii_uppercase + string.digits) for i in range(length))
     return str(res)
 
 
@@ -135,6 +137,3 @@ def delete_expired_coupons():
                 for y, z in x.items():
                     print(str(y), ": ", z, file=log_file)
                 print(file=log_file)
-
-
-

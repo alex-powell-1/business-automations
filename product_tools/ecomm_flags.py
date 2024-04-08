@@ -1,7 +1,7 @@
-from setup.query_engine import QueryEngine
-from setup.date_presets import *
-from setup.create_log import *
 from setup import creds
+from setup.create_log import *
+from setup.date_presets import *
+from setup.query_engine import QueryEngine
 
 db = QueryEngine()
 
@@ -162,4 +162,3 @@ def remove_ecommerce_flags_from_merged_items():
     WHERE USR_PROF_ALPHA_17 IS NOT NULL
     """
     db.query_db(query, commit=True)
-

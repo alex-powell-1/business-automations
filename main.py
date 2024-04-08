@@ -1,26 +1,27 @@
-import customers.stop_sms
-from setup import creds
-from setup import date_presets
 from datetime import datetime
+
+import customers.stop_sms
+from analysis import web_scraping
+from big_commerce import coupons
 from customers import stock_notification
-from product_tools import set_inactive_status
-from product_tools import ecomm_flags
 from product_tools import always_online
+from product_tools import brands
+from product_tools import ecomm_flags
+from product_tools import featured
+from product_tools import inventory_upload
+from product_tools import related_items
 from product_tools import resize_photos
+from product_tools import set_inactive_status
 from product_tools import sort_order
 from product_tools import stock_buffer
-from product_tools import brands
-from product_tools import featured
-from product_tools import related_items
 from reporting import lead_generator_notification, daily_revenue
-from big_commerce import coupons
 from reporting import product_reports
+from setup import creds
+from setup import date_presets
+from setup import network
 from sms import sms_automations
 from sms import sms_queries
 from sms.sms_messages import birthdays, first_time_customers, returning_customers, wholesale_sms_messages
-from product_tools import inventory_upload
-from analysis import web_scraping
-from setup import network
 
 # # Business Automations
 # # Author: Alex Powell
@@ -35,30 +36,34 @@ minute = now.minute
 sms_test_mode = False  # if true, will only write generated messages write to logs
 sms_test_customer = False  # if true, will only send to single employee for testing
 
-
 print(f"Business Automations Starting at {datetime.now()}")
 print("-----------------------\n")
 
-# -----------------
-# EVERY HOUR TASKS
-# -----------------
-
 if minute == 0:
+    # -----------------
+    # EVERY HOUR TASKS
+    # -----------------
+    # NETWORK CONNECTIVITY
     # Check server for internet connection. Restart is there is no connection to internet.
     network.restart_server_if_disconnected()
-
     # UPLOAD CURRENT INVENTORY STOCK LEVELS TO WEBDAV SERVER
     inventory_upload.upload_inventory()
     # TIERED PRICING
     # Move wholesale customers into pricing tiers based on
     # total sales over the last 6 months
     # tiered_pricing.update_tiered_pricing(date_presets.six_months_ago, date_presets.today)
+    # PHOTO RESIZE/FORMATTING
+    # Resizes large photos in the item images folder to a max resolution of 1280 by 1280 pixels
+    # Re-formats .png to .jpg and .jpeg to .jpg while preserving aspect ratio and rotation data
+    resize_photos.resize_photos(creds.photo_path, mode="big")
 
-    # PRODUCT STATUS CODES
-    # Move active product_tools with zero stock into inactive status
-    # unless they are on order, hold, quote
+    # ----------------------
+    # EVERY OTHER HOUR TASKS
+    # ----------------------
     if hour % 2 == 0:
-        # Admin requested this be every other hour
+        # ITEM STATUS CODES
+        # Move active product_tools with zero stock into inactive status
+        # unless they are on order, hold, quote
         set_inactive_status.set_products_to_inactive()
         # BRANDS
         # Set all items with no brand to the company brand
@@ -72,10 +77,6 @@ if minute == 0:
         # STOCK BUFFER
         # Set stock buffers based on rules by vendor, category
         stock_buffer.stock_buffer_updates()
-        # PHOTO RESIZE/FORMATTING
-        # Resizes large photos in the item images folder to a max resolution of 1280 by 1280 pixels
-        # Re-formats .png to .jpg and .jpeg to .jpg while preserving aspect ratio and rotation data
-        resize_photos.resize_photos(creds.photo_path, mode="big")
 
 # -----------------
 # ONE PER DAY TASKS
@@ -101,7 +102,6 @@ if hour == 4:
     # Set Always Online status for top performing items
     always_online.set_always_online(always_online.get_top_items(date_presets.last_year_start,
                                                                 date_presets.today, number_of_items=200))
-
     # SORT ORDER BY PREDICTED REVENUE
     # Update Sort Order for all product_tools at 4AM.
     # Uses revenue data from same period last year as a predictive method of rank importance.
@@ -231,7 +231,6 @@ if hour == 21:
     web_scraping.scrape_competitor_prices()
     # Remove wholesale customers from loyalty program
     sms_automations.remove_wholesale_from_loyalty()
-
 
 print("-----------------------")
 print(f"Business Automations Complete at {datetime.now()}")

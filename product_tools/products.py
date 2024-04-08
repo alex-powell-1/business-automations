@@ -873,10 +873,6 @@ def set_sale_price(query, discount_percentage):
             item.set_sale_price(discount=discount_percentage)
 
 
-# from big_commerce import big_products
-#
-
-
 def update_timestamp(sku):
     query = f"""
     UPDATE IM_ITEM
@@ -903,8 +899,5 @@ def check_for_bound_product_with_no_parent():
     """prints merged items with no parent or who have multiple parents"""
     for x in get_binding_ids():
         parent = get_parent_product(x)
-        if parent is None or type(parent) == list:
+        if parent is None or type(parent) is list:
             print(f"Binding ID: {x}, Parent: {get_parent_product(x)}")
-
-
-check_for_bound_product_with_no_parent()

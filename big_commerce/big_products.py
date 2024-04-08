@@ -1,6 +1,8 @@
-from setup import creds
-import requests
 import json
+
+import requests
+
+from setup import creds
 
 
 def bc_create_product(name, product_type, sku, weight, price):
@@ -86,7 +88,8 @@ def get_modifier_id(product_id):
 
 def delete_product_modifier(product_id, modifier_id):
     if product_id is not None:
-        url = f" https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/products/{product_id}/modifiers/{modifier_id}"
+        url = (f" https://api.bigcommerce.com/stores/{creds.big_store_hash}"
+               f"/v3/catalog/products/{product_id}/modifiers/{modifier_id}")
 
         headers = {
             'X-Auth-Token': creds.big_access_token,
@@ -230,8 +233,3 @@ def bc_get_variant(product_id, variant_id, pretty=False):
         pretty = json.dumps(pretty, indent=4)
         return pretty
     return json_response
-
-#print(get_modifier_id(4410))
-
-#delete_product_modifier(4410, 1094)
-#print(add_container_workshop_to_item(4410))
