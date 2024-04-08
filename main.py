@@ -25,7 +25,6 @@ from sms.sms_messages import birthdays, first_time_customers, returning_customer
 
 # # Business Automations
 # # Author: Alex Powell
-# # Date: February 6, 2024
 # # Description: A series of programmatic automations to serve business needs of retail and e-comm store.
 
 now = datetime.now()
@@ -38,6 +37,13 @@ sms_test_customer = False  # if true, will only send to single employee for test
 
 print(f"Business Automations Starting at {datetime.now()}")
 print("-----------------------\n")
+
+if minute == 0 or minute == 30:
+    # -----------------
+    # TWICE PER HOUR TASKS
+    # -----------------
+    # Create new Counterpoint customers from today's marketing leads
+    lead_generator_notification.create_new_customers()
 
 if minute == 0:
     # -----------------
@@ -122,8 +128,6 @@ if hour == 5:
         product_reports.revenue_report(recipients=creds.flash_sales_recipients)
 
 if hour == 7:
-    # Create new Counterpoint customers from yesterday's marketing leads
-    lead_generator_notification.create_new_customers()
     # Customer Followup Email to Sales Team
     lead_generator_notification.lead_notification_email()
     # Daily revenue report for accounting
@@ -235,3 +239,4 @@ if hour == 21:
 print("-----------------------")
 print(f"Business Automations Complete at {datetime.now()}")
 print("-----------------------")
+

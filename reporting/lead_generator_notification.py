@@ -60,14 +60,14 @@ def create_new_customers():
         entries = df.to_dict("records")
 
         # Get yesterday submissions
-        yesterday_entries = []
+        today_entries = []
 
         for x in entries:
-            if x['date'][:10] == yesterday or x['date'][:10] == today:
-                yesterday_entries.append(x)
+            if x['date'][:10] == today:
+                today_entries.append(x)
 
-        if len(yesterday_entries) > 0:
-            for x in yesterday_entries:
+        if len(today_entries) > 0:
+            for x in today_entries:
                 if not customers.customers.is_customer(email_address=x['email'], phone_number=x['phone']):
                     first_name = x['first_name']
                     last_name = x['last_name']
