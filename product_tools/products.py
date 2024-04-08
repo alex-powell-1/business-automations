@@ -1,8 +1,7 @@
-from setup.query_engine import QueryEngine
-from setup.date_presets import *
-from setup.create_log import *
 from big_commerce.big_products import *
-import pandas
+from setup.create_log import *
+from setup.date_presets import *
+from setup.query_engine import QueryEngine
 
 db = QueryEngine()
 
@@ -37,7 +36,7 @@ class Product:
         self.sub_category = ""
         self.status = ""
         self.vendor = ""
-        self.custom_field_bontanical_name = ""
+        self.custom_field_botanical_name = ""
         self.custom_field_climate_zone = ""
         self.custom_field_plant_type = ""
         self.custom_field_type = ""
@@ -114,7 +113,7 @@ class Product:
                 self.sub_category = x[22]
                 self.status = x[23]
                 self.vendor = x[24]
-                self.custom_field_bontanical_name = x[25]
+                self.custom_field_botanical_name = x[25]
                 self.custom_field_climate_zone = x[26]
                 self.custom_field_plant_type = x[27]
                 self.custom_field_type = x[28]
@@ -155,9 +154,7 @@ class Product:
                         SET USR_PROF_ALPHA_18 = '{self.item_url}'
                         WHERE ITEM_NO = '{self.item_no}'
                         """
-                        response = db.query_db(query, commit=True)
-
-
+                        db.query_db(query, commit=True)
 
         else:
             return "No Item Matching that SKU"
@@ -202,105 +199,105 @@ class Product:
         else:
             return "Not a bound product"
 
-    def update_product_on_big_commerce(self):
-        variant_list = "MORE WORK HERE FUNCTION NEEDED"
-        product_id = "MORE WORK HERE - FUNCTION NEEDED"
-        payload = f"""{
-            "name": {self.web_title},
-            "type": "physical",
-            "sku": {self.item_no},
-            "description": {self.web_description},
-            "weight": 0,
-            "width": 0,
-            "depth": 0,
-            "height": 0,
-            "price": {self.price_1},
-            "cost_price": 0,
-            "retail_price": {self.price_1},
-            "sale_price": {self.price_2},
-            "map_price": 0,
-            "tax_class_id": 255 GET FROM BIG,
-            "product_tax_code": "string" GET FROM BIG,
-            "categories": [
-            0 GET FROM BIG
-            ],
-            "brand_id": 1000000000 GET FROM BIG,
-            "brand_name": {self.brand},
-            "inventory_level": {self.buffered_quantity_available},
-            "inventory_warning_level": 5,
-            "inventory_tracking": "none",
-            "fixed_cost_shipping_price": 0.1,
-            "is_free_shipping": true,
-            "is_visible": {"true" if self.web_visible == 'Y' else "false"},
-            "is_featured": {"true" if self.featured == 'Y' else "false"},
-            "related_products": [
-            0
-            ],
-            "warranty": "",
-            "bin_picking_number": "",
-            "layout_file": "",
-            "upc": "string",
-            "search_keywords": {self.search_key},
-            "availability_description": {self.availability_description},
-            "availability": "available",
-            "gift_wrapping_options_type": "any",
-            "gift_wrapping_options_list": [
-            0
-            ],
-            "sort_order": {self.sort_order},
-            "condition": "New",
-            "is_condition_shown": true,
-            "order_quantity_minimum": 1,
-            "order_quantity_maximum": 1000,
-            "page_title": {self.web_title},
-            "meta_description": {self.meta_description},
-            "view_count": 3000,
-            "preorder_release_date": "2019-08-24T14:15:22Z",
-            "preorder_message": "string",
-            "is_preorder_only": false,
-            "is_price_hidden": false,
-            "price_hidden_label": "string",
-            "custom_url": {
-                "url": {self.custom_url},
-                "is_customized": true
-            },
-            "open_graph_type": "product",
-            "open_graph_title": "string",
-            "open_graph_description": "string",
-            "open_graph_use_meta_description": true,
-            "open_graph_use_product_name": true,
-            "open_graph_use_image": true,
-            "custom_fields": [
-            {
-                "id": 6,
-                "name": "ISBN",
-                "value": "1234567890123"
-                }
-            ],
-            "bulk_pricing_rules": [
-                {
-                    "quantity_min": 10,
-                    "quantity_max": 50,
-                    "type": "price",
-                    "amount": 10
-                }
-            ],
-            "images": [
-                {
-                    "image_file": "string",
-                    "is_thumbnail": true,
-                    "sort_order": -2147483648,
-                    "description": "string",
-                    "image_url": "string",
-                    "id": 0,
-                    "product_id": 0,
-                    "date_modified": "2019-08-24T14:15:22Z"
-                }
-            ],
-            "variants": {variant_list}
-        }
-            """
-        bc_update_product(product_id, payload)
+    # def update_product_on_big_commerce(self):
+    #     variant_list = "MORE WORK HERE FUNCTION NEEDED"
+    #     product_id = "MORE WORK HERE - FUNCTION NEEDED"
+    #     payload = f"""{
+    #     "name": {self.web_title},
+    #         "type": "physical",
+    #         "sku": {self.item_no},
+    #         "description": {self.web_description},
+    #         "weight": 0,
+    #         "width": 0,
+    #         "depth": 0,
+    #         "height": 0,
+    #         "price": {self.price_1},
+    #         "cost_price": 0,
+    #         "retail_price": {self.price_1},
+    #         "sale_price": {self.price_2},
+    #         "map_price": 0,
+    #         "tax_class_id": 255 GET FROM BIG,
+    #         "product_tax_code": "string" GET FROM BIG,
+    #         "categories": [
+    #         0 GET FROM BIG
+    #         ],
+    #         "brand_id": 1000000000 GET FROM BIG,
+    #         "brand_name": {self.brand},
+    #         "inventory_level": {self.buffered_quantity_available},
+    #         "inventory_warning_level": 5,
+    #         "inventory_tracking": "none",
+    #         "fixed_cost_shipping_price": 0.1,
+    #         "is_free_shipping": true,
+    #         "is_visible": {"true" if self.web_visible == 'Y' else "false"},
+    #         "is_featured": {"true" if self.featured == 'Y' else "false"},
+    #         "related_products": [
+    #         0
+    #         ],
+    #         "warranty": "",
+    #         "bin_picking_number": "",
+    #         "layout_file": "",
+    #         "upc": "string",
+    #         "search_keywords": {self.search_key},
+    #         "availability_description": {self.availability_description},
+    #         "availability": "available",
+    #         "gift_wrapping_options_type": "any",
+    #         "gift_wrapping_options_list": [
+    #         0
+    #         ],
+    #         "sort_order": {self.sort_order},
+    #         "condition": "New",
+    #         "is_condition_shown": true,
+    #         "order_quantity_minimum": 1,
+    #         "order_quantity_maximum": 1000,
+    #         "page_title": {self.web_title},
+    #         "meta_description": {self.meta_description},
+    #         "view_count": 3000,
+    #         "preorder_release_date": "2019-08-24T14:15:22Z",
+    #         "preorder_message": "string",
+    #         "is_preorder_only": false,
+    #         "is_price_hidden": false,
+    #         "price_hidden_label": "string",
+    #         "custom_url": {
+    #     "url": {self.custom_url},
+    #             "is_customized": true
+    #         },
+    #         "open_graph_type": "product",
+    #         "open_graph_title": "string",
+    #         "open_graph_description": "string",
+    #         "open_graph_use_meta_description": true,
+    #         "open_graph_use_product_name": true,
+    #         "open_graph_use_image": true,
+    #         "custom_fields": [
+    #         {
+    #     "id": 6,
+    #             "name": "ISBN",
+    #             "value": "1234567890123"
+    #             }
+    #         ],
+    #         "bulk_pricing_rules": [
+    #             {
+    #     "quantity_min": 10,
+    #                 "quantity_max": 50,
+    #                 "type": "price",
+    #                 "amount": 10
+    #             }
+    #         ],
+    #         "images": [
+    #             {
+    #     "image_file": "string",
+    #                 "is_thumbnail": true,
+    #                 "sort_order": -2147483648,
+    #                 "description": "string",
+    #                 "image_url": "string",
+    #                 "id": 0,
+    #                 "product_id": 0,
+    #                 "date_modified": "2019-08-24T14:15:22Z"
+    #             }
+    #         ],
+    #         "variants": {variant_list}
+    #     }
+    #         """
+    #     bc_update_product(product_id, payload)
 
     def get_product_id(self):
         if self.binding_key is not None:
@@ -468,7 +465,7 @@ class Product:
                                    log_location=creds.featured_products)
 
     def set_sale_price(self, discount):
-        sale_price = round(float(self.price_1 * (100 - discount)/100), 2)
+        sale_price = round(float(self.price_1 * (100 - discount) / 100), 2)
         query = f"""
         UPDATE IM_PRC
         SET PRC_2 = '{sale_price}', LST_MAINT_DT = GETDATE()
@@ -775,13 +772,32 @@ def get_products_by_category(category, subcat="", ecomm_only=False):
 
 def get_bc_product_id(sku):
     query = f"""
-    SELECT PRODUCT_ID
+    SELECT TOP 1 PRODUCT_ID
     FROM CPI_BC_PROD
     WHERE WEB_ID = '1' AND SKU = '{sku}'
+    ORDER BY LAST_MODIFIED DESC
     """
     response = db.query_db(query)
     if response is not None:
         return int(response[0][0])
+
+
+def get_pottery_for_workshop(mode):
+    query = f"""
+    SELECT ITEM_NO
+    FROM IM_ITEM
+    WHERE CATEG_COD = 'POTTERY' AND IS_ECOMM_ITEM = 'Y' AND 
+    ((USR_PROF_ALPHA_16 IS NOT NULL and IS_ADM_TKT = 'Y') OR
+    (USR_PROF_ALPHA_16 IS NULL))"""
+    response = db.query_db(query)
+    if response is not None:
+        result = []
+        for x in response:
+            if mode == "sku":
+                result.append(x[0])
+            else:
+                result.append(get_bc_product_id(x[0]))
+        return result
 
 
 def get_product_categories_cp():
@@ -855,3 +871,40 @@ def set_sale_price(query, discount_percentage):
         for x in response:
             item = Product(x[0])
             item.set_sale_price(discount=discount_percentage)
+
+
+# from big_commerce import big_products
+#
+
+
+def update_timestamp(sku):
+    query = f"""
+    UPDATE IM_ITEM
+    SET LST_MAINT_DT = GETDATE()
+    WHERE ITEM_NO = '{sku}'
+    """
+    db.query_db(query, commit=True)
+
+
+def update_product_modifiers():
+    """Get a list of all pottery, delete old modifiers, create new"""
+    all_pots = get_pottery_for_workshop(mode="")
+    counter = 1
+    for x in all_pots:
+        print(f"Number {counter}/{len(all_pots)}: {x}")
+        modifier_id = get_modifier_id(x)
+        if modifier_id is not None:
+            delete_product_modifier(x, modifier_id)
+            add_container_workshop_to_item(x)
+        counter += 1
+
+
+def check_for_bound_product_with_no_parent():
+    """prints merged items with no parent or who have multiple parents"""
+    for x in get_binding_ids():
+        parent = get_parent_product(x)
+        if parent is None or type(parent) == list:
+            print(f"Binding ID: {x}, Parent: {get_parent_product(x)}")
+
+
+check_for_bound_product_with_no_parent()

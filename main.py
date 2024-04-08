@@ -13,13 +13,13 @@ from product_tools import brands
 from product_tools import featured
 from product_tools import related_items
 from reporting import lead_generator_notification, daily_revenue
-from big_commerce.coupons import delete_expired_coupons
+from big_commerce import coupons
 from reporting import product_reports
 from sms import sms_automations
 from sms import sms_queries
 from sms.sms_messages import birthdays, first_time_customers, returning_customers, wholesale_sms_messages
 from product_tools import inventory_upload
-from analysis.web_scraping import scrape_competitor_prices
+from analysis import web_scraping
 from setup import network
 
 # # Business Automations
@@ -33,7 +33,7 @@ hour = now.hour
 minute = now.minute
 
 sms_test_mode = False  # if true, will only write generated messages write to logs
-sms_test_customer = True  # if true, will only send to single employee for testing
+sms_test_customer = False  # if true, will only send to single employee for testing
 
 
 print(f"Business Automations Starting at {datetime.now()}")
@@ -57,23 +57,25 @@ if minute == 0:
     # PRODUCT STATUS CODES
     # Move active product_tools with zero stock into inactive status
     # unless they are on order, hold, quote
-    set_inactive_status.set_products_to_inactive()
-    # BRANDS
-    # Set all items with no brand to the company brand
-    # Set all products with specific keywords to correct e-commerce brand
-    brands.update_brands()
-    # ECOMMERCE FLAGS
-    # Adds e-comm web enabled status and web visible to active product_tools with stock
-    # Remove web-enabled status for single product_tools that haven't sold in two years
-    # and are not 'Always Online'
-    ecomm_flags.set_ecommerce_flags()
-    # STOCK BUFFER
-    # Set stock buffers based on rules by vendor, category
-    stock_buffer.stock_buffer_updates()
-    # PHOTO RESIZE/FORMATTING
-    # Resizes large photos in the item images folder to a max resolution of 1280 by 1280 pixels
-    # Re-formats .png to .jpg and .jpeg to .jpg while preserving aspect ratio and rotation data
-    resize_photos.resize_photos(creds.photo_path, mode="big")
+    if hour % 2 == 0:
+        # Admin requested this be every other hour
+        set_inactive_status.set_products_to_inactive()
+        # BRANDS
+        # Set all items with no brand to the company brand
+        # Set all products with specific keywords to correct e-commerce brand
+        brands.update_brands()
+        # ECOMMERCE FLAGS
+        # Adds e-comm web enabled status and web visible to active product_tools with stock
+        # Remove web-enabled status for single product_tools that haven't sold in two years
+        # and are not 'Always Online'
+        ecomm_flags.set_ecommerce_flags()
+        # STOCK BUFFER
+        # Set stock buffers based on rules by vendor, category
+        stock_buffer.stock_buffer_updates()
+        # PHOTO RESIZE/FORMATTING
+        # Resizes large photos in the item images folder to a max resolution of 1280 by 1280 pixels
+        # Re-formats .png to .jpg and .jpeg to .jpg while preserving aspect ratio and rotation data
+        resize_photos.resize_photos(creds.photo_path, mode="big")
 
 # -----------------
 # ONE PER DAY TASKS
@@ -224,21 +226,13 @@ if hour == 21:
     # Remove anyone with only one purchase and return from SMS/Text Funnel
     customers.stop_sms.remove_refunds_from_sms_funnel()
     # Delete Automatically Created Coupons from BigCommerce
-    delete_expired_coupons()
+    coupons.delete_expired_coupons()
     # Scape competitors prices and render to csv for analysis
-    scrape_competitor_prices()
+    web_scraping.scrape_competitor_prices()
+    # Remove wholesale customers from loyalty program
+    sms_automations.remove_wholesale_from_loyalty()
 
-
-sms_automations.create_customer_text(query=sms_queries.ftc_text_2,
-                                     msg_descr=first_time_customers.ftc_2_descr,
-                                     msg=first_time_customers.ftc_2_body,
-                                     image_url=creds.five_off_coupon,
-                                     send_rwd_bal=True,
-                                     log_location=creds.first_time_customer_log,
-                                     test_mode=sms_test_mode,
-                                     test_customer=sms_test_customer)
 
 print("-----------------------")
 print(f"Business Automations Complete at {datetime.now()}")
 print("-----------------------")
-

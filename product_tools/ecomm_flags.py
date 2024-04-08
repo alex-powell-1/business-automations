@@ -90,8 +90,8 @@ def get_non_web_enabled_active_products():
     FROM IM_ITEM item
     INNER JOIN IM_INV inv on inv.ITEM_NO = item.ITEM_NO
     WHERE inv.QTY_AVAIL > 0 and item.STAT = 'A' AND 
-    item.CATEG_COD NOT IN ('SERVICES') AND ADDL_DESCR_1 != 'EXCLUDE'
-    AND (IS_ECOMM_ITEM = 'N' OR USR_CPC_IS_ENABLED = 'N')
+    item.CATEG_COD NOT IN ('SERVICES')
+    AND (IS_ECOMM_ITEM = 'N' OR USR_CPC_IS_ENABLED = 'N') AND LONG_DESCR not like '%workshop%'
     ORDER BY inv.QTY_AVAIL DESC
     """
     response = db.query_db(query)
@@ -162,3 +162,4 @@ def remove_ecommerce_flags_from_merged_items():
     WHERE USR_PROF_ALPHA_17 IS NOT NULL
     """
     db.query_db(query, commit=True)
+

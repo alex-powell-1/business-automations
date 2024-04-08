@@ -91,12 +91,11 @@
                             {% if x['store_credit']['revenue'] != None %}<li> Store Credit: ${{ "{:,.2f}".format(x['store_credit']['revenue']) }}</li>{% endif %}
                         </ul>
                     {% if x['deposits'] %}
-                    <li> Payments by Pay Code</li>
+                    <li> Deposits by Pay Code</li>
                         <ul>
                             {% for k, v in x['deposits'].items() %}
                             {% if k != 'total_deposits' %}
                             <li>{{ k.title() }}: ${{ "{:,.2f}".format(v) }}</li>{% endif %}
-
                             {% endfor %}
                         </ul>
                     {% endif %}

@@ -1,11 +1,12 @@
-from setup.sms_engine import SMSEngine
-from setup.query_engine import QueryEngine
+import random
+
 from customers.customers import Customer
 from setup import creds
 from setup.create_log import create_sms_log
-from sms.sms_messages import salutations, first_time_customers, returning_customers, wholesale_sms_messages
+from setup.query_engine import QueryEngine
+from setup.sms_engine import SMSEngine
 from sms import sms_queries
-import random
+from sms.sms_messages import salutations
 
 db = QueryEngine()
 
@@ -15,7 +16,7 @@ def create_customer_text(query, msg_descr, msg, log_location, rewards_msg="",
     """First SMS text send to new customer. Text will be delivered the day after first purchase"""
     prefix = ""
     if msg_prefix:
-        prefix = message_prefix = f"{creds.company_name}: "
+        prefix = f"{creds.company_name}: "
     if test_customer:
         customer_list = creds.test_landline
     else:
@@ -47,3 +48,14 @@ def create_customer_text(query, msg_descr, msg, log_location, rewards_msg="",
         print(f"Sending Message to {cust.name}")
         engine = SMSEngine()
         engine.send_text(cust_no, to_phone, message, url=image_url, log_code=log_location, test_mode=test_mode)
+
+
+def remove_wholesale_from_loyalty():
+    """New customer templates automatically add new customers to the BASIC program.
+    This script will remove wholesale customers from a loyalty program and set balance to 0."""
+    query = """
+    UPDATE AR_CUST
+    SET LOY_PGM_COD = NULL, LOY_PTS_BAL = '0', LOY_CARD_NO = 'VOID'
+    WHERE CATEG_COD = 'WHOLESALE', SET LOY_PTS_BAL = '0'
+    """
+    db.query_db(query, commit=True)

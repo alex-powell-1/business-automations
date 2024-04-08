@@ -189,7 +189,7 @@ def get_order_deposit_total(date):
     query = f"""
         SELECT SUM(AMT)
         FROM PS_DOC_PMT
-        WHERE PAY_DAT = '{date} 00:00:00' AND FINAL_PMT = 'N'
+        WHERE PAY_DAT = '{date} 00:00:00' AND FINAL_PMT = 'N' and PAY_COD_TYP = 'E'
         """
     db = query_engine.QueryEngine()
     response = db.query_db(query)
@@ -214,7 +214,7 @@ def get_gc_purchase_total(date):
     db = query_engine.QueryEngine()
     response = db.query_db(query)
     if response is not None:
-        return float(response[0][0])
+        return float(response[0][0]) if response[0][0] else None
 
 
 def daily_revenue_report(date=date_presets.yesterday):
@@ -227,8 +227,8 @@ def daily_revenue_report(date=date_presets.yesterday):
         "date": str((datetime.datetime.now() + relativedelta(days=-1)).strftime("%A %B %d, %Y")),
         "total": get_total_revenue(date),
         "store_data": get_all_stores_sales_by_paycode(date),
-        "deposit_total": float(get_order_deposit_total(date)),
-        "gc_purchase_total": float(get_gc_purchase_total(date))
+        "deposit_total": float(get_order_deposit_total(date)) if get_order_deposit_total(date) else 0,
+        "gc_purchase_total": float(get_gc_purchase_total(date)) if get_gc_purchase_total(date) else 0
     }
 
     email_content = jinja_template.render(email_data)
@@ -236,7 +236,7 @@ def daily_revenue_report(date=date_presets.yesterday):
     email_engine.send_html_email(from_name=creds.company_name,
                                  from_address=creds.gmail_sales_user,
                                  from_pw=creds.gmail_sales_pw,
-                                 recipients_list=creds.flash_sales_recipients,
+                                 recipients_list=creds.alex_only,
 
                                  subject=f"Daily Revenue Report for "
                                          f"{str((datetime.datetime.now() +
