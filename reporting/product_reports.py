@@ -353,6 +353,8 @@ def get_missing_image_list():
                 binding_key = item.binding_key
                 # All Single and Children 202578
                 if item.buffered_quantity_available > 0:
+                    # NOTE: THIS CAN BE IMPROVED. QUERY the DB for ITEMS WHERE BUFFERED STOCK IS ABOVE 0 and reduce
+                    # The number of class constructions that are going on here. - AP
                     if item_number not in all_current_photos:
                         # Add item objects to either list
                         missing_image_list_child.append(item)
@@ -394,7 +396,7 @@ def get_missing_image_list():
     # Get Missing Binding ID Images
     if len(missing_image_list_parent) > 0:
         # Section Header
-        contents += f"\n<p><u>Total binding IDs with no image</u>: <b>{len(missing_image_list_parent)}\n</b></p>"
+        contents += f"\n<p><br><u>Total binding IDs with no image</u>: <b>{len(missing_image_list_parent)}\n</b></p>"
         for item in missing_image_list_parent:
             if item.web_title is None:
                 contents += (f"\n<p>{item.binding_key}, Missing Web Title, "
@@ -839,35 +841,35 @@ def report_generator(revenue=False, last_week_report=False, mtd_month_report=Fal
                                               category=x[0])
             counter += 1
 
-    if missing_images_report:
-        section_header = f"\n<h2><strong>Missing Images</strong></h2>"
-        report += section_header
-        report += get_missing_image_list()
-
-    if negatives_report:
-        section_header = f"\n<h2><strong>Items with Negative Qty</strong></h2>"
-        report += section_header
-        report += get_negative_items()
-
-    if ecomm_category_report:
-        section_header = f"\n<h2><strong>Active Items With No Ecomm Category</strong></h2>"
-        report += section_header
-        report += get_items_with_no_ecomm_category()
-
-    if non_web_enabled_report:
-        section_header = f"\n<h2><strong>Active Non Web-Enabled Items With Inventory</strong></h2>"
-        report += section_header
-        report += get_non_ecomm_enabled_items()
-
-    if inactive_items_report:
-        section_header = f"\n<h2><strong>Inactive Items with Stock</strong></h2>"
-        report += section_header
-        report += get_inactive_items_with_stock()
-
-    if missing_descriptions_report:
-        section_header = f"\n<h2><strong>Items with No Description</strong></h2>"
-        report += section_header
-        report += get_missing_item_descriptions(60)
+    # if missing_images_report:
+    #     section_header = f"\n<h2><strong>Missing Images</strong></h2>"
+    #     report += section_header
+    #     report += get_missing_image_list()
+    #
+    # if negatives_report:
+    #     section_header = f"\n<h2><strong>Items with Negative Qty</strong></h2>"
+    #     report += section_header
+    #     report += get_negative_items()
+    #
+    # if ecomm_category_report:
+    #     section_header = f"\n<h2><strong>Active Items With No Ecomm Category</strong></h2>"
+    #     report += section_header
+    #     report += get_items_with_no_ecomm_category()
+    #
+    # if non_web_enabled_report:
+    #     section_header = f"\n<h2><strong>Active Non Web-Enabled Items With Inventory</strong></h2>"
+    #     report += section_header
+    #     report += get_non_ecomm_enabled_items()
+    #
+    # if inactive_items_report:
+    #     section_header = f"\n<h2><strong>Inactive Items with Stock</strong></h2>"
+    #     report += section_header
+    #     report += get_inactive_items_with_stock()
+    #
+    # if missing_descriptions_report:
+    #     section_header = f"\n<h2><strong>Items with No Description</strong></h2>"
+    #     report += section_header
+    #     report += get_missing_item_descriptions(60)
 
     if year_to_date:
         for x in range(90):

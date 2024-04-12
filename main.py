@@ -6,6 +6,7 @@ from big_commerce import coupons
 from customers import stock_notification
 from product_tools import always_online
 from product_tools import brands
+from reporting import report_builder
 from product_tools import ecomm_flags
 from product_tools import featured
 from product_tools import inventory_upload
@@ -74,7 +75,8 @@ if minute == 0:
         # BRANDS
         # Set all items with no brand to the company brand
         # Set all products with specific keywords to correct e-commerce brand
-        brands.update_brands()
+        # PAUSED ON 4/11/24 to diagnose integration issues with CPice.
+        # brands.update_brands()
         # ECOMMERCE FLAGS
         # Adds e-comm web enabled status and web visible to active product_tools with stock
         # Remove web-enabled status for single product_tools that haven't sold in two years
@@ -122,6 +124,8 @@ if hour == 5:
     # ADMINISTRATIVE REPORT
     # Generate report in styled html/css and email to administrative team list
     product_reports.administrative_report(recipients=creds.admin_team)
+    # Items report for product management team
+    report_builder.item_report()
     # REVENUE REPORT
     # sent to accounting department
     if datetime.today().isoweekday() == 7:  # only on Sunday
@@ -220,7 +224,7 @@ if hour == 19:
     sms_automations.create_customer_text(query=sms_queries.rc_2,
                                          msg_descr=returning_customers.rc_2_descr,
                                          msg=returning_customers.rc_2_body,
-                                         image_url=creds.five_off_coupon,
+                                         image_url=creds.fdive_off_coupon,
                                          send_rwd_bal=True,
                                          log_location=creds.returning_customer_log,
                                          test_mode=sms_test_mode,
@@ -239,4 +243,3 @@ if hour == 21:
 print("-----------------------")
 print(f"Business Automations Complete at {datetime.now()}")
 print("-----------------------")
-

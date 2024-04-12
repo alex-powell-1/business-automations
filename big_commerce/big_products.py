@@ -48,9 +48,30 @@ def bc_update_product(product_id, payload, pretty=False):
         return json_response
 
 
+def bc_create_image(product_id):
+    url = f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/products/{product_id}/images'
+
+    headers = {
+        'X-Auth-Token': creds.big_access_token,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+    }
+
+    payload = {
+        "product_id": product_id,
+        "is_thumbnail": True,
+        "sort_order": -2147483648,
+        "description": "Testing out the description field",
+        "image_url": 'https://settlemyrenursery.com/product_images/import/sample_images/birthdaycoupon.jpg'
+    }
+
+    response = requests.post(url=url, headers=headers, json=payload)
+    return response.content
+
+
 def bc_get_product(product_id, pretty=False):
     if product_id is not None:
-        url = f" https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/products/{product_id}"
+        url = f" https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/products/{product_id}/variants"
 
         headers = {
             'X-Auth-Token': creds.big_access_token,
@@ -233,3 +254,6 @@ def bc_get_variant(product_id, variant_id, pretty=False):
         pretty = json.dumps(pretty, indent=4)
         return pretty
     return json_response
+
+
+# print(bc_create_image(5168))

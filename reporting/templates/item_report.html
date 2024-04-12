@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en" style="background-color: white; height: 100%;">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }}</title>
+    <style>
+        html {
+            font-family: Lora;
+        }
+
+        h1 {
+            color:#000000;
+            font-size: 35px;
+            font-weight: 700;
+            margin-bottom: 0px;
+
+        }
+
+        h2 {
+            color:#000000;
+            font-weight: 700;
+            font-size: 20px;
+            margin-top: 20px;
+            margin-bottom: 5px;
+        }
+
+        h3 {
+            color:#000000;
+            font-size: 16px;
+            font-weight: 300;
+            margin-bottom: 20px;
+        }
+
+        h4 {
+            color:#000000;
+            margin-top: 15px;
+            margin-bottom: 0px;
+            font-size: 16px;
+            font-weight: 300;
+        }
+
+        h5 {
+            font-family: 'Arial';
+            margin: 0px;
+            font-size: 13px;
+        }
+
+        p {
+            margin: 5px 0px 10px 0px;
+        }
+
+        </style>
+</head>
+<body style="background-color:#ffffff;">
+    <span class="preheader" style="display: none; overflow: hidden;">Items Report</span>
+        <div>
+            <div id="logo">
+                <img class="logo" src="cid:image1">
+            </div>
+
+            <div id="header">
+                <h1>Web Items Report</h1>
+                <h3>{{ date }}</h3>
+            </div>
+
+            <div id="main">
+                <div>
+                    <h2>Missing Images</h2>
+                    {{ missing_photo_data }}
+                </div>
+
+                <div>
+                    <h2>Items with Negative Quantity</h2>
+                    {{ items_with_negative_qty }}
+                </div>
+
+                <div>
+                    <h2>Active Items With No Ecomm Category</h2>
+                    {{ missing_ecomm_category_data }}
+                </div>
+
+                <div>
+                    <h2>Active Non Web-Enabled Items With Inventory</h2>
+                    {{ non_web_enabled_items }}
+                </div>
+
+                <div>
+                    <h2>Inactive Items with Stock</h2>
+                    {{ inactive_items_with_stock }}
+                </div>
+
+                <div>
+                    <h2>Missing Product Descriptions</h2>
+                    {{ missing_item_descriptions }}
+                </div>
+
+            </div>
+        </div>
+</body>
+</html>

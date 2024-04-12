@@ -32,9 +32,9 @@ sms_test_mode = False  # if true, will only write generated messages write to lo
 sms_test_customer = False  # if true, will only send to single employee for testing
 from reporting.product_reports import year_to_date_revenue_report
 from setup import creds
-from reporting import product_reports
+from reporting import report_builder
 
-#product_reports.administrative_report(recipients=creds.admin_team)
+# product_reports.administrative_report(recipients=creds.admin_team)
 
 # customers.stock_notification.send_stock_notification_emails()
 
@@ -46,5 +46,6 @@ from reporting import product_reports
 # from analysis.web_scraping import scrape_competitor_prices
 # scrape_competitor_prices()
 
-lead_generator_notification.lead_notification_email()
+from setup import date_presets
 
+report_builder.item_report()
