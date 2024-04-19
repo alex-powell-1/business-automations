@@ -1,7 +1,6 @@
-import pandas as pd
+from datetime import datetime
 
 import setup.date_presets
-from setup.sms_engine import format_phone
 from setup.query_engine import QueryEngine
 
 # from datetime import datetime
@@ -63,9 +62,9 @@ db = QueryEngine()
 #         return
 
 
-def remove_refunds_from_sms_funnel():
+def remove_refunds_from_sms_funnel(log_file):
     """Gets list of refunds from today"""
-    print("Starting Refund Process")
+    print(f"Remove Online Refunds from SMS Funnel: Starting at {datetime.now():%H:%M:%S}", file=log_file)
 
     # Get all refunds from a given day
     query = f"""
@@ -110,7 +109,7 @@ def remove_refunds_from_sms_funnel():
                 """
                 db.query_db(query, commit=True)
                 print(f"Customer: {customer_number} last sale date changed from {last_sale_date} "
-                      f"to {most_recent_timestamp}")
+                      f"to {most_recent_timestamp}", file=log_file)
 
             # If customer has no sales history
             else:
@@ -121,9 +120,12 @@ def remove_refunds_from_sms_funnel():
                 """
                 db.query_db(query, commit=True)
                 print(f"Customer: {customer_number} last sale date changed from {last_sale_date} "
-                      f"to NULL")
+                      f"to NULL", file=log_file)
     else:
-        print("No refunds today")
+        print("No refunds today", file=log_file)
+
+    print(f"Remove Online Refunds from SMS Funnel: Completed at {datetime.now():%H:%M:%S}", file=log_file)
+    print("-----------------------", file=log_file)
 
 
 def has_refund(order_number) -> bool:

@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en" style="background-color: white; height: 100%;">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }}</title>
+    <style>
+        html {
+            font-family: Lora;
+        }
+
+        h1 {
+            color:#000000;
+            font-size: 35px;
+            font-weight: 700;
+            margin-bottom: 0px;
+
+        }
+
+        h2 {
+            color:#000000;
+            font-weight: 700;
+            font-size: 20px;
+            margin-top: 20px;
+            margin-bottom: 5px;
+        }
+
+        h3 {
+            color:#000000;
+            font-size: 16px;
+            font-weight: 300;
+            margin-bottom: 20px;
+        }
+
+        h4 {
+            color:#000000;
+            margin-top: 15px;
+            margin-bottom: 0px;
+            font-size: 16px;
+            font-weight: 300;
+        }
+
+        h5 {
+            font-family: 'Arial';
+            margin: 0px;
+            font-size: 13px;
+        }
+
+        p {
+            margin: 5px 0px 10px 0px;
+        }
+
+        </style>
+</head>
+<body style="background-color:#ffffff;">
+    <span class="preheader" style="display: none; overflow: hidden;">Administrative Report</span>
+        <div>
+            <div id="logo">
+                <img class="logo" src="cid:image1">
+            </div>
+
+            <div id="header">
+                <h1>Administrative Report</h1>
+                <h3>{{ date }}</h3>
+            </div>
+
+            <div id="main">
+                <div>
+                    <h2>Revenue Report</h2>
+
+                    {% if day_of_week > 1 %}
+
+                    <h4><strong>Yesterday's Total Revenue</strong></h4>
+                    {{ yesterday_revenue }}
+
+                    {% elif day_of_week == 1 %}
+                    <h4><strong>Saturday's Total Revenue</strong></h4>
+                    {{ saturday_revenue }}
+
+                    {% endif %}
+
+                    {% if 1 <= day <= 8 %}
+                    <h4><strong>{{ last_month }} Total Revenue</strong></h4>
+
+                </div>
+
+
+            </div>
+        </div>
+</body>
+</html>

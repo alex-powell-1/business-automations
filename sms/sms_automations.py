@@ -1,4 +1,5 @@
 import random
+from datetime import datetime
 
 from customers.customers import Customer
 from setup import creds
@@ -11,7 +12,7 @@ from sms.sms_messages import salutations
 db = QueryEngine()
 
 
-def create_customer_text(query, msg_descr, msg, log_location, rewards_msg="",
+def create_customer_text(query, msg_descr, msg, detail_log, general_log, rewards_msg="",
                          image_url=None, msg_prefix=False, send_rwd_bal=True, test_mode=False, test_customer=False):
     """First SMS text send to new customer. Text will be delivered the day after first purchase"""
     prefix = ""
@@ -28,8 +29,9 @@ def create_customer_text(query, msg_descr, msg, log_location, rewards_msg="",
             for x in response:
                 customer_list.append(x[0])
         else:
+            print("No messages to send today.", file=general_log)
             return create_sms_log("NA", "NA", msg_descr,
-                                  "No messages to send today.", log_location=log_location)
+                                  "No messages to send today.", log_location=detail_log)
 
     for x in customer_list:
         cust = Customer(x)
@@ -45,17 +47,23 @@ def create_customer_text(query, msg_descr, msg, log_location, rewards_msg="",
         message = (prefix + random.choice(salutations.greeting) + first_name + "! " +
                    msg + random.choice(salutations.farewell) + rewards_msg)
         # Send Text
-        print(f"Sending Message to {cust.name}")
+        print(f"Sending Message to {cust.name}", file=general_log)
         engine = SMSEngine()
-        engine.send_text(cust_no, to_phone, message, url=image_url, log_code=log_location, test_mode=test_mode)
+        engine.send_text(cust_no, to_phone, message, url=image_url, log_code=detail_log, test_mode=test_mode)
 
 
-def remove_wholesale_from_loyalty():
+def remove_wholesale_from_loyalty(log_file):
     """New customer templates automatically add new customers to the BASIC program.
     This script will remove wholesale customers from a loyalty program and set balance to 0."""
+
+    print(f"Remove Wholesale From Loyalty: Starting at {datetime.now():%H:%M:%S}", file=log_file)
+
     query = """
     UPDATE AR_CUST
     SET LOY_PGM_COD = NULL, LOY_PTS_BAL = '0', LOY_CARD_NO = 'VOID'
     WHERE CATEG_COD = 'WHOLESALE', SET LOY_PTS_BAL = '0'
     """
     db.query_db(query, commit=True)
+
+    print(f"Remove Wholesale From Loyalty: Finished at {datetime.now():%H:%M:%S}", file=log_file)
+    print("-----------------------", file=log_file)

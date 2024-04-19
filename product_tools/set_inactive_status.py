@@ -1,8 +1,9 @@
 from datetime import datetime
-from setup.query_engine import QueryEngine
+
+from product_tools.products import Product
 from setup.create_log import create_product_log
 from setup.creds import inactive_product_log
-from product_tools.products import Product
+from setup.query_engine import QueryEngine
 
 # Inactive Product Automation
 #
@@ -32,6 +33,7 @@ from product_tools.products import Product
 # that must be set to True for SQL update queries like the one used in this script.
 
 db = QueryEngine()
+
 
 def set_inactive(item_number):
     query = f"""
@@ -109,15 +111,15 @@ def get_products_on_quotes_or_holds():
         return
 
 
-def set_products_to_inactive():
-    print("-------------")
-    print("Inactive Products")
-    print("-------------")
-    print(f"Inactive Products: Completed at {datetime.now()}")
+def set_products_to_inactive(log_file):
+    count = 0
+    print(f"Inactive Products: Starting at {datetime.now():%H:%M:%S}", file=log_file)
     active_products = get_active_products_with_no_stock()
     if active_products is not None:
-        #order_products = get_products_on_open_order()
+        # Update: Items on open order are not taken into account as of April 24
+        # order_products = get_products_on_open_order()
         bonnie_products = get_bonnie_items()
+        # Update: Hold Products are not taken into account as of April 24
         # hold_quote_products = get_products_on_quotes_or_holds()
         for x in active_products:
             item = Product(x)
@@ -127,16 +129,25 @@ def set_products_to_inactive():
             #     print(f"Skipping {item.item_no}: {item.long_descr} - On Open Order")
             #     continue
             if item.item_no in bonnie_products:
-                print(f"Skipping {item.item_no}: {item.long_descr} - Bonnie Product")
+                print(f"Skipping {item.item_no}: {item.long_descr} - Bonnie Product", file=log_file)
                 continue
             else:
-                print(f"Setting {item.item_no}: {item.web_title} to inactive")
+                print(f"Setting {item.item_no}: {item.web_title} to inactive", file=log_file)
                 set_inactive(item.item_no)
                 item = Product(item.item_no)
+                if item.status == 'V':
+                    print(f"Item: {item.item_no}: Inactive Status Set", file=log_file)
+                    count += 1
+                else:
+                    print(f"Item: {item.item_no}: Inactive Status Failed to Set", file=log_file)
+
                 create_product_log(item_no=item.item_no,
                                    product_name=item.long_descr,
                                    qty_avail=item.quantity_available,
                                    status_1_col_name="status",
                                    status_1_data=item.status,
                                    log_location=inactive_product_log)
-    print(f"Inactive Products: Completed at {datetime.now()}\n")
+
+    print(f"{count} product statuses changed", file=log_file)
+    print(f"Inactive Products: Completed at {datetime.now():%H:%M:%S}", file=log_file)
+    print("-----------------------", file=log_file)

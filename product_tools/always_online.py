@@ -68,7 +68,8 @@ def get_binding_id(list_of_items):
     return binding_id_list
 
 
-def set_always_online(item_list, parent=False):
+def set_always_online(log_file, item_list, parent=False):
+    print(f"Setting Always Online: Starting at {datetime.now():%H:%M:%S}", file=log_file)
     if item_list is not None:
         for x in item_list:
             if parent:
@@ -83,10 +84,11 @@ def set_always_online(item_list, parent=False):
             if always_online_status == 'N':
                 query = f"""
                 UPDATE IM_ITEM
-                SET USR_ALWAYS_ONLINE = 'Y', LST_MAINT_DT = '{str(datetime.now())[:-6] + "000"}'
+                SET USR_ALWAYS_ONLINE = 'Y', LST_MAINT_DT = GETDATE()
                 {where_clause}
                 """
                 db.query_db(query, commit=True)
+                print(f"Set Item: {x} to 'Always Online'")
                 always_online_status = get_product_details(x)[2]
                 create_log.create_product_log(item_no=item_number,
                                               product_name=descr,
@@ -94,3 +96,6 @@ def set_always_online(item_list, parent=False):
                                               status_1_col_name="always_online_status",
                                               status_1_data=always_online_status,
                                               log_location=creds.always_online_log)
+
+    print(f"Setting Always Online: Completed at {datetime.now():%H:%M:%S}", file=log_file)
+    print("-----------------------", file=log_file)

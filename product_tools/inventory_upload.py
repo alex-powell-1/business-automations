@@ -1,11 +1,13 @@
-from setup import creds
-from setup.query_engine import QueryEngine
-import pandas as pd
-from setup.webDAV_engine import upload_file
 from datetime import datetime
 
+import pandas as pd
 
-def create_inventory_csv(retail=True):
+from setup import creds
+from setup.query_engine import QueryEngine
+from setup.webDAV_engine import upload_file
+
+
+def create_inventory_csv(log_file, retail=True):
     db = QueryEngine()
     if retail:
         # RETAIL AVAILABILITY
@@ -47,24 +49,23 @@ def create_inventory_csv(retail=True):
             # WHOLESALE
             df = pd.DataFrame(item_list)
             df.to_csv(creds.wholesale_inventory_csv, mode='w', header=False, index=False)
+        print("CSV file created.", file=log_file)
 
 
-def upload_inventory():
+def upload_inventory(log_file):
     """Uploads csv of inventory for retail and wholesale availability data tables"""
-    print("-------------")
-    print("Inventory Upload")
-    print("-------------")
-    print(f"Inventory upload starting at {datetime.now()}")
-    print("Creating inventory csv for upload to Retail Availability")
-    create_inventory_csv(retail=True)
-    print("Uploading to WebDav Server")
-    upload_file(file=creds.retail_inventory_csv, server_url=creds.web_dav_server)
-    print(f"Retail Inventory Uploaded to WebDav Server")
+    print(f"Inventory upload starting at {datetime.now():%H:%M:%S}", file=log_file)
+    print("Creating inventory csv for upload to Retail Availability", file=log_file)
+    create_inventory_csv(log_file, retail=True)
+    print("Uploading to WebDav Server", file=log_file)
+    upload_file(file=creds.retail_inventory_csv, server_url=creds.web_dav_server, log=log_file)
+    print(f"Retail Inventory Uploaded to WebDav Server", file=log_file)
 
-    print("Creating inventory csv for upload to Wholesale Availability")
-    create_inventory_csv(retail=False)
-    print("Uploading to WebDav Server")
-    upload_file(file=creds.wholesale_inventory_csv, server_url=creds.web_dav_server)
-    print(f"Wholesale Inventory Uploaded to WebDav Server")
+    print("Creating inventory csv for upload to Wholesale Availability", file=log_file)
+    create_inventory_csv(log_file, retail=False)
+    print("Uploading to WebDav Server", file=log_file)
+    upload_file(file=creds.wholesale_inventory_csv, server_url=creds.web_dav_server, log=log_file)
+    print(f"Wholesale Inventory Uploaded to WebDav Server", file=log_file)
 
-    print(f"Inventory upload complete at {datetime.now()}\n")
+    print(f"Inventory Upload: Finished at {datetime.now():%H:%M:%S}", file=log_file)
+    print("-----------------------", file=log_file)

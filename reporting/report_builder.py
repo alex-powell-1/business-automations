@@ -1,13 +1,15 @@
-import datetime
+from datetime import datetime
+from dateutil.relativedelta import relativedelta
 
 from jinja2 import Template
 
 from reporting import product_reports
-from setup import creds
-from setup import email_engine
+from setup import creds, date_presets, email_engine
 
 
-def item_report():
+def item_report(recipient, log_file):
+    print(f"Items Report: Starting at {datetime.now():%H:%M:%S}", file=log_file)
+
     with open("./reporting/templates/item_report.html", "r") as file:
         template_str = file.read()
 
@@ -28,10 +30,55 @@ def item_report():
     email_engine.send_html_email(from_name=creds.company_name,
                                  from_address=creds.gmail_sales_user,
                                  from_pw=creds.gmail_sales_pw,
-                                 recipients_list=creds.sales_group,
+                                 recipients_list=recipient,
 
                                  subject=f"Item Report for "
-                                         f"{(datetime.datetime.now().strftime("%B %d, %Y"))}",
+                                         f"{(datetime.now().strftime("%B %d, %Y"))}",
+
+                                 content=email_content,
+                                 product_photo=None,
+                                 mode="related",
+                                 logo=True)
+    print(f"Items Report: Completed at {datetime.now():%H:%M:%S}", file=log_file)
+    print("-----------------------", file=log_file)
+
+
+def administrative_report():
+    with open("./reporting/templates/admin_report.html", "r") as file:
+        template_str = file.read()
+
+    jinja_template = Template(template_str)
+
+    saturday = str((datetime.strptime(date_presets.yesterday, "%Y-%m-%d") + relativedelta(days=-1)))[:-9]
+
+    data = {
+        "day_of_week": datetime.today().isoweekday(),
+
+        "day": datetime.now().day,
+
+        "yesterday_revenue": product_reports.revenue_sales_report(
+                start_date=str((datetime.strptime(date_presets.yesterday, "%Y-%m-%d"))),
+                stop_date=str((datetime.strptime(date_presets.yesterday, "%Y-%m-%d"))),
+                split=False, anna_mode=True),
+
+        "saturday_revenue": product_reports.revenue_sales_report(
+                start_date=str((datetime.strptime(saturday, "%Y-%m-%d"))),
+                stop_date=str((datetime.strptime(saturday, "%Y-%m-%d"))),
+                split=False, anna_mode=True),
+
+        "last_month": datetime.strptime(date_presets.last_month_start, "%Y-%m-%d").strftime("%B"),
+
+    }
+
+    email_content = jinja_template.render(data)
+
+    email_engine.send_html_email(from_name=creds.company_name,
+                                 from_address=creds.gmail_sales_user,
+                                 from_pw=creds.gmail_sales_pw,
+                                 recipients_list=creds.alex_only,
+
+                                 subject=f"Administrative Report - "
+                                         f"{(datetime.now().strftime("%B %d, %Y"))}",
 
                                  content=email_content,
                                  product_photo=None,

@@ -7,6 +7,8 @@ db = QueryEngine()
 
 
 def set_stock_buffer_by_vendor(buffer: int, db_filter: str, filter_input: str, only_nulls=False):
+    # WORK ON GETTING THIS TO ONLY AFFECT ITEMS WITH NO STOCK BUFFER ALREADY SET BY DEFAULT
+
     if only_nulls:
         nulls = "AND PROF_NO_1 IS NULL"
     else:
@@ -20,18 +22,18 @@ def set_stock_buffer_by_vendor(buffer: int, db_filter: str, filter_input: str, o
     db.query_db(query, commit=True)
 
 
-def set_stock_buffer(category, base_buffer=3):
+def set_stock_buffer(category, log_file, base_buffer=3):
     """Sets stock buffers based on 'price 1' thresholds defined in dictionary in creds"""
     product_list = get_products_by_category(category, ecomm_only=True)
     buffer_bank = creds.buffer_bank[category]
     for x in product_list:
         item = Product(x)
         if item.price_1 > buffer_bank['tier_2']['price']:
-            item.set_buffer(buffer_bank['tier_2']['buffer'])
+            item.set_buffer(buffer_bank['tier_2']['buffer'], log_file)
         elif item.price_1 > buffer_bank['tier_1']['price']:
-            item.set_buffer(buffer_bank['tier_1']['buffer'])
+            item.set_buffer(buffer_bank['tier_1']['buffer'], log_file)
         else:
-            item.set_buffer(base_buffer)
+            item.set_buffer(base_buffer, log_file)
 
 
 def get_stock_buffer(item_number):
@@ -48,20 +50,22 @@ def get_stock_buffer(item_number):
         return "NULL"
 
 
-def stock_buffer_updates():
-    print("-------------")
-    print("Stock Buffers")
-    print("-------------")
-    print(f"Stock Buffers: starting at {datetime.now()}")
+def stock_buffer_updates(log_file):
+    print("Setting Stock Buffers: Starting at {datetime.now():%H:%M:%S}", file=log_file)
     # Vendor Updates
     vendor_dict = {
         "EVERGREEN": 0
     }
     for k, v in vendor_dict.items():
-        set_stock_buffer_by_vendor(v, "ITEM_VEND_NO", k)
-
+        set_stock_buffer_by_vendor(buffer=v,
+                                   db_filter="ITEM_VEND_NO",
+                                   filter_input=k,
+                                   only_nulls=True)
+    print("Vendor Updates Complete", file=log_file)
     # Category Updates
     for k in creds.buffer_bank:
-        set_stock_buffer(k)
+        print(f"Setting Category Updates for {k}", file=log_file)
+        set_stock_buffer(k, log_file=log_file)
 
-    print(f"Stock Buffers: complete at {datetime.now()}\n")
+    print("Setting Stock Buffers: Complete at {datetime.now():%H:%M:%S}", file=log_file)
+    print("-----------------------", file=log_file)

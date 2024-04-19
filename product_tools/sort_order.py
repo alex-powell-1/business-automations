@@ -1,15 +1,17 @@
 from pyodbc import Error
-from reporting.product_reports import create_top_items_report
+
 from product_tools import products
 from product_tools.products import Product
-from setup.query_engine import QueryEngine
+from reporting.product_reports import create_top_items_report
 from setup.date_presets import *
+from setup.query_engine import QueryEngine
 
 db = QueryEngine()
 
 
-def sort_order_engine():
+def sort_order_engine(log_file):
     """Sets sort order based on revenue data from prior year during the forecasted time period"""
+    print(f"Sort Order: Starting at {datetime.now():%H:%M:%S}", file=log_file)
     # WITH SALES HISTORY DURING SALES WINDOW
     top_ecomm_items_with_stock = create_top_items_report(
         beginning_date=one_year_ago,
@@ -29,7 +31,7 @@ def sort_order_engine():
     x = 0
     y = 1
     max_retries = 25
-    print("Setting sort order for merged items: children only -- Starting\n")
+    print("Setting sort order for merged items: children only -- Starting", file=log_file)
     while x < len(top_ecomm_items_with_stock) and y <= max_retries:
 
         # check this out. Maybe problematic
@@ -46,7 +48,7 @@ def sort_order_engine():
             # Set sort order for child products
             if item.is_parent == 'N':
                 try:
-                    item.set_sort_order(count)
+                    item.set_sort_order(target_sort_order=count, log_file=log_file)
                 except Error:
                     y += 1
                     continue
@@ -59,14 +61,14 @@ def sort_order_engine():
         #     x += 1
 
     if y == max_retries:
-        print("\nCould not complete. Max Tries Reached.\n\n")
+        print("Could not complete. Max Tries Reached.", file=log_file)
     else:
-        print("\nSetting sort order for merged items: children only -- Completed!\n\n")
+        print("Setting sort order for merged items: children only -- Completed!", file=log_file)
 
     # ITEMS WITH STOCK AND SALES HISTORY -- STEP 2:
     # Set sort order for parent items based on revenue of best-selling child product_tools
 
-    print("Setting sort order for parents based on top child\n")
+    print("Setting sort order for parents based on top child", file=log_file)
 
     x = 0
     y = 1
@@ -78,15 +80,15 @@ def sort_order_engine():
             # Get sort order for highest performing child
             top_child_sort_order = Product(parent_product.get_top_child_product()).sort_order
             # Set the parent product to the sort order of the highest performing child
-            parent_product.set_sort_order(int(top_child_sort_order))
+            parent_product.set_sort_order(target_sort_order=int(top_child_sort_order), log_file=log_file)
         except Error:
             y += 1
         else:
             x += 1
     if y == max_tries:
-        print("\nCould not complete. Max Tries Reached.\n\n")
+        print("Could not complete. Max Tries Reached.", file=log_file)
     else:
-        print("\nSetting sort order for parents based on top child: Completed!\n\n")
+        print("Setting sort order for parents based on top child: Completed!", file=log_file)
 
     # ITEMS WITH STOCK AND SALES HISTORY -- STEP 3:
     # Clear out sort order values for child products
@@ -98,7 +100,7 @@ def sort_order_engine():
     """
     db.query_db(query, commit=True)
 
-    print("\nFlushed all child sort orders (with sales history)\n\n")
+    print("Flushed all child sort orders (with sales history)", file=log_file)
 
     # PRODUCTS WITH STOCK AND NO SALES HISTORY
 
@@ -106,7 +108,7 @@ def sort_order_engine():
     x = 0
     y = 1
     max_retries = 25
-    print("Setting sort order for items with no history -- Starting\n")
+    print("Setting sort order for items with no history -- Starting", file=log_file)
     no_history_items = products.get_items_with_no_sales_history()
     while x < len(no_history_items) and y <= max_retries:
         new_items = products.get_new_items(two_weeks_ago, today, 14.95)
@@ -116,7 +118,7 @@ def sort_order_engine():
         if no_history_items[x] not in new_items:
             item = Product(no_history_items[x])
             try:
-                item.set_sort_order(target_sort_order=-1)
+                item.set_sort_order(target_sort_order=-1, log_file=log_file)
             except Error:
                 y += 1
             else:
@@ -129,15 +131,15 @@ def sort_order_engine():
             count = (-1 * len(top_ecomm_items_with_stock)) + 4
             item = Product(no_history_items[x])
             try:
-                item.set_sort_order(target_sort_order=count)
+                item.set_sort_order(target_sort_order=count, log_file=log_file)
             except Error:
                 y += 1
             else:
                 x += 1
     if y == max_retries:
-        print("Could not complete. Max Tries Reached.\n\n")
+        print("Could not complete. Max Tries Reached.", file=log_file)
     else:
-        print("Setting sort order for items with no history -- Completed!\n\n")
+        print("Setting sort order for items with no history -- Completed!", file=log_file)
 
     # NO STOCK ITEMS (BUFFERED)
 
@@ -146,7 +148,7 @@ def sort_order_engine():
     x = 0
     y = 1
     max_retries = 25
-    print("Setting sort order for items with no stock -- Starting.\n")
+    print("Setting sort order for items with no stock -- Starting.", file=log_file)
     while x < len(zero_stock_ecomm_items) and y < max_retries:
         item = Product(zero_stock_ecomm_items[x])
 
@@ -154,9 +156,9 @@ def sort_order_engine():
         if item.binding_key is None:
             # Set sort order to 0
             try:
-                item.set_sort_order()
+                item.set_sort_order(log_file=log_file)
             except Error:
-                print(f"Error {y}/{max_retries}")
+                print(f"Error {y}/{max_retries}", file=log_file)
                 y += 1
             else:
                 x += 1
@@ -167,9 +169,9 @@ def sort_order_engine():
                 combined_stock = products.get_merged_product_combined_stock(item.binding_key)
                 if combined_stock == 0:
                     try:
-                        item.set_sort_order()
+                        item.set_sort_order(log_file=log_file)
                     except Error:
-                        print(f"Error {y}/{max_retries}")
+                        print(f"Error {y}/{max_retries}", file=log_file)
                         y += 1
                     else:
                         x += 1
@@ -179,6 +181,9 @@ def sort_order_engine():
                 x += 1
 
     if y == max_retries:
-        print("\nCould not complete. Max Tries Reached.\n\n")
+        print("\nCould not complete. Max Tries Reached.", file=log_file)
     else:
-        print("\nSetting sort order for items with no stock -- Completed!\n\n")
+        print("\nSetting sort order for items with no stock -- Completed!", file=log_file)
+
+    print(f"Sort Order: Finished at {datetime.now():%H:%M:%S}", file=log_file)
+    print("-----------------------", file=log_file)

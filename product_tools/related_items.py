@@ -1,10 +1,12 @@
 from product_tools.products import *
-from big_commerce.big_products import *
+from reporting import product_reports
+
 
 # This module will set related products for items in ecommerce store.
 
 
-def set_related_items_by_category():
+def set_related_items_by_category(log_file):
+    print(f"Setting related items: Starting at {datetime.now():%H:%M:%S}", file=log_file)
     categories = get_product_categories_cp()
     for x in categories:
         # staff recommended Items for each category
@@ -31,12 +33,12 @@ def set_related_items_by_category():
             "WORKSHOP": []
         }
 
-        popular_items = create_top_items_report(beginning_date=two_weeks_ago,
-                                                ending_date=today,
-                                                mode="quantity",
-                                                number_of_items=8,
-                                                category=x,
-                                                return_format=3)
+        popular_items = product_reports.create_top_items_report(beginning_date=two_weeks_ago,
+                                                                ending_date=today,
+                                                                mode="quantity",
+                                                                number_of_items=8,
+                                                                category=x,
+                                                                return_format=3)
         if popular_items is not None:
             related_items = recommended_items[x] + popular_items
         else:
@@ -55,5 +57,8 @@ def set_related_items_by_category():
             if products is not None:
                 for z in products:
                     bc_update_product(get_bc_product_id(z), payload=payload)
-                    print(f"Cat: {x}, {count}/{len(products)}, Updated Item: {z}")
+                    print(f"Cat: {x}, {count}/{len(products)}, Updated Item: {z}", file=log_file)
                     count += 1
+
+    print(f"Setting related items: Completed at {datetime.now():%H:%M:%S}", file=log_file)
+    print("-----------------------", file=log_file)

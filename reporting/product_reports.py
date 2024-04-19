@@ -1,13 +1,12 @@
 import datetime
-
-from product_tools.products import get_ecomm_items
-from setup import creds
-from setup import email_engine
-from setup.date_presets import *
-from setup.query_engine import QueryEngine
-from setup.admin_report_html import boiler_plate, css, body_start, body_end
 import os
 
+from product_tools.products import get_ecomm_items_with_stock
+from setup import creds
+from setup import email_engine
+from setup.admin_report_html import boiler_plate, css, body_start, body_end
+from setup.date_presets import *
+from setup.query_engine import QueryEngine
 
 db = QueryEngine()
 
@@ -32,7 +31,10 @@ def cost_of_goods_sold(start_date, stop_date, store):
     """
     response = db.query_db(query)
     if response is not None:
-        return response[0][0]
+        if response[0][0] is not None:
+            return response[0][0]
+        else:
+            return 0
 
 
 def revenue_sales_report(start_date, stop_date, split=True, anna_mode=False, short=False):
@@ -66,8 +68,9 @@ def revenue_sales_report(start_date, stop_date, split=True, anna_mode=False, sho
 
         # for reports with BOTH retail and web sales separated
         if split:
-            return (f"\n<p>In-Store Sales: ${"{:,}".format(retail_sales - retail_valid_returns - retail_nonvalid_returns)}<br>"
-                    f"E-Comm Sales: ${"{:,}".format(web_sales - web_valid_returns - web_nonvalid_returns)}</p>")
+            return (
+                f"\n<p>In-Store Sales: ${"{:,}".format(retail_sales - retail_valid_returns - retail_nonvalid_returns)}<br>"
+                f"E-Comm Sales: ${"{:,}".format(web_sales - web_valid_returns - web_nonvalid_returns)}</p>")
 
         elif anna_mode:
             if start_date == stop_date:
@@ -77,27 +80,27 @@ def revenue_sales_report(start_date, stop_date, split=True, anna_mode=False, sho
                                f"{datetime.strptime(stop_date[0:10], '%Y-%m-%d').strftime(date_format)}:<br>")
 
             return (date_prefix +
-                    f"In-Store Sales: ${"{:,}".format(retail_sales - retail_valid_returns 
+                    f"In-Store Sales: ${"{:,}".format(retail_sales - retail_valid_returns
                                                       - retail_nonvalid_returns)}<br>"
                     f"E-Comm Sales: ${"{:,}".format(web_sales - web_valid_returns - web_nonvalid_returns)}<br>"
-                    
+
                     f"Total: ${"{:,}".format((retail_sales + web_sales) -
-                               (web_valid_returns + web_nonvalid_returns) -
-                               (retail_valid_returns + retail_nonvalid_returns))}<br><br></p>")
+                                             (web_valid_returns + web_nonvalid_returns) -
+                                             (retail_valid_returns + retail_nonvalid_returns))}<br><br></p>")
 
         # for reports with combined reporting
         else:
             if short:
                 return (f"\n<p>{datetime.strptime(start_date[0:10], '%Y-%m-%d').strftime("%B %Y")}: "
                         f"${"{:,}".format((retail_sales + web_sales) -
-                            (web_valid_returns + web_nonvalid_returns) -
-                            (retail_valid_returns + retail_nonvalid_returns))}</p>")
+                                          (web_valid_returns + web_nonvalid_returns) -
+                                          (retail_valid_returns + retail_nonvalid_returns))}</p>")
             else:
                 return (f"\n<p>{datetime.strptime(start_date[0:10], '%Y-%m-%d').strftime(date_format)} - "
                         f"{datetime.strptime(stop_date[0:10], '%Y-%m-%d').strftime(date_format)}: "
                         f"${"{:,}".format((retail_sales + web_sales) -
-                            (web_valid_returns + web_nonvalid_returns) -
-                            (retail_valid_returns + retail_nonvalid_returns))}</p>")
+                                          (web_valid_returns + web_nonvalid_returns) -
+                                          (retail_valid_returns + retail_nonvalid_returns))}</p>")
     else:
         return "No Revenue Data Today"
 
@@ -267,6 +270,38 @@ def get_sales_rep_report():
         return "No Sales Rep Data"
 
 
+def wholesale_total(start_date, stop_date, number=10):
+    """Creates a list of top customers (by sales) within a given time frame. Sorted by revenue. """
+    query = f"""
+    "{creds.DATABASE}"."dbo"."USP_RPT_SA_BY_X";1
+    'select distinct AR_CUST.CUST_NO as GRP_ID, AR_CUST.NAM as GRP_DESCR
+    from AR_CUST
+    where ((AR_CUST.CUST_NO <> ''CASH'' and AR_CUST.CATEG_COD = ''WHOLESALE''))
+    union
+    select distinct VI_PS_TKT_HIST.CUST_NO as GRP_ID, NULL as GRP_DESCR
+    from %HISTORY%
+    where not exists(
+    select 1 from AR_CUST where AR_CUST.CUST_NO = VI_PS_TKT_HIST.CUST_NO) and ((VI_PS_TKT_HIST.STR_ID = ''1'')) and
+    ( (1=1) ) and %ANYPERIODFILTER%',
+    'select VI_PS_TKT_HIST.CUST_NO as GRP_ID, %HISTCOLUMNS%
+    from %HISTORY%
+    where ((VI_PS_TKT_HIST.STR_ID = ''1'')) and ( (1=1) ) and %PERIODFILTER%', '
+    (VI_PS_TKT_HIST.POST_DAT >= ''{start_date}'') and (VI_PS_TKT_HIST.POST_DAT <= ''{stop_date}'')', '
+    (1=0) ', ' (1=0) ', {number}, 0, 'SLS_EXT_PRC_A - RTN_EXT_PRC_VALID_A - RTN_EXT_PRC_NONVALID_A', 2"""
+    results = db.query_db(query)
+    top_10_sum = 0
+    sum = 0
+    counter = 1
+    if results is not None:
+        for customer in results:
+            sale_total = float(customer[2])
+            sum += sale_total
+            if counter <= 10:
+                top_10_sum += sale_total
+            counter += 1
+        return top_10_sum, sum
+
+
 def top_customer_report(start_date, stop_date, category, number=10):
     """Creates a list of top customers (by sales) within a given time frame. Sorted by revenue. """
     query = f"""
@@ -338,33 +373,30 @@ def get_missing_variant_names():
 def get_missing_image_list():
     from product_tools.products import Product
     """Returns a sorted list of e-commerce items with missing images"""
-    all_e_comm_items = get_ecomm_items(mode=2)
+    # all_e_comm_items = get_ecomm_items(mode=2)
+    all_ecomm_items_with_stock = get_ecomm_items_with_stock()
     all_current_photos = get_list_of_current_photo_sku()
 
     missing_image_list_child = []
     missing_image_list_parent = []
     check_list = []
 
-    if all_e_comm_items is not None:
-        if all_e_comm_items is not None:
-            for x in all_e_comm_items:
+    if all_ecomm_items_with_stock is not None:
+        if all_current_photos is not None:
+            for x in all_ecomm_items_with_stock:
+                # Construct objects to get item details
                 item = Product(x)
                 item_number = item.item_no
                 binding_key = item.binding_key
-                # All Single and Children 202578
-                if item.buffered_quantity_available > 0:
-                    # NOTE: THIS CAN BE IMPROVED. QUERY the DB for ITEMS WHERE BUFFERED STOCK IS ABOVE 0 and reduce
-                    # The number of class constructions that are going on here. - AP
-                    if item_number not in all_current_photos:
-                        # Add item objects to either list
-                        missing_image_list_child.append(item)
-                    if binding_key != "" and binding_key not in all_current_photos and binding_key not in check_list:
-                        missing_image_list_parent.append(item)
-                        check_list.append(binding_key)
-                    else:
-                        continue
+                if item_number not in all_current_photos:
+                    # Add item objects to either list
+                    missing_image_list_child.append(item)
+                if binding_key != "" and binding_key not in all_current_photos and binding_key not in check_list:
+                    missing_image_list_parent.append(item)
+                    check_list.append(binding_key)
                 else:
                     continue
+
         else:
             return "No Pictures in ItemImages Folder"
     else:
@@ -381,15 +413,18 @@ def get_missing_image_list():
                 if item.web_title is None:
                     contents += f"\n<p>{item.item_no}, Missing Web Title, Current Stock: {item.quantity_available}</p>"
                 else:
-                    contents += f'\n<p>{item.item_no}, <a href="{item.item_url}">{item.web_title}</a>, Current Stock: {item.quantity_available}</p>'
+                    # contents += f'\n<p>{item.item_no}, <a href="{item.item_url}">{item.web_title}</a>, Current Stock: {item.quantity_available}</p>'
+                    contents += f'\n<p>{item.item_no}, {item.web_title}, Current Stock: {item.quantity_available}</p>'
             # Parent Items
             else:
                 if item.web_title is None:
                     contents += (f"\n<p>{item.item_no}, Missing Web Title, "
                                  f"{item.variant_name}, Current Stock: {item.buffered_quantity_available}</p>")
                 else:
-                    contents += (f'\n<p>{item.item_no}, <a href="{item.item_url}">{item.web_title}, '
-                                 f'{item.variant_name}</a>, Current Stock: {item.quantity_available}</p>')
+                    # contents += (f'\n<p>{item.item_no}, <a href="{item.item_url}">{item.web_title}, '
+                    #              f'{item.variant_name}</a>, Current Stock: {item.quantity_available}</p>')
+                    contents += (f'\n<p>{item.item_no}, {item.web_title}, '
+                                 f'{item.variant_name}, Current Stock: {item.quantity_available}</p>')
     else:
         contents += "\n<p>No Missing Images for Products</p>"
 
@@ -775,6 +810,13 @@ def report_generator(revenue=False, last_week_report=False, mtd_month_report=Fal
         report += get_sales_rep_report()
 
     if wholesale_report:
+        section_header = (f"\n<h2><strong>Wholesale Totals</strong></h2>"
+                          f"\n<h5>{reformat_time(last_week_start)} - {reformat_time(last_week_end)}</h5>")
+        report += section_header
+        data = wholesale_total(last_week_start, last_week_end, 1000)
+        report += f"<p>Revenue for Top 10 Wholesale Customers: ${data[0]}</p>"
+        report += f"<p>Revenue for ALL Wholesale Customers: ${data[1]}</p>"
+
         section_header = (f"\n<h2><strong>Top Wholesale Customers</strong></h2>"
                           f"\n<h5>{reformat_time(last_week_start)} - {reformat_time(last_week_end)}</h5>")
         report += section_header
@@ -881,8 +923,8 @@ def report_generator(revenue=False, last_week_report=False, mtd_month_report=Fal
     return report
 
 
-def administrative_report(recipients):
-    print(f"Generating Admin Report Data - Starting at {datetime.now()}")
+def administrative_report(recipients, log_file):
+    print(f"Generating Admin Report Data - Starting at {datetime.now():%H:%M:%S}", file=log_file)
     subject = f'Administrative Report - {now}'
     report_data = report_generator(title="Administrative Report",
                                    revenue=True,
@@ -911,11 +953,12 @@ def administrative_report(recipients):
                                  logo=True,
                                  mode='related',
                                  product_photo=None)
-    print(f"Administrative Report: Completed at {datetime.now()}")
+    print(f"Administrative Report: Completed at {datetime.now():%H:%M:%S}", file=log_file)
+    print("-----------------------", file=log_file)
 
 
-def revenue_report(recipients):
-    print(f"Generating Revenue Report Data - Starting at {datetime.now()}")
+def revenue_report(recipients, log_file):
+    print(f"Generating Revenue Report Data - Starting at {datetime.now():%H:%M:%S}", file=log_file)
     subject = f'Revenue Report - {now}'
     report_data = report_generator(revenue=True, cogs_report=True, title="Revenue Report")
     html_contents = boiler_plate + css + body_start + report_data + body_end
@@ -928,22 +971,5 @@ def revenue_report(recipients):
                                  mode='related',
                                  product_photo=None,
                                  logo=True)
-    print(f"Revenue Report: Completed at {datetime.now()}")
-
-
-def year_to_date_revenue_report(recipients):
-    print(f"Generating Revenue Report Data - Starting at {datetime.now()}")
-    subject = f'Revenue Report - {now}'
-    report_data = report_generator(year_to_date=True, title="Daily Revenue Report")
-    html_contents = boiler_plate + css + body_start + report_data + body_end
-    email_engine.send_html_email(from_name=creds.company_name,
-                                 from_address=creds.gmail_alex_user,
-                                 from_pw=creds.gmail_alex_pw,
-                                 recipients_list=recipients,
-                                 subject=subject,
-                                 content=html_contents,
-                                 mode='related',
-                                 product_photo=None,
-                                 logo=True)
-    print(f"Revenue Report: Completed at {datetime.now()}")
-
+    print(f"Revenue Report: Completed at {datetime.now():%H:%M:%S}", file=log_file)
+    print("-----------------------", file=log_file)

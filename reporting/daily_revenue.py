@@ -217,7 +217,9 @@ def get_gc_purchase_total(date):
         return float(response[0][0]) if response[0][0] else None
 
 
-def daily_revenue_report(date=date_presets.yesterday):
+def daily_revenue_report(log_file, date=date_presets.yesterday):
+    print(f"Daily Revenue Report: Starting at {datetime.datetime.now():%H:%M:%S}", file=log_file)
+
     with open("./reporting/templates/daily_revenue.html", "r") as file:
         template_str = file.read()
 
@@ -246,3 +248,6 @@ def daily_revenue_report(date=date_presets.yesterday):
                                  product_photo=None,
                                  mode="related",
                                  logo=True)
+
+    print(f"Daily Revenue Report: Finished at {datetime.datetime.now():%H:%M:%S}", file=log_file)
+    print("-----------------------", file=log_file)

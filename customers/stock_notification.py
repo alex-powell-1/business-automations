@@ -61,9 +61,10 @@ def send_email(greeting, email, item_number, coupon_code, photo):
                     logo=True)
 
 
-def send_stock_notification_emails():
+def send_stock_notification_emails(log_file):
     """Sends stock notification email updates for items that were out of stock
     but now have stock > 0. Cleans csv so contacts are only notified once"""
+    print(f"Send Stock Notification Emails: Completed at {datetime.now():%H:%M:%S}", file=log_file)
     with open(creds.stock_notification_log) as file:
         # Dataframe for Stock Notification Log
         df = pandas.read_csv(file)
@@ -76,7 +77,7 @@ def send_stock_notification_emails():
             # Create a Product object to get product details
             item = Product(sku)
             if item.buffered_quantity_available > 0:
-                print(f"Item No: {sku} - now has stock! Creating message for {email}")
+                print(f"Item No: {sku} - now has stock! Creating message for {email}", file=log_file)
                 # Get Customer Details
                 customer_number = get_customer_number_by_email(email)
                 first_name = ""
@@ -101,7 +102,7 @@ def send_stock_notification_emails():
 
                     # Send to BigCommerce. Create Coupon.
                     response = bc_create_coupon(name=f"Back in Stock({sku}, {email})",
-                                                type="per_total_discount",
+                                                coupon_type="per_total_discount",
                                                 amount=10,
                                                 min_purchase=100,
                                                 code=random_coupon_code,
@@ -114,10 +115,10 @@ def send_stock_notification_emails():
                         coupon_id = response['id']
                     # will throw a type error if same email already has a coupon for this SKU
                     except TypeError:
-                        print("Coupon with this email and sku already exists")
+                        print("Coupon with this email and sku already exists", file=log_file)
                         # Delete from CSV and then continue to next iteration
                         df = df.drop(df.index[counter])
-                        print("Failed: incrementing counter")
+                        print("Failed: incrementing counter", file=log_file)
                         continue
                     else:
                         # Create New Log for new coupons
@@ -127,7 +128,7 @@ def send_stock_notification_emails():
                     # Write new coupon creation log to
                     try:
                         pandas.read_csv(creds.coupon_creation_log)
-                    except FileExistsError:
+                    except FileNotFoundError:
                         df2.to_csv(creds.coupon_creation_log, header=True, columns=['date', 'email', 'item_no', "id"],
                                    index=False)
                     else:
@@ -135,6 +136,8 @@ def send_stock_notification_emails():
                                    index=False, mode='a')
 
                 # Send Email to User about their desired SKU
+                print(f"Sending email to {email} with code: {random_coupon_code}.", file=log_file)
+
                 send_email(greeting=greeting, email=email, item_number=sku, coupon_code=random_coupon_code,
                            photo=product_photo)
 
@@ -142,7 +145,10 @@ def send_stock_notification_emails():
                 df = df.drop(df.index[counter])
 
             else:
-                print(f"Item No: {sku} - out of stock. Skipping")
+                # Item is out of stock. Will Skip
                 counter += 1
 
         df.to_csv(creds.stock_notification_log, header=True, columns=['date', 'email', 'item_no'], index=False)
+
+    print(f"Send Stock Notification Emails: Completed at {datetime.now():%H:%M:%S}", file=log_file)
+    print("-----------------------", file=log_file)

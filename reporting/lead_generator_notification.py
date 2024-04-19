@@ -9,9 +9,10 @@ from setup.date_presets import *
 from setup.email_engine import send_html_email
 
 
-def lead_notification_email():
+def lead_notification_email(log_file):
     """Renders Jinja2 template and sends HTML email to sales team with leads from yesterday
     for follow-up"""
+    print(f"Lead Notification Email: Starting at {datetime.now():%H:%M:%S}", file=log_file)
     with open(creds.design_lead_log) as lead_file:
         # Dataframe for Log
         df = pandas.read_csv(lead_file)
@@ -48,11 +49,14 @@ def lead_notification_email():
                             mode="related",
                             product_photo=None,
                             logo=True)
+    print(f"Lead Notification Email: Finished at {datetime.now():%H:%M:%S}", file=log_file)
+    print("-----------------------", file=log_file)
 
 
-def create_new_customers():
+def create_new_customers(log_file):
     """Send yesterday's entry's to Counterpoint as new customers for further marketing.
     Will skip customer if email or phone is already in our system."""
+    print("Create New Customers: Starting", file=log_file)
     with open(creds.design_lead_log) as lead_file:
         # Dataframe for Log
         df = pandas.read_csv(lead_file)
@@ -68,15 +72,15 @@ def create_new_customers():
 
         if len(today_entries) > 0:
             for x in today_entries:
+                first_name = x['first_name']
+                last_name = x['last_name']
+                phone_number = x['phone']
+                email = x['email']
+                street_address = x['street']
+                city = x['city']
+                state = x['state']
+                zip_code = x['zip_code']
                 if not customers.customers.is_customer(email_address=x['email'], phone_number=x['phone']):
-                    first_name = x['first_name']
-                    last_name = x['last_name']
-                    phone_number = x['phone']
-                    email = x['email']
-                    street_address = x['street']
-                    city = x['city']
-                    state = x['state']
-                    zip_code = x['zip_code']
                     # Add new customer via NCR Counterpoint API
                     customer_number = customers.customers.add_new_customer(first_name=first_name,
                                                                            last_name=last_name,
@@ -93,6 +97,11 @@ def create_new_customers():
                                                              "last_name", "phone_number", "email", "street", "city",
                                                              "state", "zip_code"])
                     create_log.write_log(df, creds.new_customer_log)
-                    print(f"Created customer: {customer_number}: {first_name} {last_name}")
+                    print(f"Created customer: {customer_number}: {first_name} {last_name}", file=log_file)
                 else:
-                    print("Already a customer. Skipping.")
+                    print(f"{first_name} {last_name} is already a customer. Skipping customer creation.", file=log_file)
+        else:
+            print("No new customers to add", file=log_file)
+
+    print(f"Create New Customers: Finished at {datetime.now():%H:%M:%S}", file=log_file)
+    print("-----------------------", file=log_file)

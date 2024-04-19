@@ -254,6 +254,3 @@ def bc_get_variant(product_id, variant_id, pretty=False):
         pretty = json.dumps(pretty, indent=4)
         return pretty
     return json_response
-
-
-# print(bc_create_image(5168))

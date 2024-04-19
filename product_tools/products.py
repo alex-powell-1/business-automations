@@ -140,21 +140,21 @@ class Product:
                 self.variant_id = self.get_variant_id()
                 # ITEM URL
                 # If data already on the local server, use it
-                if x[42] is not None:
-                    self.item_url = x[42]
-                else:
-                    # Else, get live URL from API
-                    bc_data = bc_get_product(self.product_id)
-                    if bc_data is not None:
-                        # Get live url from big, assign to object
-                        self.item_url = creds.company_url + bc_data['data']['custom_url']['url']
-                        # Store in SQL for future, faster access
-                        query = f"""
-                        UPDATE IM_ITEM
-                        SET USR_PROF_ALPHA_18 = '{self.item_url}'
-                        WHERE ITEM_NO = '{self.item_no}'
-                        """
-                        db.query_db(query, commit=True)
+                # if x[42] is not None:
+                #     self.item_url = x[42]
+                # else:
+                #     # Else, get live URL from API
+                #     bc_data = bc_get_product(self.product_id)
+                #     if bc_data is not None:
+                #         # Get live url from big, assign to object
+                #         self.item_url = creds.company_url + bc_data['data']['custom_url']['url']
+                #         # Store in SQL for future, faster access
+                #         query = f"""
+                #         UPDATE IM_ITEM
+                #         SET USR_PROF_ALPHA_18 = '{self.item_url}'
+                #         WHERE ITEM_NO = '{self.item_no}'
+                #         """
+                #         db.query_db(query, commit=True)
 
         else:
             return "No Item Matching that SKU"
@@ -325,10 +325,10 @@ class Product:
             if response is not None:
                 return response[0][0]
 
-    def set_buffer(self, buffer):
+    def set_buffer(self, buffer, log_file):
         initial_buffer = self.buffer
         if buffer == initial_buffer:
-            print(f"Buffer for item: {self.item_no} - {self.long_descr} already at {self.buffer}")
+            print(f"Buffer for item: {self.item_no} - {self.long_descr} already at {self.buffer}", log_file)
             return
         else:
             query = f"""
@@ -342,8 +342,8 @@ class Product:
             # Check for success
             if self.buffer == buffer:
                 # Success!
-                print(f"{self.item_no}: {self.long_descr} sort order changed from "
-                      f"{initial_buffer} to {buffer}")
+                print(f"{self.item_no}: {self.long_descr} buffer changed from "
+                      f"{initial_buffer} to {buffer}", file=log_file)
                 # Write Success Log
                 create_product_log(item_no=self.item_no,
                                    product_name=self.long_descr,
@@ -356,7 +356,7 @@ class Product:
                                    log_location=creds.buffer_log)
                 # If unsuccessful:
             else:
-                print(f"{self.item_no}: {self.long_descr} failed to change sort order to {buffer}")
+                print(f"{self.item_no}: {self.long_descr} failed to change sort order to {buffer}", log_file)
                 # Write failure log
                 create_product_log(item_no=self.item_no,
                                    product_name=self.long_descr,
@@ -367,11 +367,12 @@ class Product:
                                    status_2_data=f"Item: {self.item_no} buffer failed to update to {buffer}.",
                                    log_location=creds.buffer_log)
 
-    def set_sort_order(self, target_sort_order=0):
+    def set_sort_order(self, log_file, target_sort_order=0):
         old_sort_order = self.sort_order
         # Check if item already has the correct sort order
         if old_sort_order == target_sort_order:
-            print(f"{self.item_no}: {self.long_descr} sort order unchanged. Current Order: {self.sort_order}")
+            print(f"{self.item_no}: {self.long_descr} sort order unchanged. Current Order: {self.sort_order}",
+                  file=log_file)
             return
         # If not, change sort order to the target sort order
         else:
@@ -386,7 +387,7 @@ class Product:
             if self.sort_order == target_sort_order:
                 # Success!
                 print(f"{self.item_no}: {self.long_descr} sort order changed from "
-                      f"{old_sort_order} to {self.sort_order}")
+                      f"{old_sort_order} to {self.sort_order}", file=log_file)
                 # Write Success Log
                 create_product_log(item_no=self.item_no,
                                    product_name=self.long_descr,
@@ -399,7 +400,8 @@ class Product:
                                    log_location=creds.sort_order_log)
             # If unsuccessful:
             else:
-                print(f"{self.item_no}: {self.long_descr} failed to change sort order to {target_sort_order}")
+                print(f"{self.item_no}: {self.long_descr} failed to change sort order to {target_sort_order}",
+                      file=log_file)
                 # Write failure log
                 create_product_log(item_no=self.item_no,
                                    product_name=self.long_descr,
@@ -484,6 +486,21 @@ class Product:
                                             number_of_items=1,
                                             return_format=3)[0]
         return top_child
+
+
+def get_ecomm_items_with_stock():
+    query = """
+    SELECT ITEM.ITEM_NO
+    FROM IM_ITEM ITEM
+    INNER JOIN IM_INV INV ON ITEM.ITEM_NO = INV.ITEM_NO
+    WHERE INV.QTY_AVAIL - ITEM.PROF_NO_1 > 0
+    """
+    response = db.query_db(query)
+    if response is not None:
+        result = []
+        for x in response:
+            result.append(x[0])
+        return result
 
 
 def get_ecomm_items(mode=1):
@@ -717,8 +734,9 @@ def get_qty_sold_all_items():
         return item_dict
 
 
-def update_total_sold():
+def update_total_sold(log_file):
     """Update Big Commerce with 'total_sold' amounts"""
+    print(f"Update Total Sold on Big Commerce: Starting at {datetime.now():%H:%M:%S}", file=log_file)
     ecomm_items = get_ecomm_items(mode=3)
     binding_ids = get_binding_ids()
     qty_sold_all_items = get_qty_sold_all_items()
@@ -739,15 +757,19 @@ def update_total_sold():
                 if total_sold_all_children > 0:
                     bc_update_product(product_id, {"total_sold": total_sold_all_children})
                     print(f"#{count}/{len(ecomm_items)} Updated Item: {sku} to "
-                          f"Total Sold: {total_sold_all_children}")
+                          f"Total Sold: {total_sold_all_children}", file=log_file)
                     count += 1
             else:
                 if sku in qty_sold_all_items:
                     total_sold = qty_sold_all_items[sku]
                     if total_sold > 0:
                         bc_update_product(product_id, {"total_sold": total_sold})
-                        print(f"#{count}/{len(ecomm_items)} Updated Item: {sku} to Total Sold: {total_sold}")
+                        print(f"#{count}/{len(ecomm_items)} Updated Item: {sku} to Total Sold: {total_sold}",
+                              file=log_file)
                         count += 1
+
+    print(f"Update Total Sold on Big Commerce: Completed at {datetime.now():%H:%M:%S}", file=log_file)
+    print("-----------------------", file=log_file)
 
 
 def get_products_by_category(category, subcat="", ecomm_only=False):

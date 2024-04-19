@@ -48,4 +48,9 @@ from reporting import report_builder
 
 from setup import date_presets
 
-report_builder.item_report()
+from reporting import product_reports
+from setup import date_presets
+product_reports.administrative_report(recipients=creds.admin_team)
+#report_builder.item_report(creds.admin_team)
+
+#print(product_reports.cost_of_goods_sold(date_presets.last_week_start, date_presets.last_week_end, "WEB"))

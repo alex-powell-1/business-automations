@@ -1,15 +1,21 @@
-from setup import creds
-from selenium import webdriver
-from bs4 import BeautifulSoup
 import time
+from datetime import datetime
+
 import pandas as pd
+from bs4 import BeautifulSoup
+from selenium import webdriver
+
+from setup import creds
 
 
-def scrape_competitor_prices():
+def scrape_competitor_prices(log_file):
     """Will login to competitor site, scape HTML, parse to dataframe, and save to .CSV"""
+    print(f"Web Scraping: Starting at {datetime.now():%H:%M:%S}", file=log_file)
+
     driver = webdriver.Chrome()
+
     for k, v in creds.competitor_bank.items():
-        print(f"Beginning Scraping for {k}")
+        print(f"Beginning Scraping for {k}", file=log_file)
         url = v["site"]
         driver.get(url)
 
@@ -34,3 +40,6 @@ def scrape_competitor_prices():
         df.to_csv(v['log_location'], header=["Name", "Available", "Size", "Price"], index=False)
 
     driver.quit()
+
+    print(f"Web Scraping: Completed at {datetime.now():%H:%M:%S}", file=log_file)
+    print("-----------------------", file=log_file)
