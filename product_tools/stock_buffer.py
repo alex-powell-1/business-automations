@@ -51,7 +51,7 @@ def get_stock_buffer(item_number):
 
 
 def stock_buffer_updates(log_file):
-    print("Setting Stock Buffers: Starting at {datetime.now():%H:%M:%S}", file=log_file)
+    print(f"Setting Stock Buffers: Starting at {datetime.now():%H:%M:%S}", file=log_file)
     # Vendor Updates
     vendor_dict = {
         "EVERGREEN": 0
@@ -67,5 +67,5 @@ def stock_buffer_updates(log_file):
         print(f"Setting Category Updates for {k}", file=log_file)
         set_stock_buffer(k, log_file=log_file)
 
-    print("Setting Stock Buffers: Complete at {datetime.now():%H:%M:%S}", file=log_file)
+    print(f"Setting Stock Buffers: Complete at {datetime.now():%H:%M:%S}", file=log_file)
     print("-----------------------", file=log_file)

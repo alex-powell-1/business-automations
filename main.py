@@ -54,7 +54,7 @@ if minute == 0 or minute == 30:
         print(err, file=log_file)
         print("-----------------------\n", file=log_file)
 
-if minute == 9:
+if minute == 0:
     # -----------------
     # EVERY HOUR TASKS
     # -----------------

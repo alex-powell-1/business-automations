@@ -328,7 +328,7 @@ class Product:
     def set_buffer(self, buffer, log_file):
         initial_buffer = self.buffer
         if buffer == initial_buffer:
-            print(f"Buffer for item: {self.item_no} - {self.long_descr} already at {self.buffer}", log_file)
+            # print(f"Buffer for item: {self.item_no} - {self.long_descr} already at {self.buffer}", file=log_file)
             return
         else:
             query = f"""
@@ -356,7 +356,7 @@ class Product:
                                    log_location=creds.buffer_log)
                 # If unsuccessful:
             else:
-                print(f"{self.item_no}: {self.long_descr} failed to change sort order to {buffer}", log_file)
+                print(f"{self.item_no}: {self.long_descr} failed to change sort order to {buffer}", file=log_file)
                 # Write failure log
                 create_product_log(item_no=self.item_no,
                                    product_name=self.long_descr,
