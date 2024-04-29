@@ -1,7 +1,6 @@
 from product_tools.products import *
 from reporting import product_reports
 
-
 # This module will set related products for items in ecommerce store.
 
 
@@ -33,8 +32,8 @@ def set_related_items_by_category(log_file):
             "WORKSHOP": []
         }
 
-        popular_items = product_reports.create_top_items_report(beginning_date=two_weeks_ago,
-                                                                ending_date=today,
+        popular_items = product_reports.create_top_items_report(beginning_date=date_presets.two_weeks_ago,
+                                                                ending_date=date_presets.today,
                                                                 mode="quantity",
                                                                 number_of_items=8,
                                                                 category=x,

@@ -1,6 +1,7 @@
 from datetime import datetime
 
 import setup.date_presets
+from setup import date_presets
 from setup.query_engine import QueryEngine
 
 # from datetime import datetime
@@ -71,7 +72,7 @@ def remove_refunds_from_sms_funnel(log_file):
     SELECT hist.BUS_DAT, cust.CUST_NO, cust.NAM, TKT_NO
     FROM PS_TKT_HIST hist
     Inner join AR_CUST cust on cust.cust_no = hist.cust_no
-    WHERE TKT_NO like '%R1' AND BUS_DAT = '{setup.date_presets.today} 00:00:00'
+    WHERE TKT_NO like '%R1' AND BUS_DAT = '{setup.date_presets.today}'
     """
 
     response = db.query_db(query)
@@ -124,7 +125,7 @@ def remove_refunds_from_sms_funnel(log_file):
     else:
         print("No refunds today", file=log_file)
 
-    print(f"Remove Online Refunds from SMS Funnel: Completed at {datetime.now():%H:%M:%S}", file=log_file)
+    print(f"Remove Online Refunds from SMS Funnel: Completed at {date_presets.today:%H:%M:%S}", file=log_file)
     print("-----------------------", file=log_file)
 
 

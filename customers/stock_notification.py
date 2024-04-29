@@ -1,4 +1,5 @@
 from datetime import datetime
+from setup import date_presets
 from email import utils
 
 import pandas
@@ -64,7 +65,7 @@ def send_email(greeting, email, item_number, coupon_code, photo):
 def send_stock_notification_emails(log_file):
     """Sends stock notification email updates for items that were out of stock
     but now have stock > 0. Cleans csv so contacts are only notified once"""
-    print(f"Send Stock Notification Emails: Completed at {datetime.now():%H:%M:%S}", file=log_file)
+    print(f"Send Stock Notification Emails: Completed at {date_presets.today:%H:%M:%S}", file=log_file)
     with open(creds.stock_notification_log) as file:
         # Dataframe for Stock Notification Log
         df = pandas.read_csv(file)
@@ -98,7 +99,7 @@ def send_stock_notification_emails(log_file):
                     random_coupon_code = generate_random_code(8)
 
                     # Create Coupon Expiration Date
-                    expiration_date = utils.format_datetime(datetime.now() + relativedelta(days=+5))
+                    expiration_date = utils.format_datetime(date_presets.today + relativedelta(days=+5))
 
                     # Send to BigCommerce. Create Coupon.
                     response = bc_create_coupon(name=f"Back in Stock({sku}, {email})",
@@ -150,5 +151,5 @@ def send_stock_notification_emails(log_file):
 
         df.to_csv(creds.stock_notification_log, header=True, columns=['date', 'email', 'item_no'], index=False)
 
-    print(f"Send Stock Notification Emails: Completed at {datetime.now():%H:%M:%S}", file=log_file)
+    print(f"Send Stock Notification Emails: Completed at {date_presets.today:%H:%M:%S}", file=log_file)
     print("-----------------------", file=log_file)

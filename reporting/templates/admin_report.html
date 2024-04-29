@@ -34,7 +34,7 @@
 
         h4 {
             color:#000000;
-            margin-top: 15px;
+            margin-top: 5px;
             margin-bottom: 0px;
             font-size: 16px;
             font-weight: 300;
@@ -43,11 +43,12 @@
         h5 {
             font-family: 'Arial';
             margin: 0px;
-            font-size: 13px;
+            font-size: 15px;
+            font-weight: 300;
         }
 
         p {
-            margin: 5px 0px 10px 0px;
+            margin: 3px 0px 3px 0px;
         }
 
         </style>
@@ -61,27 +62,59 @@
 
             <div id="header">
                 <h1>Administrative Report</h1>
-                <h3>{{ date }}</h3>
+                <h3>{{ datetime.now().strftime("%A %B %d, %Y") }}</h3>
             </div>
 
             <div id="main">
                 <div>
                     <h2>Revenue Report</h2>
 
-                    {% if day_of_week > 1 %}
+                    <!-- YESTERDAY REVENUE -->
+                    <div>
+                        {% if day_of_week > 1 %}
+                        <!--ALL DAYS EXCEPT MONDAY -->
+                        {% set yesterday = date_presets.yesterday %}
+                        <h4><strong>Yesterday</strong></h4>
 
-                    <h4><strong>Yesterday's Total Revenue</strong></h4>
-                    {{ yesterday_revenue }}
+                        <!--MONDAY ONLY-->
+                        {% elif day_of_week == 1 %}
+                        <h4><strong>Saturday</strong></h4>
+                        {% set yesterday = date_presets.saturday %}
+                        {% endif %}
+                        <h5>{{ yesterday }}</h5>
 
-                    {% elif day_of_week == 1 %}
-                    <h4><strong>Saturday's Total Revenue</strong></h4>
-                    {{ saturday_revenue }}
+                        <h4>Revenue:</h4>
+                        {% set revenue_data = reports.revenue(yesterday, yesterday) %}
 
-                    {% endif %}
+                        {% for store in revenue_data %}
+                        <h5>Store: {{ store }}</h5>
+                        <p>
+                            Revenue: ${{ "{:,.2f}".format(revenue_data[store]['revenue']) }} <br>
+                            Tickets: {{ "{:,.2f}".format(revenue_data[store]['tickets']) }} <br>
+                            Returns: {{ "{:,.2f}".format(revenue_data[store]['returns']) }} <br>
+                            Cost of Goods Sold: ${{ "{:,.2f}".format(revenue_data[store]['cost']) }}
+                        </p>
+                        {% endfor %}
 
-                    {% if 1 <= day <= 8 %}
-                    <h4><strong>{{ last_month }} Total Revenue</strong></h4>
+                    </div>
 
+                    <!-- WEEKLY REVENUE -->
+                    <div>
+                        <h4><strong>Weekly</strong></h4>
+                        <p>Last Six Weeks</p>
+                        {% for week in range(6) %}
+                        {% set week_data = reports.revenue(last_week_start + relativedelta(weeks=(week * -1), last_week_end + relativedelta(weeks=(week * -1) %}
+                            {% for store in revenue_data %}
+                            <h5>Store: {{ store }}</h5>
+                            <p>
+                                Revenue: ${{ "{:,.2f}".format(revenue_data[store]['revenue']) }} <br>
+                                Tickets: {{ "{:,.2f}".format(revenue_data[store]['tickets']) }} <br>
+                                Returns: {{ "{:,.2f}".format(revenue_data[store]['returns']) }} <br>
+                                Cost of Goods Sold: ${{ "{:,.2f}".format(revenue_data[store]['cost']) }}
+                            </p>
+                            {% endfor %}
+                        {% endfor %}
+                    </div>
                 </div>
 
 

@@ -3,7 +3,7 @@ from dateutil.relativedelta import relativedelta
 
 from jinja2 import Template
 
-from reporting import product_reports
+from reporting import product_reports, product_reports_new
 from setup import creds, date_presets, email_engine
 
 
@@ -49,25 +49,13 @@ def administrative_report():
 
     jinja_template = Template(template_str)
 
-    saturday = str((datetime.strptime(date_presets.yesterday, "%Y-%m-%d") + relativedelta(days=-1)))[:-9]
-
     data = {
+        "reporting_periods": date_presets.reporting_periods,
+        "reports": product_reports_new,
+        "date_presets": date_presets,
+        "relative_delta": relativedelta,
         "day_of_week": datetime.today().isoweekday(),
-
-        "day": datetime.now().day,
-
-        "yesterday_revenue": product_reports.revenue_sales_report(
-                start_date=str((datetime.strptime(date_presets.yesterday, "%Y-%m-%d"))),
-                stop_date=str((datetime.strptime(date_presets.yesterday, "%Y-%m-%d"))),
-                split=False, anna_mode=True),
-
-        "saturday_revenue": product_reports.revenue_sales_report(
-                start_date=str((datetime.strptime(saturday, "%Y-%m-%d"))),
-                stop_date=str((datetime.strptime(saturday, "%Y-%m-%d"))),
-                split=False, anna_mode=True),
-
-        "last_month": datetime.strptime(date_presets.last_month_start, "%Y-%m-%d").strftime("%B"),
-
+        "datetime": datetime,
     }
 
     email_content = jinja_template.render(data)

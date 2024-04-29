@@ -37,6 +37,49 @@ def cost_of_goods_sold(start_date, stop_date, store):
             return 0
 
 
+def revenue(start_date, stop_date):
+    query = f"""
+        "{creds.DATABASE}"."dbo"."USP_RPT_SA_BY_X";1
+        'select distinct PS_STR.STR_ID as GRP_ID, PS_STR.DESCR as GRP_DESCR
+        from PS_STR
+        where ( (1=1) )
+        union
+        select distinct VI_PS_TKT_HIST.STR_ID as GRP_ID, NULL as GRP_DESCR
+        from %HISTORY%
+        where not exists(select 1 from PS_STR where PS_STR.STR_ID = VI_PS_TKT_HIST.STR_ID) and 
+        ( (1=1) ) and ( (1=1) ) and %ANYPERIODFILTER%', 'select VI_PS_TKT_HIST.STR_ID as GRP_ID, 
+        %HISTCOLUMNS% from %HISTORY% where ( (1=1) ) and ( (1=1) ) and %PERIODFILTER%', ' 
+        (VI_PS_TKT_HIST.POST_DAT >= ''{start_date}'') and (VI_PS_TKT_HIST.POST_DAT <= ''{stop_date}'')', '
+        (1=0) ', ' (1=0) ', 0, 0, 'GRP_ID', 2
+        """
+    response = db.query_db(query)
+    if response is not None:
+        result = {}
+        for store in response:
+            store_name = store[0]
+
+            ticket_count = int(store[3])
+            # Gross Sales
+            sales = store[5]
+
+            # Get Return Details
+            valid_returns_amt = store[9]
+            nonvalid_returns_amt = store[10]
+            valid_returns_qty = store[7]
+            nonvalid_returns_qty = store[8]
+            cost = float(store[13])
+            returns_qty = int(valid_returns_qty + nonvalid_returns_qty)
+
+            # Subtract Returns
+            extended_total = float(sales - (valid_returns_amt + nonvalid_returns_amt))
+
+            result.update({store_name: {"revenue": extended_total,
+                                        "tickets": ticket_count,
+                                        "returns": returns_qty,
+                                        "cost": cost }})
+        return result
+
+
 def revenue_sales_report(start_date, stop_date, split=True, anna_mode=False, short=False):
     query = f"""
     "{creds.DATABASE}"."dbo"."USP_RPT_SA_BY_X";1
@@ -74,9 +117,10 @@ def revenue_sales_report(start_date, stop_date, split=True, anna_mode=False, sho
 
         elif anna_mode:
             if start_date == stop_date:
-                date_prefix = f"\n<p>{start_date:%b %d}<br>"
+                date_prefix = f"\n<p>{datetime.strptime(start_date[0:10], '%Y-%m-%d').strftime(date_format)}<br>"
             else:
-                date_prefix = f"\n<p><b>{start_date:%b %d} - {stop_date:%b %d}</b>:<br>"
+                date_prefix = (f"\n<p>{datetime.strptime(start_date[0:10], '%Y-%m-%d').strftime(date_format)} - "
+                               f"{datetime.strptime(stop_date[0:10], '%Y-%m-%d').strftime(date_format)}:<br>")
 
             return (date_prefix +
                     f"In-Store Sales: ${"{:,}".format(retail_sales - retail_valid_returns
@@ -85,22 +129,21 @@ def revenue_sales_report(start_date, stop_date, split=True, anna_mode=False, sho
 
                     f"Total: ${"{:,}".format((retail_sales + web_sales) -
                                              (web_valid_returns + web_nonvalid_returns) -
-                                             (retail_valid_returns + retail_nonvalid_returns))}<br>"
-                    f"{get_total_tickets(start_date, stop_date)}</p>")
+                                             (retail_valid_returns + retail_nonvalid_returns))}<br><br></p>")
 
         # for reports with combined reporting
         else:
             if short:
-                return (f"\n<p>{start_date:%B %Y}: "
+                return (f"\n<p>{datetime.strptime(start_date[0:10], '%Y-%m-%d').strftime("%B %Y")}: "
                         f"${"{:,}".format((retail_sales + web_sales) -
                                           (web_valid_returns + web_nonvalid_returns) -
                                           (retail_valid_returns + retail_nonvalid_returns))}</p>")
             else:
-                return (f"\n<p>{start_date} - {stop_date}: "
+                return (f"\n<p>{datetime.strptime(start_date[0:10], '%Y-%m-%d').strftime(date_format)} - "
+                        f"{datetime.strptime(stop_date[0:10], '%Y-%m-%d').strftime(date_format)}: "
                         f"${"{:,}".format((retail_sales + web_sales) -
                                           (web_valid_returns + web_nonvalid_returns) -
-                                          (retail_valid_returns + retail_nonvalid_returns))}"
-                        f"{get_total_tickets(start_date, stop_date)}</p>")
+                                          (retail_valid_returns + retail_nonvalid_returns))}</p>")
     else:
         return "No Revenue Data Today"
 
@@ -120,9 +163,9 @@ def get_total_tickets(start_day, end_day):
         if response is not None:
             data[category] = response[0][0]
 
-    contents += f"\nTotal Retail Tickets: {data['RETAIL']}<br>"
-    contents += f"\nTotal Wholesale Tickets: {data['WHOLESALE']}<br>"
-    contents += f"\nTotal Tickets: {data['WHOLESALE'] + data['RETAIL']}"
+    contents += f"\n<p>Total Retail Tickets: <b>{data['RETAIL']}</b></br>"
+    contents += f"\nTotal Wholesale Tickets: <b>{data['WHOLESALE']}</b></br>"
+    contents += f"\nTotal Tickets: <b>{data['WHOLESALE'] + data['RETAIL']}</b></p>"
     return contents
 
 
@@ -185,7 +228,7 @@ def create_top_items_report(beginning_date, ending_date, mode="sales", merged=Fa
         'select VI_PS_TKT_HIST_LIN.ITEM_NO as GRP_ID, %HISTCOLUMNS%
         from %HISTORY%
         where ( (1=1) ) and (({category_var})) and %PERIODFILTER%', '
-        (VI_PS_TKT_HIST.POST_DAT >= ''{beginning_date:%Y-%m-%d}'') and (VI_PS_TKT_HIST.POST_DAT <= ''{ending_date:%Y-%m-%d}'')', '
+        (VI_PS_TKT_HIST.POST_DAT >= ''{beginning_date}'') and (VI_PS_TKT_HIST.POST_DAT <= ''{ending_date}'')', '
         (1=0) ', ' (1=0) ', {number_of_items}, 0, '{rank_filter}', 2
         """
 
@@ -237,7 +280,7 @@ def create_top_items_report(beginning_date, ending_date, mode="sales", merged=Fa
         return f"\n<p>Top Items by {mode.title()} - No Data Today</p>"
 
 
-def get_top_categories_by_sales(start_date, end_date, number_of_categories):
+def get_top_categories_by_sales(start, end, number_of_categories):
     query = f"""
     "{creds.DATABASE}"."dbo"."USP_RPT_SA_BY_X";1
     'SELECT distinct IM_CATEG_COD.CATEG_COD as GRP_ID, IM_CATEG_COD.DESCR as GRP_DESCR
@@ -251,7 +294,7 @@ def get_top_categories_by_sales(start_date, end_date, number_of_categories):
     where IM_CATEG_COD.CATEG_COD = VI_PS_TKT_HIST_LIN.CATEG_COD) and ((VI_PS_TKT_HIST.STR_ID = ''1'')) and
     ( (1=1) ) and %ANYPERIODFILTER%', 'select VI_PS_TKT_HIST_LIN.CATEG_COD as GRP_ID, %HISTCOLUMNS%
     from %HISTORY% where ((VI_PS_TKT_HIST.STR_ID = ''1'')) and ( (1=1) ) and %PERIODFILTER%', '
-    (VI_PS_TKT_HIST.POST_DAT >= ''{start_date:%Y-%m-%d}'') and (VI_PS_TKT_HIST.POST_DAT <= ''{end_date:%Y-%m-%d}'')', '
+    (VI_PS_TKT_HIST.POST_DAT >= ''{start}'') and (VI_PS_TKT_HIST.POST_DAT <= ''{end}'')', '
     (1=0) ', ' (1=0) ', {number_of_categories}, 0, 'SLS_EXT_PRC_A - RTN_EXT_PRC_VALID_A - RTN_EXT_PRC_NONVALID_A', 2
     """
     result = db.query_db(query)
@@ -379,7 +422,7 @@ def top_customer_report(start_date, stop_date, category, number=10):
         return result
     else:
         return (f"<p>No customer data available for {category.lower()} customers from "
-                f"{start_date:{date_format}} - {stop_date:{date_format}}.</p>")
+                f"{reformat_time(start_date)} - {reformat_time(stop_date)}.</p>")
 
 
 def get_missing_variant_names():
@@ -645,6 +688,12 @@ def get_inactive_items_with_stock():
         return "\n<p>No Inactive Items with Stock</p>"
 
 
+def reformat_time(time_string):
+    """Re-formats from SQL friendly format to a USA friendly readable format"""
+    cp_format = '%Y-%m-%d'
+    return str(datetime.strptime(time_string, cp_format).strftime(date_format))
+
+
 def get_all_ecommerce_items():
     query = """
         SELECT IM_ITEM.ITEM_NO
@@ -663,6 +712,10 @@ def get_all_ecommerce_items():
 
 
 def get_item_descriptions():
+    # query = """
+    # SELECT DATALENGTH(HTML_DESCR)
+    # FROM EC_ITEM_DESCR
+    # """
     query = """
     SELECT ITEM_NO, HTML_DESCR
     FROM EC_ITEM_DESCR
@@ -730,215 +783,180 @@ def report_generator(revenue=False, last_week_report=False, mtd_month_report=Fal
         report += f"\n<h2><strong>{section_header}</strong></h2>"
         # for all days but Monday: Give yesterday's total
         day_of_week = datetime.today().isoweekday()
-        try:
-            if day_of_week > 1:
-                report += f"\n<h4><strong>Yesterday's Total Revenue</strong></h4>"
-                report += revenue_sales_report(
-                    start_date=f"{yesterday:%Y-%m-%d}",
-                    stop_date=f"{yesterday:%Y-%m-%d}",
-                    split=False, anna_mode=True)
-            elif day_of_week == 1:
-                saturday = yesterday + relativedelta(days=-1)
-                report += f"\n<h4><strong>Saturday's Total Revenue</strong></h4>"
-                report += revenue_sales_report(
-                    start_date=saturday,
-                    stop_date=saturday,
-                    split=False, anna_mode=True)
-        except Exception as err:
-            report += f"<p>Error! Message: {err}</p>"
+        if day_of_week > 1:
+            report += f"\n<h4><strong>Yesterday's Total Revenue</strong></h4>"
+            report += revenue_sales_report(
+                start_date=str((datetime.strptime(yesterday, "%Y-%m-%d"))),
+                stop_date=str((datetime.strptime(yesterday, "%Y-%m-%d"))),
+                split=False, anna_mode=True)
+        elif day_of_week == 1:
+            saturday = str((datetime.strptime(yesterday, "%Y-%m-%d") + relativedelta(days=-1)))[:-9]
+            report += f"\n<h4><strong>Saturday's Total Revenue</strong></h4>"
+            report += revenue_sales_report(
+                start_date=str((datetime.strptime(saturday, "%Y-%m-%d"))),
+                stop_date=str((datetime.strptime(saturday, "%Y-%m-%d"))),
+                split=False, anna_mode=True)
 
         # For first week of each month: add Last Month's Total Revenue with 3 year comparison
-        try:
-            if 1 <= today.day <= 8:
-                section_header = f"\n<h4><strong>{last_month_start:%B} Total Revenue</strong></h4>"
-                report += section_header
-                for x in range(years_to_show):
-                    report += revenue_sales_report(
-                        start_date=last_month_start + relativedelta(years=(x * -1)),
-                        stop_date=last_month_end + relativedelta(years=(x * -1)),
-                        split=False, short=True)
-
-        except Exception as err:
-            report += f"<p>Error! Message: {err}</p>"
+        day = datetime.now().day
+        if 1 <= day <= 8:
+            section_header = f"\n<h4><strong>{datetime.strptime(last_month_start, "%Y-%m-%d").strftime("%B")} Total Revenue</strong></h4>"
+            report += section_header
+            for x in range(years_to_show):
+                report += revenue_sales_report(
+                    start_date=str((datetime.strptime(last_month_start, "%Y-%m-%d") + relativedelta(years=(x * -1)))),
+                    stop_date=str((datetime.strptime(last_month_end, "%Y-%m-%d") + relativedelta(years=(x * -1)))),
+                    split=False, short=True)
 
         # Add Last Six Weeks of Weekly Revenue (Sunday - Saturday each week)
         report += (f"\n<h4><strong>Weekly Revenue</strong></h4>"
                    f"\n<h5>Last Six Weeks</h5>")
-        try:
-            for x in range(weeks_to_show):
-                report += f"\n{revenue_sales_report(
-                    start_date=last_week_start + relativedelta(weeks=(x * -1)),
-                    stop_date=last_week_end + relativedelta(weeks=(x * -1)),
-                    split=False, anna_mode=True)}"
+        for x in range(weeks_to_show):
+            report += f"\n{revenue_sales_report(
+                start_date=f"{last_week_start + relativedelta(weeks=(x * -1)):%Y-%m-%d}",
+                stop_date=f"{last_week_end + relativedelta(weeks=(x * -1)):%Y-%m-%d}",
+                split=False, anna_mode=True)}"
 
-        except Exception as err:
-            report += f"<p>Error! Message: {err}</p>"
+            report += get_total_tickets(
+                start_day=str((datetime.strptime(last_week_start, "%Y-%m-%d") + relativedelta(weeks=(x * -1)))),
+                end_day=str((datetime.strptime(last_week_end, "%Y-%m-%d") + relativedelta(weeks=(x * -1)))))
 
         report += "\n<h4><strong>Last Month Total</strong></h4>"
         report += f"\n{revenue_sales_report(last_month_start, last_month_end, split=False, short=True)}"
 
         # Add Month-to-Date Revenue Data
         report += "<h4><strong>Month to Date</strong></h4>"
-        try:
-            for x in range(years_to_show):
-                dynamic_month_start = month_start + relativedelta(years=(x * -1))
-                dynamic_today = today + relativedelta(years=(x * -1))
-                # Create Dynamic Header
-                report += f"<h5>{dynamic_month_start:%b %y}</h5>"
-                # Get Data from SQL
-                if x == 0:
-                    report += f"\n{revenue_sales_report(dynamic_month_start, dynamic_today, split=True)} \n"
-                else:
-                    report += f"\n{revenue_sales_report(dynamic_month_start, dynamic_today, split=True)} \n"
+        for x in range(years_to_show):
+            # Create Dynamic Header
+            report += f"<h5>{str((datetime.strptime(month_start, "%Y-%m-%d") +
+                                  relativedelta(years=(x * -1))).strftime("%b %y"))}</h5>"
+            # Get Data from SQL
+            if x == 0:
+                report += f"""\n{(
+                        revenue_sales_report(str((datetime.strptime(month_start, "%Y-%m-%d") +
+                                                  relativedelta(years=(x * -1)))),
 
-        except Exception as err:
-            report += f"<p>Error! Message: {err}</p>"
+                                             str((datetime.strptime(today, "%Y-%m-%d") +
+                                                  relativedelta(years=(x * -1)))),
+                                             split=True) + "\n")}"""
+            else:
+                report += f"""\n{(
+                        revenue_sales_report(str((datetime.strptime(month_start, "%Y-%m-%d") +
+                                                  relativedelta(years=(x * -1)))),
+                                             str((datetime.strptime(month_end, "%Y-%m-%d") +
+                                                  relativedelta(years=(x * -1)))),
+                                             split=True) + "\n")}"""
 
         # Add Year-to-Date Revenue Data
         report += "<h4><strong>Year to Date</strong></h4>"
-        try:
-            for x in range(years_to_show):
-                dynamic_year_start = year_start + relativedelta(years=(x * -1))
-                dynamic_today = today + relativedelta(years=(x * -1))
-                # Create Dynamic YTD Header
-                report += f'\n<h5>{dynamic_year_start:%x} - {dynamic_today:%x}</h5>'
-                # Get Data
-                report += f"\n{revenue_sales_report(dynamic_year_start, dynamic_today, split=True)}"
 
-        except Exception as err:
-            report += f"<p>Error! Message: {err}</p>"
+        for x in range(years_to_show):
+            # Create Dynamic YTD Header
+            report += f"""\n<h5>{str((datetime.strptime(year_start, "%Y-%m-%d") +
+                                      relativedelta(years=(x * -1))).strftime(date_format)) + " - " +
+                                 str((datetime.strptime(today, "%Y-%m-%d") +
+                                      relativedelta(years=(x * -1))).strftime(date_format))}</h5>"""
+            # Get Data
+            report += f"""\n{(
+                revenue_sales_report(str((datetime.strptime(year_start, "%Y-%m-%d") +
+                                          relativedelta(years=(x * -1)))),
 
+                                     str((datetime.strptime(today, "%Y-%m-%d") +
+                                          relativedelta(years=(x * -1)))),
+                                     split=True))}"""
     if cogs_report:
         section_header = (f"\n<h2><strong>Cost of Goods Sold Report</strong></h2>"
-                          f"\n<h5>{last_week_start:{date_format}} - {last_week_end:{date_format}}</h5>")
+                          f"\n<h5>{reformat_time(last_week_start)} - {reformat_time(last_week_end)}</h5>")
         report += section_header
-        try:
-            report += f"\n<p>Store 1: ${"{:,}".format(cost_of_goods_sold(start_date=last_week_start, 
-                                                                         stop_date=last_week_end, store="1"))}<br>"
-            report += f"\nStore Web: ${"{:,}".format(cost_of_goods_sold(start_date=last_week_start, 
-                                                                        stop_date=last_week_end, store="WEB"))}</p>"
-        except Exception as err:
-            report += f"<p>Error! Message: {err}</p>"
+        report += f"\n<p>Store 1: ${"{:,}".format(cost_of_goods_sold(last_week_start, last_week_end, "1"))}<br>"
+        report += f"\nStore Web: ${"{:,}".format(cost_of_goods_sold(last_week_start, last_week_end, "WEB"))}</p>"
 
     if sales_rep_report:
         section_header = (f"\n<h2><strong>Sales Rep Report</strong></h2>"
-                          f"\n<h5>{last_week_start:{date_format}} - {last_week_end:{date_format}}</h5>")
+                          f"\n<h5>{reformat_time(last_week_start)} - {reformat_time(last_week_end)}</h5>")
         report += section_header
-        try:
-            report += get_sales_rep_report()
-
-        except Exception as err:
-            report += f"<p>Error! Message: {err}</p>"
+        report += get_sales_rep_report()
 
     if wholesale_report:
         section_header = (f"\n<h2><strong>Wholesale Totals</strong></h2>"
-                          f"\n<h5>{last_week_start:{date_format}} - {last_week_start:{last_week_end}}</h5>")
+                          f"\n<h5>{reformat_time(last_week_start)} - {reformat_time(last_week_end)}</h5>")
         report += section_header
-        try:
-            data = wholesale_total(last_week_start, last_week_end, 1000)
-            report += f"<p>Revenue for Top 10 Wholesale Customers: ${data[0]}</p>"
-            report += f"<p>Revenue for ALL Wholesale Customers: ${data[1]}</p>"
+        data = wholesale_total(last_week_start, last_week_end, 1000)
+        report += f"<p>Revenue for Top 10 Wholesale Customers: ${data[0]}</p>"
+        report += f"<p>Revenue for ALL Wholesale Customers: ${data[1]}</p>"
 
-            section_header = (f"\n<h2><strong>Top Wholesale Customers</strong></h2>"
-                              f"\n<h5>{last_week_start:{date_format}} - {last_week_start:{last_week_end}}</h5>")
-            report += section_header
-            report += top_customer_report(last_week_start, last_week_end, category='WHOLESALE', number=10)
-        except Exception as err:
-            report += f"<p>Error! Message: {err}</p>"
+        section_header = (f"\n<h2><strong>Top Wholesale Customers</strong></h2>"
+                          f"\n<h5>{reformat_time(last_week_start)} - {reformat_time(last_week_end)}</h5>")
+        report += section_header
+        report += top_customer_report(last_week_start, last_week_end, category='WHOLESALE', number=10)
 
     if last_week_report:
         section_header = (f"\n<h2><strong>Last Week Report</strong></h2>"
-                          f"\n<h5>{last_week_start:{date_format}} - {last_week_start:{date_format}}</h5>")
+                          f"\n<h5>{reformat_time(last_week_start)} - {reformat_time(last_week_end)}</h5>")
         report += section_header
-        try:
-            forecast_top_10_by_sales = create_top_items_report(last_week_start, last_week_end, "sales")
-            forecast_top_10_by_quantity = create_top_items_report(last_week_start, last_week_end, "quantity")
-            report += forecast_top_10_by_sales
-            report += forecast_top_10_by_quantity
-
-        except Exception as err:
-            report += f"<p>Error! Message: {err}</p>"
+        forecast_top_10_by_sales = create_top_items_report(last_week_start, last_week_end, "sales")
+        forecast_top_10_by_quantity = create_top_items_report(last_week_start, last_week_end, "quantity")
+        report += forecast_top_10_by_sales
+        report += forecast_top_10_by_quantity
 
     if mtd_month_report:
         section_header = (f"\n<h2><strong>Month to Date Report</strong></h2>"
-                          f"\n<h5>{month_start:{date_format}} - {today:{date_format}}</h5>")
+                          f"\n<h5>{reformat_time(month_start)} - {reformat_time(today)}</h5>")
         report += section_header
-        try:
-            forecast_top_10_by_sales = create_top_items_report(month_start, today, "sales")
-            forecast_top_10_by_quantity = create_top_items_report(month_start, today, "quantity")
-            report += forecast_top_10_by_sales
-            report += forecast_top_10_by_quantity
-
-        except Exception as err:
-            report += f"<p>Error! Message: {err}</p>"
+        forecast_top_10_by_sales = create_top_items_report(month_start, today, "sales")
+        forecast_top_10_by_quantity = create_top_items_report(month_start, today, "quantity")
+        report += forecast_top_10_by_sales
+        report += forecast_top_10_by_quantity
 
     if last_year_mtd_report:
         section_header = (f"\n<h2><strong>Last Year Month to Date Report</strong></h2>"
-                          f"\n<h5>{month_start_last_year:{date_format}} - {yesterday:{date_format}}</h5>")
+                          f"\n<h5>{reformat_time(month_start_last_year)} - {reformat_time(one_year_ago)}</h5>")
         report += section_header
-        try:
-            forecast_top_10_by_sales = create_top_items_report(month_start_last_year, one_year_ago, "sales")
-            forecast_top_10_by_quantity = create_top_items_report(month_start_last_year, one_year_ago, "quantity")
-            report += forecast_top_10_by_sales
-            report += forecast_top_10_by_quantity
-
-        except Exception as err:
-            report += f"<p>Error! Message: {err}</p>"
+        forecast_top_10_by_sales = create_top_items_report(month_start_last_year, one_year_ago, "sales")
+        forecast_top_10_by_quantity = create_top_items_report(month_start_last_year, one_year_ago, "quantity")
+        report += forecast_top_10_by_sales
+        report += forecast_top_10_by_quantity
 
     if forecasting_report:
         section_header = (f"\n<h2><strong>{forecast_days} Days Forecasting Report</strong></h2>"
-                          f"\n<h5>{one_year_ago:{date_format}} - {last_year_forecast:{last_week_end}}</h5>")
+                          f"\n<h5>{reformat_time(one_year_ago)} - {reformat_time(last_year_forecast)}</h5>")
         report += section_header
-        try:
-            forecast_top_10_by_sales = create_top_items_report(one_year_ago, last_year_forecast, "sales")
-            forecast_top_10_by_quantity = create_top_items_report(one_year_ago, last_year_forecast, "quantity")
-            report += forecast_top_10_by_sales
-            report += forecast_top_10_by_quantity
-        
-        except Exception as err:
-            report += f"<p>Error! Message: {err}</p>"
+        forecast_top_10_by_sales = create_top_items_report(one_year_ago, last_year_forecast, "sales")
+        forecast_top_10_by_quantity = create_top_items_report(one_year_ago, last_year_forecast, "quantity")
+        report += forecast_top_10_by_sales
+        report += forecast_top_10_by_quantity
 
     if low_stock_items_report:
         section_header = (f"\n<h2><strong>Top {number_of_low_stock_items} Revenue Items with Low Stock</strong></h2>"
-                          f"\n<h5>{one_year_ago:{date_format}} - {last_year_low_stock_window:{last_week_end}}</h5>")
+                          f"\n<h5>{reformat_time(one_year_ago)} - {reformat_time(last_year_low_stock_window)}</h5>")
         report += section_header
-        try:
-            report += get_low_stock_items(number_of_low_stock_items)
-        
-        except Exception as err:
-            report += f"<p>Error! Message: {err}</p>"
+        report += get_low_stock_items(number_of_low_stock_items)
 
     if top_items_by_category:
         section_header = "\n<h2><strong>Last Week Top Items by Top Categories</strong></h2>"
         report += section_header
         category_list = []
         # Get Top Performing Categories by Revenue. Returns list of tuples ('TREES', '$3500')
-        try:
-            for items in get_top_categories_by_sales(last_week_start, last_week_end, 10):
-                category_list.append((items[0], "$" + str("{:,}".format(items[2]))))
-            counter = 1
-            for x in category_list:
-                report += (f'\n<p class="rank"><strong>Category Rank #{counter}: {x[0]}</strong><br>'
-                           f"Total Revenue: {x[1]} from {last_week_start:{date_format}} - "
-                           f"{last_week_end:{date_format}}<br></p>")
-                report += create_top_items_report(last_week_start, last_week_end, number_of_items=10, mode='sales',
-                                                  category=x[0])
-                report += create_top_items_report(last_week_start, last_week_end, number_of_items=10, mode='quantity',
-                                                  category=x[0])
-                counter += 1
-        
-        except Exception as err:
-            report += f"<p>Error! Message: {err}</p>"
+        for items in get_top_categories_by_sales(last_week_start, last_week_end, 10):
+            category_list.append((items[0], "$" + str("{:,}".format(items[2]))))
+        counter = 1
+        for x in category_list:
+            report += (f'\n<p class="rank"><strong>Category Rank #{counter}: {x[0]}</strong><br>'
+                       f"Total Revenue: {x[1]} from "
+                       f"{reformat_time(last_week_start)} - "
+                       f"{reformat_time(last_week_end)}<br></p>")
+            report += create_top_items_report(last_week_start, last_week_end, number_of_items=10, mode='sales',
+                                              category=x[0])
+            report += create_top_items_report(last_week_start, last_week_end, number_of_items=10, mode='quantity',
+                                              category=x[0])
+            counter += 1
 
     if year_to_date:
-        try:
-            for x in range(90):
-                report += f"\n{revenue_sales_report(
-                    start_date=today + relativedelta(days=(x * -1)),
-                    stop_date=today + relativedelta(days=(x * -1)),
-                    split=False, anna_mode=True)}"
-        except Exception as err:
-            report += f"<p>Error! Message: {err}</p>"
+        for x in range(90):
+            report += f"\n{revenue_sales_report(
+                start_date=str((datetime.strptime(today, "%Y-%m-%d") + relativedelta(days=(x * -1)))),
+                stop_date=str((datetime.strptime(today, "%Y-%m-%d") + relativedelta(days=(x * -1)))),
+                split=False, anna_mode=True)}"
 
     return report
 
@@ -964,20 +982,15 @@ def administrative_report(recipients, log_file):
                                    inactive_items_report=True,
                                    missing_descriptions_report=True)
     html_contents = boiler_plate + css + body_start + report_data + body_end
-    try:
-        email_engine.send_html_email(from_name=creds.company_name,
-                                     from_address=creds.gmail_alex_user,
-                                     from_pw=creds.gmail_alex_pw,
-                                     recipients_list=recipients,
-                                     subject=subject,
-                                     content=html_contents,
-                                     logo=True,
-                                     mode='related',
-                                     product_photo=None)
-    except Exception as err:
-        error_type = "Sending Email"
-        print(f"Error({error_type}): {err})", file=log_file)
-
+    email_engine.send_html_email(from_name=creds.company_name,
+                                 from_address=creds.gmail_alex_user,
+                                 from_pw=creds.gmail_alex_pw,
+                                 recipients_list=recipients,
+                                 subject=subject,
+                                 content=html_contents,
+                                 logo=True,
+                                 mode='related',
+                                 product_photo=None)
     print(f"Administrative Report: Completed at {datetime.now():%H:%M:%S}", file=log_file)
     print("-----------------------", file=log_file)
 
@@ -987,19 +1000,14 @@ def revenue_report(recipients, log_file):
     subject = f'Revenue Report - {today:%x}'
     report_data = report_generator(revenue=True, cogs_report=True, title="Revenue Report")
     html_contents = boiler_plate + css + body_start + report_data + body_end
-    try:
-        email_engine.send_html_email(from_name=creds.company_name,
-                                     from_address=creds.gmail_alex_user,
-                                     from_pw=creds.gmail_alex_pw,
-                                     recipients_list=recipients,
-                                     subject=subject,
-                                     content=html_contents,
-                                     mode='related',
-                                     product_photo=None,
-                                     logo=True)
-    except Exception as err:
-        error_type = "Sending Email"
-        print(f"Error({error_type}): {err})", file=log_file)
-
-    print(f"Revenue Report: Completed at {today:%H:%M:%S}", file=log_file)
+    email_engine.send_html_email(from_name=creds.company_name,
+                                 from_address=creds.gmail_alex_user,
+                                 from_pw=creds.gmail_alex_pw,
+                                 recipients_list=recipients,
+                                 subject=subject,
+                                 content=html_contents,
+                                 mode='related',
+                                 product_photo=None,
+                                 logo=True)
+    print(f"Revenue Report: Completed at {datetime.now():%H:%M:%S}", file=log_file)
     print("-----------------------", file=log_file)

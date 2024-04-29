@@ -13,7 +13,7 @@ ftc_1_body = (f"Thanks for shopping with {company_name}. It was a pleasure servi
 # Three Days after initial purchase
 ftc_2_descr = "First-Time Customer: Message 2 Coupon"
 ftc_2_body = (f"Don't forget! You've got a {company_name} coupon for $5 off your next $30 purchase. "
-              f"Here's your coupon! It expires on {coupon_expiration_day_3} ")
+              f"Here's your coupon! It expires on {coupon_expiration_day_3:%x} ")
 ftc_2_image = five_off_coupon
 
 # Message 3

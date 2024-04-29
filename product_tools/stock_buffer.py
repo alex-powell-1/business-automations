@@ -16,7 +16,7 @@ def set_stock_buffer_by_vendor(buffer: int, db_filter: str, filter_input: str, o
 
     query = f"""
     UPDATE IM_ITEM
-    SET PROF_NO_1 = '{buffer}', LST_MAINT_DT = '{str(datetime.now())[:-6] + "000"}'
+    SET PROF_NO_1 = '{buffer}', LST_MAINT_DT = 'GETDATE()'
     WHERE {db_filter} = '{filter_input}' {nulls}
     """
     db.query_db(query, commit=True)
@@ -28,12 +28,15 @@ def set_stock_buffer(category, log_file, base_buffer=3):
     buffer_bank = creds.buffer_bank[category]
     for x in product_list:
         item = Product(x)
+        # Highest Priced Tier
         if item.price_1 > buffer_bank['tier_2']['price']:
             item.set_buffer(buffer_bank['tier_2']['buffer'], log_file)
+        # Middle Tier
         elif item.price_1 > buffer_bank['tier_1']['price']:
             item.set_buffer(buffer_bank['tier_1']['buffer'], log_file)
+        # Lowest Tier
         else:
-            item.set_buffer(base_buffer, log_file)
+            item.set_buffer(buffer_bank['tier_0']['buffer'], log_file)
 
 
 def get_stock_buffer(item_number):

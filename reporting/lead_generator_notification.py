@@ -21,10 +21,14 @@ def lead_notification_email(log_file):
         # Get yesterday submissions
         yesterday_entries = []
         for x in entries:
-            if x['date'][:10] == yesterday or x['date'][:10] == today:
+            # 4/25/24 note: yesterday is a dt object whereas today is a string
+            if x['date'][:10] == f'{yesterday:%Y-%m-%d}' or x['date'][:10] == today:
                 yesterday_entries.append(x)
 
-        if len(yesterday_entries) > 0:
+        if len(yesterday_entries) < 1:
+            print("No entries to send.", file=log_file)
+        else:
+            print(f"{len(yesterday_entries)} leads from yesterday. Constructing Email", file=log_file)
             with open("./reporting/templates/follow_up.html", "r") as template_file:
                 template_str = template_file.read()
 
@@ -40,15 +44,24 @@ def lead_notification_email(log_file):
 
             email_content = jinja_template.render(email_data)
 
-            send_html_email(from_name=creds.company_name,
-                            from_address=creds.gmail_sales_user,
-                            from_pw=creds.gmail_sales_pw,
-                            recipients_list=creds.sales_group,
-                            subject="Landscape Design Leads",
-                            content=email_content,
-                            mode="related",
-                            product_photo=None,
-                            logo=True)
+            try:
+                send_html_email(from_name=creds.company_name,
+                                from_address=creds.gmail_sales_user,
+                                from_pw=creds.gmail_sales_pw,
+                                recipients_list=creds.sales_group,
+                                subject="Landscape Design Leads",
+                                content=email_content,
+                                mode="related",
+                                product_photo=None,
+                                logo=True)
+
+            except Exception as err:
+                print("Error: Sending Email", file=log_file)
+                print(err, file=log_file)
+
+            else:
+                print("Email Sent.", file=log_file)
+
     print(f"Lead Notification Email: Finished at {datetime.now():%H:%M:%S}", file=log_file)
     print("-----------------------", file=log_file)
 

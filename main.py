@@ -6,7 +6,6 @@ from big_commerce import coupons
 from customers import stock_notification
 from product_tools import always_online
 from product_tools import brands
-# from product_tools import ecomm_flags
 from product_tools import featured
 from product_tools import inventory_upload
 from product_tools import related_items

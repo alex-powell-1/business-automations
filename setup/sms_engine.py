@@ -45,8 +45,8 @@ class SMSEngine:
                 twilio_response = twilio_message.sid
                 print(twilio_message.to, twilio_message.body)
 
-            finally:
-                create_sms_log(cust_no, to_phone, message, twilio_response, log_code)
+        if create_log:
+            create_sms_log(cust_no, to_phone, message, twilio_response, log_code)
 
 
 def move_phone_1_to_landline(cust_no, phone_number):

@@ -38,13 +38,13 @@ def bc_update_product(product_id, payload, pretty=False):
     }
 
     response = (requests.put(url, headers=headers, json=payload))
-    json_response = response.json()
-    if pretty:
-        pretty = response.content
-        pretty = json.loads(pretty)
-        pretty = json.dumps(pretty, indent=4)
-        return pretty
-    if json_response['status'] != '404':
+    if response.status_code == 200:
+        json_response = response.json()
+        if pretty:
+            pretty = response.content
+            pretty = json.loads(pretty)
+            pretty = json.dumps(pretty, indent=4)
+            return pretty
         return json_response
 
 

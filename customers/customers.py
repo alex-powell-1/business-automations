@@ -1,9 +1,9 @@
 import json
-from datetime import datetime
 
 import requests
 
 from setup import creds
+from setup import date_presets
 from setup.create_log import create_customer_log
 from setup.query_engine import QueryEngine
 
@@ -129,7 +129,7 @@ class Customer:
     def unsubscribe_from_sms(self):
         query = f"""
         UPDATE AR_CUST
-        SET INCLUDE_IN_MARKETING_MAILOUTS = 'N', LST_MAINT_DT = '{str(datetime.now())[:-6] + "000"}'
+        SET INCLUDE_IN_MARKETING_MAILOUTS = 'N', LST_MAINT_DT = 'GETDATE()'
         WHERE CUST_NO = '{self.number}'
         """
         db.query_db(query, commit=True)
@@ -139,13 +139,13 @@ class Customer:
                             name=self.name,
                             phone_1=self.phone_1,
                             status_1_col_name="unsubscribed",
-                            status_1_data=f"Unsubscribed on {datetime.now().strftime("%x")}",
+                            status_1_data=f"Unsubscribed on {date_presets.today:%x}",
                             log_location=creds.unsubscribed_sms)
 
     def subscribe_to_sms(self):
         query = f"""
         UPDATE AR_CUST
-        SET INCLUDE_IN_MARKETING_MAILOUTS = 'Y', LST_MAINT_DT = '{str(datetime.now())[:-6] + "000"}'
+        SET INCLUDE_IN_MARKETING_MAILOUTS = 'Y', LST_MAINT_DT = 'GETDATE()'
         WHERE CUST_NO = '{self.number}'
         """
         db.query_db(query, commit=True)

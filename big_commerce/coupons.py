@@ -3,6 +3,7 @@ import secrets
 import string
 from datetime import datetime, timezone
 from email import utils
+from setup import date_presets
 
 import requests
 
@@ -123,7 +124,7 @@ def utc_to_local(utc_dt):
 
 
 def delete_expired_coupons(log_file):
-    print(f"Deleting Expired Coupons: Starting at {datetime.now():%H:%M:%S}", file=log_file)
+    print(f"Deleting Expired Coupons: Starting at {date_presets.today:%H:%M:%S}", file=log_file)
 
     coupons = bc_get_all_coupons(pretty=False)
     current_time = datetime.now(timezone.utc)
@@ -140,6 +141,6 @@ def delete_expired_coupons(log_file):
                     print(str(y), ": ", z, file=deleted_coupon_log_file)
                     print(str(y), ": ", z, file=log_file)
 
-    print(f"Deleting Expired Coupons: Finished at {datetime.now():%H:%M:%S}", file=log_file)
+    print(f"Deleting Expired Coupons: Finished at {date_presets.today:%H:%M:%S}", file=log_file)
     print("-----------------------", file=log_file)
 

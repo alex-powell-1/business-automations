@@ -14,7 +14,7 @@ rc_1_body = ("Thanks for shopping with us yesterday! "
 # 3 Days after initial purchase - sends MMS Message with coupon and custom expiration date based on last purchase date.
 rc_2_descr = "Returning Customer Message 2: MMS Coupon"
 rc_2_body = (f"Don't forget! You've got a {company_name} coupon for $5 off your next $30 purchase. "
-             f"It expires on {coupon_expiration_day_3}. ")
+             f"It expires on {coupon_expiration_day_3:%x}. ")
 rc_2_image = five_off_coupon
 
 # MESSAGE 3

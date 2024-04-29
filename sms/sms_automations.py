@@ -34,6 +34,9 @@ def create_customer_text(query, msg_descr, msg, detail_log, general_log, rewards
                                   "No messages to send today.", log_location=detail_log)
 
     for x in customer_list:
+        # Reset rewards message
+        rewards_msg = ""
+        # Create customer object
         cust = Customer(x)
         cust_no = cust.number
         to_phone = cust.phone_1
@@ -41,11 +44,13 @@ def create_customer_text(query, msg_descr, msg, detail_log, general_log, rewards
         reward_points = cust.rewards_points_balance
 
         # Check if they have rewards points.
+
         if reward_points > 0 and send_rwd_bal:
             rewards_msg = f"\nYour reward balance: ${reward_points}"
 
         message = (prefix + random.choice(salutations.greeting) + first_name + "! " +
                    msg + random.choice(salutations.farewell) + rewards_msg)
+
         # Send Text
         print(f"Sending Message to {cust.name}", file=general_log)
         engine = SMSEngine()
@@ -60,8 +65,8 @@ def remove_wholesale_from_loyalty(log_file):
 
     query = """
     UPDATE AR_CUST
-    SET LOY_PGM_COD = NULL, LOY_PTS_BAL = '0', LOY_CARD_NO = 'VOID'
-    WHERE CATEG_COD = 'WHOLESALE', SET LOY_PTS_BAL = '0'
+    SET LOY_PGM_COD = NULL, LOY_PTS_BAL = '0', LOY_CARD_NO = 'VOID', LST_MAINT_DT = GETDATE()
+    WHERE CATEG_COD = 'WHOLESALE'
     """
     db.query_db(query, commit=True)
 

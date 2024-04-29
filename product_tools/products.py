@@ -1,6 +1,6 @@
 from big_commerce.big_products import *
 from setup.create_log import *
-from setup.date_presets import *
+from setup import date_presets
 from setup.query_engine import QueryEngine
 
 db = QueryEngine()
@@ -199,106 +199,6 @@ class Product:
         else:
             return "Not a bound product"
 
-    # def update_product_on_big_commerce(self):
-    #     variant_list = "MORE WORK HERE FUNCTION NEEDED"
-    #     product_id = "MORE WORK HERE - FUNCTION NEEDED"
-    #     payload = f"""{
-    #     "name": {self.web_title},
-    #         "type": "physical",
-    #         "sku": {self.item_no},
-    #         "description": {self.web_description},
-    #         "weight": 0,
-    #         "width": 0,
-    #         "depth": 0,
-    #         "height": 0,
-    #         "price": {self.price_1},
-    #         "cost_price": 0,
-    #         "retail_price": {self.price_1},
-    #         "sale_price": {self.price_2},
-    #         "map_price": 0,
-    #         "tax_class_id": 255 GET FROM BIG,
-    #         "product_tax_code": "string" GET FROM BIG,
-    #         "categories": [
-    #         0 GET FROM BIG
-    #         ],
-    #         "brand_id": 1000000000 GET FROM BIG,
-    #         "brand_name": {self.brand},
-    #         "inventory_level": {self.buffered_quantity_available},
-    #         "inventory_warning_level": 5,
-    #         "inventory_tracking": "none",
-    #         "fixed_cost_shipping_price": 0.1,
-    #         "is_free_shipping": true,
-    #         "is_visible": {"true" if self.web_visible == 'Y' else "false"},
-    #         "is_featured": {"true" if self.featured == 'Y' else "false"},
-    #         "related_products": [
-    #         0
-    #         ],
-    #         "warranty": "",
-    #         "bin_picking_number": "",
-    #         "layout_file": "",
-    #         "upc": "string",
-    #         "search_keywords": {self.search_key},
-    #         "availability_description": {self.availability_description},
-    #         "availability": "available",
-    #         "gift_wrapping_options_type": "any",
-    #         "gift_wrapping_options_list": [
-    #         0
-    #         ],
-    #         "sort_order": {self.sort_order},
-    #         "condition": "New",
-    #         "is_condition_shown": true,
-    #         "order_quantity_minimum": 1,
-    #         "order_quantity_maximum": 1000,
-    #         "page_title": {self.web_title},
-    #         "meta_description": {self.meta_description},
-    #         "view_count": 3000,
-    #         "preorder_release_date": "2019-08-24T14:15:22Z",
-    #         "preorder_message": "string",
-    #         "is_preorder_only": false,
-    #         "is_price_hidden": false,
-    #         "price_hidden_label": "string",
-    #         "custom_url": {
-    #     "url": {self.custom_url},
-    #             "is_customized": true
-    #         },
-    #         "open_graph_type": "product",
-    #         "open_graph_title": "string",
-    #         "open_graph_description": "string",
-    #         "open_graph_use_meta_description": true,
-    #         "open_graph_use_product_name": true,
-    #         "open_graph_use_image": true,
-    #         "custom_fields": [
-    #         {
-    #     "id": 6,
-    #             "name": "ISBN",
-    #             "value": "1234567890123"
-    #             }
-    #         ],
-    #         "bulk_pricing_rules": [
-    #             {
-    #     "quantity_min": 10,
-    #                 "quantity_max": 50,
-    #                 "type": "price",
-    #                 "amount": 10
-    #             }
-    #         ],
-    #         "images": [
-    #             {
-    #     "image_file": "string",
-    #                 "is_thumbnail": true,
-    #                 "sort_order": -2147483648,
-    #                 "description": "string",
-    #                 "image_url": "string",
-    #                 "id": 0,
-    #                 "product_id": 0,
-    #                 "date_modified": "2019-08-24T14:15:22Z"
-    #             }
-    #         ],
-    #         "variants": {variant_list}
-    #     }
-    #         """
-    #     bc_update_product(product_id, payload)
-
     def get_product_id(self):
         if self.binding_key is not None:
             query = f"""
@@ -333,7 +233,7 @@ class Product:
         else:
             query = f"""
             UPDATE IM_ITEM
-            SET PROF_NO_1 = '{buffer}', LST_MAINT_DT = '{str(datetime.now())[:-6] + "000"}'
+            SET PROF_NO_1 = '{buffer}', LST_MAINT_DT = 'GETDATE()'
             WHERE ITEM_NO = '{self.item_no}'"""
             # Update SQL Table
             db.query_db(query, commit=True)
@@ -378,7 +278,7 @@ class Product:
         else:
             query = f"""
             UPDATE IM_ITEM
-            SET USR_PROF_ALPHA_27 = '{target_sort_order}', LST_MAINT_DT = '{str(datetime.now())[:-6] + "000"}'
+            SET USR_PROF_ALPHA_27 = '{target_sort_order}', LST_MAINT_DT = 'GETDATE()'
             WHERE ITEM_NO = '{self.item_no}'
             """
             db.query_db(query, commit=True)
@@ -412,17 +312,17 @@ class Product:
                                    status_2_data=f"Item: {self.item_no} sort order failed to update.",
                                    log_location=creds.sort_order_log)
 
-    def set_featured(self, status):
+    def set_featured(self, status, log_file):
         if self.binding_key is None:
             query = f"""
             UPDATE IM_ITEM
-            SET ECOMM_NEW = '{status}', LST_MAINT_DT = '{str(datetime.now())[:-6] + "000"}'
+            SET ECOMM_NEW = '{status}', LST_MAINT_DT = 'GETDATE()'
             WHERE ITEM_NO = '{self.item_no}'
             """
         else:
             query = f"""
             UPDATE IM_ITEM
-            SET ECOMM_NEW = '{status}', LST_MAINT_DT = '{str(datetime.now())[:-6] + "000"}'
+            SET ECOMM_NEW = '{status}', LST_MAINT_DT = 'GETDATE()'
             WHERE USR_PROF_ALPHA_16 = '{self.binding_key}' AND IS_ADM_TKT = 'Y'
             """
         db.query_db(query, commit=True)
@@ -431,7 +331,7 @@ class Product:
         if status == 'Y':
             # Check if write was successful
             if self.featured == 'Y':
-                print(f"Item: {self.item_no} updated to featured")
+                print(f"Item: {self.item_no} updated to featured", file=log_file)
                 # Write Success Log
                 create_product_log(item_no=self.item_no,
                                    product_name=self.long_descr,
@@ -443,7 +343,7 @@ class Product:
                                    log_location=creds.featured_products)
             # If Unsuccessful
             else:
-                print(f"Item: {self.item_no} failed to update to featured")
+                print(f"Item: {self.item_no} failed to update to featured", file=log_file)
                 # Write failure Log
                 create_product_log(item_no=self.item_no,
                                    product_name=self.long_descr,
@@ -455,7 +355,7 @@ class Product:
                                    log_location=creds.featured_products)
         else:
             if self.featured == 'N':
-                print(f"Item: {self.item_no} updated to NOT featured")
+                print(f"Item: {self.item_no} updated to NOT featured", file=log_file)
                 # Write Success Log
                 create_product_log(item_no=self.item_no,
                                    product_name=self.long_descr,
@@ -479,8 +379,8 @@ class Product:
     def get_top_child_product(self):
         """Get Top Performing child product of merged product (by sales in last year window)"""
         from reporting.product_reports import create_top_items_report
-        top_child = create_top_items_report(beginning_date=one_year_ago,
-                                            ending_date=last_year_forecast,
+        top_child = create_top_items_report(beginning_date=date_presets.one_year_ago,
+                                            ending_date=date_presets.last_year_forecast,
                                             merged=True,
                                             binding_id=self.binding_key,
                                             number_of_items=1,
@@ -682,8 +582,8 @@ def get_items_with_no_sales_history():
     from reporting.product_reports import create_top_items_report
     all_ecomm_items = get_ecomm_items(mode=2)
     top_ecomm_items = create_top_items_report(
-        beginning_date=one_year_ago,
-        ending_date=last_year_forecast,
+        beginning_date=date_presets.one_year_ago,
+        ending_date=date_presets.last_year_forecast,
         mode="sales",
         number_of_items=get_ecomm_items(mode=1),
         return_format=3)
@@ -699,7 +599,7 @@ def get_new_items(start_date, end_date, min_price):
     SELECT ITEM.ITEM_NO
     FROM PO_RECVR_HIST_LIN REC
     INNER JOIN IM_ITEM ITEM ON ITEM.ITEM_NO = REC.ITEM_NO
-    WHERE RECVR_DAT >= '{start_date} 00:00:00.000' and RECVR_DAT <= '{end_date} 00:00:00.000' 
+    WHERE RECVR_DAT >= '{start_date}' and RECVR_DAT <= '{end_date}' 
     AND ITEM.PRC_1 >= '{min_price}'
     ORDER BY RECVR_DAT DESC
     """
@@ -736,7 +636,7 @@ def get_qty_sold_all_items():
 
 def update_total_sold(log_file):
     """Update Big Commerce with 'total_sold' amounts"""
-    print(f"Update Total Sold on Big Commerce: Starting at {datetime.now():%H:%M:%S}", file=log_file)
+    print(f"Update Total Sold on Big Commerce: Starting at {date_presets.today:%H:%M:%S}", file=log_file)
     ecomm_items = get_ecomm_items(mode=3)
     binding_ids = get_binding_ids()
     qty_sold_all_items = get_qty_sold_all_items()
@@ -748,6 +648,7 @@ def update_total_sold(log_file):
             if sku in binding_ids:
                 # Get all children
                 child_skus = get_all_child_products(sku)
+
                 # Calculate told sold all children
                 total_sold_all_children = 0
                 for y in child_skus:
@@ -758,7 +659,7 @@ def update_total_sold(log_file):
                     bc_update_product(product_id, {"total_sold": total_sold_all_children})
                     print(f"#{count}/{len(ecomm_items)} Updated Item: {sku} to "
                           f"Total Sold: {total_sold_all_children}", file=log_file)
-                    count += 1
+
             else:
                 if sku in qty_sold_all_items:
                     total_sold = qty_sold_all_items[sku]
@@ -766,9 +667,9 @@ def update_total_sold(log_file):
                         bc_update_product(product_id, {"total_sold": total_sold})
                         print(f"#{count}/{len(ecomm_items)} Updated Item: {sku} to Total Sold: {total_sold}",
                               file=log_file)
-                        count += 1
+            count += 1
 
-    print(f"Update Total Sold on Big Commerce: Completed at {datetime.now():%H:%M:%S}", file=log_file)
+    print(f"Update Total Sold on Big Commerce: Completed at {date_presets.today:%H:%M:%S}", file=log_file)
     print("-----------------------", file=log_file)
 
 

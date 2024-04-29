@@ -59,7 +59,7 @@ css = """
         }
         
         p {
-            margin: 5px 0px 10px 0px;
+            margin: 5px 0px 15px 0px;
         }
 
         .rank {
