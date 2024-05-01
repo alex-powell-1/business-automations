@@ -316,13 +316,13 @@ class Product:
         if self.binding_key is None:
             query = f"""
             UPDATE IM_ITEM
-            SET ECOMM_NEW = '{status}', LST_MAINT_DT = 'GETDATE()'
+            SET ECOMM_NEW = '{status}', LST_MAINT_DT = GETDATE()
             WHERE ITEM_NO = '{self.item_no}'
             """
         else:
             query = f"""
             UPDATE IM_ITEM
-            SET ECOMM_NEW = '{status}', LST_MAINT_DT = 'GETDATE()'
+            SET ECOMM_NEW = '{status}', LST_MAINT_DT = GETDATE()
             WHERE USR_PROF_ALPHA_16 = '{self.binding_key}' AND IS_ADM_TKT = 'Y'
             """
         db.query_db(query, commit=True)

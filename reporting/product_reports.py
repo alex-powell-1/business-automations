@@ -185,7 +185,7 @@ def create_top_items_report(beginning_date, ending_date, mode="sales", merged=Fa
         'select VI_PS_TKT_HIST_LIN.ITEM_NO as GRP_ID, %HISTCOLUMNS%
         from %HISTORY%
         where ( (1=1) ) and (({category_var})) and %PERIODFILTER%', '
-        (VI_PS_TKT_HIST.POST_DAT >= ''{beginning_date:%Y-%m-%d}'') and (VI_PS_TKT_HIST.POST_DAT <= ''{ending_date:%Y-%m-%d}'')', '
+        (VI_PS_TKT_HIST.POST_DAT >= ''{beginning_date}'') and (VI_PS_TKT_HIST.POST_DAT <= ''{ending_date}'')', '
         (1=0) ', ' (1=0) ', {number_of_items}, 0, '{rank_filter}', 2
         """
 
@@ -734,9 +734,11 @@ def report_generator(revenue=False, last_week_report=False, mtd_month_report=Fal
             if day_of_week > 1:
                 report += f"\n<h4><strong>Yesterday's Total Revenue</strong></h4>"
                 report += revenue_sales_report(
-                    start_date=f"{yesterday:%Y-%m-%d}",
-                    stop_date=f"{yesterday:%Y-%m-%d}",
+                    start_date=yesterday,
+                    stop_date=yesterday,
                     split=False, anna_mode=True)
+
+            # For Monday. This will send Saturday's data instead of closed day, Sunday.
             elif day_of_week == 1:
                 saturday = yesterday + relativedelta(days=-1)
                 report += f"\n<h4><strong>Saturday's Total Revenue</strong></h4>"
@@ -848,7 +850,7 @@ def report_generator(revenue=False, last_week_report=False, mtd_month_report=Fal
 
     if last_week_report:
         section_header = (f"\n<h2><strong>Last Week Report</strong></h2>"
-                          f"\n<h5>{last_week_start:{date_format}} - {last_week_start:{date_format}}</h5>")
+                          f"\n<h5>{last_week_start:{date_format}} - {last_week_end:{date_format}}</h5>")
         report += section_header
         try:
             forecast_top_10_by_sales = create_top_items_report(last_week_start, last_week_end, "sales")
@@ -874,7 +876,7 @@ def report_generator(revenue=False, last_week_report=False, mtd_month_report=Fal
 
     if last_year_mtd_report:
         section_header = (f"\n<h2><strong>Last Year Month to Date Report</strong></h2>"
-                          f"\n<h5>{month_start_last_year:{date_format}} - {yesterday:{date_format}}</h5>")
+                          f"\n<h5>{month_start_last_year:{date_format}} - {one_year_ago:{date_format}}</h5>")
         report += section_header
         try:
             forecast_top_10_by_sales = create_top_items_report(month_start_last_year, one_year_ago, "sales")
@@ -887,7 +889,7 @@ def report_generator(revenue=False, last_week_report=False, mtd_month_report=Fal
 
     if forecasting_report:
         section_header = (f"\n<h2><strong>{forecast_days} Days Forecasting Report</strong></h2>"
-                          f"\n<h5>{one_year_ago:{date_format}} - {last_year_forecast:{last_week_end}}</h5>")
+                          f"\n<h5>{one_year_ago:{date_format}} - {last_year_forecast:{date_format}}</h5>")
         report += section_header
         try:
             forecast_top_10_by_sales = create_top_items_report(one_year_ago, last_year_forecast, "sales")
@@ -900,7 +902,7 @@ def report_generator(revenue=False, last_week_report=False, mtd_month_report=Fal
 
     if low_stock_items_report:
         section_header = (f"\n<h2><strong>Top {number_of_low_stock_items} Revenue Items with Low Stock</strong></h2>"
-                          f"\n<h5>{one_year_ago:{date_format}} - {last_year_low_stock_window:{last_week_end}}</h5>")
+                          f"\n<h5>{one_year_ago:{date_format}} - {last_year_low_stock_window:{date_format}}</h5>")
         report += section_header
         try:
             report += get_low_stock_items(number_of_low_stock_items)

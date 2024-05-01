@@ -126,57 +126,57 @@ if minute == 0:
             print(err, file=log_file)
             print("-----------------------\n", file=log_file)
 
-# -----------------
-# ONE PER DAY TASKS
-# -----------------
+    # -----------------
+    # ONE PER DAY TASKS
+    # -----------------
 
-# 2 AM TASKS
-if hour == 2:
-    # BEST SELLERS
-    # Update Big Commerce with "total_sold" for all ecommerce items. This lets customers
-    # Sort search results by "Best Sellers" with accurate information
-    # Runs at 2AM and takes approx. 15 minutes
-    try:
-        related_items.update_total_sold(log_file)
-    except Exception as err:
-        print("Error: Update Total Sold", file=log_file)
-        print(err, file=log_file)
-        print("-----------------------\n", file=log_file)
+    # 2 AM TASKS
+    if hour == 2:
+        # BEST SELLERS
+        # Update Big Commerce with "total_sold" for all ecommerce items. This lets customers
+        # Sort search results by "Best Sellers" with accurate information
+        # Runs at 2AM and takes approx. 15 minutes
+        try:
+            related_items.update_total_sold(log_file)
+        except Exception as err:
+            print("Error: Update Total Sold", file=log_file)
+            print(err, file=log_file)
+            print("-----------------------\n", file=log_file)
 
-    # RELATED ITEMS
-    # Update Big Commerce with related items for each product.
-    # Gives products popular amendments and products per category during
-    # Same time last year
-    try:
-        related_items.set_related_items_by_category(log_file)
-    except Exception as err:
-        print("Error:Related Items", file=log_file)
-        print(err, file=log_file)
-        print("-----------------------\n", file=log_file)
+        # RELATED ITEMS
+        # Update Big Commerce with related items for each product.
+        # Gives products popular amendments and products per category during
+        # Same time last year
+        try:
+            related_items.set_related_items_by_category(log_file)
+        except Exception as err:
+            print("Error:Related Items", file=log_file)
+            print(err, file=log_file)
+            print("-----------------------\n", file=log_file)
 
-# 4 AM TASKS
-if hour == 4:
-    # ALWAYS ONLINE
-    # Set Always Online status for top performing items
-    try:
-        always_online.set_always_online(log_file=log_file,
-                                        item_list=always_online.get_top_items(start_date=date_presets.last_year_start,
-                                                                              end_date=date_presets.today,
-                                                                              number_of_items=200))
-    except Exception as err:
-        print("Error: Always Online Status", file=log_file)
-        print(err, file=log_file)
-        print("-----------------------\n", file=log_file)
+    # 4 AM TASKS
+    if hour == 4:
+        # ALWAYS ONLINE
+        # Set Always Online status for top performing items
+        try:
+            always_online.set_always_online(log_file=log_file,
+                                            item_list=always_online.get_top_items(start_date=date_presets.last_year_start,
+                                                                                  end_date=date_presets.today,
+                                                                                  number_of_items=200))
+        except Exception as err:
+            print("Error: Always Online Status", file=log_file)
+            print(err, file=log_file)
+            print("-----------------------\n", file=log_file)
 
-    # SORT ORDER BY PREDICTED REVENUE
-    # Update Sort Order for all product_tools at 4AM.
-    # Uses revenue data from same period last year as a predictive method of rank importance.
-    try:
-        sort_order.sort_order_engine(log_file)
-    except Exception as err:
-        print("Error: Sort Order", file=log_file)
-        print(err, file=log_file)
-        print("-----------------------\n", file=log_file)
+        # SORT ORDER BY PREDICTED REVENUE
+        # Update Sort Order for all product_tools at 4AM.
+        # Uses revenue data from same period last year as a predictive method of rank importance.
+        try:
+            sort_order.sort_order_engine(log_file)
+        except Exception as err:
+            print("Error: Sort Order", file=log_file)
+            print(err, file=log_file)
+            print("-----------------------\n", file=log_file)
 
     # FEATURED PRODUCTSs
     # Update Featured Products at 4 AMs
@@ -187,25 +187,25 @@ if hour == 4:
         print(err, file=log_file)
         print("-----------------------\n", file=log_file)
 
-# 5 AM TASKS
-if hour == 5:
-    # ADMINISTRATIVE REPORT
-    # Generate report in styled html/css and email to administrative team list
-    try:
-        product_reports.administrative_report(recipients=creds.admin_team, log_file=log_file)
-    except Exception as err:
-        print("Error: Administrative Report", file=log_file)
-        print(err, file=log_file)
-        print("-----------------------\n", file=log_file)
+    # 5 AM TASKS
+    if hour == 5:
+        # ADMINISTRATIVE REPORT
+        # Generate report in styled html/css and email to administrative team list
+        try:
+            product_reports.administrative_report(recipients=creds.admin_team, log_file=log_file)
+        except Exception as err:
+            print("Error: Administrative Report", file=log_file)
+            print(err, file=log_file)
+            print("-----------------------\n", file=log_file)
 
-    # ITEMS REPORT
-    # For product management team
-    try:
-        report_builder.item_report(recipient=creds.admin_team, log_file=log_file)
-    except Exception as err:
-        print("Error: Administrative Report", file=log_file)
-        print(err, file=log_file)
-        print("-----------------------\n", file=log_file)
+        # ITEMS REPORT
+        # For product management team
+        try:
+            report_builder.item_report(recipient=creds.admin_team, log_file=log_file)
+        except Exception as err:
+            print("Error: Administrative Report", file=log_file)
+            print(err, file=log_file)
+            print("-----------------------\n", file=log_file)
 
     # REVENUE REPORT
     # sent to accounting department

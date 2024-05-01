@@ -4,8 +4,9 @@ from setup import date_presets
 
 
 def update_featured_items(log_file):
-    print(f"Featured Items: Starting at {date_presets.today:%H:%M:%S}", file=log_file)
+    print(f"Featured Items: Starting at {datetime.now():%H:%M:%S}", file=log_file)
     count = 0
+
     top_items = create_top_items_report(beginning_date=date_presets.one_year_ago,
                                         ending_date=date_presets.last_year_forecast,
                                         mode="sales", return_format=3)

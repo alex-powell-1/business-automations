@@ -152,7 +152,7 @@ def set_ecommerce_flags():
     print(f"E-Commerce Flags: Starting at {datetime.now()}")
     remove_web_enabled_flags()
     add_ecomm_flags()
-    print(f"E-Commerce Flags: Completed at {datetime.now()}\n")
+    print(f"E-Commerce Flags: Completed at {datetime.now():%H:%M:%S}\n")
 
 
 def remove_ecommerce_flags_from_merged_items():
