@@ -80,10 +80,11 @@ def create_new_customers(log_file):
         today_entries = []
 
         for x in entries:
-            if x['date'][:10] == today:
+            if x['date'][:10] == str(today):
                 today_entries.append(x)
 
         if len(today_entries) > 0:
+            print("HERE")
             for x in today_entries:
                 first_name = x['first_name']
                 last_name = x['last_name']

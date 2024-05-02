@@ -4,6 +4,7 @@ import customers.stop_sms
 from analysis import web_scraping
 from big_commerce import coupons
 from customers import stock_notification
+from customers.customers import set_contact_1
 from product_tools import always_online
 from product_tools import brands
 from product_tools import featured
@@ -23,9 +24,9 @@ from sms import sms_automations
 from sms import sms_queries
 from sms.sms_messages import birthdays, first_time_customers, returning_customers, wholesale_sms_messages
 
-# # Business Automations
-# # Author: Alex Powell
-# # Description: A series of programmatic automations to serve business needs of retail and e-comm store.
+# Business Automations
+# Author: Alex Powell
+# Description: A series of programmatic automations to serve business needs of retail and e-comm store.
 
 now = datetime.now()
 day = now.day
@@ -53,6 +54,15 @@ if minute == 0 or minute == 30:
         print(err, file=log_file)
         print("-----------------------\n", file=log_file)
 
+    # SET CONTACT 1
+    # Concatenate First and Last name of non-business customers and fill contact 1 field in counterpoint (if null)
+    try:
+        customers.customers.set_contact_1(log_file)
+    except Exception as err:
+        print("Error: Contact 1", file=log_file)
+        print(err, file=log_file)
+        print("-----------------------\n", file=log_file)
+
 if minute == 0:
     # -----------------
     # EVERY HOUR TASKS
@@ -61,6 +71,7 @@ if minute == 0:
     # NETWORK CONNECTIVITY
     # Check server for internet connection. Restart is there is no connection to internet.
     network.restart_server_if_disconnected(log_file)
+
     # UPLOAD CURRENT INVENTORY STOCK LEVELS TO WEBDAV SERVER
     try:
         inventory_upload.upload_inventory(log_file)
@@ -160,9 +171,10 @@ if minute == 0:
         # Set Always Online status for top performing items
         try:
             always_online.set_always_online(log_file=log_file,
-                                            item_list=always_online.get_top_items(start_date=date_presets.last_year_start,
-                                                                                  end_date=date_presets.today,
-                                                                                  number_of_items=200))
+                                            item_list=always_online.get_top_items(
+                                                start_date=date_presets.last_year_start,
+                                                end_date=date_presets.today,
+                                                number_of_items=200))
         except Exception as err:
             print("Error: Always Online Status", file=log_file)
             print(err, file=log_file)
@@ -437,9 +449,17 @@ if hour == 21:
         print(err, file=log_file)
         print("-----------------------\n", file=log_file)
 
+    # Set customers with a negative point balance to 0
+    try:
+        customers.customers.set_negative_loyalty_points_to_zero(log_file)
+    except Exception as err:
+        print("Error: Negative Loyalty Set to Zero", file=log_file)
+        print(err, file=log_file)
+        print("-----------------------\n", file=log_file)
+
 print("-----------------------", file=log_file)
 print(f"Business Automations Complete at {datetime.now():%H:%M:%S}", file=log_file)
-print(f"Total time of operation: {(datetime.now() - now).total_seconds()}", file=log_file)
-print("-----------------------\n", file=log_file)
+print(f"Total time of operation: {(datetime.now() - now).total_seconds()} seconds", file=log_file)
+print("-----------------------\n\n\n", file=log_file)
 
 log_file.close()

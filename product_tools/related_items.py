@@ -1,6 +1,7 @@
 from product_tools.products import *
 from reporting import product_reports
 
+
 # This module will set related products for items in ecommerce store.
 
 

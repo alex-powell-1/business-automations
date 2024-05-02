@@ -1,4 +1,5 @@
 import json
+from datetime import datetime
 
 import requests
 
@@ -160,7 +161,6 @@ def get_customers_by_category(category):
     FROM AR_CUST
     WHERE CATEG_COD = '{category}' AND EMAIL_ADRS_1 IS NOT NULL
     """
-    db = QueryEngine()
     response = db.query_db(query)
     if response is not None:
         customer_list = []
@@ -234,7 +234,100 @@ def add_new_customer(first_name, last_name, phone_number,
         pretty = response.content
         pretty = json.loads(pretty)
         pretty = json.dumps(pretty, indent=4)
-        # print(pretty)
+        print(pretty)
         return response.json()['CUST_NO']
     else:
         return "Already a customer"
+
+
+def get_customers_with_negative_loyalty():
+    query = """
+    SELECT CUST_NO 
+    FROM AR_CUST
+    WHERE LOY_PTS_BAL < 0
+    """
+    response = db.query_db(query)
+
+    if response is not None:
+        target_customers = []
+        for customer in response:
+            target_customers.append(customer[0])
+        return target_customers
+
+
+def get_customers_with_no_contact_1():
+    query = """
+    SELECT CUST_NO 
+    FROM AR_CUST
+    WHERE CUST_NAM_TYP = 'p' AND
+    CONTCT_1 IS NULL AND FST_NAM != 'Change' AND LST_NAM != 'Name'
+    """
+    response = db.query_db(query)
+
+    if response is not None:
+        target_customers = []
+        for customer in response:
+            target_customers.append(customer[0])
+        return target_customers
+
+
+def set_negative_loyalty_points_to_zero(log_file):
+    print(f"Set Negative Loyalty to 0: Starting at {datetime.now():%H:%M:%S}", file=log_file)
+    target_customers = get_customers_with_negative_loyalty()
+    print(f"{len(target_customers)} Customers to Update", file=log_file)
+
+    for x in target_customers:
+        query = f"""
+        UPDATE AR_CUST
+        SET LOY_PTS_BAL = 0
+        WHERE CUST_NO = '{x}'
+        """
+        try:
+            db.query_db(query, commit=True)
+        except Exception as err:
+            print(f"Error: {x} - {err}", file=log_file)
+        else:
+            print(f"Customer {x} Updated to Loyalty Points: 0")
+
+    print(f"Set Contact 1: Finished at {datetime.now():%H:%M:%S}", file=log_file)
+    print("-----------------------", file=log_file)
+
+
+def set_contact_1(log_file):
+    """Takes first name and last name and updates contact 1 field in counterpoint"""
+    print(f"Set Contact 1: Starting at {datetime.now():%H:%M:%S}", file=log_file)
+    target_customers = get_customers_with_no_contact_1()
+    print(f"{len(target_customers)} Customers to Update", file=log_file)
+    for x in target_customers:
+        query = f"""
+        SELECT FST_NAM, LST_NAM
+        FROM AR_CUST
+        WHERE CUST_NO = '{x}'
+        """
+        response = db.query_db(query)
+
+        if response is not None:
+            for y in response:
+                first_name = y[0]
+                last_name = y[1]
+                full_name = f"{str(first_name).title()} {str(last_name).title()}"
+
+                # In SQL, we must replace single quotes with two single quotes Kim O'Hare --> Kim O''Hare
+                full_name = full_name.replace("'", "''")
+
+                # Update Customer with full name as new contact 1.
+                query = f"""
+                UPDATE AR_CUST
+                SET CONTCT_1 = '{full_name}'
+                WHERE CUST_NO = '{x}'
+                """
+                try:
+                    db.query_db(query, commit=True)
+                except Exception as err:
+                    print(f"Error: {x} - {err}", file=log_file)
+                else:
+                    print(f"Customer {x}: "
+                          f"Contact 1 updated to: {full_name.replace("''", "'")}", file=log_file)
+
+    print(f"Set Contact 1: Finished at {datetime.now():%H:%M:%S}", file=log_file)
+    print("-----------------------", file=log_file)
