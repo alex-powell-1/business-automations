@@ -28,7 +28,7 @@ def bc_create_product(name, product_type, sku, weight, price):
     return pretty_print
 
 
-def bc_update_product(product_id, payload, pretty=False):
+def bc_update_product(product_id, payload, log_file, pretty=False):
     url = f" https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/products/{product_id}"
 
     headers = {
@@ -37,15 +37,22 @@ def bc_update_product(product_id, payload, pretty=False):
         'Accept': 'application/json'
     }
 
-    response = (requests.put(url, headers=headers, json=payload))
-    if response.status_code == 200:
-        json_response = response.json()
-        if pretty:
-            pretty = response.content
-            pretty = json.loads(pretty)
-            pretty = json.dumps(pretty, indent=4)
-            return pretty
-        return json_response
+    try:
+        response = (requests.put(url, headers=headers, json=payload))
+    except Exception as err:
+        print("Error:bc_update_product()", file=log_file)
+        print(f"Payload: {payload}", file=log_file)
+        print(err, file=log_file)
+        print("-----------------------\n", file=log_file)
+    else:
+        if response.status_code == 200:
+            json_response = response.json()
+            if pretty:
+                pretty = response.content
+                pretty = json.loads(pretty)
+                pretty = json.dumps(pretty, indent=4)
+                return pretty
+            return json_response
 
 
 def bc_create_image(product_id):

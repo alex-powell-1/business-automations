@@ -138,23 +138,6 @@ class Product:
                 self.featured = x[47]
                 self.product_id = self.get_product_id()
                 self.variant_id = self.get_variant_id()
-                # ITEM URL
-                # If data already on the local server, use it
-                # if x[42] is not None:
-                #     self.item_url = x[42]
-                # else:
-                #     # Else, get live URL from API
-                #     bc_data = bc_get_product(self.product_id)
-                #     if bc_data is not None:
-                #         # Get live url from big, assign to object
-                #         self.item_url = creds.company_url + bc_data['data']['custom_url']['url']
-                #         # Store in SQL for future, faster access
-                #         query = f"""
-                #         UPDATE IM_ITEM
-                #         SET USR_PROF_ALPHA_18 = '{self.item_url}'
-                #         WHERE ITEM_NO = '{self.item_no}'
-                #         """
-                #         db.query_db(query, commit=True)
 
         else:
             return "No Item Matching that SKU"
@@ -233,7 +216,7 @@ class Product:
         else:
             query = f"""
             UPDATE IM_ITEM
-            SET PROF_NO_1 = '{buffer}', LST_MAINT_DT = 'GETDATE()'
+            SET PROF_NO_1 = '{buffer}', LST_MAINT_DT = GETDATE()
             WHERE ITEM_NO = '{self.item_no}'"""
             # Update SQL Table
             db.query_db(query, commit=True)
@@ -278,39 +261,44 @@ class Product:
         else:
             query = f"""
             UPDATE IM_ITEM
-            SET USR_PROF_ALPHA_27 = '{target_sort_order}', LST_MAINT_DT = 'GETDATE()'
+            SET USR_PROF_ALPHA_27 = '{target_sort_order}', LST_MAINT_DT = GETDATE()
             WHERE ITEM_NO = '{self.item_no}'
             """
-            db.query_db(query, commit=True)
-            self.get_product_details()
-            # Check if write was successful
-            if self.sort_order == target_sort_order:
-                # Success!
-                print(f"{self.item_no}: {self.long_descr} sort order changed from "
-                      f"{old_sort_order} to {self.sort_order}", file=log_file)
-                # Write Success Log
-                create_product_log(item_no=self.item_no,
-                                   product_name=self.long_descr,
-                                   qty_avail=self.quantity_available,
-                                   status_1_col_name="sort_order",
-                                   status_1_data=self.sort_order,
-                                   status_2_col_name="Message",
-                                   status_2_data=f"Item: {self.item_no} sort order updated from "
-                                                 f"{old_sort_order} to {self.sort_order}",
-                                   log_location=creds.sort_order_log)
-            # If unsuccessful:
+            try:
+                db.query_db(query, commit=True)
+            except Exception as err:
+                print("UPDATE Error: Set Sort Order", file=log_file)
+                print(err, file=log_file)
             else:
-                print(f"{self.item_no}: {self.long_descr} failed to change sort order to {target_sort_order}",
-                      file=log_file)
-                # Write failure log
-                create_product_log(item_no=self.item_no,
-                                   product_name=self.long_descr,
-                                   qty_avail=self.quantity_available,
-                                   status_1_col_name="sort_order",
-                                   status_1_data=self.sort_order,
-                                   status_2_col_name="Message",
-                                   status_2_data=f"Item: {self.item_no} sort order failed to update.",
-                                   log_location=creds.sort_order_log)
+                self.get_product_details()
+                # Check if write was successful
+                if self.sort_order == target_sort_order:
+                    # Success!
+                    print(f"{self.item_no}: {self.long_descr} sort order changed from "
+                          f"{old_sort_order} to {self.sort_order}", file=log_file)
+                    # Write Success Log
+                    create_product_log(item_no=self.item_no,
+                                       product_name=self.long_descr,
+                                       qty_avail=self.quantity_available,
+                                       status_1_col_name="sort_order",
+                                       status_1_data=self.sort_order,
+                                       status_2_col_name="Message",
+                                       status_2_data=f"Item: {self.item_no} sort order updated from "
+                                                     f"{old_sort_order} to {self.sort_order}",
+                                       log_location=creds.sort_order_log)
+                # If unsuccessful:
+                else:
+                    print(f"{self.item_no}: {self.long_descr} failed to change sort order to {target_sort_order}",
+                          file=log_file)
+                    # Write failure log
+                    create_product_log(item_no=self.item_no,
+                                       product_name=self.long_descr,
+                                       qty_avail=self.quantity_available,
+                                       status_1_col_name="sort_order",
+                                       status_1_data=self.sort_order,
+                                       status_2_col_name="Message",
+                                       status_2_data=f"Item: {self.item_no} sort order failed to update.",
+                                       log_location=creds.sort_order_log)
 
     def set_featured(self, status, log_file):
         if self.binding_key is None:
@@ -641,8 +629,8 @@ def update_total_sold(log_file):
     binding_ids = get_binding_ids()
     qty_sold_all_items = get_qty_sold_all_items()
     if ecomm_items is not None:
+        count = 1
         for x in ecomm_items:
-            count = 1
             sku = x[0]
             product_id = x[1]
             if sku in binding_ids:
@@ -656,15 +644,18 @@ def update_total_sold(log_file):
                         total_sold_all_children += qty_sold_all_items[y]
 
                 if total_sold_all_children > 0:
-                    bc_update_product(product_id, {"total_sold": total_sold_all_children})
+                    bc_update_product(product_id, {"total_sold": total_sold_all_children}, log_file)
                     print(f"#{count}/{len(ecomm_items)} Updated Item: {sku} to "
                           f"Total Sold: {total_sold_all_children}", file=log_file)
+                else:
+                    print(f"#{count}/{len(ecomm_items)} Skipping Item: {sku} - Never Sold!", file=log_file)
 
+            # This is for items without a valid binding key, i.e. Single Products
             else:
                 if sku in qty_sold_all_items:
                     total_sold = qty_sold_all_items[sku]
                     if total_sold > 0:
-                        bc_update_product(product_id, {"total_sold": total_sold})
+                        bc_update_product(product_id, {"total_sold": total_sold}, log_file)
                         print(f"#{count}/{len(ecomm_items)} Updated Item: {sku} to Total Sold: {total_sold}",
                               file=log_file)
             count += 1

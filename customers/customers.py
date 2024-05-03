@@ -1,5 +1,6 @@
 import json
 from datetime import datetime
+import csv
 
 import requests
 
@@ -9,28 +10,6 @@ from setup.create_log import create_customer_log
 from setup.query_engine import QueryEngine
 
 db = QueryEngine()
-
-
-def get_customer_number_by_phone(phone):
-    query = f"""
-    SELECT CUST_NO
-    FROM AR_CUST
-    WHERE PHONE_1 = '{phone}'
-    """
-    response = db.query_db(query)
-    if response is not None:
-        return response[0][0]
-
-
-def get_customer_number_by_email(email):
-    query = f"""
-    SELECT CUST_NO
-    FROM AR_CUST
-    WHERE EMAIL_ADRS_1 = '{email}'
-    """
-    response = db.query_db(query)
-    if response is not None:
-        return response[0][0]
 
 
 class Customer:
@@ -130,7 +109,7 @@ class Customer:
     def unsubscribe_from_sms(self):
         query = f"""
         UPDATE AR_CUST
-        SET INCLUDE_IN_MARKETING_MAILOUTS = 'N', LST_MAINT_DT = 'GETDATE()'
+        SET INCLUDE_IN_MARKETING_MAILOUTS = 'N', LST_MAINT_DT = GETDATE()
         WHERE CUST_NO = '{self.number}'
         """
         db.query_db(query, commit=True)
@@ -146,13 +125,130 @@ class Customer:
     def subscribe_to_sms(self):
         query = f"""
         UPDATE AR_CUST
-        SET INCLUDE_IN_MARKETING_MAILOUTS = 'Y', LST_MAINT_DT = 'GETDATE()'
+        SET INCLUDE_IN_MARKETING_MAILOUTS = 'Y', LST_MAINT_DT = GETDATE()
         WHERE CUST_NO = '{self.number}'
         """
         db.query_db(query, commit=True)
 
     def get_total_spent(self, start_date, stop_date):
         pass
+
+
+# --------------------------------------------
+def export_retail_customer_csv(log_file):
+    retail_query = """
+    SELECT CUST_NO, FST_NAM, LST_NAM, EMAIL_ADRS_1, PHONE_1, PROF_COD_2, LOY_PTS_BAL 
+    FROM AR_CUST 
+    WHERE EMAIL_ADRS_1 IS NOT NULL AND CATEG_COD = 'RETAIL'
+    """
+
+    try:
+        print("Getting retail customer data from SQL", file=log_file)
+        response = db.query_db(retail_query)
+    except Exception as err:
+        print("Error: Retail Customer SQL Query", file=log_file)
+        print(err, file=log_file)
+        print("-----------------------\n", file=log_file)
+    else:
+        if response is None:
+            print("No Retail Data", file=log_file)
+        else:
+            header_list = ['Customer Number', 'First Name', 'Last Name', 'Email Address',
+                           'Phone - home', 'Birth Month', 'Point Balance']
+
+            open(creds.retail_customer_backup, 'w')
+            export_file = open(creds.retail_customer_backup, 'a')
+            w = csv.writer(export_file)
+
+            w.writerow(header_list)
+
+            for x in response:
+                customer_number = x[0]
+                first_name = x[1]
+                last_name = x[2]
+                email_address = x[3]
+                phone = x[4]
+                # Change nulls to empty string
+                birth_month = int(x[5]) if x[5] is not None else ""
+                # Change nulls to 0. Change Negative Numbers to 0
+                point_balance = int(x[6]) if x[6] is not None or int(x[6]) >= 0 else 0
+
+                w.writerow([customer_number, first_name, last_name, email_address, phone, birth_month, point_balance])
+
+            export_file.close()
+    finally:
+        print("Retail Export Complete")
+
+
+def export_wholesale_customer_csv(log_file):
+    retail_query = """
+    SELECT CUST_NO, FST_NAM, LST_NAM, EMAIL_ADRS_1, PHONE_1
+    FROM AR_CUST 
+    WHERE EMAIL_ADRS_1 IS NOT NULL AND CATEG_COD = 'RETAIL'
+    """
+
+    try:
+        print("Getting wholesale customer data from SQL", file=log_file)
+        response = db.query_db(retail_query)
+    except Exception as err:
+        print("Error: Retail Customer SQL Query", file=log_file)
+        print(err, file=log_file)
+        print("-----------------------\n", file=log_file)
+    else:
+        if response is None:
+            print("No Wholesale Data", file=log_file)
+        else:
+            header_list = ['Customer Number', 'First Name', 'Last Name', 'Email Address',
+                           'Phone Number']
+
+            open(creds.wholesale_customer_backup, 'w')
+            export_file = open(creds.wholesale_customer_backup, 'a')
+            w = csv.writer(export_file)
+
+            w.writerow(header_list)
+
+            for x in response:
+                customer_number = x[0]
+                first_name = x[1]
+                last_name = x[2]
+                email_address = x[3]
+                phone = x[4]
+
+                w.writerow([customer_number, first_name, last_name, email_address, phone, birth_month, point_balance])
+
+            export_file.close()
+    finally:
+        print("Wholesale Export Complete")
+
+
+def export_customers_to_csv(log_file):
+    print(f"Customer Export: Starting at {datetime.now():%H:%M:%S}", file=log_file)
+    export_retail_customer_csv(log_file)
+    export_wholesale_customer_csv(log_file)
+    print(f"Customer Export: Finished at {datetime.now():%H:%M:%S}", file=log_file)
+    print("-----------------------", file=log_file)
+
+
+def get_customer_number_by_phone(phone):
+    query = f"""
+    SELECT CUST_NO
+    FROM AR_CUST
+    WHERE PHONE_1 = '{phone}'
+    """
+    response = db.query_db(query)
+    if response is not None:
+        return response[0][0]
+
+
+def get_customer_number_by_email(email):
+    query = f"""
+    SELECT CUST_NO
+    FROM AR_CUST
+    WHERE EMAIL_ADRS_1 = '{email}'
+    """
+    response = db.query_db(query)
+    if response is not None:
+        return response[0][0]
 
 
 def get_customers_by_category(category):

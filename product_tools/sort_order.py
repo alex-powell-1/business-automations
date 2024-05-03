@@ -158,7 +158,7 @@ def sort_order_engine(log_file):
             try:
                 item.set_sort_order(log_file=log_file)
             except Error:
-                print(f"Error {y}/{max_retries}", file=log_file)
+                print(f"Singled Item Error {y}/{max_retries}", file=log_file)
                 y += 1
             else:
                 x += 1
@@ -171,7 +171,7 @@ def sort_order_engine(log_file):
                     try:
                         item.set_sort_order(log_file=log_file)
                     except Error:
-                        print(f"Error {y}/{max_retries}", file=log_file)
+                        print(f"Merged Product Error {y}/{max_retries}", file=log_file)
                         y += 1
                     else:
                         x += 1

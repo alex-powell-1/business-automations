@@ -10,7 +10,7 @@ def set_availability_text():
     print("Setting Availability Text: Ready for pickup in 1-2 business hours.")
     query = f"""
     UPDATE IM_ITEM
-    SET USR_PROF_ALPHA_20 = '{text}', LST_MAINT_DT = 'GETDATE()'
+    SET USR_PROF_ALPHA_20 = '{text}', LST_MAINT_DT = GETDATE()
     WHERE USR_PROF_ALPHA_20 IS NULL
     AND IS_ECOMM_ITEM = 'Y'
     """

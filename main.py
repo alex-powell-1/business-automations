@@ -23,6 +23,7 @@ from setup import network
 from sms import sms_automations
 from sms import sms_queries
 from sms.sms_messages import birthdays, first_time_customers, returning_customers, wholesale_sms_messages
+from utilities import backups
 
 # Business Automations
 # Author: Alex Powell
@@ -137,6 +138,14 @@ if minute == 0:
             print(err, file=log_file)
             print("-----------------------\n", file=log_file)
 
+        # Customer Export for Use in Constant Contact Campaigns
+        try:
+            customers.customers.export_customers_to_csv(log_file)
+        except Exception as err:
+            print("Error: Customer Export To CSV", file=log_file)
+            print(err, file=log_file)
+            print("-----------------------\n", file=log_file)
+
     # -----------------
     # ONE PER DAY TASKS
     # -----------------
@@ -190,14 +199,14 @@ if minute == 0:
             print(err, file=log_file)
             print("-----------------------\n", file=log_file)
 
-    # FEATURED PRODUCTSs
-    # Update Featured Products at 4 AMs
-    try:
-        featured.update_featured_items(log_file)
-    except Exception as err:
-        print("Error: Featured Products", file=log_file)
-        print(err, file=log_file)
-        print("-----------------------\n", file=log_file)
+        # FEATURED PRODUCTSs
+        # Update Featured Products at 4 AMs
+        try:
+            featured.update_featured_items(log_file)
+        except Exception as err:
+            print("Error: Featured Products", file=log_file)
+            print(err, file=log_file)
+            print("-----------------------\n", file=log_file)
 
     # 5 AM TASKS
     if hour == 5:
@@ -456,6 +465,11 @@ if hour == 21:
         print("Error: Negative Loyalty Set to Zero", file=log_file)
         print(err, file=log_file)
         print("-----------------------\n", file=log_file)
+
+if hour == 22 and minute == 30:
+    # Nightly Off-Site Backups
+    # Will copy critical files to off-site location
+    backups.offsite_backups(log_file)
 
 print("-----------------------", file=log_file)
 print(f"Business Automations Complete at {datetime.now():%H:%M:%S}", file=log_file)

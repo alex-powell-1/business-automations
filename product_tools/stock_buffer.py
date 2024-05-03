@@ -16,7 +16,7 @@ def set_stock_buffer_by_vendor(buffer: int, db_filter: str, filter_input: str, o
 
     query = f"""
     UPDATE IM_ITEM
-    SET PROF_NO_1 = '{buffer}', LST_MAINT_DT = 'GETDATE()'
+    SET PROF_NO_1 = '{buffer}', LST_MAINT_DT = GETDATE()
     WHERE {db_filter} = '{filter_input}' {nulls}
     """
     db.query_db(query, commit=True)

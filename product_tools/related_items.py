@@ -56,7 +56,7 @@ def set_related_items_by_category(log_file):
             count = 1
             if products is not None:
                 for z in products:
-                    bc_update_product(get_bc_product_id(z), payload=payload)
+                    bc_update_product(get_bc_product_id(z), payload=payload, log_file=log_file)
                     print(f"Cat: {x}, {count}/{len(products)}, Updated Item: {z}", file=log_file)
                     count += 1
 
