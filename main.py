@@ -228,15 +228,15 @@ if minute == 0:
             print(err, file=log_file)
             print("-----------------------\n", file=log_file)
 
-    # REVENUE REPORT
-    # sent to accounting department
-    if datetime.today().isoweekday() == 7:  # only on Sunday
-        try:
-            product_reports.revenue_report(recipients=creds.flash_sales_recipients, log_file=log_file)
-        except Exception as err:
-            print("Error: Revenue Report", file=log_file)
-            print(err, file=log_file)
-            print("-----------------------\n", file=log_file)
+        # REVENUE REPORT
+        # sent to accounting department
+        if datetime.today().isoweekday() == 7:  # only on Sunday
+            try:
+                product_reports.revenue_report(recipients=creds.flash_sales_recipients, log_file=log_file)
+            except Exception as err:
+                print("Error: Revenue Report", file=log_file)
+                print(err, file=log_file)
+                print("-----------------------\n", file=log_file)
 
 if hour == 7:
     # Customer Followup Email to Sales Team
