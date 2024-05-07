@@ -4,6 +4,7 @@ from setup import date_presets
 
 
 def update_featured_items(log_file):
+    """Sets top 15 items (this time last year) to featured"""
     print(f"Featured Items: Starting at {datetime.now():%H:%M:%S}", file=log_file)
     count = 0
 

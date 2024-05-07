@@ -92,6 +92,7 @@ def remove_refunds_from_sms_funnel(log_file):
             ORDER BY hist.BUS_DAT DESC   
             """
             response = db.query_db(query)
+
             # If Customer has sales history prior to this event
             if response is not None:
                 for x in response:
@@ -102,6 +103,7 @@ def remove_refunds_from_sms_funnel(log_file):
                         # Print most recent timestamp of completed ticket
                         most_recent_timestamp = x[0]
                         break
+
                 # Set Customer LST_SAL_DAT to most recent time stamp
                 query = f"""
                 UPDATE AR_CUST
