@@ -214,7 +214,7 @@ def export_wholesale_customer_csv(log_file):
                 email_address = x[3]
                 phone = x[4]
 
-                w.writerow([customer_number, first_name, last_name, email_address, phone, birth_month, point_balance])
+                w.writerow([customer_number, first_name, last_name, email_address, phone])
 
             export_file.close()
     finally:
