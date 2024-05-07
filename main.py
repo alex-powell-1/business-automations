@@ -37,6 +37,8 @@ minute = now.minute
 sms_test_mode = False  # if true, will only write generated messages write to logs
 sms_test_customer = False  # if true, will only send to single employee for testing
 
+errors = 0
+
 log_file = open(creds.business_automation_log, "a")
 
 print("-----------------------", file=log_file)
@@ -51,6 +53,7 @@ if minute == 0 or minute == 30:
     try:
         lead_generator_notification.create_new_customers(log_file)
     except Exception as err:
+        errors += 1
         print("Error: New Customer Creation", file=log_file)
         print(err, file=log_file)
         print("-----------------------\n", file=log_file)
@@ -60,6 +63,7 @@ if minute == 0 or minute == 30:
     try:
         customers.customers.set_contact_1(log_file)
     except Exception as err:
+        errors += 1
         print("Error: Contact 1", file=log_file)
         print(err, file=log_file)
         print("-----------------------\n", file=log_file)
@@ -77,6 +81,7 @@ if minute == 0:
     try:
         inventory_upload.upload_inventory(log_file)
     except Exception as err:
+        errors += 1
         print("Error: Inventory Upload", file=log_file)
         print(err, file=log_file)
         print("-----------------------\n", file=log_file)
@@ -92,6 +97,7 @@ if minute == 0:
     try:
         resize_photos.resize_photos(creds.photo_path, log_file, mode="big")
     except Exception as err:
+        errors += 1
         print("Error: Photo Resizing/Reformatting", file=log_file)
         print(err, file=log_file)
         print("-----------------------\n", file=log_file)
@@ -99,13 +105,15 @@ if minute == 0:
     # ----------------------
     # EVERY OTHER HOUR TASKS
     # ----------------------
-    if hour % 2 == 0:
+    # Between 6 AM and 8 PM - Performed on even hours
+    if 20 >= hour >= 6 and hour % 2 == 0:
         # ITEM STATUS CODES
         # Move active product_tools with zero stock into inactive status
         # unless they are on order, hold, quote
         try:
             set_inactive_status.set_products_to_inactive(log_file)
         except Exception as err:
+            errors += 1
             print("Error: Item Status Codes", file=log_file)
             print(err, file=log_file)
             print("-----------------------\n", file=log_file)
@@ -116,6 +124,7 @@ if minute == 0:
         try:
             brands.update_brands(log_file)
         except Exception as err:
+            errors += 1
             print("Error: Item Brands", file=log_file)
             print(err, file=log_file)
             print("-----------------------\n", file=log_file)
@@ -129,11 +138,10 @@ if minute == 0:
 
         # STOCK BUFFER
         # Set stock buffers based on rules by vendor, category
-        # Deactivated on 4/12/24 at 4:53 PM
-        # REVISIT: have it to run only at night not during business hours to decrease API calls
         try:
             stock_buffer.stock_buffer_updates(log_file)
         except Exception as err:
+            errors += 1
             print("Error: Stock Buffer Updates", file=log_file)
             print(err, file=log_file)
             print("-----------------------\n", file=log_file)
@@ -142,6 +150,7 @@ if minute == 0:
         try:
             customers.customers.export_customers_to_csv(log_file)
         except Exception as err:
+            errors += 1
             print("Error: Customer Export To CSV", file=log_file)
             print(err, file=log_file)
             print("-----------------------\n", file=log_file)
@@ -152,13 +161,14 @@ if minute == 0:
 
     # 2 AM TASKS
     if hour == 2:
-        # BEST SELLERS
+        # TOTAL SOLD
         # Update Big Commerce with "total_sold" for all ecommerce items. This lets customers
         # Sort search results by "Best Sellers" with accurate information
         # Runs at 2AM and takes approx. 15 minutes
         try:
             related_items.update_total_sold(log_file)
         except Exception as err:
+            errors += 1
             print("Error: Update Total Sold", file=log_file)
             print(err, file=log_file)
             print("-----------------------\n", file=log_file)
@@ -170,6 +180,7 @@ if minute == 0:
         try:
             related_items.set_related_items_by_category(log_file)
         except Exception as err:
+            errors += 1
             print("Error:Related Items", file=log_file)
             print(err, file=log_file)
             print("-----------------------\n", file=log_file)
@@ -185,6 +196,7 @@ if minute == 0:
                                                 end_date=date_presets.today,
                                                 number_of_items=200))
         except Exception as err:
+            errors += 1
             print("Error: Always Online Status", file=log_file)
             print(err, file=log_file)
             print("-----------------------\n", file=log_file)
@@ -195,6 +207,7 @@ if minute == 0:
         try:
             sort_order.sort_order_engine(log_file)
         except Exception as err:
+            errors += 1
             print("Error: Sort Order", file=log_file)
             print(err, file=log_file)
             print("-----------------------\n", file=log_file)
@@ -204,6 +217,7 @@ if minute == 0:
         try:
             featured.update_featured_items(log_file)
         except Exception as err:
+            errors += 1
             print("Error: Featured Products", file=log_file)
             print(err, file=log_file)
             print("-----------------------\n", file=log_file)
@@ -215,6 +229,7 @@ if minute == 0:
         try:
             product_reports.administrative_report(recipients=creds.admin_team, log_file=log_file)
         except Exception as err:
+            errors += 1
             print("Error: Administrative Report", file=log_file)
             print(err, file=log_file)
             print("-----------------------\n", file=log_file)
@@ -224,6 +239,7 @@ if minute == 0:
         try:
             report_builder.item_report(recipient=creds.admin_team, log_file=log_file)
         except Exception as err:
+            errors += 1
             print("Error: Administrative Report", file=log_file)
             print(err, file=log_file)
             print("-----------------------\n", file=log_file)
@@ -234,6 +250,7 @@ if minute == 0:
             try:
                 product_reports.revenue_report(recipients=creds.flash_sales_recipients, log_file=log_file)
             except Exception as err:
+                errors += 1
                 print("Error: Revenue Report", file=log_file)
                 print(err, file=log_file)
                 print("-----------------------\n", file=log_file)
@@ -243,6 +260,7 @@ if hour == 7:
     try:
         lead_generator_notification.lead_notification_email(log_file)
     except Exception as err:
+        errors += 1
         print("Error: Lead Notification Email", file=log_file)
         print(err, file=log_file)
         print("-----------------------\n", file=log_file)
@@ -251,6 +269,7 @@ if hour == 7:
     try:
         daily_revenue.daily_revenue_report(log_file)
     except Exception as err:
+        errors += 1
         print("Error: Daily Revenue Report", file=log_file)
         print(err, file=log_file)
         print("-----------------------\n", file=log_file)
@@ -272,6 +291,7 @@ if hour == 9:
                                                  test_mode=sms_test_mode,
                                                  test_customer=sms_test_customer)
         except Exception as err:
+            errors += 1
             print(f"Error: {title}", file=log_file)
             print(err, file=log_file)
             print("-----------------------\n", file=log_file)
@@ -292,6 +312,7 @@ if hour == 10 and minute == 30:
                                              test_mode=sms_test_mode,
                                              test_customer=sms_test_customer)
     except Exception as err:
+        errors += 1
         print(f"Error: {title}", file=log_file)
         print(err, file=log_file)
         print("-----------------------\n", file=log_file)
@@ -316,6 +337,7 @@ if hour == 11 and minute == 30:
                                              test_mode=sms_test_mode,
                                              test_customer=sms_test_customer)
     except Exception as err:
+        errors += 1
         print(f"Error: {title}", file=log_file)
         print(err, file=log_file)
         print("-----------------------\n", file=log_file)
@@ -333,6 +355,7 @@ if hour == 11 and minute == 30:
                                              test_mode=sms_test_mode,
                                              test_customer=sms_test_customer)
     except Exception as err:
+        errors += 1
         print(f"Error: {title}", file=log_file)
         print(err, file=log_file)
         print("-----------------------\n", file=log_file)
@@ -354,6 +377,7 @@ if hour == 15 and minute == 30:
                                              test_mode=sms_test_mode,
                                              test_customer=sms_test_customer)
     except Exception as err:
+        errors += 1
         print(f"Error: {title}", file=log_file)
         print(err, file=log_file)
         print("-----------------------\n", file=log_file)
@@ -376,6 +400,7 @@ if hour == 18 and minute == 30:
                                              test_mode=sms_test_mode,
                                              test_customer=sms_test_customer)
     except Exception as err:
+        errors += 1
         print(f"Error: {title}", file=log_file)
         print(err, file=log_file)
         print("-----------------------\n", file=log_file)
@@ -400,6 +425,7 @@ if hour == 19:
                                              test_mode=sms_test_mode,
                                              test_customer=sms_test_customer)
     except Exception as err:
+        errors += 1
         print(f"Error: {title}", file=log_file)
         print(err, file=log_file)
         print("-----------------------\n", file=log_file)
@@ -421,6 +447,7 @@ if hour == 19:
                                              test_mode=sms_test_mode,
                                              test_customer=sms_test_customer)
     except Exception as err:
+        errors += 1
         print(f"Error: {title}", file=log_file)
         print(err, file=log_file)
         print("-----------------------\n", file=log_file)
@@ -430,6 +457,7 @@ if hour == 21:
     try:
         customers.stop_sms.remove_refunds_from_sms_funnel(log_file)
     except Exception as err:
+        errors += 1
         print("Error: Remove Refunds from SMS Funnel", file=log_file)
         print(err, file=log_file)
         print("-----------------------\n", file=log_file)
@@ -438,6 +466,7 @@ if hour == 21:
     try:
         coupons.delete_expired_coupons(log_file)
     except Exception as err:
+        errors += 1
         print("Error: Delete Expired Coupons", file=log_file)
         print(err, file=log_file)
         print("-----------------------\n", file=log_file)
@@ -446,6 +475,7 @@ if hour == 21:
     try:
         web_scraping.scrape_competitor_prices(log_file)
     except Exception as err:
+        errors += 1
         print("Error: Web Scraping", file=log_file)
         print(err, file=log_file)
         print("-----------------------\n", file=log_file)
@@ -454,6 +484,7 @@ if hour == 21:
     try:
         sms_automations.remove_wholesale_from_loyalty(log_file)
     except Exception as err:
+        errors += 1
         print("Error: Remove Wholesale From Loyalty", file=log_file)
         print(err, file=log_file)
         print("-----------------------\n", file=log_file)
@@ -462,6 +493,7 @@ if hour == 21:
     try:
         customers.customers.set_negative_loyalty_points_to_zero(log_file)
     except Exception as err:
+        errors += 1
         print("Error: Negative Loyalty Set to Zero", file=log_file)
         print(err, file=log_file)
         print("-----------------------\n", file=log_file)
@@ -469,11 +501,18 @@ if hour == 21:
 if hour == 22 and minute == 30:
     # Nightly Off-Site Backups
     # Will copy critical files to off-site location
-    backups.offsite_backups(log_file)
+    try:
+        backups.offsite_backups(log_file)
+    except Exception as err:
+        errors += 1
+        print("Error: Off-Site Backup", file=log_file)
+        print(err, file=log_file)
+        print("-----------------------\n", file=log_file)
 
 print("-----------------------", file=log_file)
 print(f"Business Automations Complete at {datetime.now():%H:%M:%S}", file=log_file)
 print(f"Total time of operation: {(datetime.now() - now).total_seconds()} seconds", file=log_file)
+print(f"Total Errors: {errors}", file=log_file)
 print("-----------------------\n\n\n", file=log_file)
 
 log_file.close()

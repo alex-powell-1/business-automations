@@ -19,10 +19,8 @@ This log file will be passed into each of the automation functions as an argumen
 be written to the file before finally closing after all functions have concluded.
 
 ## Decoupling of Processes 
-When the application runs for the first time each day, it will create a log file:
-log_directory/business_automations/automations_month_day_year.txt
-This log file will be passed into each of the automation functions as an argument and error and success messages will
-be written to the file before finally closing after all functions have concluded.
+If a process fails for any reason, the error will be logged and the next process will continue. Total time per process
+is logged within each section, and total number of errors will be shown at the conclusion of the log.
 
 # Automations:
 ## Twice Per Hour Tasks
@@ -63,3 +61,38 @@ will maintain the image rotation metadata (EXIF_ORIENTATION).
 #### Reformatting
 All files ending in .jpeg will be renamed to .jpg.
 All files ending in .png will have their alpha layer stripped and will be converted to .jpg
+
+## Every Other Hour Tasks
+Tasks performed on even hours between 6 AM and 8 PM
+### 6) Set Products to 'Inactive' Status
+This task will find all products with a STAT of 'A' (active) whose IM_INV quantity available has fallen below 1 (this
+includes negative quantity) and sets the status to 'V' (inactive) in SQL. This process will also update the last 
+maintained date to the current time. The process makes us of the Product class to check for a successful update. Since 
+this change in status may need to be inspected by retail management staff, a separate log of all status changes is 
+written at log_directory/inactive_products/inactive_products_month_day_year.csv
+
+### 7) Update Product Brands
+To assist with proper front-end presentation on the e-commerce site, this task will update the Brand field 
+(IM_ITEM.PROF_COD_1) of items. For products with vendor specific information, the brand will be updated to the 
+company name. For products that have a brand in their long description, the task will use a regular expression in 
+SQL to select items and then update their brand based on values stored in a dictionary in the creds modules. Processed
+items will have their last maintained date field updated in SQL so the data integration process will update them on BC.
+
+### 8) Stock Buffer Updates
+To prevent overselling items online, a stock buffer will be calculated and applied to items. 
+#### Rules: 
+As an overall generic rule, upon creation, items will have a statically set buffer of 5 items. This is done in the data
+dictionary. This rule is insufficient for many product categories. As a result, dynamic buffers are set as follows:
+1) All products with the brand matching a key in the vendor dictionary will have their buffer set to the matching value.
+2) All products with a product category in the buffer bank will have their buffers set dynamically based on item price.
+
+As a current example, a piece of pottery that has a price greater than $100 will have a buffer of 0, while a piece of 
+pottery that has a price of $20 will have a buffer of 3.
+
+### 9) Email List Export
+To assist our email marketing team, a minimal list of customers with corresponding reward point balances is exported for
+upload to our email marketing platform. Since our emails most often include reward point balances, this helps us to give
+our customers accurate information via campaigns
+
+## Once Per Day Tasks
+### 10) Update Total Sold
