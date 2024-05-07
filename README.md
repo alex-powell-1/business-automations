@@ -30,7 +30,7 @@ counterpoint customers. If they are not, create a new customer in counterpoint w
 by the customer. Utilizes the NCR Counterpoint API. Keeps a record of newly created contacts in 
 the log_directory/new_customers.csv
 
-### 2) Set 'Contact 1' field in Counterpoint to be the concatenation of FST_NAM and LST_NAM
+### 2) Set 'Contact 1' field in Counterpoint for non-business entities
 Per the request of company admin, Counterpoint's Contact 1 field should be the concatenation of FST_NAM and LST_NAM
 where the customer name type is 'P' (Person). The process begins by finding customers with a null in CONTCT_1 and filters
 out any customers whose first name is 'Change' and last name is 'Name'. These disregarded edge cases are the result of 
@@ -42,7 +42,7 @@ the SQL database with the new value for CONTCT_1
 This server will check for an internet connection. If the function determines there is no connection, the application
 will log the disconnected state and force a restart. To determine if there is an internet connection, the server will
 attempt to ping three reliable hosts ("https://www.google.com/", "1.1.1.1", "8.8.8.8"). If ping fails to ALL three, the 
-application will declare an disconnected state and initiate the reboot.
+application will declare a disconnected state and initiate the reboot.
 
 ### 4) Inventory Upload
 This process will get long description, price, and quantity available for all active items (defined below) for 
@@ -56,7 +56,7 @@ This process will resize and reformat photos to the ideal specifications for the
 #### Resizing
 If a .jpg image is larger than 1.8 MB, the function will use the Lanczos resampling algorithm to reduce file size while
 also reducing resolution to the specified constant in the module. For BigCommerce, this has been set to 1280x1280 pixels
-in January of 2024, though the process will maintain the aspect ratios of non-1:1 ratio images. Furthermore, this process
+in January 2024, though the process will maintain the aspect ratios of non-1:1 ratio images. Furthermore, this process
 will maintain the image rotation metadata (EXIF_ORIENTATION).
 #### Reformatting
 All files ending in .jpeg will be renamed to .jpg.
@@ -67,7 +67,7 @@ Tasks performed on even hours between 6 AM and 8 PM
 ### 6) Set Products to 'Inactive' Status
 This task will find all products with a STAT of 'A' (active) whose IM_INV quantity available has fallen below 1 (this
 includes negative quantity) and sets the status to 'V' (inactive) in SQL. This process will also update the last 
-maintained date to the current time. The process makes us of the Product class to check for a successful update. Since 
+maintained date to the current time. The process makes use of the Product class to check for a successful update. Since 
 this change in status may need to be inspected by retail management staff, a separate log of all status changes is 
 written at log_directory/inactive_products/inactive_products_month_day_year.csv
 
@@ -110,5 +110,26 @@ This process updates related items on the BigCommerce in the following ways:
 First, it examines a dictionary of recommended items for each product category. It will assign these to each product. 
 It will then check this time period last year for this product category and determine which products were popular. It will
 also assign these popular items to the item as related items.
+##### Considerations:
+This is a time-intensive task (O(n) API calls) that is currently scheduled to run once daily during the night (non-business hours)
+
+### 12) Set 'Always Online'
+Set top performing products to custom 'Always Online' statis if they are included in the top 200 performing items since
+the beginning of the previous year. This marker will be used to preserve these products from being taken offline in the 
+event that they go out of stock for a time, and we initiate a site-cleaning method to clear out old stock.
+
+### 13) Set 'Sort Order' on BigCommerce
+BigCommerce will sort items by their sort order property. This algorithm determines the sort order for all products in
+the e-commerce store.
+##### Sort Order Ranking
+The lower the sort order, the more prominently the item appears in the search results
+##### Sort Order Logic
+Items will be ranked in order of the revenue they produced during the same 45-day period last year. That is, one year ago
+and 45 days forward from that day. As a seasonal business, this gives us an indication of what products are likely to
+be popular during this time. Once an order is determined, the top performing items will be assigned to the inverse
+length of all the items (1 may become -820 if there are 820 items). This then iterates through all the items and sets the 
+sort order in this manner. Per the request of management, items that are newly in-stock (as determined through a recent
+receiving date) will receive a super-inflated sort order positioning of the top score + 8 (which makes it slightly less 
+popular than the top positions)
 ##### Considerations:
 This is a time-intensive task (O(n) API calls) that is currently scheduled to run once daily during the night (non-business hours)
