@@ -684,6 +684,16 @@ def get_products_by_category(category, subcat="", ecomm_only=False):
         return items
 
 
+def get_products(query):
+    """Generic Getter Method"""
+    response = db.query_db(query)
+    if response is not None:
+        items = []
+        for x in response:
+            items.append(x[0])
+        return items
+
+
 def get_bc_product_id(sku):
     query = f"""
     SELECT TOP 1 PRODUCT_ID
@@ -727,40 +737,18 @@ def get_product_categories_cp():
         return categories
 
 
-def fix_html_trash():
-    query = f"""
-    SELECT ITEM_NO, HTML_DESCR
-    FROM EC_ITEM_DESCR
-    WHERE HTML_DESCR like '%<div%'
-    """
-    response = db.query_db(query)
-    if response is not None:
-        items = []
-
-        for x in response:
-            items.append([x[0], x[1]])
-
-        for y in items:
-            for letter in range(len(y[1]) - 1):
-                result = []
-                # FIX TRASH BEFORE OPENING <p> TAG
-                if y[1][letter] == '<' and y[1][letter + 1] == 'p' and y[1][letter + 2] == '>':
-                    result.append([y[0], y[1][letter:]])
-                    log_data = [
-                        [y[0], (y[1][letter:]).strip().replace("\n", "").replace("\r", "").replace("&nbsp;", "")]]
-                    df = pandas.DataFrame(log_data, columns=["item_no", "html_description"])
-                    df.to_csv(creds.description_log, mode='a', header=False, index=False)
-                    break
-
-
 def export_html_descr():
     log = creds.description_log
+
     query = f"""
-    SELECT ITEM_NO, HTML_DESCR
-    FROM EC_ITEM_DESCR
-    WHERE HTML_DESCR IS NOT NULL
+    SELECT ec.ITEM_NO, ec.HTML_DESCR
+    FROM EC_ITEM_DESCR ec
+    inner join im_ITEM item on ec.item_no=item.item_no
+    WHERE ec.HTML_DESCR IS NOT NULL AND item.CATEG_COD = 'POTTERY'
     """
+
     response = db.query_db(query)
+
     if response is not None:
         items = []
 
@@ -815,3 +803,5 @@ def check_for_bound_product_with_no_parent():
         parent = get_parent_product(x)
         if parent is None or type(parent) is list:
             print(f"Binding ID: {x}, Parent: {get_parent_product(x)}")
+
+export_html_descr()

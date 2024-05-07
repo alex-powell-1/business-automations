@@ -1,25 +1,65 @@
-Business Automations
+# Business Automations
 
 Author: Alex Powell
 
-Business Automations is a collection of automations built to enhance productivity and reduce manual data manipulation at a retail store location 
-that integrates a SQL database with the BigCommerce e-commerce platform. Automations include:
+Business Automations is a collection of automations built to enhance productivity and reduce manual data manipulation at 
+a retail store location that integrates a SQL database with the BigCommerce e-commerce platform. Automations include:
 
-- Automatic Current Stock Upload
-- Automatic SMS/MMS notifications based on customer buying behavior
-- Automatic photo resizing and reformatting for e-commerce platform
-- Automatic setting of bestseller status, sort order status, and featured items status based on predictive analysis
-- Automatic setting of e-commerce related items based on popular choices (by revenue) within same categories
-- Automatic setting of tierred pricing levels for commercial accounts based on past-six-months revenue
-- Automatic setting of e-commerce flags for products based on stock quantities and statuses
-- Automatic setting of product brands based on product descriptions
-- Automatic generation and email delivery of styled "Administrative Report" and "Revenue Report" to administrative and accounting departments
+## Engines
+At the core of this application, there are four "engines" (database engine, sms engine, WebDav engine, and email engine) 
+for getting, setting, and distributing data. These modules are found within the setup folder.
 
+This application has useful classes for products (in product_tools.products.py) and customers (in customers.customers.py) 
+that instantiate useful variables in the constructor from the SQL database.
 
-At the core of this application, there are four "engines" (database engine, sms engine, WebDav engine, and email engine) for getting, setting, and distributing data.
-These modules are found within the setup folder.
+## Logging 
+When the application runs for the first time each day, it will create a log file:
+log_directory/business_automations/automations_month_day_year.txt
+This log file will be passed into each of the automation functions as an argument and error and success messages will
+be written to the file before finally closing after all functions have concluded.
 
-This application also has useful classes for products (in product_tools.products.py) and customers (in customers.customers.py) that instantiate useful variables
-in the constructor from the SQL database. 
+## Decoupling of Processes 
+When the application runs for the first time each day, it will create a log file:
+log_directory/business_automations/automations_month_day_year.txt
+This log file will be passed into each of the automation functions as an argument and error and success messages will
+be written to the file before finally closing after all functions have concluded.
 
-Logging of all data manipulation is handled by functions with the setup.create_log.py module.
+# Automations:
+## Twice Per Hour Tasks
+### 1) Create New Counterpoint Customers
+Parse data from a csv of marketing leads. Find leads from today and check if they are already
+counterpoint customers. If they are not, create a new customer in counterpoint with the info supplied
+by the customer. Utilizes the NCR Counterpoint API. Keeps a record of newly created contacts in 
+the log_directory/new_customers.csv
+
+### 2) Set 'Contact 1' field in Counterpoint to be the concatenation of FST_NAM and LST_NAM
+Per the request of company admin, Counterpoint's Contact 1 field should be the concatenation of FST_NAM and LST_NAM
+where the customer name type is 'P' (Person). The process begins by finding customers with a null in CONTCT_1 and filters
+out any customers whose first name is 'Change' and last name is 'Name'. These disregarded edge cases are the result of 
+employee error when inputting new customers at the point of sale. This function then title cases the result and updates
+the SQL database with the new value for CONTCT_1
+
+## Hourly Tasks
+### 3) Check for internet connection
+This server will check for an internet connection. If the function determines there is no connection, the application
+will log the disconnected state and force a restart. To determine if there is an internet connection, the server will
+attempt to ping three reliable hosts ("https://www.google.com/", "1.1.1.1", "8.8.8.8"). If ping fails to ALL three, the 
+application will declare an disconnected state and initiate the reboot.
+
+### 4) Inventory Upload
+This process will get long description, price, and quantity available for all active items (defined below) for 
+the retail and wholesale customer segments and upload this data as a csv to the BigCommerce WebDAV server for use in 
+a datatables.net data table implementation that is hosted at oururl.com/availability and oururl.com/commercial.
+#### Definition of active item
+An item will be active should it's STAT field be set to 'A' and it's QTY_AVAIL >= 0
+
+### 5) Photo Resizing/Reformatting
+This process will resize and reformat photos to the ideal specifications for the BigCommerce e-commerce platform.
+#### Resizing
+If a .jpg image is larger than 1.8 MB, the function will use the Lanczos resampling algorithm to reduce file size while
+also reducing resolution to the specified constant in the module. For BigCommerce, this has been set to 1280x1280 pixels
+in January of 2024, though the process will maintain the aspect ratios of non-1:1 ratio images. Furthermore, this process
+will maintain the image rotation metadata (EXIF_ORIENTATION).
+#### Reformatting
+All files ending in .jpeg will be renamed to .jpg.
+All files ending in .png will have their alpha layer stripped and will be converted to .jpg
