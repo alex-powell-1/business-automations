@@ -319,10 +319,19 @@ if hour == 10 and minute == 30:
 
 # 11:30 AM TASKS
 if hour == 11 and minute == 30:
+    # STOCK NOTIFICATION EMAIL WITH COUPON GENERATION
     # Read CSV file, check all items for stock, send auto generated emails to customers
     # with product photo, product description (if exists), coupon (if applicable), and
     # direct purchase links. Generate coupon and send to big for e-comm use.
-    stock_notification.send_stock_notification_emails(log_file)
+
+    title = "Stock Notification Email"
+    try:
+        stock_notification.send_stock_notification_emails(log_file)
+    except Exception as err:
+        errors += 1
+        print(f"Error: {title}", file=log_file)
+        print(err, file=log_file)
+        print("-----------------------\n", file=log_file)
 
     # FIRST-TIME CUSTOMER TEXT MESSAGE 3 - ASK FOR GOOGLE REVIEW (SMS)
     title = "First Time Cust Text 3"
@@ -511,7 +520,10 @@ if hour == 22 and minute == 30:
 
 print("-----------------------", file=log_file)
 print(f"Business Automations Complete at {datetime.now():%H:%M:%S}", file=log_file)
-print(f"Total time of operation: {(datetime.now() - now).total_seconds()} seconds", file=log_file)
+total_seconds = (datetime.now() - now).total_seconds()
+minutes = total_seconds // 60
+seconds = total_seconds % 60
+print(f"Total time of operation: {minutes} minutes {seconds} seconds", file=log_file)
 print(f"Total Errors: {errors}", file=log_file)
 print("-----------------------\n\n\n", file=log_file)
 

@@ -611,7 +611,7 @@ def get_qty_sold_all_items():
     where IM_ITEM.ITEM_NO = VI_PS_TKT_HIST_LIN.ITEM_NO) and ((VI_PS_TKT_HIST.STR_ID = ''1'')) and 
     ( (1=1) ) and %ANYPERIODFILTER%', 'select VI_PS_TKT_HIST_LIN.ITEM_NO as GRP_ID, %HISTCOLUMNS% 
     from %HISTORY% where ((VI_PS_TKT_HIST.STR_ID = ''1'')) and ( (1=1) ) and %PERIODFILTER%', ' 
-    (VI_PS_TKT_HIST.POST_DAT >= ''2020-01-01'') and (VI_PS_TKT_HIST.POST_DAT <= ''2024-02-18'')', ' 
+    (VI_PS_TKT_HIST.POST_DAT >= ''2020-01-01'') and (VI_PS_TKT_HIST.POST_DAT <= ''{date_presets.today}'')', ' 
     (1=0) ', ' (1=0) ', 0, 0, 'SLS_QTY_A - RTN_QTY_VALID_A - RTN_QTY_NONVALID_A', 2
     """
     response = db.query_db(query)
@@ -624,13 +624,14 @@ def get_qty_sold_all_items():
 
 def update_total_sold(log_file):
     """Update Big Commerce with 'total_sold' amounts"""
-    print(f"Update Total Sold on Big Commerce: Starting at {date_presets.today:%H:%M:%S}", file=log_file)
+    print(f"Update Total Sold on Big Commerce: Starting at {datetime.now():%H:%M:%S}", file=log_file)
     ecomm_items = get_ecomm_items(mode=3)
     binding_ids = get_binding_ids()
     qty_sold_all_items = get_qty_sold_all_items()
     if ecomm_items is not None:
-        count = 1
+        count = 0
         for x in ecomm_items:
+            count += 1
             sku = x[0]
             product_id = x[1]
             if sku in binding_ids:
@@ -647,8 +648,12 @@ def update_total_sold(log_file):
                     bc_update_product(product_id, {"total_sold": total_sold_all_children}, log_file)
                     print(f"#{count}/{len(ecomm_items)} Updated Item: {sku} to "
                           f"Total Sold: {total_sold_all_children}", file=log_file)
+
+                    print(f"#{count}/{len(ecomm_items)} Updated Item: {sku} to "
+                          f"Total Sold: {total_sold_all_children}")
                 else:
                     print(f"#{count}/{len(ecomm_items)} Skipping Item: {sku} - Never Sold!", file=log_file)
+                    print(f"#{count}/{len(ecomm_items)} Skipping Item: {sku} - Never Sold!")
 
             # This is for items without a valid binding key, i.e. Single Products
             else:
@@ -658,9 +663,11 @@ def update_total_sold(log_file):
                         bc_update_product(product_id, {"total_sold": total_sold}, log_file)
                         print(f"#{count}/{len(ecomm_items)} Updated Item: {sku} to Total Sold: {total_sold}",
                               file=log_file)
-            count += 1
+                        print(f"#{count}/{len(ecomm_items)} Updated Item: {sku} to Total Sold: {total_sold}")
+                    else:
+                        print(f"Skipping {sku}: Never Sold")
 
-    print(f"Update Total Sold on Big Commerce: Completed at {date_presets.today:%H:%M:%S}", file=log_file)
+    print(f"Update Total Sold on Big Commerce: Completed at {datetime.now():%H:%M:%S}", file=log_file)
     print("-----------------------", file=log_file)
 
 
@@ -803,5 +810,3 @@ def check_for_bound_product_with_no_parent():
         parent = get_parent_product(x)
         if parent is None or type(parent) is list:
             print(f"Binding ID: {x}, Parent: {get_parent_product(x)}")
-
-export_html_descr()

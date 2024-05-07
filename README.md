@@ -96,3 +96,19 @@ our customers accurate information via campaigns
 
 ## Once Per Day Tasks
 ### 10) Update Total Sold
+This process will update BigCommerce (through their API) with the total number of times an item has sold at our point
+of sale. Since many of our products are bound into a merged item with multiple sizes, this process is fairly complex and
+will figure out if a product is bound. If it is not, then it will calculate the total times it has sold based on all 
+previous transactions and make the update product API call via the big_commerce.big_products.py module. If it is a bound
+product, it will generate a list of all the child products that belong to the binding ID, find out the total sold for each
+of these items and add them to a running sum that is then updated to the parent product.
+##### Considerations:
+This is a time-intensive task (O(n) API calls) that is currently scheduled to run once daily during the night (non-business hours)
+
+### 11) Update Related Items
+This process updates related items on the BigCommerce in the following ways:
+First, it examines a dictionary of recommended items for each product category. It will assign these to each product. 
+It will then check this time period last year for this product category and determine which products were popular. It will
+also assign these popular items to the item as related items.
+##### Considerations:
+This is a time-intensive task (O(n) API calls) that is currently scheduled to run once daily during the night (non-business hours)
