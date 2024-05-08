@@ -300,7 +300,7 @@ location.
 
 These automations target customers based on their FST_SAL_DAT column data
 
-### Message 1
+### 25) Message 1
 
 Date / Time of Day: 6:30 PM day after first purchase
 
@@ -308,7 +308,7 @@ Message Detail: Thank You (ftc_1_body in first_time_customers.py within sms.sms_
 
 Media: None
 
-### Message 2
+### 27) Message 2
 
 Date / Time of Day: 7 PM 3rd day after first purchase
 
@@ -318,7 +318,7 @@ Coupon includes expiration date dynamically set to two weeks from last purchase
 
 Media: Image on WebDAV (5 off coupon)
 
-### Message 3
+### 28) Message 3
 
 Date / Time of Day: 11:30 AM 7th day after first purchase
 
@@ -328,7 +328,7 @@ Media: None
 
 ## Returning Customer Campaigns
 
-### Message 1
+### 29) Message 1
 
 Date / Time of Day: 11:30 AM day after last purchase
 
@@ -336,7 +336,7 @@ Message Detail: Thank you (rc_1_body in returning_customers.py within sms.sms_me
 
 Media: None
 
-### Message 2
+### 30) Message 2
 
 Date / Time of Day: 7 PM day after last purchase
 
@@ -346,7 +346,7 @@ Coupon includes expiration date dynamically set to two weeks from last purchase
 
 Media: Image on WebDAV (5 off coupon)
 
-### Message 3
+### 31) Message 3
 
 Date / Time of Day: 3:30 PM 7th day after first purchase
 
@@ -356,7 +356,7 @@ Media: None
 
 ## Birthday Text Message Campaign
 
-### Message 1
+### 32) Message 1
 
 Date / Time of Day: 9 AM on the first date of the month
 
@@ -369,7 +369,7 @@ Media: Photo stored on the WebDAV server.
 
 ## Wholesale Customer Campaign
 
-### Message 1
+### 33) Message 1
 
 Date / Time of Day: 10:30 AM day after last purchase
 
