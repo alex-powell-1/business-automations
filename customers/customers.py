@@ -393,10 +393,10 @@ def set_contact_1(log_file):
     """Takes first name and last name and updates contact 1 field in counterpoint"""
     print(f"Set Contact 1: Starting at {datetime.now():%H:%M:%S}", file=log_file)
     target_customers = get_customers_with_no_contact_1()
-    print(f"{len(target_customers)} Customers to Update", file=log_file)
     if target_customers is None:
         print("No customers to set at this time.", file=log_file)
     else:
+        print(f"{len(target_customers)} Customers to Update", file=log_file)
         for x in target_customers:
             query = f"""
             SELECT FST_NAM, LST_NAM
