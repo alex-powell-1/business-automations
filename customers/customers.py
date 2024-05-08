@@ -394,36 +394,39 @@ def set_contact_1(log_file):
     print(f"Set Contact 1: Starting at {datetime.now():%H:%M:%S}", file=log_file)
     target_customers = get_customers_with_no_contact_1()
     print(f"{len(target_customers)} Customers to Update", file=log_file)
-    for x in target_customers:
-        query = f"""
-        SELECT FST_NAM, LST_NAM
-        FROM AR_CUST
-        WHERE CUST_NO = '{x}'
-        """
-        response = db.query_db(query)
+    if target_customers is None:
+        print("No customers to set at this time.", file=log_file)
+    else:
+        for x in target_customers:
+            query = f"""
+            SELECT FST_NAM, LST_NAM
+            FROM AR_CUST
+            WHERE CUST_NO = '{x}'
+            """
+            response = db.query_db(query)
 
-        if response is not None:
-            for y in response:
-                first_name = y[0]
-                last_name = y[1]
-                full_name = f"{str(first_name).title()} {str(last_name).title()}"
+            if response is not None:
+                for y in response:
+                    first_name = y[0]
+                    last_name = y[1]
+                    full_name = f"{str(first_name).title()} {str(last_name).title()}"
 
-                # In SQL, we must replace single quotes with two single quotes Kim O'Hare --> Kim O''Hare
-                full_name = full_name.replace("'", "''")
+                    # In SQL, we must replace single quotes with two single quotes Kim O'Hare --> Kim O''Hare
+                    full_name = full_name.replace("'", "''")
 
-                # Update Customer with full name as new contact 1.
-                query = f"""
-                UPDATE AR_CUST
-                SET CONTCT_1 = '{full_name}'
-                WHERE CUST_NO = '{x}'
-                """
-                try:
-                    db.query_db(query, commit=True)
-                except Exception as err:
-                    print(f"Error: {x} - {err}", file=log_file)
-                else:
-                    print(f"Customer {x}: "
-                          f"Contact 1 updated to: {full_name.replace("''", "'")}", file=log_file)
+                    # Update Customer with full name as new contact 1.
+                    query = f"""
+                    UPDATE AR_CUST
+                    SET CONTCT_1 = '{full_name}'
+                    WHERE CUST_NO = '{x}'
+                    """
+                    try:
+                        db.query_db(query, commit=True)
+                    except Exception as err:
+                        print(f"Error: {x} - {err}", file=log_file)
+                    else:
+                        print(f"Customer {x}: "
+                              f"Contact 1 updated to: {full_name.replace("''", "'")}", file=log_file)
 
     print(f"Set Contact 1: Finished at {datetime.now():%H:%M:%S}", file=log_file)
     print("-----------------------", file=log_file)
