@@ -2,13 +2,26 @@
 
 #### Author: Alex Powell
 
-Business Automations is a collection of automations built to enhance productivity and reduce manual data manipulation at
-a retail store location that integrates a SQL database with the BigCommerce e-commerce platform. Automations include:
+This Python application is designed to automate various business tasks for a retail and e-commerce store. 
+It is scheduled to run at different times throughout the day, performing tasks such as customer management, 
+product management, reporting, and more.
 
 ## Engines
 
 At the core of this application, there are four "engines" (database engine, sms engine, WebDav engine, and email engine)
 for getting, setting, and distributing data. These modules are found within the setup folder.
+
+## Modules
+
+The application uses several modules, each responsible for a specific set of tasks:
+
+- `big_commerce`: Handles tasks related to the BigCommerce platform, such as managing products and coupons.
+- `customers`: Manages customer-related tasks, such as creating new customers from marketing leads, setting contact information, and exporting customer data.
+- `product_tools`: Handles various tasks related to product management, such as managing inventory, resizing product photos, setting product status, and more.
+- `reporting`: Generates various reports for administrative and accounting purposes.
+- `setup`: Contains setup information such as credentials and date presets.
+- `sms`: Handles tasks related to SMS automation, such as sending automated text messages to customers.
+- `utilities`: Contains utility functions such as off-site backups.
 
 ## Logging
 
@@ -17,13 +30,21 @@ log_directory/business_automations/automations_month_day_year.txt
 This log file will be passed into each of the automation functions as an argument and error and success messages will
 be written to the file before finally closing after all functions have concluded.
 
-## Decoupled Processes
+## Main Functionality
 
-If a process fails for any reason, the error will be logged and the next process will continue.
-Total time per process is logged within each section, and total number of errors will be shown at the conclusion of the
-log.
+The main script (`main.py`) runs different tasks based on the current time. Here's a brief overview of what it does at different times:
 
-# Automations:
+- Every half hour: Creates new customers from marketing leads, sets contact information, and fixes missing product thumbnails.
+- Every hour: Checks server for internet connection, uploads current inventory stock levels, resizes and reformats product photos.
+- Every other hour (between 6 AM and 8 PM): Updates product status and brands, sets stock buffers, and exports customers to CSV.
+- Once per day: Updates total sold and related items for products, sets always online status for top performing items, updates sort order and featured items, generates various reports, sends lead notification email, sends automated text messages to customers, removes refunds from SMS funnel, deletes expired coupons, scrapes competitor prices, removes wholesale customers from loyalty program, sets negative loyalty points to zero, and performs off-site backups.
+
+## Error Handling
+
+The application logs all tasks and any errors that occur during their execution. If an error occurs, it is logged and the application continues with the next task.
+
+
+# Automations Detailed:
 
 ## Twice Per Hour Tasks
 
