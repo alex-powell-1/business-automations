@@ -9,7 +9,6 @@ from big_commerce.coupons import generate_random_code, bc_create_coupon
 from customers.customers import get_customer_number_by_email, Customer
 from product_tools.products import Product
 from setup import creds
-from setup import date_presets
 from setup.email_engine import send_html_email
 
 
