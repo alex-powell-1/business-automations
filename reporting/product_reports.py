@@ -234,7 +234,10 @@ def create_top_items_report(beginning_date, ending_date, mode="sales", merged=Fa
             counter += 1
         return result
     else:
-        return f"\n<p>Top Items by {mode.title()} - No Data Today</p>"
+        if return_format == 3:
+            return
+        else:
+            return f"\n<p>Top Items by {mode.title()} - No Data Today</p>"
 
 
 def get_top_categories_by_sales(start_date, end_date, number_of_categories):

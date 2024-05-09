@@ -370,20 +370,23 @@ def get_customers_with_no_contact_1():
 def set_negative_loyalty_points_to_zero(log_file):
     print(f"Set Negative Loyalty to 0: Starting at {datetime.now():%H:%M:%S}", file=log_file)
     target_customers = get_customers_with_negative_loyalty()
-    print(f"{len(target_customers)} Customers to Update", file=log_file)
+    if target_customers is not None:
+        print(f"{len(target_customers)} Customers to Update", file=log_file)
 
-    for x in target_customers:
-        query = f"""
-        UPDATE AR_CUST
-        SET LOY_PTS_BAL = 0
-        WHERE CUST_NO = '{x}'
-        """
-        try:
-            db.query_db(query, commit=True)
-        except Exception as err:
-            print(f"Error: {x} - {err}", file=log_file)
-        else:
-            print(f"Customer {x} Updated to Loyalty Points: 0")
+        for x in target_customers:
+            query = f"""
+            UPDATE AR_CUST
+            SET LOY_PTS_BAL = 0
+            WHERE CUST_NO = '{x}'
+            """
+            try:
+                db.query_db(query, commit=True)
+            except Exception as err:
+                print(f"Error: {x} - {err}", file=log_file)
+            else:
+                print(f"Customer {x} Updated to Loyalty Points: 0")
+    else:
+        print(f"No Customers to Update", file=log_file)
 
     print(f"Set Contact 1: Finished at {datetime.now():%H:%M:%S}", file=log_file)
     print("-----------------------", file=log_file)

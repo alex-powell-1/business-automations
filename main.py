@@ -1,5 +1,6 @@
 from datetime import datetime
 
+import big_commerce.big_products
 import customers.stop_sms
 from analysis import web_scraping
 from big_commerce import coupons
@@ -66,6 +67,14 @@ try:
         except Exception as err:
             errors += 1
             print("Error: Contact 1", file=log_file)
+            print(err, file=log_file)
+            print("-----------------------\n", file=log_file)
+
+        try:
+            big_commerce.big_products.fix_missing_thumbnails(log_file)
+        except Exception as err:
+            errors += 1
+            print("Error: Fix Missing Thumbnails", file=log_file)
             print(err, file=log_file)
             print("-----------------------\n", file=log_file)
 
@@ -521,7 +530,7 @@ try:
 
 except KeyboardInterrupt:
     print("-----------------------", file=log_file)
-    print("Process Terminated by User at {datetime.now():%H:%M:%S}", file=log_file)
+    print(f"Process Terminated by User at {datetime.now():%H:%M:%S}", file=log_file)
     print("-----------------------", file=log_file)
 else:
     print("-----------------------", file=log_file)

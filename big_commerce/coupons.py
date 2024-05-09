@@ -124,8 +124,8 @@ def utc_to_local(utc_dt):
 
 
 def delete_expired_coupons(log_file):
-    print(f"Deleting Expired Coupons: Starting at {date_presets.today:%H:%M:%S}", file=log_file)
-
+    print(f"Deleting Expired Coupons: Starting at {datetime.now():%H:%M:%S}", file=log_file)
+    total = 0
     coupons = bc_get_all_coupons(pretty=False)
     current_time = datetime.now(timezone.utc)
     for x in coupons:
@@ -136,11 +136,13 @@ def delete_expired_coupons(log_file):
             expiration_date = utc_to_local(expiration_date)
             if expiration_date < current_time:
                 bc_delete_coupon(coupon.id)
+                total += 1
                 deleted_coupon_log_file = open(creds.deleted_coupon_log, "a")
                 for y, z in x.items():
                     print(str(y), ": ", z, file=deleted_coupon_log_file)
                     print(str(y), ": ", z, file=log_file)
 
-    print(f"Deleting Expired Coupons: Finished at {date_presets.today:%H:%M:%S}", file=log_file)
+    print(f"Deleting Expired Coupons: Finished at {datetime.now():%H:%M:%S}", file=log_file)
+    print(f"Total Coupons Deleted: {total}", file=log_file)
     print("-----------------------", file=log_file)
 

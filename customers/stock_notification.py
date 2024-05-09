@@ -70,7 +70,10 @@ def send_stock_notification_emails(log_file):
         # Dataframe for Stock Notification Log
         df = pandas.read_csv(file)
         entries = df.to_dict("records")
+        # counter used for dataframe index
         counter = 0
+        # sent_messages for totaling messages in log
+        sent_messages = 0
         for x in entries:
             email = x['email']
             sku = x['item_no']
@@ -145,6 +148,8 @@ def send_stock_notification_emails(log_file):
                 # Delete Row from
                 df = df.drop(df.index[counter])
 
+                sent_messages += 1
+
             else:
                 # Item is out of stock. Will Skip
                 counter += 1
@@ -152,4 +157,5 @@ def send_stock_notification_emails(log_file):
         df.to_csv(creds.stock_notification_log, header=True, columns=['date', 'email', 'item_no'], index=False)
 
     print(f"Send Stock Notification Emails: Completed at {datetime.datetime.now():%H:%M:%S}", file=log_file)
+    print(f"Total Messages Sent: {sent_messages}", file=log_file)
     print("-----------------------", file=log_file)

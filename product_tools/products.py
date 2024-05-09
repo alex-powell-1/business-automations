@@ -810,3 +810,17 @@ def check_for_bound_product_with_no_parent():
         parent = get_parent_product(x)
         if parent is None or type(parent) is list:
             print(f"Binding ID: {x}, Parent: {get_parent_product(x)}")
+
+
+def get_top_child_product(binding_key):
+    """Get Top Performing child product of merged product (by sales in last year window)"""
+    from reporting.product_reports import create_top_items_report
+    children = create_top_items_report(beginning_date=date_presets.one_year_ago,
+                                       ending_date=date_presets.last_year_forecast,
+                                       merged=True,
+                                       binding_id=binding_key,
+                                       number_of_items=1,
+                                       return_format=3)
+    if children is not None:
+        top_child = children[0]
+        return top_child

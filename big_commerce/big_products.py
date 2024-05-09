@@ -1,7 +1,9 @@
 import json
+from datetime import datetime
 
 import requests
 
+from product_tools import products
 from setup import creds
 
 
@@ -78,7 +80,7 @@ def bc_create_image(product_id):
 
 def bc_get_product(product_id, pretty=False):
     if product_id is not None:
-        url = f" https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/products/{product_id}/variants"
+        url = f" https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/products/{product_id}"
 
         headers = {
             'X-Auth-Token': creds.big_access_token,
@@ -98,6 +100,62 @@ def bc_get_product(product_id, pretty=False):
                 return None
         else:
             return json_response
+
+
+def bc_get_product_images(product_id):
+    if product_id is not None:
+        url = f" https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/products/{product_id}/images"
+
+        headers = {
+            'X-Auth-Token': creds.big_access_token,
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+        }
+
+        response = requests.get(url, headers=headers)
+        if response.status_code == 404:
+            return
+        else:
+            json_response = response.json()['data']
+            return json_response
+
+
+def bc_update_product_image(product_id, image_id, payload):
+    url = (f" https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/products/"
+           f"{product_id}/images/{image_id}")
+    headers = {
+        'X-Auth-Token': creds.big_access_token,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+    }
+
+    response = requests.put(headers=headers, url=url, json=payload)
+    if response == 404:
+        return "Error"
+    else:
+        return response.content
+
+
+def bc_has_product_thumbnail(product_id) -> bool:
+    if product_id is not None:
+        url = f" https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/products/{product_id}/images"
+
+        headers = {
+            'X-Auth-Token': creds.big_access_token,
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+        }
+
+        response = requests.get(url, headers=headers)
+        if response.status_code == 404:
+            return False
+        else:
+            json_response = response.json()['data']
+            has_thumbnail = False
+            for x in json_response:
+                if x['is_thumbnail']:
+                    has_thumbnail = True
+            return has_thumbnail
 
 
 def get_modifier_id(product_id):
@@ -261,3 +319,38 @@ def bc_get_variant(product_id, variant_id, pretty=False):
         pretty = json.dumps(pretty, indent=4)
         return pretty
     return json_response
+
+
+def fix_missing_thumbnails(log_file):
+    """In response to a bug with CPIce Data Integration, this function will correct products with missing
+    thumbnail flags on the e-commerce site"""
+    print(f"Set Fixing Missing Thumbnails: Starting at {datetime.now():%H:%M:%S}", file=log_file)
+    # Step 1: Get a list of all binding ids
+    binding_ids = products.get_binding_ids()
+    updated = 0
+    for key in binding_ids:
+        # Step 2: Get the parent product
+        parent = products.get_parent_product(key)
+        if parent is not None:
+            # Step 2: Get product id of each binding key
+            product_id = products.get_bc_product_id(parent)
+            if product_id is not None:
+                # Step 3: Check if product has a thumbnail image
+                if not bc_has_product_thumbnail(product_id):
+                    # Step 4: Assign photo to thumbnail status
+                    # 4a. Get Top Child SKU from revenue data
+                    top_child = products.get_top_child_product(key)
+                    # 4b. Get a list of the bc unique product image ids for this product
+                    product_images = bc_get_product_images(product_id)
+                    if product_images is not None:
+                        for image in product_images:
+                            # 4c. Find the image that is associated with the top performing item
+                            if top_child == str(image['image_file']).split("/")[2].split("__")[0]:
+                                # 4d. Set this image to thumbnail flag: True
+                                bc_update_product_image(product_id, image['id'], {"is_thumbnail": True})
+                                print(f"Assigned thumbnail status to image for: {top_child}", file=log_file)
+                                updated += 1
+
+    print(f"Total products updated: {updated}", file=log_file)
+    print(f"Set Fixing Missing Thumbnails: Finished at {datetime.now():%H:%M:%S}", file=log_file)
+    print("-----------------------", file=log_file)
