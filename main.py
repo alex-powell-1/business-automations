@@ -26,10 +26,6 @@ from sms import sms_queries
 from sms.sms_messages import birthdays, first_time_customers, returning_customers, wholesale_sms_messages
 from utilities import backups
 
-# Business Automations
-# Author: Alex Powell
-# Description: A series of programmatic automations to serve business needs of retail and e-comm store.
-
 now = datetime.now()
 day = now.day
 hour = now.hour
@@ -46,11 +42,21 @@ print("-----------------------", file=log_file)
 print(f"Business Automations Starting at {now:%H:%M:%S}", file=log_file)
 print("-----------------------", file=log_file)
 
+
 try:
     if minute == 0 or minute == 30:
         # -----------------
         # TWICE PER HOUR TASKS
         # -----------------
+        # Checks health of Web App API. Notifies system administrator if not running via SMS text.
+        try:
+            network.health_check(log_file)
+        except Exception as err:
+            errors += 1
+            print("Error: New Customer Creation", file=log_file)
+            print(err, file=log_file)
+            print("-----------------------\n", file=log_file)
+
         # Create new Counterpoint customers from today's marketing leads
         try:
             lead_generator_notification.create_new_customers(log_file)
@@ -244,13 +250,24 @@ try:
                 print(err, file=log_file)
                 print("-----------------------\n", file=log_file)
 
-            # ITEMS REPORT
+            # ITEMS REPORT EMAIL
             # For product management team
             try:
                 report_builder.item_report(recipient=creds.admin_team, log_file=log_file)
             except Exception as err:
                 errors += 1
                 print("Error: Administrative Report", file=log_file)
+                print(err, file=log_file)
+                print("-----------------------\n", file=log_file)
+
+            # LANDSCAPE DESIGN LEAD NOTIFICATION EMAIL
+            # Customer Followup Email to Sales Team
+            try:
+                lead_generator_notification.lead_notification_email(log_file)
+
+            except Exception as err:
+                errors += 1
+                print("Error: Lead Notification Email", file=log_file)
                 print(err, file=log_file)
                 print("-----------------------\n", file=log_file)
 
@@ -266,15 +283,6 @@ try:
                     print("-----------------------\n", file=log_file)
 
     if hour == 7:
-        # Customer Followup Email to Sales Team
-        try:
-            lead_generator_notification.lead_notification_email(log_file)
-        except Exception as err:
-            errors += 1
-            print("Error: Lead Notification Email", file=log_file)
-            print(err, file=log_file)
-            print("-----------------------\n", file=log_file)
-
         # Daily revenue report for accounting
         try:
             daily_revenue.daily_revenue_report(log_file)

@@ -66,15 +66,26 @@
 
             <div id="main">
 
+                 {% if non_web_enabled_items != "<p>No Items</p>" %}
                  <div>
-                    <h2>Active Non Web-Enabled Items With Inventory</h2>
+                    <h2>Non Web-Enabled Items</h2>
                     {{ non_web_enabled_items }}
                 </div>
+                {% endif %}
 
+                {% if missing_ecomm_category_data != "<p>No Items</p>" %}
                 <div>
-                    <h2>Active Items With No Ecomm Category</h2>
+                    <h2>No Ecomm Category</h2>
                     {{ missing_ecomm_category_data }}
                 </div>
+                {% endif %}
+
+                {% if binding_key_issues != "<p>No Items</p>" %}
+                <div>
+                    <h2>Binding Key Issues</h2>
+                    {{ binding_key_issues }}
+                </div>
+                {% endif %}
 
                 <div>
                     <h2>Missing Images</h2>
@@ -82,7 +93,7 @@
                 </div>
 
                 <div>
-                    <h2>Items with Negative Quantity</h2>
+                    <h2>Negative Quantity</h2>
                     {{ items_with_negative_qty }}
                 </div>
 

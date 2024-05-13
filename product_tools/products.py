@@ -1,3 +1,5 @@
+import re
+
 from big_commerce.big_products import *
 from setup import date_presets
 from setup.create_log import *
@@ -824,3 +826,24 @@ def get_top_child_product(binding_key):
     if children is not None:
         top_child = children[0]
         return top_child
+
+
+def get_binding_id_issues():
+    """prints merged items with no parent or who have multiple parents"""
+    result = ""
+    binding_ids = get_binding_ids()
+    for x in binding_ids:
+        pattern = r'B\d{4}'
+        if not bool(re.fullmatch(pattern, x)):
+            result += f"<p>Binding ID: {x}, does not match pattern.</p>\n"
+    for x in binding_ids:
+        parent = get_parent_product(x)
+        if parent is None or type(parent) is list:
+            result += f"<p>Binding ID: {x}, has no parent.</p>\n"
+        if type(parent) is list:
+            result += f"<p>Binding ID: {x}, has multiple parents: {get_parent_product(x)}</p>\n"
+
+    if result == "":
+        result = "<p>No Items</p>"
+
+    return result

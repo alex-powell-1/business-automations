@@ -54,7 +54,7 @@ def create_customer_text(query, msg_descr, msg, detail_log, general_log, rewards
         # Send Text
         print(f"Sending Message to {cust.name}", file=general_log)
         engine = SMSEngine()
-        engine.send_text(cust_no, to_phone, message, url=image_url, log_code=detail_log, test_mode=test_mode)
+        engine.send_text(cust_no, to_phone, message, url=image_url, log_location=detail_log, test_mode=test_mode)
 
 
 def remove_wholesale_from_loyalty(log_file):

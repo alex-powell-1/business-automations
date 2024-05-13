@@ -13,7 +13,7 @@ class SMSEngine:
         self.sid = creds.twilio_account_sid
         self.token = creds.twilio_auth_token
 
-    def send_text(self, cust_no, to_phone, message, log_code, url=None, create_log=True, test_mode=False):
+    def send_text(self, cust_no, to_phone, message, log_location, url=None, create_log=True, test_mode=False):
         twilio_response = ""
         if test_mode:
             print(f"Sending test sms text to {cust_no}: {message}")
@@ -46,7 +46,7 @@ class SMSEngine:
                 print(twilio_message.to, twilio_message.body)
 
         if create_log:
-            create_sms_log(cust_no, to_phone, message, twilio_response, log_code)
+            create_sms_log(cust_no, to_phone, message, twilio_response, log_location)
 
 
 def move_phone_1_to_landline(cust_no, phone_number):

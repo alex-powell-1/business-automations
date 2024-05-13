@@ -113,6 +113,7 @@ def bc_get_product_images(product_id):
         }
 
         response = requests.get(url, headers=headers)
+
         if response.status_code == 404:
             return
         else:
@@ -337,18 +338,28 @@ def fix_missing_thumbnails(log_file):
             if product_id is not None:
                 # Step 3: Check if product has a thumbnail image
                 if not bc_has_product_thumbnail(product_id):
+                    print(f"Missing Thumbnail Found for Binding Key: {key} / Product ID: {product_id}!", file=log_file)
                     # Step 4: Assign photo to thumbnail status
-                    # 4a. Get Top Child SKU from revenue data
+                    # # 4a. Get Top Child SKU from revenue data
                     top_child = products.get_top_child_product(key)
                     # 4b. Get a list of the bc unique product image ids for this product
                     product_images = bc_get_product_images(product_id)
                     if product_images is not None:
                         for image in product_images:
-                            # 4c. Find the image that is associated with the top performing item
-                            if top_child == str(image['image_file']).split("/")[2].split("__")[0]:
+                            print(str(image['image_file']).split("/")[2].split("__")[0])
+                            # 4c. Find the image that is associated with binding key (base image, no carrot)
+                            if key == str(image['image_file']).split("/")[2].split("__")[0]:
                                 # 4d. Set this image to thumbnail flag: True
                                 bc_update_product_image(product_id, image['id'], {"is_thumbnail": True})
-                                print(f"Assigned thumbnail status to image for: {top_child}", file=log_file)
+                                print(f"Assigning thumbnail flag to base image for binding ID:"
+                                      f"Image ID: {image['id']} Filename: {image['image_file']}\n\n", file=log_file)
+                                updated += 1
+                            # 4d. If this doesn't exist set it to the top child
+                            elif top_child == str(image['image_file']).split("/")[2].split("__")[0]:
+                                bc_update_product_image(product_id, image['id'], {"is_thumbnail": True})
+                                print(f"Binding Key Image Not Found on Big Commerce!\n"
+                                      f"Assigning thumbnail flag to base image for top-performing child:"
+                                      f"Image ID: {image['id']} Filename: {image['image_file']}\n\n", file=log_file)
                                 updated += 1
 
     print(f"Total products updated: {updated}", file=log_file)

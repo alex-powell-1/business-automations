@@ -25,6 +25,8 @@ def set_price_two_null(category):
         print(f"updated {x}")
 
 
+set_price_two_null("ANNUAL")
+
 def set_sale_price_by_category(category, percentage_discount):
     """Sets sale price for prc_2 and updated last maintained date"""
     category_items = get_products_by_category(category)

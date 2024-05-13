@@ -1,5 +1,8 @@
 import os
 from icmplib import ping
+import requests
+from setup import sms_engine
+from setup import creds
 
 hosts = ["https://www.google.com/", "1.1.1.1", "8.8.8.8"]
 
@@ -24,3 +27,19 @@ def restart_server_if_disconnected(log_file):
     else:
         print("Server is connected to internet. Will continue.", file=log_file)
         print("-----------------------", file=log_file)
+
+
+def health_check(log_file):
+    url = f"{creds.ngrok_domain}/health"
+    response = requests.get(url=url)
+    if response.status_code != 200:
+        print(f"Flask server is not running. Restart the server: {creds.flask_server_name}", file=log_file)
+        sms = sms_engine.SMSEngine()
+        sms.send_text("none",
+                      to_phone=creds.my_phone,
+                      message=f"Flask server is not running. Restart the server: {creds.flask_server_name}",
+                      log_location=creds.sms_utility_log,
+                      create_log=False,
+                      test_mode=False)
+    else:
+        print("Flask server is running.", file=log_file)

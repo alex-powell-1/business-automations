@@ -5,6 +5,7 @@ from jinja2 import Template
 
 from reporting import product_reports, product_reports_new
 from setup import creds, date_presets, email_engine
+from product_tools import products
 
 
 def item_report(recipient, log_file):
@@ -19,6 +20,7 @@ def item_report(recipient, log_file):
         "missing_photo_data": product_reports.get_missing_image_list(),
         "items_with_negative_qty": product_reports.get_negative_items(),
         "missing_ecomm_category_data": product_reports.get_items_with_no_ecomm_category(),
+        "binding_key_issues": products.get_binding_id_issues(),
         "non_web_enabled_items": product_reports.get_non_ecomm_enabled_items(),
         "inactive_items_with_stock": product_reports.get_inactive_items_with_stock(),
         "missing_item_descriptions": product_reports.get_missing_item_descriptions(min_length=60)
