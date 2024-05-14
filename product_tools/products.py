@@ -1,10 +1,10 @@
 import re
 
-from big_commerce.big_products import *
+from big_commerce import big_products
 from setup import date_presets
 from setup.create_log import *
 from setup.query_engine import QueryEngine
-
+from setup import creds
 db = QueryEngine()
 
 
@@ -170,7 +170,7 @@ class Product:
                         item = Product(x)
                         # if mode is bc, perform API call and get info from Big Commerce
                         if bc:
-                            info = bc_get_variant(item.product_id, item.variant_id)
+                            info = big_products.bc_get_variant(item.product_id, item.variant_id)
                             child_info += info
                         # else get information from Counterpoint
                         else:
@@ -499,7 +499,7 @@ def get_variant_info_from_big(sku):
     if response is not None:
         product_id = int(response[0][0])
         variant_id = int(response[0][1])
-        return bc_get_variant(product_id, variant_id)
+        return big_products.bc_get_variant(product_id, variant_id)
 
 
 def get_binding_ids():
@@ -647,7 +647,7 @@ def update_total_sold(log_file):
                         total_sold_all_children += qty_sold_all_items[y]
 
                 if total_sold_all_children > 0:
-                    bc_update_product(product_id, {"total_sold": total_sold_all_children}, log_file)
+                    big_products.bc_update_product(product_id, {"total_sold": total_sold_all_children}, log_file)
                     print(f"#{count}/{len(ecomm_items)} Updated Item: {sku} to "
                           f"Total Sold: {total_sold_all_children}", file=log_file)
 
@@ -662,7 +662,7 @@ def update_total_sold(log_file):
                 if sku in qty_sold_all_items:
                     total_sold = qty_sold_all_items[sku]
                     if total_sold > 0:
-                        bc_update_product(product_id, {"total_sold": total_sold}, log_file)
+                        big_products.bc_update_product(product_id, {"total_sold": total_sold}, log_file)
                         print(f"#{count}/{len(ecomm_items)} Updated Item: {sku} to Total Sold: {total_sold}",
                               file=log_file)
                         print(f"#{count}/{len(ecomm_items)} Updated Item: {sku} to Total Sold: {total_sold}")
@@ -799,10 +799,10 @@ def update_product_modifiers():
     counter = 1
     for x in all_pots:
         print(f"Number {counter}/{len(all_pots)}: {x}")
-        modifier_id = get_modifier_id(x)
+        modifier_id = big_products.get_modifier_id(x)
         if modifier_id is not None:
-            delete_product_modifier(x, modifier_id)
-            add_container_workshop_to_item(x)
+            big_products.delete_product_modifier(x, modifier_id)
+            big_products.add_container_workshop_to_item(x)
         counter += 1
 
 

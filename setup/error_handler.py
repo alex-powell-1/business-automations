@@ -1,11 +1,15 @@
-def error_handler(func):
-    def inner_function(log_file, title, error_count, *args, **kwargs):
-        try:
-            func(*args, **kwargs)
-        except Exception as err:
-            print(f"Error: {title}", file=log_file)
-            print(err, file=log_file)
-            print("-----------------------\n", file=log_file)
-            error_count += 1
+from datetime import datetime
+from setup import creds
 
-    return inner_function
+
+def error_handler(title, log_file, error_count):
+    def decorator(func):
+        def wrapper(*args, **kwargs):
+            try:
+                return func(*args, **kwargs)
+            except Exception as e:
+                error_count[0] += 1
+                print(f"Error: {title}", file=log_file)
+                print(e, file=log_file)
+        return wrapper
+    return decorator

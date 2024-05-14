@@ -42,7 +42,6 @@ print("-----------------------", file=log_file)
 print(f"Business Automations Starting at {now:%H:%M:%S}", file=log_file)
 print("-----------------------", file=log_file)
 
-
 try:
     if minute == 0 or minute == 30:
         # -----------------
