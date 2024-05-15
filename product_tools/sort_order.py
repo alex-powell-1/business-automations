@@ -12,7 +12,7 @@ db = QueryEngine()
 def sort_order_engine(log_file):
     """Sets sort order based on revenue data from prior year during the forecasted time period"""
     print(f"Sort Order: Starting at {datetime.now():%H:%M:%S}", file=log_file)
-    # WITH SALES HISTORY DURING SALES WINDOW
+    # # WITH SALES HISTORY DURING SALES WINDOW
     top_ecomm_items_with_stock = create_top_items_report(
         beginning_date=one_year_ago,
         ending_date=last_year_forecast,
@@ -62,13 +62,16 @@ def sort_order_engine(log_file):
 
     if y == max_retries:
         print("Could not complete. Max Tries Reached.", file=log_file)
+        print("--------------------\n", file=log_file)
     else:
         print("Setting sort order for merged items: children only -- Completed!", file=log_file)
+        print("--------------------\n", file=log_file)
 
     # ITEMS WITH STOCK AND SALES HISTORY -- STEP 2:
     # Set sort order for parent items based on revenue of best-selling child product_tools
 
     print("Setting sort order for parents based on top child", file=log_file)
+    print("--------------------", file=log_file)
 
     x = 0
     y = 1
@@ -87,8 +90,10 @@ def sort_order_engine(log_file):
             x += 1
     if y == max_tries:
         print("Could not complete. Max Tries Reached.", file=log_file)
+        print("--------------------\n", file=log_file)
     else:
         print("Setting sort order for parents based on top child: Completed!", file=log_file)
+        print("--------------------\n", file=log_file)
 
     # ITEMS WITH STOCK AND SALES HISTORY -- STEP 3:
     # Clear out sort order values for child products
@@ -101,6 +106,7 @@ def sort_order_engine(log_file):
     db.query_db(query, commit=True)
 
     print("Flushed all child sort orders (with sales history)", file=log_file)
+    print("--------------------\n", file=log_file)
 
     # PRODUCTS WITH STOCK AND NO SALES HISTORY
 
@@ -109,6 +115,7 @@ def sort_order_engine(log_file):
     y = 1
     max_retries = 25
     print("Setting sort order for items with no history -- Starting", file=log_file)
+    print("--------------------", file=log_file)
     no_history_items = products.get_items_with_no_sales_history()
     while x < len(no_history_items) and y <= max_retries:
         new_items = products.get_new_items(two_weeks_ago, today, 14.95)

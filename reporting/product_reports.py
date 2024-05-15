@@ -706,7 +706,6 @@ def get_missing_item_descriptions(min_length):
             item = Product(x[0])
             if item.buffered_quantity_available > 0:
                 if item.item_url is not None:
-                    print(f"{counter}/{list_size}: {item.item_no}, {item.web_title}")
                     result += (f'\n<p>#{counter}: {item.item_no}, <a href="{item.item_url}">{item.web_title}</a>, '
                                f'Current Stock: {item.quantity_available}</p>')
                 else:
@@ -731,6 +730,7 @@ def report_generator(revenue=False, last_week_report=False, mtd_month_report=Fal
     if revenue:
         section_header = "Revenue Report"
         report += f"\n<h2><strong>{section_header}</strong></h2>"
+        # YESTERDAY TOTAL REVENUE
         # for all days but Monday: Give yesterday's total
         day_of_week = datetime.today().isoweekday()
         try:
@@ -752,17 +752,27 @@ def report_generator(revenue=False, last_week_report=False, mtd_month_report=Fal
         except Exception as err:
             report += f"<p>Error! Message: {err}</p>"
 
-        # For first week of each month: add Last Month's Total Revenue with 3 year comparison
+        # CURRENT MONTH TOTAL REVENUE
         try:
-            if 1 <= today.day <= 8:
-                section_header = f"\n<h4><strong>{last_month_start:%B} Total Revenue</strong></h4>"
-                report += section_header
-                for x in range(years_to_show):
-                    report += revenue_sales_report(
-                        start_date=last_month_start + relativedelta(years=(x * -1)),
-                        stop_date=last_month_end + relativedelta(years=(x * -1)),
-                        split=False, short=True)
+            section_header = f"\n<h4><strong>{month_start:%B} Total Revenue</strong></h4>"
+            report += section_header
+            for x in range(years_to_show):
+                report += revenue_sales_report(
+                    start_date=month_start + relativedelta(years=(x * -1)),
+                    stop_date=month_end + relativedelta(years=(x * -1)),
+                    split=False, short=True)
+        except Exception as err:
+            report += f"<p>Error! Message: {err}</p>"
 
+        # LAST MONTH TOTAL REVENUE
+        try:
+            section_header = f"\n<h4><strong>{last_month_start:%B} Total Revenue</strong></h4>"
+            report += section_header
+            for x in range(years_to_show):
+                report += revenue_sales_report(
+                    start_date=last_month_start + relativedelta(years=(x * -1)),
+                    stop_date=last_month_end + relativedelta(years=(x * -1)),
+                    split=False, short=True)
         except Exception as err:
             report += f"<p>Error! Message: {err}</p>"
 
@@ -788,13 +798,12 @@ def report_generator(revenue=False, last_week_report=False, mtd_month_report=Fal
             for x in range(years_to_show):
                 dynamic_month_start = month_start + relativedelta(years=(x * -1))
                 dynamic_today = today + relativedelta(years=(x * -1))
+                dynamic_month_end = month_end + relativedelta(years=(x * -1))
+
                 # Create Dynamic Header
                 report += f"<h5>{dynamic_month_start:%b %y}</h5>"
                 # Get Data from SQL
-                if x == 0:
-                    report += f"\n{revenue_sales_report(dynamic_month_start, dynamic_today, split=True)} \n"
-                else:
-                    report += f"\n{revenue_sales_report(dynamic_month_start, dynamic_today, split=True)} \n"
+                report += f"\n{revenue_sales_report(dynamic_month_start, dynamic_today, split=True)} \n"
 
         except Exception as err:
             report += f"<p>Error! Message: {err}</p>"

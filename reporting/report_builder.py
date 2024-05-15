@@ -23,7 +23,7 @@ def item_report(recipient, log_file):
         "binding_key_issues": products.get_binding_id_issues(),
         "non_web_enabled_items": product_reports.get_non_ecomm_enabled_items(),
         "inactive_items_with_stock": product_reports.get_inactive_items_with_stock(),
-        "missing_item_descriptions": product_reports.get_missing_item_descriptions(min_length=60)
+        "missing_item_descriptions": product_reports.get_missing_item_descriptions(min_length=10)
 
     }
 

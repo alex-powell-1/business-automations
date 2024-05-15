@@ -1,10 +1,11 @@
 import re
 
 from big_commerce import big_products
+from setup import creds
 from setup import date_presets
 from setup.create_log import *
 from setup.query_engine import QueryEngine
-from setup import creds
+
 db = QueryEngine()
 
 
@@ -210,7 +211,21 @@ class Product:
             if response is not None:
                 return response[0][0]
 
+    def get_top_child_product(self):
+        """Get Top Performing child product of merged product (by sales in last year window)"""
+        from reporting.product_reports import create_top_items_report
+        children = create_top_items_report(beginning_date=date_presets.one_year_ago,
+                                           ending_date=date_presets.last_year_forecast,
+                                           merged=True,
+                                           binding_id=self.binding_key,
+                                           number_of_items=1,
+                                           return_format=3)
+        if children is not None:
+            top_child = children[0]
+            return top_child
+
     def set_buffer(self, buffer, log_file):
+        """Set stock buffer for e-commerce purposes."""
         initial_buffer = self.buffer
         if buffer == initial_buffer:
             # print(f"Buffer for item: {self.item_no} - {self.long_descr} already at {self.buffer}", file=log_file)
@@ -366,16 +381,24 @@ class Product:
         db.query_db(query, commit=True)
         print(f"updated {self.long_descr} from ${self.price_1} to ${sale_price}")
 
-    def get_top_child_product(self):
-        """Get Top Performing child product of merged product (by sales in last year window)"""
-        from reporting.product_reports import create_top_items_report
-        top_child = create_top_items_report(beginning_date=date_presets.one_year_ago,
-                                            ending_date=date_presets.last_year_forecast,
-                                            merged=True,
-                                            binding_id=self.binding_key,
-                                            number_of_items=1,
-                                            return_format=3)[0]
-        return top_child
+    def set_product_description(self, description, log_file):
+        query = f"""
+        INSERT INTO EC_ITEM_DESCR (ITEM_NO, HTML_DESCR,	LST_MAINT_DT, LST_MAINT_USR_ID)
+        Values ('{self.item_no}', '{description}', GETDATE(), 'AP')
+        """
+        db.query_db(query, commit=True)
+        print(f"Updated {self.item_no} description to {description}")
+        print(f"Updated {self.item_no} description to {description}", file=log_file)
+
+    def refresh_last_maintained_date(self, log_file):
+        query = f"""
+        UPDATE IM_ITEM
+        SET LST_MAINT_DT = GETDATE()
+        WHERE ITEM_NO = '{self.item_no}'
+        """
+        db.query_db(query, commit=True)
+        print(f"Updated {self.item_no} LST_MAINT_DT")
+        print(f"Updated {self.item_no} LST_MAINT_DT", file=log_file)
 
 
 def get_ecomm_items_with_stock():

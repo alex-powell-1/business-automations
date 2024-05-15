@@ -151,6 +151,7 @@ def bc_has_product_thumbnail(product_id) -> bool:
         if response.status_code == 404:
             return False
         else:
+            print(response.content)
             json_response = response.json()['data']
             has_thumbnail = False
             for x in json_response:
@@ -328,6 +329,7 @@ def fix_missing_thumbnails(log_file):
     print(f"Set Fixing Missing Thumbnails: Starting at {datetime.now():%H:%M:%S}", file=log_file)
     # Step 1: Get a list of all binding ids
     binding_ids = products.get_binding_ids()
+    binding_ids = ['B0148']
     updated = 0
     for key in binding_ids:
         # Step 2: Get the parent product
@@ -357,8 +359,16 @@ def fix_missing_thumbnails(log_file):
                             # 4d. If this doesn't exist set it to the top child
                             elif top_child == str(image['image_file']).split("/")[2].split("__")[0]:
                                 bc_update_product_image(product_id, image['id'], {"is_thumbnail": True})
-                                print(f"Binding Key Image Not Found on Big Commerce!\n"
+                                print(f"Binding Key Image Not Found on BigCommerce!\n"
                                       f"Assigning thumbnail flag to base image for top-performing child:"
+                                      f"Image ID: {image['id']} Filename: {image['image_file']}\n\n", file=log_file)
+                                updated += 1
+                            # 4e. If neither exist, set the first image to the thumbnail
+                            else:
+                                bc_update_product_image(product_id, image['id'], {"is_thumbnail": True})
+                                print(f"Binding Key Image Not Found on BigCommerce!\n"
+                                      f"Base Image for Top Performing Child Not Found on BigCommerce!\n"
+                                      f"Assigning thumbnail flag to base image for first image:"
                                       f"Image ID: {image['id']} Filename: {image['image_file']}\n\n", file=log_file)
                                 updated += 1
 

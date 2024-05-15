@@ -12,7 +12,7 @@ def create_inventory_csv(log_file, retail=True):
     if retail:
         # RETAIL AVAILABILITY
         query = """
-        SELECT item.item_no, item.long_descr, item.PRC_1, ISNULL(inv.qty_avail, 0) 
+        SELECT item.item_no, item.long_descr, item.PRC_1, ISNULL(inv.qty_avail, 0), item.categ_cod
         FROM im_item item 
         INNER JOIN im_inv inv on item.ITEM_NO=inv.item_no 
         WHERE inv.QTY_AVAIL >0 and item.stat='A' 
@@ -36,11 +36,8 @@ def create_inventory_csv(log_file, retail=True):
             item_descr = x[1]
             item_price = round(float(x[2]), 2)
             item_qty_avail = int(x[3])
-            if not retail:
-                category = x[4]
-                item_list.append([item_number, item_descr, item_price, item_qty_avail, category])
-            else:
-                item_list.append([item_number, item_descr, item_price, item_qty_avail])
+            category = x[4]
+            item_list.append([item_number, item_descr, item_price, item_qty_avail, category])
 
         if retail:
             df = pd.DataFrame(item_list)
