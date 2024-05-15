@@ -216,7 +216,7 @@ try:
                 print(err, file=log_file)
                 print("-----------------------\n", file=log_file)
 
-            # SORT ORDER BY PREDICTED REVENUE
+            # SORT ORDER BY PREDICTED REVENUE, RELEASE DATE, AND STOCK LEVEL
             # Update Sort Order for all product_tools at 4AM.
             # Uses revenue data from same period last year as a predictive method of rank importance.
             try:

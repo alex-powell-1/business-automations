@@ -4,7 +4,7 @@ import string
 from datetime import datetime, timezone
 from email import utils
 from setup import date_presets
-
+from setup import query_engine
 import requests
 
 from setup import creds
@@ -104,6 +104,48 @@ def bc_create_coupon(name, coupon_type, amount, min_purchase, code,
     return response.json()
 
 
+def cp_create_coupon(code, description, amount, min_purchase, log_file, coupon_type='A', apply_to='H', store='B'):
+    """Will create a coupon code in SQL Database.
+    Code is the coupon code, Description is the description of the coupon, Coupon Type is the type of coupon,
+    Coupon Types: Amount ('A'), Prompted Amount ('B'), Percentage ('P'), Prompted Percent ('Q')
+    Amount is the amount of the coupon, Min Purchase is the minimum purchase amount for the coupon to be valid. Apply to
+    is either 'H' for Document or 'L' for Line ('H' is default), Store is either 'B' for Both instore and online or 'I'
+    for in-store only ('B' is default)"""
+
+    db = query_engine.QueryEngine()
+    top_id_query = f"SELECT MAX(DISC_ID) FROM PS_DISC_COD"
+    response = db.query_db(top_id_query)
+    if response is not None:
+        top_id = response[0][0]
+        top_id += 1
+        query = f"""
+        INSERT INTO PS_DISC_COD(DISC_ID, DISC_COD, DISC_DESCR, DISC_TYP, DISC_AMT, APPLY_TO, MIN_DISCNTBL_AMT, DISC_VAL_FOR)
+        VALUES ('{top_id}', '{code}', '{description}', '{coupon_type}', '{amount}', '{apply_to}', '{min_purchase}', '{store}')
+        """
+        try:
+            db.query_db(query, commit=True)
+        except Exception as e:
+            print(f"CP Coupon Insertion Error: {e}", file=log_file)
+        else:
+            print(f"CP Coupon Insertion Success!", file=log_file)
+
+    else:
+        print("Error: Could not create coupon", file=log_file)
+
+
+def cp_delete_coupon(code, log_file):
+    query = f"""
+    DELETE FROM PS_DISC_COD WHERE DISC_COD = '{code}'
+    """
+    db = query_engine.QueryEngine()
+    try:
+        db.query_db(query, commit=True)
+    except Exception as e:
+        print(f"CP Coupon Deletion Error: {e}", file=log_file)
+    else:
+        print(f"Deleted Coupon: {code}", file=log_file)
+
+
 def bc_delete_coupon(coupon_id):
     url = f"https://api.bigcommerce.com/stores/{creds.big_store_hash}/v2/coupons/{coupon_id}"
     headers = {
@@ -135,6 +177,10 @@ def delete_expired_coupons(log_file):
             expiration_date = utils.parsedate_to_datetime(expiration_date)
             expiration_date = utc_to_local(expiration_date)
             if expiration_date < current_time:
+                # Target Coupon for Deletion Found
+                # Delete from Counterpoint
+                cp_delete_coupon(coupon.code, log_file)
+                # Delete from BigCommerce
                 bc_delete_coupon(coupon.id)
                 total += 1
                 deleted_coupon_log_file = open(creds.deleted_coupon_log, "a")
@@ -145,4 +191,3 @@ def delete_expired_coupons(log_file):
     print(f"Deleting Expired Coupons: Finished at {datetime.now():%H:%M:%S}", file=log_file)
     print(f"Total Coupons Deleted: {total}", file=log_file)
     print("-----------------------", file=log_file)
-

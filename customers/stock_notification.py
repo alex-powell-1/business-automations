@@ -5,7 +5,7 @@ import pandas
 from dateutil.relativedelta import relativedelta
 from jinja2 import Template
 
-from big_commerce.coupons import generate_random_code, bc_create_coupon
+from big_commerce.coupons import generate_random_code, bc_create_coupon, cp_create_coupon
 from customers.customers import get_customer_number_by_email, Customer
 from product_tools.products import Product
 from setup import creds
@@ -97,8 +97,21 @@ def send_stock_notification_emails(log_file):
                 # List of exclusions. Will migrate this to SQL column eventually
                 coupon_exclusions = ['45', '804', 'HB', 'BOSTON']
                 if item.item_no not in coupon_exclusions:
+
                     # Create Coupon Code
-                    random_coupon_code = generate_random_code(8)
+                    random_coupon_code = generate_random_code(10)
+
+                    # Create CounterPoint Coupons
+                    try:
+                        cp_create_coupon(description=f"Stock-{sku}",
+                                         code=random_coupon_code,
+                                         amount=10,
+                                         min_purchase=100,
+                                         log_file=log_file)
+                    except Exception as e:
+                        print(f"CP Coupon Creation Error: {e}", file=log_file)
+                    else:
+                        print(f"CP Coupon Creation Success! Code: {random_coupon_code}", file=log_file)
 
                     # Create Coupon Expiration Date
                     expiration_date = utils.format_datetime(datetime.datetime.now() + relativedelta(days=+5))

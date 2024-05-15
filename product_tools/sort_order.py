@@ -157,10 +157,12 @@ def sort_order_engine(log_file):
     max_retries = 25
     print("Setting sort order for items with no stock -- Starting.", file=log_file)
     while x < len(zero_stock_ecomm_items) and y < max_retries:
-        item = Product(zero_stock_ecomm_items[x])
 
+        item = Product(zero_stock_ecomm_items[x])
+        print(f"ZERO STOCK ECOMM ITEM: {item.item_no}")
         # SINGLE ITEM WITH NO STOCK
         if item.binding_key is None:
+            print(f"NO BINDING KEY: {item.item_no}")
             # Set sort order to 0
             try:
                 item.set_sort_order(log_file=log_file)
