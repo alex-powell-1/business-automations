@@ -103,7 +103,8 @@ def send_stock_notification_emails(log_file):
 
                     # Create CounterPoint Coupons
                     try:
-                        cp_create_coupon(description=f"Stock-{sku}",
+                        cp_create_coupon(description=f"{customer.first_name.title()} "
+                                                     f"{customer.last_name.title()}-Stock:{sku}",
                                          code=random_coupon_code,
                                          amount=10,
                                          min_purchase=100,
