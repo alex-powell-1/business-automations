@@ -2,7 +2,7 @@ import numpy as np
 import pandas
 from jinja2 import Template
 
-import customers.customers
+import customer_tools.customers
 from setup import create_log
 from setup import creds
 from setup.date_presets import *
@@ -67,7 +67,7 @@ def lead_notification_email(log_file):
 
 
 def create_new_customers(log_file):
-    """Send yesterday's entry's to Counterpoint as new customers for further marketing.
+    """Send yesterday's entry's to Counterpoint as new customer_tools for further marketing.
     Will skip customer if email or phone is already in our system."""
     print("Create New Customers: Starting", file=log_file)
     with open(creds.design_lead_log) as lead_file:
@@ -94,16 +94,16 @@ def create_new_customers(log_file):
                 city = x['city']
                 state = x['state']
                 zip_code = x['zip_code']
-                if not customers.customers.is_customer(email_address=x['email'], phone_number=x['phone']):
+                if not customer_tools.customers.is_customer(email_address=x['email'], phone_number=x['phone']):
                     # Add new customer via NCR Counterpoint API
-                    customer_number = customers.customers.add_new_customer(first_name=first_name,
-                                                                           last_name=last_name,
-                                                                           phone_number=phone_number,
-                                                                           email_address=email,
-                                                                           street_address=street_address,
-                                                                           city=city,
-                                                                           state=state,
-                                                                           zip_code=zip_code)
+                    customer_number = customer_tools.customers.add_new_customer(first_name=first_name,
+                                                                                last_name=last_name,
+                                                                                phone_number=phone_number,
+                                                                                email_address=email,
+                                                                                street_address=street_address,
+                                                                                city=city,
+                                                                                state=state,
+                                                                                zip_code=zip_code)
                     # Log on share
                     log_data = [[str(datetime.now())[:-7], customer_number, first_name, last_name, phone_number, email,
                                  street_address, city, state, zip_code]]
@@ -115,7 +115,7 @@ def create_new_customers(log_file):
                 else:
                     print(f"{first_name} {last_name} is already a customer. Skipping customer creation.", file=log_file)
         else:
-            print("No new customers to add", file=log_file)
+            print("No new customer_tools to add", file=log_file)
 
     print(f"Create New Customers: Finished at {datetime.now():%H:%M:%S}", file=log_file)
     print("-----------------------", file=log_file)

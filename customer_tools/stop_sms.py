@@ -5,7 +5,7 @@ from setup import date_presets
 from setup.query_engine import QueryEngine
 
 # from datetime import datetime
-# from customers.customers import Customer, get_customer_number_by_phone
+# from customer_tools.customer_tools import Customer, get_customer_number_by_phone
 # from setup.create_log import create_customer_log
 # from setup.creds import unsubscribed_sms
 
@@ -27,7 +27,7 @@ db = QueryEngine()
 #
 #
 # def unsubscribe_from_sms():
-#     """Unsubscribes customers from SMS marketing following a STOP or stop or unsubscribe request"""
+#     """Unsubscribes customer_tools from SMS marketing following a STOP or stop or unsubscribe request"""
 #     target_phones = get_phones_to_unsubscribe()
 #     if target_phones is not None:
 #         count = 1

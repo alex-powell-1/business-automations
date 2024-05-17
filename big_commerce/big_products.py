@@ -329,7 +329,6 @@ def fix_missing_thumbnails(log_file):
     print(f"Set Fixing Missing Thumbnails: Starting at {datetime.now():%H:%M:%S}", file=log_file)
     # Step 1: Get a list of all binding ids
     binding_ids = products.get_binding_ids()
-    binding_ids = ['B0148']
     updated = 0
     for key in binding_ids:
         # Step 2: Get the parent product
@@ -348,7 +347,7 @@ def fix_missing_thumbnails(log_file):
                     product_images = bc_get_product_images(product_id)
                     if product_images is not None:
                         for image in product_images:
-                            print(str(image['image_file']).split("/")[2].split("__")[0])
+                            # print(str(image['image_file']).split("/")[2].split("__")[0])
                             # 4c. Find the image that is associated with binding key (base image, no carrot)
                             if key == str(image['image_file']).split("/")[2].split("__")[0]:
                                 # 4d. Set this image to thumbnail flag: True
@@ -356,6 +355,7 @@ def fix_missing_thumbnails(log_file):
                                 print(f"Assigning thumbnail flag to base image for binding ID:"
                                       f"Image ID: {image['id']} Filename: {image['image_file']}\n\n", file=log_file)
                                 updated += 1
+                                break
                             # 4d. If this doesn't exist set it to the top child
                             elif top_child == str(image['image_file']).split("/")[2].split("__")[0]:
                                 bc_update_product_image(product_id, image['id'], {"is_thumbnail": True})
@@ -363,6 +363,7 @@ def fix_missing_thumbnails(log_file):
                                       f"Assigning thumbnail flag to base image for top-performing child:"
                                       f"Image ID: {image['id']} Filename: {image['image_file']}\n\n", file=log_file)
                                 updated += 1
+                                break
                             # 4e. If neither exist, set the first image to the thumbnail
                             else:
                                 bc_update_product_image(product_id, image['id'], {"is_thumbnail": True})
@@ -371,6 +372,7 @@ def fix_missing_thumbnails(log_file):
                                       f"Assigning thumbnail flag to base image for first image:"
                                       f"Image ID: {image['id']} Filename: {image['image_file']}\n\n", file=log_file)
                                 updated += 1
+                                break
 
     print(f"Total products updated: {updated}", file=log_file)
     print(f"Set Fixing Missing Thumbnails: Finished at {datetime.now():%H:%M:%S}", file=log_file)

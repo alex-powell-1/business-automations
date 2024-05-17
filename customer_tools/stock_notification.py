@@ -5,8 +5,8 @@ import pandas
 from dateutil.relativedelta import relativedelta
 from jinja2 import Template
 
+import customer_tools
 from big_commerce.coupons import generate_random_code, bc_create_coupon, cp_create_coupon
-from customers.customers import get_customer_number_by_email, Customer
 from product_tools.products import Product
 from setup import creds
 from setup.email_engine import send_html_email
@@ -24,7 +24,7 @@ def send_email(greeting, email, item_number, coupon_code, photo):
     # Create Subject
     email_subject = f"{item.web_title.title()} is back in stock!"
 
-    with open("./customers/templates/stock_notification.html", "r") as file:
+    with open("./customer_tools/templates/stock_notification.html", "r") as file:
         template_str = file.read()
 
     jinja_template = Template(template_str)
@@ -82,10 +82,10 @@ def send_stock_notification_emails(log_file):
             if item.buffered_quantity_available > 0:
                 print(f"Item No: {sku} - now has stock! Creating message for {email}", file=log_file)
                 # Get Customer Details
-                customer_number = get_customer_number_by_email(email)
+                customer_number = customer_tools.customers.get_customer_number_by_email(email)
                 first_name = ""
                 if customer_number is not None:
-                    customer = Customer(customer_number)
+                    customer = customer_tools.customers.Customer(customer_number)
                     first_name = customer.first_name
                 # Generate Greeting
                 if first_name != "":

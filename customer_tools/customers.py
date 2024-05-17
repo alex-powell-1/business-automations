@@ -229,6 +229,18 @@ def export_customers_to_csv(log_file):
     print("-----------------------", file=log_file)
 
 
+def is_current_customer(customer_number):
+    query = f"""
+    SELECT CUST_NO
+    FROM AR_CUST
+    WHERE CUST_NO = '{customer_number}'
+    """
+    response = db.query_db(query)
+    if response is not None:
+        return True
+    else:
+        return False
+
 def get_customer_number_by_phone(phone):
     query = f"""
     SELECT CUST_NO
@@ -397,7 +409,7 @@ def set_contact_1(log_file):
     print(f"Set Contact 1: Starting at {datetime.now():%H:%M:%S}", file=log_file)
     target_customers = get_customers_with_no_contact_1()
     if target_customers is None:
-        print("No customers to set at this time.", file=log_file)
+        print("No customer_tools to set at this time.", file=log_file)
     else:
         print(f"{len(target_customers)} Customers to Update", file=log_file)
         for x in target_customers:

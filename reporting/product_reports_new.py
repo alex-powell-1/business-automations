@@ -335,7 +335,7 @@ def get_sales_rep_report():
 
 
 def wholesale_total(start_date, stop_date, number=10):
-    """Creates a list of top customers (by sales) within a given time frame. Sorted by revenue. """
+    """Creates a list of top customer_tools (by sales) within a given time frame. Sorted by revenue. """
     query = f"""
     "{creds.DATABASE}"."dbo"."USP_RPT_SA_BY_X";1
     'select distinct AR_CUST.CUST_NO as GRP_ID, AR_CUST.NAM as GRP_DESCR
@@ -367,7 +367,7 @@ def wholesale_total(start_date, stop_date, number=10):
 
 
 def top_customer_report(start_date, stop_date, category, number=10):
-    """Creates a list of top customers (by sales) within a given time frame. Sorted by revenue. """
+    """Creates a list of top customer_tools (by sales) within a given time frame. Sorted by revenue. """
     query = f"""
     "{creds.DATABASE}"."dbo"."USP_RPT_SA_BY_X";1
     'select distinct AR_CUST.CUST_NO as GRP_ID, AR_CUST.NAM as GRP_DESCR
@@ -421,7 +421,7 @@ def top_customer_report(start_date, stop_date, category, number=10):
                 counter += 1
         return result
     else:
-        return (f"<p>No customer data available for {category.lower()} customers from "
+        return (f"<p>No customer data available for {category.lower()} customer_tools from "
                 f"{reformat_time(start_date)} - {reformat_time(stop_date)}.</p>")
 
 

@@ -1,11 +1,11 @@
 from datetime import datetime
 
 import big_commerce.big_products
-import customers.stop_sms
+import customer_tools.stop_sms
 from analysis import web_scraping
 from big_commerce import coupons
-from customers import stock_notification
-from customers.customers import set_contact_1
+from customer_tools import stock_notification
+from customer_tools.customers import set_contact_1
 from product_tools import always_online
 from product_tools import brands
 from product_tools import featured
@@ -43,7 +43,7 @@ print(f"Business Automations Starting at {now:%H:%M:%S}", file=log_file)
 print("-----------------------", file=log_file)
 
 try:
-    if minute == 0 or minute == 30:
+    if minute == 35 or minute == 30:
         # -----------------
         # TWICE PER HOUR TASKS
         # -----------------
@@ -52,11 +52,11 @@ try:
             network.health_check(log_file)
         except Exception as err:
             errors += 1
-            print("Error: New Customer Creation", file=log_file)
+            print("Error: Network Health Check", file=log_file)
             print(err, file=log_file)
             print("-----------------------\n", file=log_file)
 
-        # Create new Counterpoint customers from today's marketing leads
+        # Create new Counterpoint customer_tools from today's marketing leads
         try:
             lead_generator_notification.create_new_customers(log_file)
         except Exception as err:
@@ -66,9 +66,10 @@ try:
             print("-----------------------\n", file=log_file)
 
         # SET CONTACT 1
-        # Concatenate First and Last name of non-business customers and fill contact 1 field in counterpoint (if null)
+        # Concatenate First and Last name of non-business customer_tools and
+        # fill contact 1 field in counterpoint (if null)
         try:
-            customers.customers.set_contact_1(log_file)
+            customer_tools.customers.set_contact_1(log_file)
         except Exception as err:
             errors += 1
             print("Error: Contact 1", file=log_file)
@@ -83,7 +84,7 @@ try:
             print(err, file=log_file)
             print("-----------------------\n", file=log_file)
 
-    if minute == 0:
+    if minute == 35:
         # -----------------
         # EVERY HOUR TASKS
         # -----------------
@@ -102,7 +103,7 @@ try:
             print("-----------------------\n", file=log_file)
 
         # TIERED PRICING
-        # Move wholesale customers into pricing tiers based on
+        # Move wholesale customer_tools into pricing tiers based on
         # total sales over the last 6 months
         # tiered_pricing.update_tiered_pricing(date_presets.six_months_ago, date_presets.today)
 
@@ -163,7 +164,7 @@ try:
 
             # Customer Export for Use in Constant Contact Campaigns
             try:
-                customers.customers.export_customers_to_csv(log_file)
+                customer_tools.customers.export_customers_to_csv(log_file)
             except Exception as err:
                 errors += 1
                 print("Error: Customer Export To CSV", file=log_file)
@@ -177,7 +178,7 @@ try:
         # 2 AM TASKS
         if hour == 2:
             # TOTAL SOLD
-            # Update Big Commerce with "total_sold" for all ecommerce items. This lets customers
+            # Update Big Commerce with "total_sold" for all ecommerce items. This lets customer_tools
             # Sort search results by "Best Sellers" with accurate information
             # Runs at 2AM and takes approx. 15 minutes
             try:
@@ -337,7 +338,7 @@ try:
     # 11:30 AM TASKS
     if hour == 11 and minute == 30:
         # STOCK NOTIFICATION EMAIL WITH COUPON GENERATION
-        # Read CSV file, check all items for stock, send auto generated emails to customers
+        # Read CSV file, check all items for stock, send auto generated emails to customer_tools
         # with product photo, product description (if exists), coupon (if applicable), and
         # direct purchase links. Generate coupon and send to big for e-comm use.
 
@@ -481,7 +482,7 @@ try:
     if hour == 21:
         # Remove anyone with only one purchase and return from SMS/Text Funnel
         try:
-            customers.stop_sms.remove_refunds_from_sms_funnel(log_file)
+            customer_tools.stop_sms.remove_refunds_from_sms_funnel(log_file)
         except Exception as err:
             errors += 1
             print("Error: Remove Refunds from SMS Funnel", file=log_file)
@@ -506,7 +507,7 @@ try:
             print(err, file=log_file)
             print("-----------------------\n", file=log_file)
 
-        # Remove wholesale customers from loyalty program
+        # Remove wholesale customer_tools from loyalty program
         try:
             sms_automations.remove_wholesale_from_loyalty(log_file)
         except Exception as err:
@@ -515,9 +516,9 @@ try:
             print(err, file=log_file)
             print("-----------------------\n", file=log_file)
 
-        # Set customers with a negative point balance to 0
+        # Set customer_tools with a negative point balance to 0
         try:
-            customers.customers.set_negative_loyalty_points_to_zero(log_file)
+            customer_tools.customers.set_negative_loyalty_points_to_zero(log_file)
         except Exception as err:
             errors += 1
             print("Error: Negative Loyalty Set to Zero", file=log_file)

@@ -1,7 +1,7 @@
 import random
 from datetime import datetime
 
-from customers.customers import Customer
+from customer_tools.customers import Customer
 from setup import creds
 from setup.create_log import create_sms_log
 from setup.query_engine import QueryEngine
@@ -58,8 +58,8 @@ def create_customer_text(query, msg_descr, msg, detail_log, general_log, rewards
 
 
 def remove_wholesale_from_loyalty(log_file):
-    """New customer templates automatically add new customers to the BASIC program.
-    This script will remove wholesale customers from a loyalty program and set balance to 0."""
+    """New customer templates automatically add new customer_tools to the BASIC program.
+    This script will remove wholesale customer_tools from a loyalty program and set balance to 0."""
 
     print(f"Remove Wholesale From Loyalty: Starting at {datetime.now():%H:%M:%S}", file=log_file)
 

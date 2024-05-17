@@ -34,7 +34,7 @@ rc_3_choice_2 = ("Thanks for shopping with us last week! "
 rc_3_body = random.choice([rc_3_choice_1, rc_3_choice_2])
 
 # MESSAGE 4
-# Day 14, target higher frequency customers
+# Day 14, target higher frequency customer_tools
 bring_a_friend_coupon = "Here's a coupon for you and a friend! $10 for you and $10 for them when you both spend $50. "
 
 # MESSAGE 5
