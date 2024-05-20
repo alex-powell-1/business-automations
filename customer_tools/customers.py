@@ -37,6 +37,7 @@ class Customer:
         self.birth_month = ""
         self.spouse_birth_month = ""
         self.sms_subscribe = ""
+        self.pricing_tier = ""
         self.set_customer_details()
 
     def set_customer_details(self):
@@ -44,15 +45,15 @@ class Customer:
         SELECT FST_NAM, LST_NAM, NAM, PHONE_1, MBL_PHONE_1,
         PHONE_2, MBL_PHONE_2, EMAIL_ADRS_1, EMAIL_ADRS_2, ADRS_1,
         CITY, STATE, ZIP_COD, CUST_TYP, CATEG_COD, PROF_COD_1, ISNULL(LOY_PTS_BAL, 0), LOY_PGM_COD,
-        PROF_COD_2, PROF_COD_3, INCLUDE_IN_MARKETING_MAILOUTS
+        PROF_COD_2, PROF_COD_3, INCLUDE_IN_MARKETING_MAILOUTS, PROF_ALPHA_1
         FROM AR_CUST
         WHERE CUST_NO = '{self.number}'
         """
         response = db.query_db(query)
         if response is not None:
-            self.first_name = response[0][0]
-            self.last_name = response[0][1]
-            self.name = response[0][2]
+            self.first_name = response[0][0] if response[0][0] is not None else ""
+            self.last_name = response[0][1] if response[0][1] is not None else ""
+            self.name = response[0][2] if response[0][2] is not None else ""
             self.phone_1 = response[0][3]
             self.mbl_phone_1 = response[0][4]
             self.phone_2 = response[0][5]
@@ -71,6 +72,7 @@ class Customer:
             self.birth_month = response[0][18]
             self.spouse_birth_month = response[0][19]
             self.sms_subscribe = response[0][20]
+            self.pricing_tier = int(response[0][21]) if response[0][21] is not None else None
 
     def add_to_mailerlite(self):
         url = "https://connect.mailerlite.com/api/subscribers/"
@@ -133,8 +135,34 @@ class Customer:
     def get_total_spent(self, start_date, stop_date):
         pass
 
+    def get_pricing_tier(self):
+        # Get Current Pricing Tier Level
+        query = f"""
+                SELECT PROF_ALPHA_1
+                FROM AR_CUST
+                WHERE CUST_NO = '{self.number}'
+                """
+        response = db.query_db(query)
+        if response is not None:
+            tier = response[0][0]
+        else:
+            tier = None
+        return tier
+
+    def set_pricing_tier(self, target_tier, log_file):
+        current_tier = self.get_pricing_tier()
+        # Set New Pricing Level
+        query = f"""
+                UPDATE AR_CUST
+                SET PROF_ALPHA_1 = {int(target_tier)}
+                WHERE CUST_NO = '{self.number}'
+                """
+        db.query_db(query, commit=True)
+        print(f"{self.name}({self.number}) pricing tier updated from {current_tier} to {target_tier}", file=log_file)
 
 # --------------------------------------------
+
+
 def export_retail_customer_csv(log_file):
     retail_query = """
     SELECT CUST_NO, FST_NAM, LST_NAM, EMAIL_ADRS_1, PHONE_1, PROF_COD_2, LOY_PTS_BAL 

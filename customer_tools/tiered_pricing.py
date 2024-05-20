@@ -2,15 +2,41 @@ from datetime import datetime
 
 import pandas
 
-from customer_tools.customers import is_current_customer
+from customer_tools.customers import is_current_customer, Customer
 from setup import creds
 from setup.query_engine import QueryEngine
-from setup import date_presets
+
 console_logging = True
 
-target_profile_code = "PROF_COD_1"
-
 db = QueryEngine()
+
+
+def get_government_customers():
+    query = f"""
+    SELECT CUST_NO
+    FROM AR_CUST
+    WHERE CATEG_COD = 'WHOLESALE' and 
+    (NAM like '%town of%' or 
+    NAM like '%city of%' or 
+    NAM like '%university%' or
+    NAM like '%schools%' or
+    NAM like '%college')"""
+    response = db.query_db(query)
+    if response is not None:
+        return [i[0] for i in response]
+
+
+def set_government_pricing_tier():
+    query = f"""
+    UPDATE AR_CUST
+    SET PROF_ALPHA_1 = '2'
+    WHERE CATEG_COD = 'WHOLESALE' and 
+    (NAM like '%town of%' or 
+    NAM like '%city of%' or 
+    NAM like '%university%' or
+    NAM like '%schools%' or
+    NAM like '%college')"""
+    db.query_db(query, commit=True)
 
 
 def create_customer_log(cust_no, business_name, total_sales, previous_tier, new_tier):
@@ -27,36 +53,29 @@ def create_customer_log(cust_no, business_name, total_sales, previous_tier, new_
         df.to_csv(log_location, mode='a', header=False, index=False)
 
 
-def set_pricing_tier(customer_number, target_tier):
-    # Set New Pricing Level
-    query = f"""
-            UPDATE AR_CUST
-            SET {target_profile_code} = '{target_tier}'
-            WHERE CUST_NO = '{customer_number}'
-            """
-    response = db.query_db(query, commit=True)
-
-
-def get_pricing_tier(customer_number):
-    # Get Current Pricing Tier Level
-    query = f"""
-            SELECT {target_profile_code}
-            FROM AR_CUST
-            WHERE CUST_NO = '{customer_number}'
-            """
-    response = db.query_db(query)
-    if response is not None:
-        tier = response[0][0]
-    else:
-        tier = None
-    return tier
-
-
 def reassess_tiered_pricing(start_date, end_date, log_file, demote=False):
     """Will promote and demote wholesale customers based on total spending last year"""
     print(f"Wholesale Accounts Tiered Pricing: Starting at {datetime.now():%H:%M:%S}", file=log_file)
+    # Step 1: Set all wholesale accounts with no price tier to '1'. This will be the default tier and will correct
+    # any accounts that have been missed during account creation.
 
-    query = f"""
+    correct_null_query = """
+    UPDATE AR_CUST
+    SET PROF_ALPHA_1 = '1'
+    WHERE CATEG_COD = 'WHOLESALE' and (PROF_ALPHA_1 IS NULL or PROF_ALPHA_1 = '')
+    """
+    db.query_db(correct_null_query, commit=True)
+    print("All Wholesale Accounts with no pricing tier set to '1'", file=log_file)
+
+    # Set all government customers to pricing tier 2
+    set_government_pricing_tier()
+    print("All Government Customers set to Pricing Tier 2", file=log_file)
+
+    # Step 2: Get all wholesale customers with sales history during the period
+    print(f"Assessment Start Date: {start_date:%m/%d/%Y}", file=log_file)
+    print(f"Assessment End Date: {end_date:%m/%d/%Y}", file=log_file)
+
+    sales_history_query = f"""
     "{creds.DATABASE}"."dbo"."USP_RPT_SA_BY_X";1 
     'select distinct AR_CUST.CUST_NO as GRP_ID, AR_CUST.NAM as GRP_DESCR 
     from AR_CUST where ((AR_CUST.CATEG_COD = ''WHOLESALE'')) 
@@ -71,90 +90,77 @@ def reassess_tiered_pricing(start_date, end_date, log_file, demote=False):
     (1=0) ', 0, 0, 'SLS_EXT_PRC_A - RTN_EXT_PRC_VALID_A - RTN_EXT_PRC_NONVALID_A', 2
     """
 
-    wholesale_customers = db.query_db(query)
+    wholesale_customers_during_period = db.query_db(sales_history_query)
 
-    if wholesale_customers is not None:
-        for i in wholesale_customers:
+    if wholesale_customers_during_period is not None:
+
+        for i in wholesale_customers_during_period:
             customer_number = i[0]
-            # Check to see if the customer is still active
-            valid_customer = is_current_customer(customer_number)
-            if not valid_customer:
+
+            # Check to see if the customer is still active. If not, skip.
+            if not is_current_customer(customer_number):
                 continue
-            # Valid Customer Flow
+
+            # Valid Customers
             else:
-                # Set None type to empty string so it can be checked for government status
-                business_name = i[1] if i[1] is not None else ''
-                # Check if business is a government entity
-                government = False
-                for target in ['city of', 'town of', 'university', 'college', 'schools']:
-                    if target in business_name.lower():
-                        government = True
-                if government:
-                    target_pricing_tier = '2'
-                # Non-Government Entity Flow
+                # create customer object for each customer
+                customer = Customer(customer_number)
+
+                # Check if this is a government customer. If so, skip
+                if customer.number in get_government_customers():
+                    # print(f"{customer.name}({customer_number}) is a government cust. "
+                    #       f"Level: {customer.pricing_tier}. Skipping...", file=log_file)
+                    continue
+
+                # Check if this is a pricing tier 0 customer. If so, skip. Level 0 doesn't promote or demote.
+                if customer.pricing_tier == 0:
+                    # print(f"{customer.name}({customer_number}) is at level 0. Skipping...", file=log_file)
+                    continue
+
+                # All other customers are valid for tiered pricing
                 else:
+                    # Get customer sales data
+                    total_sales = float(i[2])
+                    # base case
                     target_pricing_tier = 1
-                    previous_pricing_tier = get_pricing_tier(customer_number)
-
                     # If there is no previous pricing tier, set to target tier to 1
-                    if previous_pricing_tier is None:
-                        set_pricing_tier(customer_number, target_pricing_tier)
-
-                    try:
-                        previous_pricing_tier = int(get_pricing_tier(customer_number))
-                    except ValueError:
-                        print(f"Error: {customer_number} has invalid pricing tier: {previous_pricing_tier}",
-                              file=log_file)
-                        continue
-                    else:
-                        total_sales = float(i[2])
-                        # Put Customers into Categories based on sales
-                        if total_sales >= 25000:
-                            target_pricing_tier = 5
-                        elif total_sales >= 125000:
-                            target_pricing_tier = 4
-                        elif total_sales >= 5000:
-                            target_pricing_tier = 3
-                        elif total_sales >= 1000:
-                            target_pricing_tier = 2
-
+                    if customer.pricing_tier is None:
+                        customer.set_pricing_tier(target_tier=target_pricing_tier, log_file=log_file)
+                    # Put Customers into Categories based on sales
+                    if total_sales >= 25000:
+                        target_pricing_tier = 5
+                    elif total_sales >= 125000:
+                        target_pricing_tier = 4
+                    elif total_sales >= 5000:
+                        target_pricing_tier = 3
+                    elif total_sales >= 1000:
+                        target_pricing_tier = 2
+                    # print(customer_number, business_name, current_pricing_tier, target_pricing_tier)
                     # If there hasn't been a change, then continue to next iteration
-                    if previous_pricing_tier == target_pricing_tier:
+                    if customer.pricing_tier == target_pricing_tier:
                         continue
-
-                    # If demote is set to True, then demote customers
-                    elif previous_pricing_tier > target_pricing_tier:
+                    # Demote Customer Tier
+                    elif customer.pricing_tier > target_pricing_tier:
+                        # If demote is set to True, then demote customers. This will only be set to True on
+                        # reassessment of last year's sales at the beginning of the year.
+                        # Generally, it will run on false.
+                        # print(f"Target for demotion found! "
+                        #       f"{customer.name}(Cust No: {customer_number})", file=log_file)
                         if not demote:
-                            print(f"Demote set to false. {customer_number}: {business_name} - target tier: {target_pricing_tier} "
-                                  f"but last year's sales is at level {previous_pricing_tier}.", file=log_file)
+                            # print(f"Demote set to false. Skipping demotion", file=log_file)
                             continue
-                    # If there has been a change, set new tiered pricing level
-                    set_pricing_tier(customer_number, target_pricing_tier)
-                    # Get updated tier for logging
-                    new_pricing_tier = get_pricing_tier(customer_number)
-                    create_customer_log(customer_number, business_name, total_sales,
-                                        previous_pricing_tier, new_pricing_tier)
+                        else:
+                            print(f"Demoting {customer.name}(Cust No: {customer_number} from level: "
+                                  f"{customer.pricing_tier} to level: {target_pricing_tier}", file=log_file)
 
-                    # Log Change
-                    print(
-                        f"{customer_number}: {business_name} moved from level: "
-                        f"{previous_pricing_tier} to level: {new_pricing_tier}",
-                        file=log_file)
+                    # If there has been a change, set new tiered pricing level
+                    customer.set_pricing_tier(target_tier=target_pricing_tier, log_file=log_file)
 
         print(f"Tiered pricing set For all wholesale accounts with history from "
               f"{start_date:%m/%d:%Y}-{end_date:%m/%d:%Y}", file=log_file)
 
-        # Set all remaining wholesale accounts with no sales history to '1'
-        query = f"""
-                UPDATE AR_CUST
-                SET {target_profile_code} = '1'
-                WHERE CATEG_COD = 'WHOLESALE' and {target_profile_code} IS NULL
-                """
-
-        db.query_db(query, commit=True)
-        print("'Level 1' set for all wholesale accounts with no sales history", file=log_file)
     else:
         print("No Wholesale Accounts Found", file=log_file)
 
     print(f"Wholesale Accounts Tiered Pricing: Completed at {datetime.now():%H:%M:%S}", file=log_file)
-    print("-----------------------", file=log_file)
+    print("-----------------------\n\n", file=log_file)

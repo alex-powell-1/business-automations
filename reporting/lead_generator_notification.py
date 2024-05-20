@@ -13,7 +13,7 @@ def lead_notification_email(log_file):
     """Renders Jinja2 template and sends HTML email to sales team with leads from yesterday
     for follow-up"""
     print(f"Lead Notification Email: Starting at {datetime.now():%H:%M:%S}", file=log_file)
-    with open(creds.design_lead_log) as lead_file:
+    with open(creds.design_lead_log, encoding='utf-8') as lead_file:
         # Dataframe for Log
         df = pandas.read_csv(lead_file)
         df = df.replace({np.nan: None})
@@ -70,7 +70,7 @@ def create_new_customers(log_file):
     """Send yesterday's entry's to Counterpoint as new customer_tools for further marketing.
     Will skip customer if email or phone is already in our system."""
     print("Create New Customers: Starting", file=log_file)
-    with open(creds.design_lead_log) as lead_file:
+    with open(creds.design_lead_log, encoding='utf-8') as lead_file:
         # Dataframe for Log
         df = pandas.read_csv(lead_file)
         df = df.replace({np.nan: None})

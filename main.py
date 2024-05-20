@@ -11,6 +11,7 @@ from product_tools import brands
 from product_tools import featured
 from product_tools import inventory_upload
 from product_tools import related_items
+from customer_tools import tiered_pricing
 from product_tools import resize_photos
 from product_tools import set_inactive_status
 from product_tools import sort_order
@@ -43,7 +44,7 @@ print(f"Business Automations Starting at {now:%H:%M:%S}", file=log_file)
 print("-----------------------", file=log_file)
 
 try:
-    if minute == 35 or minute == 30:
+    if minute == 0 or minute == 30:
         # -----------------
         # TWICE PER HOUR TASKS
         # -----------------
@@ -76,6 +77,7 @@ try:
             print(err, file=log_file)
             print("-----------------------\n", file=log_file)
 
+        # FIX MISSING THUMBNAILS ON BIG COMMERCE
         try:
             big_commerce.big_products.fix_missing_thumbnails(log_file)
         except Exception as err:
@@ -84,7 +86,20 @@ try:
             print(err, file=log_file)
             print("-----------------------\n", file=log_file)
 
-    if minute == 35:
+        # TIERED WHOLESALE PRICING LEVELS
+        # Reassessing tiered pricing for all customers based on current year
+        try:
+            tiered_pricing.reassess_tiered_pricing(start_date=date_presets.year_start,
+                                                   end_date=date_presets.today,
+                                                   log_file=log_file,
+                                                   demote=False)
+        except Exception as err:
+            errors += 1
+            print("Error: Wholesale Tiered Pricing", file=log_file)
+            print(err, file=log_file)
+            print("-----------------------\n", file=log_file)
+
+    if minute == 0:
         # -----------------
         # EVERY HOUR TASKS
         # -----------------
