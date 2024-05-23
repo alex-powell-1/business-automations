@@ -65,7 +65,7 @@ def send_stock_notification_emails(log_file):
     """Sends stock notification email updates for items that were out of stock
     but now have stock > 0. Cleans csv so contacts are only notified once"""
     print(f"Send Stock Notification Emails: Starting at {datetime.datetime.now():%H:%M:%S}", file=log_file)
-    with open(creds.stock_notification_log) as file:
+    with open(creds.stock_notification_log, encoding='utf-8') as file:
         # Dataframe for Stock Notification Log
         df = pandas.read_csv(file)
         entries = df.to_dict("records")

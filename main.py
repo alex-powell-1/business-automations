@@ -16,6 +16,7 @@ from product_tools import resize_photos
 from product_tools import set_inactive_status
 from product_tools import sort_order
 from product_tools import stock_buffer
+from product_tools import prices
 from reporting import lead_generator_notification, daily_revenue
 from reporting import product_reports
 from reporting import report_builder
@@ -26,6 +27,10 @@ from sms import sms_automations
 from sms import sms_queries
 from sms.sms_messages import birthdays, first_time_customers, returning_customers, wholesale_sms_messages
 from utilities import backups
+
+# -----------------
+# Driver for Business Automations
+# -----------------
 
 now = datetime.now()
 day = now.day
@@ -192,6 +197,16 @@ try:
 
         # 2 AM TASKS
         if hour == 2:
+            # if day == 21:
+            #     # Memorial Day Sale
+            #     # Set sale price for all items except roses and hanging baskets
+            #     try:
+            #         prices.memorial_day_sale()
+            #     except Exception as err:
+            #         errors += 1
+            #         print("Error: Memorial Day Sale", file=log_file)
+            #         print(err, file=log_file)
+            #         print("-----------------------\n", file=log_file)
             # TOTAL SOLD
             # Update Big Commerce with "total_sold" for all ecommerce items. This lets customer_tools
             # Sort search results by "Best Sellers" with accurate information
