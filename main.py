@@ -5,19 +5,18 @@ import customer_tools.stop_sms
 from analysis import web_scraping
 from big_commerce import coupons
 from customer_tools import stock_notification
+from customer_tools import tiered_pricing
 from customer_tools.customers import set_contact_1
 from product_tools import always_online
 from product_tools import brands
 from product_tools import featured
 from product_tools import inventory_upload
 from product_tools import related_items
-from customer_tools import tiered_pricing
 from product_tools import resize_photos
 from product_tools import set_inactive_status
 from product_tools import sort_order
 from product_tools import stock_buffer
-from product_tools import prices
-from reporting import lead_generator_notification, daily_revenue
+from reporting import lead_generator_notification
 from reporting import product_reports
 from reporting import report_builder
 from setup import creds
@@ -137,6 +136,41 @@ try:
             print("Error: Photo Resizing/Reformatting", file=log_file)
             print(err, file=log_file)
             print("-----------------------\n", file=log_file)
+
+        # ADMINISTRATIVE REPORT
+        # Generate report in styled html/css and email to administrative team list
+        if creds.administrative_report['enabled'] and creds.administrative_report['hour'] == hour:
+            try:
+                product_reports.administrative_report(recipients=creds.administrative_report['recipients'],
+                                                      log_file=log_file)
+            except Exception as err:
+                errors += 1
+                print("Error: Administrative Report", file=log_file)
+                print(err, file=log_file)
+                print("-----------------------\n", file=log_file)
+
+        # ITEMS REPORT EMAIL
+        # For product management team
+        if creds.item_report['enabled'] and creds.item_report['hour'] == hour:
+            try:
+                report_builder.item_report(recipients=creds.item_report['recipients'],
+                                           log_file=log_file)
+            except Exception as err:
+                errors += 1
+                print("Error: Administrative Report", file=log_file)
+                print(err, file=log_file)
+                print("-----------------------\n", file=log_file)
+
+        # LANDSCAPE DESIGN LEAD NOTIFICATION EMAIL
+        # Customer Followup Email to Sales Team
+        if creds.lead_email['enabled'] and creds.lead_email['hour'] == hour:
+            try:
+                lead_generator_notification.lead_notification_email(log_file)
+            except Exception as err:
+                errors += 1
+                print("Error: Lead Notification Email", file=log_file)
+                print(err, file=log_file)
+                print("-----------------------\n", file=log_file)
 
         # ----------------------
         # EVERY OTHER HOUR TASKS
@@ -269,58 +303,28 @@ try:
                 print("-----------------------\n", file=log_file)
 
         # 5 AM TASKS
-        if hour == 5:
-            # ADMINISTRATIVE REPORT
-            # Generate report in styled html/css and email to administrative team list
-            try:
-                product_reports.administrative_report(recipients=creds.admin_team, log_file=log_file)
-            except Exception as err:
-                errors += 1
-                print("Error: Administrative Report", file=log_file)
-                print(err, file=log_file)
-                print("-----------------------\n", file=log_file)
+        # if hour == 5:
 
-            # ITEMS REPORT EMAIL
-            # For product management team
-            try:
-                report_builder.item_report(recipient=creds.admin_team, log_file=log_file)
-            except Exception as err:
-                errors += 1
-                print("Error: Administrative Report", file=log_file)
-                print(err, file=log_file)
-                print("-----------------------\n", file=log_file)
+            # # REVENUE REPORT
+            # # sent to accounting department
+            # if datetime.today().isoweekday() == 7:  # only on Sunday
+            #     try:
+            #         product_reports.revenue_report(recipients=creds.admin_report_recipients, log_file=log_file)
+            #     except Exception as err:
+            #         errors += 1
+            #         print("Error: Revenue Report", file=log_file)
+            #         print(err, file=log_file)
+            #         print("-----------------------\n", file=log_file)
 
-            # LANDSCAPE DESIGN LEAD NOTIFICATION EMAIL
-            # Customer Followup Email to Sales Team
-            try:
-                lead_generator_notification.lead_notification_email(log_file)
-
-            except Exception as err:
-                errors += 1
-                print("Error: Lead Notification Email", file=log_file)
-                print(err, file=log_file)
-                print("-----------------------\n", file=log_file)
-
-            # REVENUE REPORT
-            # sent to accounting department
-            if datetime.today().isoweekday() == 7:  # only on Sunday
-                try:
-                    product_reports.revenue_report(recipients=creds.flash_sales_recipients, log_file=log_file)
-                except Exception as err:
-                    errors += 1
-                    print("Error: Revenue Report", file=log_file)
-                    print(err, file=log_file)
-                    print("-----------------------\n", file=log_file)
-
-    if hour == 7:
-        # Daily revenue report for accounting
-        try:
-            daily_revenue.daily_revenue_report(log_file)
-        except Exception as err:
-            errors += 1
-            print("Error: Daily Revenue Report", file=log_file)
-            print(err, file=log_file)
-            print("-----------------------\n", file=log_file)
+    # if hour == 7:
+    # Daily revenue report for accounting
+    # try:
+    #     daily_revenue.daily_revenue_report(log_file)
+    # except Exception as err:
+    #     errors += 1
+    #     print("Error: Daily Revenue Report", file=log_file)
+    #     print(err, file=log_file)
+    #     print("-----------------------\n", file=log_file)
 
     # 9 AM TASKS
     if hour == 9:

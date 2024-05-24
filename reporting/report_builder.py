@@ -1,14 +1,13 @@
 from datetime import datetime
-from dateutil.relativedelta import relativedelta
 
 from jinja2 import Template
 
-from reporting import product_reports, product_reports_new
-from setup import creds, date_presets, email_engine
 from product_tools import products
+from reporting import product_reports
+from setup import creds, email_engine
 
 
-def item_report(recipient, log_file):
+def item_report(recipients, log_file):
     print(f"Items Report: Starting at {datetime.now():%H:%M:%S}", file=log_file)
 
     with open("./reporting/templates/item_report.html", "r") as file:
@@ -29,48 +28,47 @@ def item_report(recipient, log_file):
 
     email_content = jinja_template.render(data)
 
-    email_engine.send_html_email(from_name=creds.company_name,
-                                 from_address=creds.gmail_sales_user,
-                                 from_pw=creds.gmail_sales_pw,
-                                 recipients_list=recipient,
+    email_engine.send_staff_email(from_name=creds.company_name,
+                                  from_address=creds.sales_email,
+                                  from_pw=creds.sales_password,
+                                  recipients_list=recipients,
 
-                                 subject=f"Item Report for "
-                                         f"{(datetime.now().strftime("%B %d, %Y"))}",
+                                  subject=f"Item Report for "
+                                          f"{(datetime.now().strftime("%B %d, %Y"))}",
 
-                                 content=email_content,
-                                 product_photo=None,
-                                 mode="related",
-                                 logo=True)
+                                  content=email_content,
+                                  product_photo=None,
+                                  mode="related",
+                                  logo=True)
     print(f"Items Report: Completed at {datetime.now():%H:%M:%S}", file=log_file)
     print("-----------------------", file=log_file)
 
-
-def administrative_report():
-    with open("./reporting/templates/admin_report.html", "r") as file:
-        template_str = file.read()
-
-    jinja_template = Template(template_str)
-
-    data = {
-        "reporting_periods": date_presets.reporting_periods,
-        "reports": product_reports_new,
-        "date_presets": date_presets,
-        "relative_delta": relativedelta,
-        "day_of_week": datetime.today().isoweekday(),
-        "datetime": datetime,
-    }
-
-    email_content = jinja_template.render(data)
-
-    email_engine.send_html_email(from_name=creds.company_name,
-                                 from_address=creds.gmail_sales_user,
-                                 from_pw=creds.gmail_sales_pw,
-                                 recipients_list=creds.alex_only,
-
-                                 subject=f"Administrative Report - "
-                                         f"{(datetime.now().strftime("%B %d, %Y"))}",
-
-                                 content=email_content,
-                                 product_photo=None,
-                                 mode="related",
-                                 logo=True)
+# def administrative_report():
+#     with open("./reporting/templates/admin_report.html", "r") as file:
+#         template_str = file.read()
+#
+#     jinja_template = Template(template_str)
+#
+#     data = {
+#         "reporting_periods": date_presets.reporting_periods,
+#         "reports": product_reports_new,
+#         "date_presets": date_presets,
+#         "relative_delta": relativedelta,
+#         "day_of_week": datetime.today().isoweekday(),
+#         "datetime": datetime,
+#     }
+#
+#     email_content = jinja_template.render(data)
+#
+#     email_engine.send_staff_email(from_name=creds.company_name,
+#                                   from_address=creds.sales_email,
+#                                   from_pw=creds.sales_password,
+#                                   recipients_list=creds.admin_report_recipients,
+#
+#                                   subject=f"Administrative Report - "
+#                                           f"{(datetime.now().strftime("%B %d, %Y"))}",
+#
+#                                   content=email_content,
+#                                   product_photo=None,
+#                                   mode="related",
+#                                   logo=True)

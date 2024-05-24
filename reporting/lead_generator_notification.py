@@ -6,7 +6,7 @@ import customer_tools.customers
 from setup import create_log
 from setup import creds
 from setup.date_presets import *
-from setup.email_engine import send_html_email
+from setup.email_engine import send_html_email, send_staff_email
 
 
 def lead_notification_email(log_file):
@@ -45,10 +45,10 @@ def lead_notification_email(log_file):
             email_content = jinja_template.render(email_data)
 
             try:
-                send_html_email(from_name=creds.company_name,
+                send_staff_email(from_name=creds.company_name,
                                 from_address=creds.gmail_sales_user,
                                 from_pw=creds.gmail_sales_pw,
-                                recipients_list=creds.sales_group,
+                                recipients_list=creds.admin_report_recipients,
                                 subject="Landscape Design Leads",
                                 content=email_content,
                                 mode="related",

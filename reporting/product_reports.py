@@ -400,7 +400,6 @@ def get_missing_image_list():
     # all_e_comm_items = get_ecomm_items(mode=2)
     all_ecomm_items_with_stock = get_ecomm_items_with_stock()
     all_current_photos = get_list_of_current_photo_sku()
-
     missing_image_list_child = []
     missing_image_list_parent = []
     check_list = []
@@ -979,9 +978,9 @@ def administrative_report(recipients, log_file):
                                    missing_descriptions_report=True)
     html_contents = boiler_plate + css + body_start + report_data + body_end
     try:
-        email_engine.send_html_email(from_name=creds.company_name,
-                                     from_address=creds.gmail_alex_user,
-                                     from_pw=creds.gmail_alex_pw,
+        email_engine.send_staff_email(from_name=creds.company_name,
+                                     from_address=creds.sales_email,
+                                     from_pw=creds.sales_password,
                                      recipients_list=recipients,
                                      subject=subject,
                                      content=html_contents,
@@ -1003,8 +1002,8 @@ def revenue_report(recipients, log_file):
     html_contents = boiler_plate + css + body_start + report_data + body_end
     try:
         email_engine.send_html_email(from_name=creds.company_name,
-                                     from_address=creds.gmail_alex_user,
-                                     from_pw=creds.gmail_alex_pw,
+                                     from_address=creds.sales_email,
+                                     from_pw=creds.sales_password,
                                      recipients_list=recipients,
                                      subject=subject,
                                      content=html_contents,

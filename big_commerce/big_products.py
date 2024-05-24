@@ -121,6 +121,9 @@ def bc_get_product_images(product_id):
             return json_response
 
 
+
+
+
 def bc_update_product_image(product_id, image_id, payload):
     url = (f" https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/products/"
            f"{product_id}/images/{image_id}")

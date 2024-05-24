@@ -39,7 +39,7 @@ def health_check(log_file):
         print(f"Flask server is not running. Restart the server: {creds.flask_server_name}", file=log_file)
         sms = sms_engine.SMSEngine()
         sms.send_text("none",
-                      to_phone=creds.my_phone,
+                      to_phone=creds.network_notification_phone,
                       message=f"Flask server is not running. Restart the server: {creds.flask_server_name}",
                       log_location=creds.sms_utility_log,
                       create_log=False,

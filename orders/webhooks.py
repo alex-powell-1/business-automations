@@ -36,7 +36,7 @@ def create_webhook(pretty=True):
     }
     payload = {
         "scope": "store/order/created",
-        "destination": creds.orders_endpoint,
+        "destination": creds.ngrok_domain + "/bc",
     }
 
     response = requests.post(url, json=payload, headers=headers)

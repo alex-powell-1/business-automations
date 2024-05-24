@@ -21,11 +21,11 @@ def set_product_brand(log_file):
 def set_company_brand(log_file):
     query = f"""
     UPDATE IM_ITEM
-    SET PROF_COD_1 = '{creds.db_brand}', LST_MAINT_DT = GETDATE()
+    SET PROF_COD_1 = '{creds.company_product_brand}', LST_MAINT_DT = GETDATE()
     WHERE PROF_COD_1 IS NULL
     """
     db.query_db(query, commit=True)
-    print(f"Set null brand fields to {creds.db_brand}", file=log_file)
+    print(f"Set null brand fields to {creds.company_product_brand}", file=log_file)
 
 
 def get_branded_products(brand):
