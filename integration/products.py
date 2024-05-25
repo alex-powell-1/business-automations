@@ -1449,15 +1449,17 @@ def get_updated_photos(date):
     return result
 
 
-def update_product_timestamps(sku_list):
-    """Takes in a list of SKUs and updates the last maintenance date for each product in the list"""
+def update_product_timestamps(sku_list, table_name):
+    """Takes in a list of SKUs and updates the last maintenance date in input table for each product in the list"""
     tuple_list = tuple(sku_list)
     db = query_engine.QueryEngine()
+
     query = f"""
-    UPDATE IM_ITEM
+    UPDATE '{table_name}
     SET LST_MAINT_DT = GETDATE()
     WHERE ITEM_NO in {tuple_list}
     """
+
     try:
         db.query_db(query, commit=True)
     except Exception as e:
@@ -1510,6 +1512,62 @@ def get_binding_ids_to_process(product_list):
         if binding_id:
             binding_ids.add(binding_id)
     return list(binding_ids)
+
+
+def get_deletion_target(counterpoint_list, middleware_list):
+    return [element for element in counterpoint_list if element not in middleware_list]
+
+
+def process_product_deletions():
+    # Products
+    # ------------------------
+    # Step 1 - Get list of all products in Counterpoint
+    cp_products = get_all_products()
+
+    # Step 2 - Get list of all products in Middleware
+    middleware_products = get_all_middleware_products()
+
+    # Step 3 - Get list of products to delete
+    deletions = get_deletion_target(cp_products, middleware_products)
+
+    # Step 4 - Delete products
+    for product in deletions:
+        delete_product(product)
+
+def process_image_deletions():
+    # Step 1 - Get list of all images in ItemImages Folder
+    images = get_all_images()
+
+    # Step 2 - Get list of all images in Middleware
+    middleware_images = get_all_middleware_images()
+
+    # Step 3 - Get list of images to delete
+    deletions = get_deletion_target(images, middleware_images)
+
+    # Step 4 - Delete images
+    for image in deletions:
+        delete_image(image)
+
+def process_category_deletions():
+    # Step 1 - Get list of all categories in Counterpoint
+    cp_categories = get_all_categories()
+
+    # Step 2 - Get list of all categories in Middleware
+    middleware_categories = get_all_middleware_categories()
+
+    # Step 3 - Get list of categories to delete
+    deletions = get_deletion_target(cp_categories, middleware_categories)
+
+    # Step 4 - Delete categories
+    for category in deletions:
+        delete_category(category)
+
+def process_deletions():
+    process_product_deletions()
+    process_image_deletions()
+    process_category_deltions()
+
+
 
 
 # ------------------------
@@ -1580,7 +1638,8 @@ def product_integration(last_run_date):
 
     # Step 1
     updated_photos = get_updated_photos(last_run_date)
-    update_product_timestamps(updated_photos)
+    # update LST_MAINT_DT for all updated images in image table
+    update_product_timestamps(updated_photos, creds.image_table)
 
     # Step 2 - Update E-Commerce Category Tree
     update_category_tree()
@@ -1591,7 +1650,7 @@ def product_integration(last_run_date):
     # Step 4 - Get list of valid binding keys associated with these items
     binding_ids = get_binding_ids_to_process(e_commerce_items)
 
-    # Step 5 - Generate snapshop of middleware database
+    # Step 5 - Generate snapshot of middleware database
     middleware_catalog = MiddlewareCatalog()
 
     # Step 5 - Create BoundProduct objects for each binding key. This includes all child products and will validate
@@ -1609,5 +1668,8 @@ def product_integration(last_run_date):
         process_single_items(e_commerce_items, middleware_catalog)
     else:
         print("No single items to process.")
+
+    # Step 8 - Process Deletions
+    process_deletions()
     # Step 8 - Close Log File
     # log_file.close()
