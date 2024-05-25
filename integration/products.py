@@ -5,36 +5,16 @@ from datetime import datetime
 import requests
 from PIL import Image
 
-import product_tools.products
 from setup import creds
 from setup import query_engine
 from setup import date_presets
-
-"""
-
-
-For each binding key, create a BoundProduct object which will contain all child products and will validate the inputs
-from counterpoint. If the product passes input validation (through initial validation or through repair and reattempt), 
-update product details in database. BigCommerce or post product if it is new.
-
-If it fails validation, log the product and the reason for failure.
-
-All SKUs associated with this binding key will be removed from the list of e-commerce items to process. When all bound
-products are done, any remaining items in the list of e-commerce items will be processed as single items (Product class)
-
-Script will run on a schedule and will check ItemImages folder for images updated since last run time. Affected items
-will have their lst_maint_dt updated.
-
-For images, save a local copy of the image_id, modified date, and sort order for each image. 
-
-"""
 
 
 # ------------------------
 # CATEGORY TREES
 # -----------------------
 
-class CategoryTree:
+class CounterpointCategoryTree:
     def __init__(self):
         self.db = query_engine.QueryEngine()
         self.categories = set()
@@ -61,7 +41,7 @@ class CategoryTree:
         response = self.db.query_db(query)
         if response is not None:
             for y in response:
-                category = Category(y[0], y[1], y[2], y[3])
+                category = CounterpointCategory(y[0], y[1], y[2], y[3])
                 self.categories.add(category)
 
     def create_tree(self):
@@ -75,7 +55,7 @@ class CategoryTree:
         self.heads = [x for x in self.categories if x.parent_category is None]
 
 
-class Category:
+class CounterpointCategory:
     def __init__(self, category_id, parent_category, category_name, description):
         self.category_id = category_id
         self.category_name = category_name
@@ -87,35 +67,16 @@ class Category:
         self.children.append(child)
 
 
-class BigCommerceCategoryTree:
+class MiddlewareCategoryTree:
     def __init__(self):
         self.categories = []
         self.get_category_tree()
 
-    def __str__(self):
-        result = ""
-        for category in self.categories:
-            result += f"{category.id}: {category.name}\n"
-            for child in category.children:
-                result += f"    {child.id}: {child.name}\n"
-                for grandchild in child.children:
-                    result += f"        {grandchild.id}: {grandchild.name}\n"
-                    for great_grandchild in grandchild.children:
-                        result += f"            {great_grandchild.id}: {great_grandchild.name}\n"
-        return result
-
     def get_category_tree(self):
-        url = f"https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/trees/1/categories"
-        response = requests.get(url=url, headers=creds.bc_api_headers)
-        for x in response.json()['data']:
-            self.categories.append(BigCommerceCategory(category_id=x['id'],
-                                                       parent_id=x['parent_id'],
-                                                       name=x['name'],
-                                                       is_visible=x['is_visible'], depth=x['depth'], path=x['path'],
-                                                       children=x['children'], url=x['url']))
+        pass
 
 
-class BigCommerceCategory:
+class MiddlewareCategory:
     def __init__(self, category_id, parent_id, name, is_visible, depth, path, children, url):
         self.id = category_id
         self.parent_id = parent_id
@@ -130,21 +91,143 @@ class BigCommerceCategory:
 
     def instantiate_children(self, children):
         for x in children:
-            self.children.append(BigCommerceCategory(category_id=x['id'],
-                                                     parent_id=x['parent_id'],
-                                                     name=x['name'],
-                                                     is_visible=x['is_visible'], depth=x['depth'], path=x['path'],
-                                                     children=x['children'], url=x['url']))
+            self.children.append(MiddlewareCategory(category_id=x['id'],
+                                                    parent_id=x['parent_id'],
+                                                    name=x['name'],
+                                                    is_visible=x['is_visible'], depth=x['depth'], path=x['path'],
+                                                    children=x['children'], url=x['url']))
+
+
+def create_category(category):
+    # Middleware DB Entry
+    db = query_engine.QueryEngine()
+    query = f"""
+    INSERT INTO SN_CATEG (CATEG_ID, PARENT_ID, DESCR, LST_MAINT_DT)
+    VALUES ({category.id}, {category.parent_id}, '{category.name}', GETDATE())
+    """
+    db.query_db(query, commit=True)
+
+    # Big Commerce API
+    url = f"https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/categories"
+    payload = {
+        "name": category.name,
+        "parent_id": category.parent_id,
+        "description": category.description,
+        "is_visible": category.is_visible,
+        "depth": category.depth,
+        "path": category.path
+    }
+    response = requests.post(url=url, headers=creds.bc_api_headers, json=payload)
+    if response.status_code == 201:
+        print(f"Category {category.name} created successfully.")
+        print(response.json())
+    else:
+        print(f"Error creating category {category.name}.")
+        print(response.json())
+
+
+def update_category(category):
+    # Middleware DB Entry
+    db = query_engine.QueryEngine()
+    query = f"""
+    UPDATE SN_CATEG
+    SET DESCR = '{category.name}', LST_MAINT_DT = GETDATE()
+    WHERE CATEG_ID = {category.id}
+    """
+    db.query_db(query, commit=True)
+
+    # Big Commerce API
+    url = f"https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/categories/{category.id}"
+    payload = {
+        "name": category.name,
+        "parent_id": category.parent_id,
+        "description": category.description,
+        "is_visible": category.is_visible,
+        "depth": category.depth,
+        "path": category.path
+    }
+    response = requests.put(url=url, headers=creds.bc_api_headers, json=payload)
+    if response.status_code == 200:
+        print(f"Category {category.name} updated successfully.")
+        print(response.json())
+    else:
+        print(f"Error updating category {category.name}.")
+        print(response.json())
+
+
+def delete_category(category):
+    # Middleware DB Entry
+    db = query_engine.QueryEngine()
+    query = f"""
+    DELETE FROM SN_CATEG
+    WHERE CATEG_ID = {category.id}
+    """
+    db.query_db(query, commit=True)
+
+    # Big Commerce API
+    url = f"https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/categories/{category.id}"
+    response = requests.delete(url=url, headers=creds.bc_api_headers)
+    if response.status_code == 204:
+        print(f"Category {category.name} deleted successfully.")
+    else:
+        print(f"Error deleting category {category.name}.")
+        print(response.json())
+
+
+def compare_category_trees(counterpoint_tree, middleware_tree) -> dict:
+    result = {
+        "create": [],
+        "update": [],
+        "delete": []
+    }
+    for category in counterpoint_tree.categories:
+        if category not in middleware_tree.categories:
+            result['create'].append(category)
+        else:
+            result['update'].append(category)
+    for category in middleware_tree.categories:
+        if category not in counterpoint_tree.categories:
+            result['delete'].append(category)
+    return result
+
+
+def update_category_tree():
+    counterpoint_tree = CounterpointCategoryTree()
+    middleware_tree = MiddlewareCategoryTree()
+    queue = compare_category_trees(counterpoint_tree, middleware_tree)
+    for category in queue['create']:
+        create_category(category)
+    for category in queue['update']:
+        update_category(category)
+    for category in queue['delete']:
+        delete_category(category)
 
 
 # ------------------------
 # PRODUCTS
 # -----------------------
+class MiddlewareCatalog:
+    def __init__(self):
+        self.products = []
+        self.get_products()
+
+    def get_products(self):
+        query = f"""
+        SELECT ITEM_NO
+        FROM SN_PRODUCTS
+        """
+        response = query_engine.QueryEngine().query_db(query)
+        if response is not None:
+            for item in response:
+                self.products.append(item[0])
+
+
 class BoundProduct:
     def __init__(self, binding_id: str):
         self.db = query_engine.QueryEngine()
         self.binding_id: str = binding_id
         self.product_id: int = 0
+        self.total_children: int = 0
         # self.children will be list of child products
         self.children: list = []
         # self.parent will be a list of parent products. If length of list > 1, product validation will fail
@@ -198,6 +281,8 @@ class BoundProduct:
         # E-Commerce Categories
         self.ecommerce_categories = []
 
+        self.processing_method = ""
+
         # Get Bound Product Family
         self.get_bound_product_family()
 
@@ -235,6 +320,8 @@ class BoundProduct:
                 self.children.append(Product(item[0]))
         # Set parent
         self.parent = [x.sku for x in self.children if x.is_parent]
+        # Set total children
+        self.total_children = len(self.children)
 
         # Product Information
         for x in self.children:
@@ -315,10 +402,21 @@ class BoundProduct:
                 if child.variant_name == "":
                     print(f"Product {child.sku} is missing a variant name. Validation failed.")
                     return False
-
             print(f"Product {self.binding_id} is valid.")
             print("\n")
             return True
+
+    def get_processing_method(self, middleware_catalog):
+        if self.binding_id in middleware_catalog.products:
+            self.processing_method = "update"
+        else:
+            self.processing_method = "create"
+
+    def process(self, mode: str):
+        if mode == "create":
+            self.create_bound_product()
+        elif mode == "update":
+            self.update_bound_product()
 
     def construct_custom_fields(self):
         result = []
@@ -558,9 +656,41 @@ class BoundProduct:
             ],
             "variants": self.construct_variant_payload(),
         }
+        return payload
+
+    def create_bound_product(self):
+        self.bc_create_product()
+        self.middleware_create_product()
+
+    def bc_create_product(self):
+        payload = self.construct_product_payload()
+        url = f"https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/products"
+        response = requests.post(url=url, headers=creds.bc_api_headers, json=payload)
+        if response.status_code == 201:
+            print(f"Product {self.binding_id} created successfully.")
+        else:
+            print(f"Error creating product {self.binding_id}.")
+            print(response.json())
+
+    def middleware_create_product(self):
+        pass
 
     def update_bound_product(self):
+        self.bc_update_product()
+        self.middleware_update_product()
+
+    def bc_update_product(self):
         payload = self.construct_product_payload()
+        url = f"https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/products/{self.product_id}"
+        response = requests.put(url=url, headers=creds.bc_api_headers, json=payload)
+        if response.status_code == 200:
+            print(f"Product {self.binding_id} updated successfully.")
+        else:
+            print(f"Error updating product {self.binding_id}.")
+            print(response.json())
+
+    def middleware_update_product(self):
+        pass
 
     def bc_update_variant(self, child):
         payload = self.construct_variant_payload(child)
@@ -674,6 +804,8 @@ class Product:
         self.lst_maint_dt = datetime(1970, 1, 1)
         # E-Commerce Categories
         self.ecommerce_categories = []
+        # Processing Method
+        self.processing_method = ""
         # Initialize Product Details
         self.get_product_details()
 
@@ -789,6 +921,59 @@ class Product:
             # Product Images
             self.get_local_product_images()
 
+    def validate_product(self):
+        print(f"Validating product {self.sku}")
+
+        # Test for missing web title
+        if self.web_title == "":
+            print(f"Product {self.sku} is missing a web title. Validation failed.")
+            return False
+
+        # Test for missing html description
+        if self.html_description == "":
+            print(f"Product {self.sku} is missing an html description. Validation failed.")
+            return False
+
+        # Test for missing E-Commerce Categories
+        if len(self.ecommerce_categories) == 0:
+            print(f"Product {self.sku} is missing E-Commerce Categories. Validation failed.")
+            return False
+
+        # Test for missing brand
+        if self.brand == "":
+            print(f"Product {self.sku} is missing a brand. Validation failed.")
+            return False
+
+        # Test for missing cost
+        if self.cost == 0:
+            print(f"Product {self.sku} is missing a cost. Validation failed.")
+            return False
+
+        # Test for missing price 1
+        if self.price_1 == 0:
+            print(f"Product {self.sku} is missing a price 1. Validation failed.")
+            return False
+
+        # Test for missing weight
+        if self.weight == 0:
+            print(f"Product {self.sku} is missing a weight. Validation failed.")
+            return False
+
+        return True
+
+    def get_processing_method(self, middleware_catalog) -> None:
+        if self.sku not in middleware_catalog.products:
+            self.processing_method = "create"
+        else:
+            self.processing_method = "update"
+
+    def process(self, mode: str) -> None:
+        if mode == "create":
+            self.create_product()
+
+        elif mode == "update":
+            self.update_product()
+
     def get_last_maintained_dates(self, dates):
         """Get last maintained dates for product"""
         for x in dates:
@@ -813,6 +998,269 @@ class Product:
             for x in response.json():
                 # Could use this to back-fill database with image id and sort order info
                 pass
+
+    def construct_image_payload(self):
+        result = []
+        for image in self.images:
+            result.append({
+                "image_file": image.name,
+                "is_thumbnail": image.is_thumbnail,
+                "sort_order": image.sort_order,
+                "description": image.alt_text_1,
+                "image_url": f"{creds.public_web_dav_photos}/{image.name}",
+                "id": 0,
+                "product_id": self.product_id,
+                "date_modified": image.modified_date
+            })
+        return result
+
+    def construct_custom_fields(self):
+        result = []
+
+        if self.custom_botanical_name:
+            result.append({
+                "id": 1,
+                "name": "Botanical Name",
+                "value": self.custom_botanical_name
+            })
+        if self.custom_climate_zone:
+            result.append({
+                "id": 2,
+                "name": "Climate Zone",
+                "value": self.custom_climate_zone
+            })
+        if self.custom_plant_type:
+            result.append({
+                "id": 3,
+                "name": "Plant Type",
+                "value": self.custom_plant_type
+            })
+        if self.custom_type:
+            result.append({
+                "id": 4,
+                "name": "Type",
+                "value": self.custom_type
+            })
+        if self.custom_height:
+            result.append({
+                "id": 5,
+                "name": "Height",
+                "value": self.custom_height
+            })
+        if self.custom_width:
+            result.append({
+                "id": 6,
+                "name": "Width",
+                "value": self.custom_width
+            })
+        if self.custom_sun_exposure:
+            result.append({
+                "id": 7,
+                "name": "Sun Exposure",
+                "value": self.custom_sun_exposure
+            })
+        if self.custom_bloom_time:
+            result.append({
+                "id": 8,
+                "name": "Bloom Time",
+                "value": self.custom_bloom_time
+            })
+        if self.custom_bloom_color:
+            result.append({
+                "id": 9,
+                "name": "Bloom Color",
+                "value": self.custom_bloom_color
+            })
+        if self.custom_attracts_pollinators:
+            result.append({
+                "id": 10,
+                "name": "Attracts Pollinators",
+                "value": self.custom_attracts_pollinators
+            })
+        if self.custom_growth_rate:
+            result.append({
+                "id": 11,
+                "name": "Growth Rate",
+                "value": self.custom_growth_rate
+            })
+        if self.custom_deer_resistant:
+            result.append({
+                "id": 12,
+                "name": "Deer Resistant",
+                "value": self.custom_deer_resistant
+            })
+        if self.custom_soil_type:
+            result.append({
+                "id": 13,
+                "name": "Soil Type",
+                "value": self.custom_soil_type
+            })
+        if self.custom_color:
+            result.append({
+                "id": 14,
+                "name": "Color",
+                "value": self.custom_color
+            })
+        if self.custom_size:
+            result.append({
+                "id": 15,
+                "name": "Size",
+                "value": self.custom_size
+            })
+        return result
+
+    def construct_product_payload(self):
+        payload = {
+            "name": self.web_title,
+            "type": "physical",
+            "sku": self.sku,
+            "description": self.html_description,
+            "weight": self.weight,
+            "width": self.width,
+            "depth": self.depth,
+            "height": self.height,
+            "price": self.price_1,
+            "cost_price": self.cost,
+            "retail_price": self.price_1,
+            "sale_price": self.price_2,
+            "tax_class_id": 255,
+            "product_tax_code": "string",
+            "categories": [
+                0
+            ],
+            "brand_id": 1000000000,
+            "brand_name": self.brand,
+            "inventory_level": 2147483647,
+            "inventory_warning_level": 2147483647,
+            "inventory_tracking": "none",
+            "fixed_cost_shipping_price": 0.1,
+            "is_free_shipping": False,
+            "is_visible": self.web_visible,
+            "is_featured": self.featured,
+            "search_keywords": self.search_keywords,
+            "availability": "available",
+            "gift_wrapping_options_type": "any",
+            "gift_wrapping_options_list": [
+                0
+            ],
+            "condition": "New",
+            "is_condition_shown": True,
+            "page_title": self.meta_title,
+            "meta_description": self.meta_description,
+            "preorder_release_date": "2019-08-24T14:15:22Z",
+            "preorder_message": self.preorder_message,
+            "is_preorder_only": False,
+            "is_price_hidden": False,
+            "price_hidden_label": "string",
+            # "custom_url": {
+            #   "url": "string",
+            #   "is_customized": True,
+            #   "create_redirect": True
+            # },
+
+            "date_last_imported": "string",
+
+            "custom_fields": self.construct_custom_fields(),
+
+            "bulk_pricing_rules": [
+                {
+                    "quantity_min": 10,
+                    "quantity_max": 50,
+                    "type": "price",
+                    "amount": 10
+                }
+            ],
+            "images": self.construct_image_payload(),
+            "videos": [
+                {
+                    "title": "Writing Great Documentation",
+                    "description": "A video about documenation",
+                    "sort_order": 1,
+                    "type": "youtube",
+                    "video_id": "z3fRu9pkuXE",
+                    "id": 0,
+                    "product_id": 0,
+                    "length": "string"
+                }
+            ],
+            # "variants": [
+            #     {
+            #         "cost_price": 0.1,
+            #         "price": 0.1,
+            #         "sale_price": 0.1,
+            #         "retail_price": 0.1,
+            #         "weight": 0.1,
+            #         "width": 0.1,
+            #         "height": 0.1,
+            #         "depth": 0.1,
+            #         "is_free_shipping": False,
+            #         "fixed_cost_shipping_price": 0.1,
+            #         "purchasing_disabled": False,
+            #         "purchasing_disabled_message": "string",
+            #         "upc": "string",
+            #         "inventory_level": 2147483647,
+            #         "inventory_warning_level": 2147483647,
+            #         "bin_picking_number": "string",
+            #         "mpn": "string",
+            #         "gtin": "012345678905",
+            #         "product_id": 0,
+            #         "id": 0,
+            #         "sku": "string",
+            #         "option_values": [
+            #             {
+            #                 "option_display_name": "Color",
+            #                 "label": "Beige"
+            #             }
+            #         ],
+            #         "calculated_price": 0.1,
+            #         "calculated_weight": 0
+            #     }
+            # ],
+        }
+        return payload
+
+    def bc_create_product(self):
+        """Create product in BigCommerce. For this implementation, this is a single product with no variants"""
+        url = f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/products'
+        payload = self.construct_product_payload()
+        response = requests.post(url=url, headers=creds.bc_api_headers, json=payload)
+        return response.json()
+
+    def middleware_create_product(self):
+        """NOT DONE"""
+        query = f"""
+        INSERT INTO SN_PRODUCTS
+        (ITEM_NO, WEB_TITLE, DESCRIPTION, HTML_DESCRIPTION)
+        VALUES ('{self.sku}', '{self.web_title}', '{self.description}', '{self.html_description}'),
+        """
+        query_engine.QueryEngine().query_db(query, commit=True)
+
+    def bc_update_product(self):
+        url = f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/products/{self.product_id}'
+        payload = self.construct_product_payload()
+        response = requests.put(url=url, headers=creds.bc_api_headers, json=payload)
+        return response.json()
+
+    def middleware_update_product(self):
+        query = f"""
+        UPDATE SN_PRODUCTS
+        SET WEB_TITLE = '{self.web_title}', DESCRIPTION = '{self.description}', HTML_DESCRIPTION = '{self.html_description}'
+        WHERE ITEM_NO = '{self.sku}'
+        """
+        query_engine.QueryEngine().query_db(query, commit=True)
+
+    def create_product(self):
+        self.bc_create_product()
+        self.middleware_create_product()
+
+    def update_product(self):
+        self.bc_update_product()
+        self.middleware_update_product()
+
+    def bc_delete_product(self):
+        url = f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/products/{self.product_id}'
+        response = requests.delete(url=url, headers=creds.bc_api_headers)
+        return response.json()
 
 
 # ------------------------
@@ -1065,7 +1513,7 @@ def get_binding_ids_to_process(product_list):
 
 
 # ------------------------
-# UTILITIES
+# DATABASE UTILITIES
 # -----------------------
 def create_image_table(table_name):
     db = query_engine.QueryEngine()
@@ -1082,7 +1530,8 @@ def create_image_table(table_name):
         THUMBNAIL BIT NOT NULL,
         SORT_ORDER int NOT NULL,
         DESCR nvarchar(100),
-        CREATION_DT datetime NOT NULL DEFAULT(current_timestamp),
+        CREATE_DT datetime NOT NULL,
+        ADD_DT datetime NOT NULL DEFAULT(current_timestamp)
         LST_MAINT_DT datetime NOT NULL DEFAULT(current_timestamp)
         );
         """
@@ -1092,12 +1541,49 @@ def create_image_table(table_name):
 # ------------------------
 # DRIVER
 # -----------------------
+def process_bound_products(binding_ids, middleware_catalog):
+    """Takes in a list of binding ids and creates BoundProduct objects for each one. If the product passes input
+    validation, it will compare the product/image/category details against those in the middleware database and update
+    Returns a list of all BoundProduct objects that have been successfully updated."""
+    result = []
+    for x in binding_ids:
+        bound_product = BoundProduct(x)
+        if bound_product.validate_product():
+            bound_product.get_processing_method(middleware_catalog)
+            bound_product.process(mode=bound_product.processing_method)
+            # Build Result List
+            for child in bound_product.children:
+                result.append(child.sku)
+    return result
+
+
+def process_single_items(product_list, middleware_catalog):
+    """Takes in a list of product SKUs and creates Product objects for each one. If the product passes input validation,
+    it will compare the product/image/category details against those in the middleware database and update. Returns a list
+    of all products that have been successfully updated."""
+    result = []
+
+    while len(product_list) > 0:
+        product = Product(product_list.pop())
+        if product.validate_product():
+            product.get_processing_method(middleware_catalog)
+            product.process(mode=product.processing_method)
+        # Bear in mind: Putting result append here will put successes and failures in the same list.
+        result.append(product.sku)
+    return result
+
+
 def product_integration(last_run_date):
+    # Step 0
+    # Open Time-Stamped Log File to Pass into other functions
+    # log_file = open(f"logs/product_integration_{datetime.now():%Y_%m_%d_%H_%M_%S}.txt", "w")
+
     # Step 1
     updated_photos = get_updated_photos(last_run_date)
     update_product_timestamps(updated_photos)
 
     # Step 2 - Update E-Commerce Category Tree
+    update_category_tree()
 
     # Step 3 - Get list of all modified e-commerce items
     e_commerce_items = get_updated_products(last_run_date)
@@ -1105,12 +1591,23 @@ def product_integration(last_run_date):
     # Step 4 - Get list of valid binding keys associated with these items
     binding_ids = get_binding_ids_to_process(e_commerce_items)
 
-    # Things are getting serious now...
+    # Step 5 - Generate snapshop of middleware database
+    middleware_catalog = MiddlewareCatalog()
+
     # Step 5 - Create BoundProduct objects for each binding key. This includes all child products and will validate
     # the inputs from Counterpoint. If the product passes input validation (through initial validation or through
     # repair and reattempt), update product details in database and BigCommerce or post product if it is new.
+    if len(binding_ids) > 0:
+        finished_products = process_bound_products(binding_ids, middleware_catalog)
+        # Step 6 - Remove finished products from e_commerce_items to prevent reprocessing
+        e_commerce_items.remove(finished_products)
+    else:
+        print("No bound products to process.")
 
-    for x in binding_ids:
-        bound_product = BoundProduct(x)
-        if bound_product.validate_product():
-            bound_product.update_bound_product()
+    # Step 7 - Process single items
+    if len(e_commerce_items) > 0:
+        process_single_items(e_commerce_items, middleware_catalog)
+    else:
+        print("No single items to process.")
+    # Step 8 - Close Log File
+    # log_file.close()
