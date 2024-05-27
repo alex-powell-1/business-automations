@@ -50,3 +50,7 @@ class BigCommerceCategoryTree:
                                                        name=x['name'],
                                                        is_visible=x['is_visible'], depth=x['depth'], path=x['path'],
                                                        children=x['children'], url=x['url']))
+
+
+tree = BigCommerceCategoryTree()
+print(tree)

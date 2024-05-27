@@ -3,11 +3,12 @@ import re
 from datetime import datetime
 
 import requests
-from PIL import Image
+from PIL import Image, ImageOps
 
 from setup import creds
 from setup import query_engine
 from setup import date_presets
+from requests.auth import HTTPDigestAuth
 
 
 # ------------------------
@@ -160,7 +161,7 @@ def delete_category(category):
     db = query_engine.QueryEngine()
     query = f"""
     DELETE FROM SN_CATEG
-    WHERE CATEG_ID = {category.id}
+    WHERE CP_CATEG_ID = {category}
     """
     db.query_db(query, commit=True)
 
@@ -360,27 +361,35 @@ class BoundProduct:
         while self.validation_retries > 0:
             print(f"Validating {self.binding_id}")
 
-            # Test for valid Binding ID Schema
-            # example: B0001
+            # Test for missing binding ID. Potentially add corrective action (i.e. generate binding ID or remove product
+            # and rebuild as a new single product)
+            if self.binding_id == "":
+                print(f"Product {self.binding_id} has no binding ID. Validation failed.")
+
+                return False
+
+            # Test for valid Binding ID Schema (ex. B0001)
             pattern = r'B\d{4}'
             if not bool(re.fullmatch(pattern, self.binding_id)):
                 print(f"Product {self.binding_id} has an invalid binding ID. Validation failed.")
                 return False
 
-            # Test for missing parent
-            if len(self.parent) == 0:
-                print(f"Product {self.binding_id} has no parent. Will reestablish parent.")
-                self.set_parent()
-                self.validation_retries -= 1
-                return self.validate_product()
+            # Test for parent product problems
+            if len(self.parent) != 2:
+                # Test for missing parent
+                if len(self.parent) == 0:
+                    print(f"Product {self.binding_id} has no parent. Will reestablish parent.")
+                    self.set_parent()
+                    self.validation_retries -= 1
+                    return self.validate_product()
 
-            # Test for multiple parents
-            if len(self.parent) > 1:
-                print(f"Product {self.binding_id} has multiple parents. Will reestablish parent.")
-                self.remove_parent()
-                self.set_parent()
-                self.validation_retries -= 1
-                return self.validate_product()
+                # Test for multiple parents
+                if len(self.parent) > 1:
+                    print(f"Product {self.binding_id} has multiple parents. Will reestablish parent.")
+                    self.remove_parent()
+                    self.set_parent()
+                    self.validation_retries -= 1
+                    return self.validate_product()
 
             # Test for missing web title
             if self.web_title == "":
@@ -391,6 +400,11 @@ class BoundProduct:
             if self.html_description == "":
                 print(f"Product {self.binding_id} is missing an html description. Validation failed.")
                 return False
+
+            # Test for missing product images
+            if len(self.images) == 0:
+                print(f"Product {self.binding_id} is missing images. Will turn visibility to off.")
+                self.visible = False
 
             # Test for missing E-Commerce Categories
             if len(self.ecommerce_categories) == 0:
@@ -961,6 +975,38 @@ class Product:
 
         return True
 
+    def construct_variant_payload(self):
+        payload = {
+            "cost_price": self.cost,
+            "price": self.price_1,
+            "sale_price": self.price_2,
+            "retail_price": self.price_1,
+            "weight": self.weight,
+            "width": self.width,
+            "height": self.height,
+            "depth": self.depth,
+            "is_free_shipping": self.is_free_shipping,
+            # "fixed_cost_shipping_price": 0.1,
+            "purchasing_disabled": self.purchasing_disabled,
+            "purchasing_disabled_message": self.purchasing_disabled_message,
+            # "upc": self.upc,
+            "inventory_level": self.buffered_quantity,
+            # "inventory_warning_level": self.inventory_warning_level,
+            # "bin_picking_number": self.bin_picking_number,
+            "image_url": self.images[0].image_url,
+            # "gtin": self.gtin,
+            # "mpn": self.mpn,
+            "product_id": self.product_id,
+            "sku": self.sku,
+            "option_values": [
+                {
+                    "option_display_name": "Option",
+                    "label": self.variant_name,
+                }
+            ]
+        }
+        return payload
+
     def get_processing_method(self, middleware_catalog) -> None:
         if self.sku not in middleware_catalog.products:
             self.processing_method = "create"
@@ -988,7 +1034,7 @@ class Product:
         if list_of_files is not None:
             for x in list_of_files:
                 if x.split(".")[0].split("^")[0] == self.sku:
-                    self.images.append(ProductImage(x, bound=self.is_bound))
+                    self.images.append(ProductImage(x))
 
     def get_bc_product_images(self):
         """Get BigCommerce image information for product"""
@@ -1268,91 +1314,253 @@ class Product:
 # -----------------------
 
 class ProductImage:
-    def __init__(self, image_name: str, bound=False):
-        self.in_database = False
-        self.db_id = 0
-        self.item_no = ""
-        self.name = image_name
-        self.path = ""
-        self.url = ""
-        self.type = image_name.split(".")[-1].lower()
-        self.size = 0
-        self.modified_date = 0
-        self.created_date = 0
-        self.product_id = 0
-        self.variant_id = 0
-        self.bc_image_id = 0
-        self.sort_order = 0
-        self.is_thumbnail = False
-        self.is_bound = bound
-        self.is_binding_image = False
-        self.description = ""
-        # self.image_resolution = (0, 0)
-        # self.image_orientation = 0
-        # self.image_quality = 0
-        # self.image_exif = {}
-        # self.image_exif_orientation = 0
-        # self.image_exif_transpose = False
-        # self.image_exif_transpose_code = 0
-        # self.image_exif_transpose_orientation = 0
-        # self.image_exif_transpose_flip = False
-        # self.image_exif_transpose_flip_code = 0
-        try:
-            self.get_image_details()
-        except Exception as e:
-            print("No entry in db for image.")
-            self.initialize_image_details()
+    def __init__(self, image_name: str, item_no="", file_path="", image_url="", product_id=0, variant_id=0, image_id=0,
+                 is_thumbnail=False, sort_order=0, is_binding_image=False, is_binding_id=None, is_variant_image=False,
+                 description="", lst_maint_dt=datetime(1970, 1, 1),
+                 lst_run_time=datetime(1970, 1, 1)):
 
-    def get_image_details(self):
+        self.image_name = image_name
+        self.item_no = item_no
+        self.file_path = file_path
+        self.image_url = image_url
+        self.product_id = product_id
+        self.variant_id = variant_id
+        self.image_id = image_id
+        self.is_thumbnail = is_thumbnail
+        self.sort_order = sort_order
+        self.is_binding_image = is_binding_image
+        self.binding_id = is_binding_id
+        self.is_variant_image = is_variant_image
+        self.description = description
+        self.lst_maint_dt = lst_maint_dt
+
+        if self.lst_maint_dt > lst_run_time:
+            # Image has been updated since last run. Check image for valid size and format.
+            if self.validate_image():
+                self.initialize_image_details()
+
+        else:
+            # Image has not been updated since last run. Get image details from database.
+            self.get_image_details_from_db()
+
+    def validate_image(self):
+        print(f"Validating image {self.image_name}")
+        try:
+            file_size = os.path.getsize(self.file_path)
+        except FileNotFoundError:
+            print(f"File {self.file_path} not found.")
+            return False
+        else:
+            size = (1280, 1280)
+            q = 90
+            exif_orientation = 0x0112
+            if self.image_name.lower().endswith("jpg"):
+                # Resize files larger than 1.8 MB
+                if file_size > 1800000:
+                    print(f"Found large file {self.image_name}. Attempting to resize.")
+                    try:
+                        im = Image.open(self.file_path)
+                        im.thumbnail(size, Image.LANCZOS)
+                        code = im.getexif().get(exif_orientation, 1)
+                        if code and code != 1:
+                            im = ImageOps.exif_transpose(im)
+                        im.save(self.file_path, 'JPEG', quality=q)
+                        print(f"{self.image_name} resized.")
+                    except Exception as e:
+                        print(f"Error resizing {self.image_name}: {e}")
+                        return False
+                    else:
+                        return True
+
+            # Remove Alpha Layer and Convert PNG to JPG
+            if self.image_name.lower().endswith("png"):
+                print(f"Found PNG file: {self.image_name}. Attempting to reformat.")
+                try:
+                    im = Image.open(self.file_path)
+                    im.thumbnail(size, Image.LANCZOS)
+                    # Preserve Rotational Data
+                    code = im.getexif().get(exif_orientation, 1)
+                    if code and code != 1:
+                        im = ImageOps.exif_transpose(im)
+                    print(f"Stripping Alpha Layer.")
+                    rgb_im = im.convert('RGB')
+                    print(f"Saving new file in JPG format.")
+                    new_file_path = f"{self.file_path[:-4]}.jpg"
+                    rgb_im.save(new_file_path, 'JPEG', quality=q)
+                    im.close()
+                    print(f"Removing old PNG file")
+                    os.remove(self.file_path)
+                    self.file_path = new_file_path
+                except Exception as e:
+                    print(f"Error converting {self.image_name}: {e}")
+                    return False
+                else:
+                    print("Conversion successful.")
+                    return True
+
+            # replace .JPEG with .JPG
+            if self.image_name.lower().endswith("jpeg"):
+                print(f"Found file ending with .JPEG. Attempting to reformat.")
+                try:
+                    im = Image.open(self.file_path)
+                    im.thumbnail(size, Image.LANCZOS)
+                    # Preserve Rotational Data
+                    code = im.getexif().get(exif_orientation, 1)
+                    if code and code != 1:
+                        im = ImageOps.exif_transpose(im)
+                    print(f"Saving new file in JPG format.")
+                    new_file_path = f"{self.file_path[:-5]}.jpg"
+                    im.save(new_file_path, 'JPEG', quality=q)
+                    im.close()
+                    print(f"Removing old JPEG file")
+                    os.remove(self.file_path)
+                    self.file_path = new_file_path
+                except Exception as e:
+                    print(f"Error converting {self.image_name}: {e}")
+                    return False
+                else:
+                    print("Conversion successful.")
+                    return True
+
+    def get_image_details_from_db(self):
         db = query_engine.QueryEngine()
         query = f"""
-        SELECT ID, ITEM_NO, FILE_PATH, IMAGE_URL, WEB_ID, PRODUCT_ID, VARIANT_ID, THUMBNAIL, SORT_ORDER, DESCR
-        FROM SN_IMAGES
-        WHERE IMAGE_NAME = '{self.name}'
+        SELECT ITEM_NO, FILE_PATH, IMAGE_URL, PRODUCT_ID, VARIANT_ID, IMAGE_ID, THUMBNAIL, SORT_ORDER, 
+        IS_BINDING_IMAGE, BINDING_ID, IS_VARIANT_IMAGE, DESCR, LST_MAINT_DT FROM SN_IMAGES WHERE IMAGE_NAME = '{self.image_name}'
         """
         response = db.query_db(query)
         if response is not None:
-            self.db_id = response[0][0]
-            self.item_no = response[0][1]
-            self.path = response[0][2]
-            self.url = response[0][3]
-            self.bc_image_id = response[0][4]
-            self.product_id = response[0][5]
-            self.variant_id = response[0][6]
+            self.item_no = response[0][1] if response[0][1] else ""
+            self.file_path = response[0][2]
+            self.image_url = response[0][3]
+            self.product_id = response[0][4]
+            self.variant_id = response[0][5]
+            self.image_id = response[0][6]
             self.is_thumbnail = True if response[0][7] == 1 else False
             self.sort_order = response[0][8]
-            self.description = response[0][9]
-            self.in_database = True
+            self.is_binding_image = True if response[0][9] == 1 else False
+            self.binding_id = response[0][10] if response[0][10] else None
+            self.is_variant_image = True if response[0][11] == 1 else False
+            self.description = response[0][12]
+            self.lst_maint_dt = response[0][13]
 
     def initialize_image_details(self):
         # Path
-        self.path = f"{creds.photo_path}/{self.name}"
-        try:
-            self.size = os.path.getsize(self.path)
-        except FileNotFoundError:
-            print(f"File {self.name} not found.")
-            return
+        self.file_path = f"{creds.photo_path}/{self.image_name}"
+
+        # URL
+        self.image_url = self.upload_product_image()
+
+        # Sort Order
+        if "^" not in self.image_name.split(".")[0]:
+            self.sort_order = 1
         else:
-            # Dates
-            self.modified_date = datetime.fromtimestamp(os.path.getmtime(self.path))
-            self.created_date = datetime.fromtimestamp(os.path.getctime(self.path))
+            self.sort_order = int(self.file_path.split(".")[0].split("^")[1]) + 1
 
-            # Sort Order
-            if "^" not in self.name.split(".")[0]:
-                self.sort_order = 1
+        # Dates
+        self.lst_maint_dt = datetime.fromtimestamp(os.path.getmtime(self.file_path))
+
+        binding_ids = get_all_binding_ids()
+        # Binding Image Flow
+        if self.image_name.split(".")[0].split("^")[0] in binding_ids:
+            self.is_binding_image = True
+            self.binding_id = self.image_name.split(".")[0].split("^")[0]
+            self.is_thumbnail = True if "^" not in self.image_name.split(".")[0] else False
+
+        # Non-Binding Image Flow
+        else:
+            self.is_binding_image = False
+            # SKU
+            self.item_no = self.image_name.split(".")[0].split("^")[0]
+            self.binding_id = self.get_binding_id()
+
+            # No Binding ID
+            if self.binding_id == "":
+                self.is_thumbnail = True if "^" not in self.image_name.split(".")[0] else False
+            # Binding ID
             else:
-                self.sort_order = int(self.name.split(".")[0].split("^")[1]) + 1
+                if "^" not in self.image_name.split(".")[0]:
+                    self.is_variant_image = True
 
-            # response = self.bc_post_image(self.product_id, self.url, self.description, self.is_thumbnail)
+            # Image Description
+            # Only non-binding images have descriptions at this time. Though, this could be handled with JSON reference
+            # in the future for binding images.
+            for x in range(1, 5):
+                if self.image_name.split(".")[0].split("^")[1] == x:
+                    self.description = self.get_image_description(x)
+
+        self.product_id, self.variant_id = self.get_product_and_variant_ids()
+        self.image_id = self.bc_post_image()
+        self.write_image_to_db()
+
+    def write_image_to_db(self):
+        query = f"""
+        INSERT INTO SN_IMAGES
+        (IMAGE_NAME, ITEM_NO, FILE_PATH, IMAGE_URL, PRODUCT_ID, VARIANT_ID, IMAGE_ID, THUMBNAIL, SORT_ORDER, 
+        IS_BINDING_IMAGE, BINDING_ID, IS_VARIANT_IMAGE, DESCR, LST_MAINT_DT)
+        VALUES ('{self.image_name}', '{self.item_no}', '{self.file_path}', '{self.image_url}', {self.product_id}, 
+        {self.variant_id}, {self.image_id}, {1 if self.is_thumbnail else 0}, {self.sort_order}, 
+        {1 if self.is_binding_image else 0}, '{self.binding_id if self.binding_id else None}', 
+        {1 if self.is_variant_image else 0}, '{self.description}', '{self.lst_maint_dt}')
+        """
+        try:
+            query_engine.QueryEngine().query_db(query, commit=True)
+        except Exception as e:
+            print(f"Error writing image to db: {e}")
+        else:
+            print(f"Image {self.image_name} written to db.")
+
+    def get_product_and_variant_ids(self):
+        query = f"""
+        SELECT PRODUCT_ID, VARIANT_ID FROM {creds.bc_product_table} WHERE ITEM_NO = '{self.item_no}'
+        """
+        response = query_engine.QueryEngine().query_db(query)
+        if response is not None:
+            return response[0][0], response[0][1]
+        else:
+            return 0, 0
+
+    def get_binding_id(self):
+        query = f"""
+        SELECT USR_PROF_ALPHA_16 FROM IM_ITEMS
+        WHERE ITEM_NO = '{self.item_no}'
+        """
+        response = query_engine.QueryEngine().query_db(query)
+        if response is not None:
+            return response[0][0] if response[0][0] else ""
+
+    def get_image_description(self, image_number):
+        query = f"""
+        SELECT USR_PROF_ALPHA_{image_number + 21} FROM IM_ITEMS
+        WHERE ITEM_NO = '{self.item_no}'
+        """
+        response = query_engine.QueryEngine().query_db(query)
+        if response is not None:
+            return response[0][0]
+        else:
+            return ""
+
+    def upload_product_image(self) -> str:
+        """Upload file to import folder on webDAV server and turn public url"""
+        data = open(self.file_path, 'rb')
+        url = creds.public_web_dav_photos + self.image_name
+        response = requests.put(url, data=data, auth=HTTPDigestAuth(creds.web_dav_user, creds.web_dav_pw))
+        print(response.status_code)
+        # return public url of image
+        return f"{creds.public_web_dav_photos}/{self.image_name}"
 
     def resize_image(self):
-        # im = Image.open(self.path)
-        # self.image_resolution = im.size
-        # self.image_quality = im.info.get("quality", 0)
-        # self.image_exif = im.getexif()
-        # self.image_exif_orientation = self.image_exif.get(0x0112, 1)
-        # self.image_orientation = 1 if self.image_exif_orientation in [3, 6, 8] else 0
-        pass
+        size = (1280, 1280)
+        q = 90
+        exif_orientation = 0x0112
+        if self.image_name.endswith("jpg"):
+            im = Image.open(self.file_path)
+            im.thumbnail(size, Image.LANCZOS)
+            code = im.getexif().get(exif_orientation, 1)
+            if code and code != 1:
+                im = ImageOps.exif_transpose(im)
+            im.save(self.file_path, 'JPEG', quality=q)
+            print(f"Resized {self.image_name}")
 
     def bc_get_image(self):
         url = (f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/'
@@ -1360,17 +1568,51 @@ class ProductImage:
         response = requests.get(url=url, headers=creds.bc_api_headers)
         return response.content
 
-    def bc_post_image(self, product_id, source_url, description="", is_thumbnail=False):
-        url = f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/products/{product_id}/images'
-        payload = {
-            "product_id": self.product_id,
-            "is_thumbnail": self.is_thumbnail,
-            "sort_order": self.sort_order,
-            "description": self.description,
-            "image_url": self.url
-        }
-        response = requests.post(url=url, headers=creds.bc_api_headers, json=payload)
-        return response.json()
+    def bc_post_image(self) -> int:
+        if self.is_variant_image:
+            url = (f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/'
+                   f'products/{self.product_id}/variants/{self.variant_id}/images')
+            payload = {
+                "product_id": self.product_id,
+                "variant_id": self.variant_id,
+                "is_thumbnail": self.is_thumbnail,
+                "sort_order": self.sort_order,
+                "description": self.description,
+                "image_url": self.image_url
+            }
+            print(f"Posting variant image {self.image_name} to item {self.item_no}.")
+            response = requests.post(url=url, headers=creds.bc_api_headers, json=payload)
+            if response.status_code == 200:
+                return 0
+            elif response.status_code == 500:
+                print("Image too large, will resize and try again.")
+                self.resize_image()
+                self.bc_post_image()
+            else:
+                print(f"Error posting image: {response.content}")
+                return 0
+
+        else:
+            url = (f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog'
+                   f'products/{self.product_id}/images')
+            payload = {
+                "product_id": self.product_id,
+                "is_thumbnail": self.is_thumbnail,
+                "sort_order": self.sort_order,
+                "description": self.description,
+                "image_url": self.image_url
+            }
+            print(f"Posting image {self.image_name} to item {self.item_no}.")
+            response = requests.post(url=url, headers=creds.bc_api_headers, json=payload)
+            if response.status_code == 200:
+                return response.json()["data"]["id"]
+
+            elif response.status_code == 404:
+                print("Product not found.")
+                return 0
+            else:
+                print(f"Error posting image: {response.content}")
+                return 0
 
     def bc_update_product_image(self, source_url, description=""):
         url = (f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/'
@@ -1385,10 +1627,18 @@ class ProductImage:
         response = requests.put(url=url, headers=creds.bc_api_headers, json=payload)
         return response.content
 
-    def bc_delete_product_image(self):
-        url = (f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/'
-               f'products/{self.product_id}/images/{self.bc_image_id}')
-        response = requests.delete(url=url, headers=creds.bc_api_headers)
+    def bc_delete_image(self):
+        """Photos can either be variant images or product images. Two flows in this function"""
+        if self.is_variant_image:
+            url = (f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/'
+                   f'products/{self.product_id}/variants/{self.variant_id}/images/{self.bc_image_id}')
+            response = requests.delete(url=url, headers=creds.bc_api_headers)
+
+        else:
+            url = (f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/'
+                   f'products/{self.product_id}/images/{self.bc_image_id}')
+            response = requests.delete(url=url, headers=creds.bc_api_headers)
+
         return response.content
 
     def sql_post_photo(self):
@@ -1420,13 +1670,9 @@ class ProductImage:
         pass
 
     def sql_delete_photo(self):
-        # query = f"""
-        # DELETE FROM EC_PHOTO
-        # WHERE PHOTO_NAME = '{self.name}'
-        # """
-        # self.db.query_db(query, commit=True)
-        # print(f"Photo {self.name} deleted from database.")
-        pass
+        query = f"DELETE FROM {creds.image_table} WHERE IMAGE_NAME = '{self.name}'"
+        query_engine.QueryEngine().query_db(query, commit=True)
+        print(f"Photo {self.name} deleted from database.")
 
 
 # ------------------------
@@ -1447,6 +1693,16 @@ def get_updated_photos(date):
             if sku != "":
                 result.add(sku)
     return result
+
+
+def get_all_images(mode="local"):
+    if mode == "local":
+        return [x for x in os.listdir(creds.photo_path) if x not in ["", ".DS_Store"]]
+    elif mode == "middleware":
+        query = f"SELECT IMAGE_NAME FROM SN_IMAGES"
+        response = query_engine.QueryEngine().query_db(query)
+        if response is not None:
+            return [x[0] for x in response]
 
 
 def update_product_timestamps(sku_list, table_name):
@@ -1514,6 +1770,21 @@ def get_binding_ids_to_process(product_list):
     return list(binding_ids)
 
 
+def get_all_binding_ids():
+    binding_ids = set()
+    db = query_engine.QueryEngine()
+    query = f"""
+    SELECT USR_PROF_ALPHA_16
+    FROM IM_ITEM
+    WHERE USR_PROF_ALPHA_16 IS NOT NULL
+    """
+    response = db.query_db(query)
+    if response is not None:
+        for x in response:
+            binding_ids.add(x[0])
+    return list(binding_ids)
+
+
 def get_deletion_target(counterpoint_list, middleware_list):
     return [element for element in counterpoint_list if element not in middleware_list]
 
@@ -1534,40 +1805,62 @@ def process_product_deletions():
     for product in deletions:
         delete_product(product)
 
-def process_image_deletions():
+
+def process_image_deletions(last_run_date):
     # Step 1 - Get list of all images in ItemImages Folder
-    images = get_all_images()
+    images = get_all_images(mode="local")
 
     # Step 2 - Get list of all images in Middleware
-    middleware_images = get_all_middleware_images()
+    middleware_images = get_all_images(mode="middleware")
 
     # Step 3 - Get list of images to delete
-    deletions = get_deletion_target(images, middleware_images)
+    deletions = get_deletion_target(images, middleware_list=middleware_images)
 
     # Step 4 - Delete images
     for image in deletions:
-        delete_image(image)
+        im = ProductImage(image)
+        # delete image from BigCommerce
+        im.bc_delete_product_image()
+        # delete image from Middleware
+        im.sql_delete_photo()
+
+
+def get_all_categories(mode="counterpoint"):
+    db = query_engine.QueryEngine()
+    if mode == "counterpoint":
+        query = f"""
+        SELECT CP_CATEG_ID
+        FROM SN_CATEGORIES
+        """
+    else:
+        query = f"""
+        SELECT CP_CATEG_ID
+        FROM SN_CATEGORIES
+        """
+    response = db.query_db(query)
+    if response is not None:
+        return [x[0] for x in response]
+
 
 def process_category_deletions():
     # Step 1 - Get list of all categories in Counterpoint
-    cp_categories = get_all_categories()
+    cp_categories = get_all_categories(mode="counterpoint")
 
     # Step 2 - Get list of all categories in Middleware
-    middleware_categories = get_all_middleware_categories()
+    middleware_categories = get_all_categories(mode="middleware")
 
     # Step 3 - Get list of categories to delete
-    deletions = get_deletion_target(cp_categories, middleware_categories)
+    deletions = get_deletion_target(cp_categories, middleware_list=middleware_categories)
 
     # Step 4 - Delete categories
     for category in deletions:
         delete_category(category)
 
-def process_deletions():
-    process_product_deletions()
-    process_image_deletions()
-    process_category_deltions()
 
-
+def process_deletions(last_run_date):
+    process_image_deletions(last_run_date)
+    process_product_deletions(last_run_date)
+    process_category_deltions(last_run_date)
 
 
 # ------------------------
@@ -1577,22 +1870,59 @@ def create_image_table(table_name):
     db = query_engine.QueryEngine()
     query = f"""
         CREATE TABLE {table_name} (
-        ID int NOT NULL PRIMARY KEY,
-        ITEM_NO varchar(50) NOT NULL,
-        IMAGE_NAME nvarchar(255) NOT NULL,
+        IMAGE_NAME nvarchar(255) NOT NULL PRIMARY KEY,
+        ITEM_NO varchar(50),
         FILE_PATH nvarchar(255) NOT NULL,
         IMAGE_URL nvarchar(255),
-        WEB_ID int NOT NULL,
         PRODUCT_ID int NOT NULL,
         VARIANT_ID int,
+        IMAGE_ID int NOT NULL,
         THUMBNAIL BIT NOT NULL,
         SORT_ORDER int NOT NULL,
+        IS_BINDING_IMAGE BIT NOT NULL,
+        BINDING_ID varchar(50),
+        IS_VARIANT_IMAGE BIT NOT NULL,
         DESCR nvarchar(100),
-        CREATE_DT datetime NOT NULL,
-        ADD_DT datetime NOT NULL DEFAULT(current_timestamp)
         LST_MAINT_DT datetime NOT NULL DEFAULT(current_timestamp)
         );
         """
+    db.query_db(query, commit=True)
+
+
+def drop_table(table_name):
+    db = query_engine.QueryEngine()
+    query = f"DROP TABLE {table_name}"
+    db.query_db(query, commit=True)
+
+
+def create_product_table(table_name):
+    db = query_engine.QueryEngine()
+    query = f"""
+    CREATE TABLE {table_name} (
+    
+    ID int NOT NULL PRIMARY KEY,
+    ITEM_NO varchar(50) NOT NULL,
+    BINDING_ID varchar(10),
+    IS_PARENT BIT,
+    PRODUCT_ID int NOT NULL,
+    VARIANT_ID int,
+    BC_CATEG_ID int NOT NULL FOREIGN KEY REFERENCES {creds.category_table}(BC_CATEG_ID),
+    LST_MAINT_DT datetime NOT NULL DEFAULT(current_timestamp)
+    );
+    """
+    db.query_db(query, commit=True)
+
+
+def create_category_table(table_name):
+    db = query_engine.QueryEngine()
+    query = f"""
+    CREATE TABLE {table_name} (
+    BC_CATEG_ID int NOT NULL PRIMARY KEY,
+    BC_PARENT_CATEG int,
+    CP_CATEG_ID int NOT NULL,
+    LST_MAINT_DT datetime NOT NULL DEFAULT(current_timestamp)
+    );
+    """
     db.query_db(query, commit=True)
 
 
