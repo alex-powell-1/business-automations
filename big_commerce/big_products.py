@@ -7,15 +7,12 @@ from product_tools import products
 from setup import creds
 
 
+def pretty_print(response):
+    return json.dumps(response.json(), indent=4)
+
+
 def bc_create_product(name, product_type, sku, weight, price):
     url = f" https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/products"
-
-    headers = {
-        'X-Auth-Token': creds.big_access_token,
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
-    }
-
     payload = {
         'name': name,
         'type': product_type,
@@ -23,49 +20,24 @@ def bc_create_product(name, product_type, sku, weight, price):
         'weight': weight,
         'price': price
     }
-
-    response = (requests.post(url, headers=headers, json=payload)).content
-    response = json.loads(response)
-    pretty_print = json.dumps(response, indent=4)
-    return pretty_print
+    response = requests.post(url, headers=creds.bc_api_headers, json=payload)
+    print(pretty_print(response))
+    return response.json()
 
 
 def bc_update_product(product_id, payload, log_file, pretty=False):
     url = f" https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/products/{product_id}"
-
-    headers = {
-        'X-Auth-Token': creds.big_access_token,
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
-    }
-
-    try:
-        response = (requests.put(url, headers=headers, json=payload))
-    except Exception as err:
-        print("Error:bc_update_product()", file=log_file)
-        print(f"Payload: {payload}", file=log_file)
-        print(err, file=log_file)
-        print("-----------------------\n", file=log_file)
+    response = (requests.put(url, headers=creds.bc_api_headers, json=payload))
+    if response.status_code == 200:
+            print(pretty_print(response))
+            return response.json()
     else:
-        if response.status_code == 200:
-            json_response = response.json()
-            if pretty:
-                pretty = response.content
-                pretty = json.loads(pretty)
-                pretty = json.dumps(pretty, indent=4)
-                return pretty
-            return json_response
+        print(f"Error: {response.content}")
+        return response.content
 
 
 def bc_create_image(product_id):
     url = f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/products/{product_id}/images'
-
-    headers = {
-        'X-Auth-Token': creds.big_access_token,
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
-    }
-
     payload = {
         "product_id": product_id,
         "is_thumbnail": True,
@@ -74,7 +46,7 @@ def bc_create_image(product_id):
         "image_url": 'https://settlemyrenursery.com/product_images/import/sample_images/birthdaycoupon.jpg'
     }
 
-    response = requests.post(url=url, headers=headers, json=payload)
+    response = requests.post(url=url, headers=creds.bc_api_headers, json=payload)
     return response.content
 
 
@@ -82,24 +54,15 @@ def bc_get_product(product_id, pretty=False):
     if product_id is not None:
         url = f" https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/products/{product_id}"
 
-        headers = {
-            'X-Auth-Token': creds.big_access_token,
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
-        }
-
-        response = requests.get(url, headers=headers)
-        json_response = response.json()
-        if pretty:
-            pretty = response.content
-            pretty = json.loads(pretty)
-            pretty = json.dumps(pretty, indent=4)
-            return pretty
-        if 'status' in json_response:
-            if json_response['status'] == 404:
-                return None
-        else:
+        response = requests.get(url, headers=creds.bc_api_headers)
+        if response.status_code == 200:
+            json_response = response.json()
+            if pretty:
+                return pretty_print(response)
             return json_response
+        if response.status_code == 404:
+            print(f"Product ID: {product_id} not found on BigCommerce!")
+            return None
 
 
 def bc_get_product_images(product_id):
@@ -121,9 +84,6 @@ def bc_get_product_images(product_id):
             return json_response
 
 
-
-
-
 def bc_update_product_image(product_id, image_id, payload):
     url = (f" https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/products/"
            f"{product_id}/images/{image_id}")
@@ -143,18 +103,10 @@ def bc_update_product_image(product_id, image_id, payload):
 def bc_has_product_thumbnail(product_id) -> bool:
     if product_id is not None:
         url = f" https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/products/{product_id}/images"
-
-        headers = {
-            'X-Auth-Token': creds.big_access_token,
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
-        }
-
-        response = requests.get(url, headers=headers)
+        response = requests.get(url, headers=creds.bc_api_headers)
         if response.status_code == 404:
             return False
         else:
-            print(response.content)
             json_response = response.json()['data']
             has_thumbnail = False
             for x in json_response:
@@ -163,32 +115,24 @@ def bc_has_product_thumbnail(product_id) -> bool:
             return has_thumbnail
 
 
-def get_modifier_id(product_id):
+def get_modifier(product_id, pretty=False):
     if product_id is not None:
         url = f" https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/products/{product_id}/modifiers"
-
-        headers = {
-            'X-Auth-Token': creds.big_access_token,
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
-        }
-        response = requests.get(url, headers=headers).json()
-        if response['data']:
-            return response['data'][0]['id']
+        response = requests.get(url, headers=creds.bc_api_headers)
+        if response.status_code == 200:
+            if pretty:
+                print(pretty_print(response))
+            return response.json()['data']
 
 
 def delete_product_modifier(product_id, modifier_id):
-    if product_id is not None:
-        url = (f" https://api.bigcommerce.com/stores/{creds.big_store_hash}"
+    url = (f" https://api.bigcommerce.com/stores/{creds.big_store_hash}"
                f"/v3/catalog/products/{product_id}/modifiers/{modifier_id}")
-
-        headers = {
-            'X-Auth-Token': creds.big_access_token,
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
-        }
-        response = requests.delete(url, headers=headers)
-        return response
+    response = requests.delete(url, headers=creds.bc_api_headers)
+    if response.status_code == 204:
+        print(f"Deleted modifier {modifier_id} from product {product_id}")
+    else:
+        print(f"Error: {response.content}")
 
 
 def add_container_workshop_to_item(product_id):
@@ -326,6 +270,14 @@ def bc_get_variant(product_id, variant_id, pretty=False):
     return json_response
 
 
+def get_category_trees():
+    url = f"https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/trees"
+    response = requests.get(url, headers=creds.bc_api_headers)
+    print(pretty_print(response))
+    return response.json()
+
+
+
 def fix_missing_thumbnails(log_file):
     """In response to a bug with CPIce Data Integration, this function will correct products with missing
     thumbnail flags on the e-commerce site"""
@@ -380,3 +332,15 @@ def fix_missing_thumbnails(log_file):
     print(f"Total products updated: {updated}", file=log_file)
     print(f"Set Fixing Missing Thumbnails: Finished at {datetime.now():%H:%M:%S}", file=log_file)
     print("-----------------------", file=log_file)
+
+
+
+
+
+def remove_workshop_modifier(product_id):
+    modifier_id = get_modifier_id(product_id)
+    if modifier_id is not None:
+        delete_product_modifier(product_id, modifier_id)
+        return f"Deleted modifier {modifier_id} from product {product_id}"
+    else:
+        return f"No modifier found for product {product_id}"

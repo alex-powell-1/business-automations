@@ -11,92 +11,14 @@ from setup import date_presets
 from requests.auth import HTTPDigestAuth
 
 
+def get_lst_maint_dt(file_path):
+    return datetime.fromtimestamp(os.path.getmtime(file_path)) if os.path.exists(file_path) else datetime(1970, 1, 1)
+
 # ------------------------
 # CATEGORY TREES
 # -----------------------
 
-class CounterpointCategoryTree:
-    def __init__(self):
-        self.db = query_engine.QueryEngine()
-        self.categories = set()
-        self.heads = []
-        self.create_tree()
 
-    def __str__(self):
-        result = ""
-        for k in self.heads:
-            result += k.category_name + "\n"
-            for x in k.children:
-                result += f"    {x.category_name}\n"
-                for y in x.children:
-                    result += f"        {y.category_name}\n"
-                    for z in y.children:
-                        result += f"            {z.category_name}\n"
-        return result
-
-    def get_categories(self):
-        query = f"""
-        SELECT CATEG_ID, PARENT_ID, DESCR, LST_MAINT_DT
-        FROM EC_CATEG
-        """
-        response = self.db.query_db(query)
-        if response is not None:
-            for y in response:
-                category = CounterpointCategory(y[0], y[1], y[2], y[3])
-                self.categories.add(category)
-
-    def create_tree(self):
-        self.get_categories()
-
-        for x in self.categories:
-            for y in self.categories:
-                if y.parent_category == x.category_id:
-                    x.add_child(y)
-
-        self.heads = [x for x in self.categories if x.parent_category is None]
-
-
-class CounterpointCategory:
-    def __init__(self, category_id, parent_category, category_name, description):
-        self.category_id = category_id
-        self.category_name = category_name
-        self.parent_category = parent_category
-        self.description = description
-        self.children = []
-
-    def add_child(self, child):
-        self.children.append(child)
-
-
-class MiddlewareCategoryTree:
-    def __init__(self):
-        self.categories = []
-        self.get_category_tree()
-
-    def get_category_tree(self):
-        pass
-
-
-class MiddlewareCategory:
-    def __init__(self, category_id, parent_id, name, is_visible, depth, path, children, url):
-        self.id = category_id
-        self.parent_id = parent_id
-        self.name = name
-        self.is_visible = is_visible
-        self.depth = depth
-        self.path = path
-        self.children = []
-        self.url = url
-        if children:
-            self.instantiate_children(children)
-
-    def instantiate_children(self, children):
-        for x in children:
-            self.children.append(MiddlewareCategory(category_id=x['id'],
-                                                    parent_id=x['parent_id'],
-                                                    name=x['name'],
-                                                    is_visible=x['is_visible'], depth=x['depth'], path=x['path'],
-                                                    children=x['children'], url=x['url']))
 
 
 def create_category(category):
@@ -204,6 +126,90 @@ def update_category_tree():
         delete_category(category)
 
 
+class CounterpointCategoryTree:
+    def __init__(self):
+        self.db = query_engine.QueryEngine()
+        self.categories = set()
+        self.heads = []
+        self.create_tree()
+
+    def __str__(self):
+        result = ""
+        for k in self.heads:
+            result += k.category_name + "\n"
+            for x in k.children:
+                result += f"    {x.category_name}\n"
+                for y in x.children:
+                    result += f"        {y.category_name}\n"
+                    for z in y.children:
+                        result += f"            {z.category_name}\n"
+        return result
+
+    def get_categories(self):
+        query = f"""
+        SELECT CATEG_ID, PARENT_ID, DESCR, LST_MAINT_DT
+        FROM EC_CATEG
+        """
+        response = self.db.query_db(query)
+        if response is not None:
+            for y in response:
+                category = CounterpointCategory(y[0], y[1], y[2], y[3])
+                self.categories.add(category)
+
+    def create_tree(self):
+        self.get_categories()
+
+        for x in self.categories:
+            for y in self.categories:
+                if y.parent_category == x.category_id:
+                    x.add_child(y)
+
+        self.heads = [x for x in self.categories if x.parent_category is None]
+
+
+class CounterpointCategory:
+    def __init__(self, category_id, parent_category, category_name, description):
+        self.category_id = category_id
+        self.category_name = category_name
+        self.parent_category = parent_category
+        self.description = description
+        self.children = []
+
+    def add_child(self, child):
+        self.children.append(child)
+
+
+class MiddlewareCategoryTree:
+    def __init__(self):
+        self.categories = []
+        self.get_category_tree()
+
+    def get_category_tree(self):
+        pass
+
+
+class MiddlewareCategory:
+    def __init__(self, category_id, parent_id, name, is_visible, depth, path, children, url):
+        self.id = category_id
+        self.parent_id = parent_id
+        self.name = name
+        self.is_visible = is_visible
+        self.depth = depth
+        self.path = path
+        self.children = []
+        self.url = url
+        if children:
+            self.instantiate_children(children)
+
+    def instantiate_children(self, children):
+        for x in children:
+            self.children.append(MiddlewareCategory(category_id=x['id'],
+                                                    parent_id=x['parent_id'],
+                                                    name=x['name'],
+                                                    is_visible=x['is_visible'], depth=x['depth'], path=x['path'],
+                                                    children=x['children'], url=x['url']))
+
+
 # ------------------------
 # PRODUCTS
 # -----------------------
@@ -223,6 +229,333 @@ class MiddlewareCatalog:
                 self.products.append(item[0])
 
 
+# ------------------------
+# STATIC METHODS
+# -----------------------
+def get_updated_photos(date):
+    result = set()
+    # Iterate over all files in the directory
+    for filename in os.listdir(creds.photo_path):
+        file_path = os.path.join(creds.photo_path, filename)
+
+        # Get the last modified date of the file
+        modified_date = datetime.fromtimestamp(os.path.getmtime(file_path))
+
+        # If the file has been modified since the input date, print its name
+        if modified_date > date:
+            sku = filename.split(".")[0].split("^")[0]
+            if sku != "":
+                result.add(sku)
+    return result
+
+
+def update_product_timestamp(sku, table_name):
+    """Takes in a SKU and updates the last maintenance date in input table for the product"""
+    db = query_engine.QueryEngine()
+    query = f"UPDATE {table_name} SET LST_MAINT_DT = GETDATE() WHERE ITEM_NO = '{sku}'"
+    try:
+        db.query_db(query, commit=True)
+    except Exception as e:
+        print(f"Error updating product timestamp: {e}")
+    else:
+        print(f"Product {sku} timestamp updated.")
+
+
+def get_all_products(mode="counterpoint"):
+    if mode == "middleware":
+        query = f"SELECT ITEM_NO FROM {creds.bc_product_table}"
+    else:
+        query = f"SELECT ITEM_NO FROM IM_ITEM WHERE IS_ECOMM_ITEM = 'Y'"
+    response = query_engine.QueryEngine().query_db(query)
+    if response is not None:
+        return [x[0] for x in response]
+
+
+def get_all_images(mode="local"):
+    if mode == "local":
+        return [x for x in os.listdir(creds.photo_path) if x not in ["", ".DS_Store"]]
+    elif mode == "middleware":
+        query = f"SELECT IMAGE_NAME FROM SN_IMAGES"
+        response = query_engine.QueryEngine().query_db(query)
+        if response is not None:
+            return [x[0] for x in response]
+
+
+def update_product_timestamps(sku_list, table_name):
+    """Takes in a list of SKUs and updates the last maintenance date in input table for each product in the list"""
+    tuple_list = tuple(sku_list)
+    db = query_engine.QueryEngine()
+    query = f"UPDATE {table_name} SET LST_MAINT_DT = GETDATE() WHERE ITEM_NO in {tuple_list}"
+    try:
+        db.query_db(query, commit=True)
+    except Exception as e:
+        print(f"Error updating product timestamps: {e}")
+    else:
+        print("Product timestamps updated: ", sku_list)
+
+
+def get_updated_products(last_run_date):
+    """Get a list of all products that have been updated since the last run date. Will check IM_ITEM, IM_PRC, IM_INV,
+    EC_ITEM_DESCR, and EC_CATEG_ITEM tables for updates."""
+
+    updated_products = set()
+    db = query_engine.QueryEngine()
+    query = f"""
+    SELECT ITEM.ITEM_NO
+    FROM IM_ITEM ITEM
+    LEFT OUTER JOIN IM_PRC PRC ON ITEM.ITEM_NO=PRC.ITEM_NO
+    LEFT OUTER JOIN IM_INV INV ON ITEM.ITEM_NO=INV.ITEM_NO
+    LEFT OUTER JOIN EC_ITEM_DESCR ON ITEM.ITEM_NO=EC_ITEM_DESCR.ITEM_NO
+    LEFT OUTER JOIN EC_CATEG_ITEM ON ITEM.ITEM_NO=EC_CATEG_ITEM.ITEM_NO
+    WHERE ITEM.LST_MAINT_DT > '{last_run_date}' or PRC.LST_MAINT_DT > '{last_run_date}' 
+    or INV.LST_MAINT_DT > '{last_run_date}' or EC_ITEM_DESCR.LST_MAINT_DT > '{last_run_date}'
+    or EC_CATEG_ITEM.LST_MAINT_DT > '{last_run_date}'
+    """
+    response = db.query_db(query)
+    if response is not None:
+        for x in response:
+            updated_products.add(x[0])
+
+    return list(updated_products)
+
+
+def get_binding_id_from_sku(sku):
+    db = query_engine.QueryEngine()
+    query = f"""
+    SELECT USR_PROF_ALPHA_16
+    FROM IM_ITEM
+    WHERE ITEM_NO = '{sku}'
+    """
+    response = db.query_db(query)
+    if response is not None:
+        return response[0][0]
+
+
+def get_binding_ids_to_process(product_list):
+    binding_ids = set()
+    for product in product_list:
+        binding_id = get_binding_id_from_sku(product)
+        if binding_id:
+            binding_ids.add(binding_id)
+    return list(binding_ids)
+
+
+def get_all_binding_ids():
+    binding_ids = set()
+    db = query_engine.QueryEngine()
+    query = f"""
+    SELECT USR_PROF_ALPHA_16
+    FROM IM_ITEM
+    WHERE USR_PROF_ALPHA_16 IS NOT NULL
+    """
+    response = db.query_db(query)
+    if response is not None:
+        for x in response:
+            binding_ids.add(x[0])
+    return list(binding_ids)
+
+
+def get_deletion_target(counterpoint_list, middleware_list):
+    return [element for element in counterpoint_list if element not in middleware_list]
+
+
+def process_product_deletions(last_run_date):
+    # Products
+    # ------------------------
+    # Step 1 - Get list of all products in Counterpoint
+    cp_products = get_all_products()
+
+    # Step 2 - Get list of all products in Middleware
+    middleware_products = get_all_products(mode="middleware")
+
+    # Step 3 - Get list of products to delete
+    deletions = get_deletion_target(cp_products, middleware_list=middleware_products)
+
+    # Step 4 - Delete products
+    for product in deletions:
+        target = Product(product)
+        target.delete()
+
+
+def process_image_deletions(last_run_date):
+    # Step 1 - Get list of all images in ItemImages Folder
+    images = get_all_images(mode="local")
+
+    # Step 2 - Get list of all images in Middleware
+    middleware_images = get_all_images(mode="middleware")
+
+    # Step 3 - Get list of images to delete
+    deletions = get_deletion_target(images, middleware_list=middleware_images)
+
+    # Step 4 - Delete images
+    for image in deletions:
+        im = ProductImage(image)
+        # delete image from BigCommerce
+        im.bc_delete_image()
+        # delete image from Middleware
+        im.sql_delete_photo()
+
+
+def get_all_categories(mode="counterpoint"):
+    db = query_engine.QueryEngine()
+    if mode == "counterpoint":
+        query = f"""
+        SELECT CP_CATEG_ID
+        FROM SN_CATEGORIES
+        """
+    else:
+        query = f"""
+        SELECT CP_CATEG_ID
+        FROM SN_CATEGORIES
+        """
+    response = db.query_db(query)
+    if response is not None:
+        return [x[0] for x in response]
+
+
+def process_category_deletions():
+    # Step 1 - Get list of all categories in Counterpoint
+    cp_categories = get_all_categories(mode="counterpoint")
+
+    # Step 2 - Get list of all categories in Middleware
+    middleware_categories = get_all_categories(mode="middleware")
+
+    # Step 3 - Get list of categories to delete
+    deletions = get_deletion_target(cp_categories, middleware_list=middleware_categories)
+
+    # Step 4 - Delete categories
+    for category in deletions:
+        delete_category(category)
+
+
+def process_deletions(last_run_date):
+    process_image_deletions(last_run_date)
+    process_product_deletions(last_run_date)
+    process_category_deltions(last_run_date)
+
+
+# ------------------------
+# DATABASE UTILITIES
+# -----------------------
+
+def backfill_product_table():
+    db = query_engine.QueryEngine()
+    query = f"""
+    SELECT ITEM_NO
+    FROM IM_ITEM
+    WHERE IS_ECOMM_ITEM = 'Y'
+    """
+    response = db.query_db(query)
+    if response is not None:
+        for x in response:
+            product = Product(x[0])
+            product.get_processing_method()
+            product.process(mode=product.processing_method)
+
+
+def create_category_table(table_name):
+    db = query_engine.QueryEngine()
+    query = f"""
+    CREATE TABLE {table_name} (
+    BC_CATEG_ID int NOT NULL PRIMARY KEY,
+    CATEG_NAME nvarchar(255) NOT NULL,
+    PARENT_ID int,
+    CP_CATEG_ID bigint NOT NULL,
+    LST_MAINT_DT datetime NOT NULL DEFAULT(current_timestamp)
+    );
+    """
+    db.query_db(query, commit=True)
+
+
+def create_product_table(table_name):
+    db = query_engine.QueryEngine()
+    query = f"""
+    CREATE TABLE {table_name} (
+    ITEM_NO varchar(50) NOT NULL PRIMARY KEY,
+    BINDING_ID varchar(10),
+    IS_PARENT BIT,
+    PRODUCT_ID int NOT NULL,
+    VARIANT_ID int,
+    BC_CATEG_ID int NOT NULL FOREIGN KEY REFERENCES {creds.bc_category_table}(BC_CATEG_ID),
+    LST_MAINT_DT datetime NOT NULL DEFAULT(current_timestamp)
+    );
+    """
+    db.query_db(query, commit=True)
+
+
+def create_image_table(table_name):
+    db = query_engine.QueryEngine()
+    query = f"""
+        CREATE TABLE {table_name} (
+        IMAGE_NAME nvarchar(255) NOT NULL PRIMARY KEY,
+        ITEM_NO varchar(50),
+        FILE_PATH nvarchar(255) NOT NULL,
+        IMAGE_URL nvarchar(255),
+        PRODUCT_ID int NOT NULL,
+        VARIANT_ID int,
+        IMAGE_ID int NOT NULL,
+        THUMBNAIL BIT NOT NULL,
+        SORT_ORDER int NOT NULL,
+        IS_BINDING_IMAGE BIT NOT NULL,
+        BINDING_ID varchar(50),
+        IS_VARIANT_IMAGE BIT NOT NULL,
+        DESCR nvarchar(100),
+        LST_MAINT_DT datetime NOT NULL DEFAULT(current_timestamp)
+        );
+        """
+    db.query_db(query, commit=True)
+
+
+def drop_table(table_name):
+    db = query_engine.QueryEngine()
+    query = f"DROP TABLE {table_name}"
+    db.query_db(query, commit=True)
+
+
+def rebuild_tables():
+    # Drop Tables
+    drop_table(creds.bc_image_table)
+    drop_table(creds.bc_product_table)
+    drop_table(creds.bc_category_table)
+
+    # Recreate Tables
+    create_category_table(creds.bc_category_table)
+    create_product_table(creds.bc_product_table)
+    create_image_table(creds.bc_image_table)
+
+
+def process_bound_products(binding_ids, middleware_catalog):
+    """Takes in a list of binding ids and creates BoundProduct objects for each one. If the product passes input
+    validation, it will compare the product/image/category details against those in the middleware database and update
+    Returns a list of all BoundProduct objects that have been successfully updated."""
+    result = []
+    for x in binding_ids:
+        bound_product = BoundProduct(x)
+        if bound_product.validate_product():
+            bound_product.get_processing_method(middleware_catalog)
+            bound_product.process(mode=bound_product.processing_method)
+            # Build Result List
+            for child in bound_product.children:
+                result.append(child.sku)
+    return result
+
+
+def process_single_items(product_list, middleware_catalog):
+    """Takes in a list of product SKUs and creates Product objects for each one. If the product passes input validation,
+    it will compare the product/image/category details against those in the middleware database and update. Returns a list
+    of all products that have been successfully updated."""
+    result = []
+
+    while len(product_list) > 0:
+        product = Product(product_list.pop())
+        if product.validate_product():
+            product.get_processing_method(middleware_catalog)
+            product.process(mode=product.processing_method)
+        # Bear in mind: Putting result append here will put successes and failures in the same list.
+        result.append(product.sku)
+    return result
+
+
 class BoundProduct:
     def __init__(self, binding_id: str):
         self.db = query_engine.QueryEngine()
@@ -233,6 +566,9 @@ class BoundProduct:
         self.children: list = []
         # self.parent will be a list of parent products. If length of list > 1, product validation will fail
         self.parent: list = []
+
+        # A list of image objects
+        self.images: list = []
 
         # Product Information
         self.web_title: str = ""
@@ -315,16 +651,19 @@ class BoundProduct:
         FROM IM_ITEM
         WHERE USR_PROF_ALPHA_16 = '{self.binding_id}' and IS_ECOMM_ITEM = 'Y'
         """
+        # Get children
         response = self.db.query_db(query)
         if response is not None:
+            # Create Product objects for each child and add object to bound parent list
             for item in response:
                 self.children.append(Product(item[0]))
         # Set parent
         self.parent = [x.sku for x in self.children if x.is_parent]
+
         # Set total children
         self.total_children = len(self.children)
 
-        # Product Information
+        # Inherit Product Information from Parent Item
         for x in self.children:
             if x.is_parent:
                 self.product_id = x.product_id
@@ -356,6 +695,11 @@ class BoundProduct:
                 self.custom_color = x.custom_color
                 self.custom_size = x.custom_size
                 self.ecommerce_categories = x.ecommerce_categories
+
+        # Product Images
+        for x in self.children:
+            for y in x.images:
+                self.images.append(y)
 
     def validate_product(self):
         while self.validation_retries > 0:
@@ -527,23 +871,31 @@ class BoundProduct:
             })
         return result
 
-    def construct_image_payload(self):
+    def construct_image_payload(self, mode: str = "create"):
         result = []
-        # Parent Images
-
         # Child Images
         for child in self.children:
             for image in child.images:
-                result.append({
-                    "image_file": image.name,
-                    "is_thumbnail": image.is_thumbnail,
-                    "sort_order": image.sort_order,
-                    "description": image.alt_text_1,
-                    "image_url": f"{creds.public_web_dav_photos}/{image.name}",
-                    "id": 0,
-                    "product_id": child.product_id,
-                    "date_modified": image.modified_date
-                })
+                if mode == "create":
+                    result.append({
+                        "product_id": child.product_id,
+                        "image_file": image.name,
+                        "is_thumbnail": image.is_thumbnail,
+                        "sort_order": image.sort_order,
+                        "description": image.description,
+                        "image_url": image.image_url,
+                    })
+                elif mode == "update":
+                    result.append({
+                        "product_id": child.product_id,
+                        "image_file": image.name,
+                        "is_thumbnail": image.is_thumbnail,
+                        "sort_order": image.sort_order,
+                        "description": image.description,
+                        "image_url": image.image_url,
+                        "id": image.id,
+                    })
+        return result
 
     def construct_variant_payload(self):
         result = []
@@ -744,6 +1096,7 @@ class Product:
         self.binding_id: str = ""
         self.product_id: int = 0
         self.variant_id: int = 0
+
         # Status
         self.web_enabled: bool = False
         self.web_visible: bool = False
@@ -818,6 +1171,8 @@ class Product:
         self.lst_maint_dt = datetime(1970, 1, 1)
         # E-Commerce Categories
         self.ecommerce_categories = []
+        # Product Schema (i.e. Bound, Single, Variant.)
+        self.item_schema = ""
         # Processing Method
         self.processing_method = ""
         # Initialize Product Details
@@ -844,18 +1199,18 @@ class Product:
         USR_PROF_ALPHA_14, USR_PROF_ALPHA_15, 
         ITEM.LST_MAINT_DT, INV.LST_MAINT_DT, PRC.LST_MAINT_DT,EC_ITEM_DESCR.LST_MAINT_DT, EC_CATEG_ITEM.LST_MAINT_DT,
         EC_CATEG_ITEM.CATEG_ID, ITEM.LST_COST, COD.DESCR
-        
+
         FROM IM_ITEM ITEM
-        
+
         INNER JOIN IM_PRC PRC ON ITEM.ITEM_NO=PRC.ITEM_NO
-        
+
         LEFT OUTER JOIN IM_INV INV ON ITEM.ITEM_NO=INV.ITEM_NO
         LEFT OUTER JOIN EC_ITEM_DESCR ON ITEM.ITEM_NO=EC_ITEM_DESCR.ITEM_NO
         LEFT OUTER JOIN EC_CATEG_ITEM ON ITEM.ITEM_NO=EC_CATEG_ITEM.ITEM_NO
         LEFT OUTER JOIN EC_CATEG ON EC_CATEG.CATEG_ID=EC_CATEG_ITEM.CATEG_ID
         INNER JOIN IM_ITEM_PROF_COD COD ON ITEM.PROF_COD_1 = COD.PROF_COD
 
-        
+
         WHERE ITEM.ITEM_NO = '{self.sku}' and ITEM.IS_ECOMM_ITEM = 'Y'
         """
         response = db.query_db(query)
@@ -976,7 +1331,7 @@ class Product:
         return True
 
     def construct_variant_payload(self):
-        payload = {
+        variants = [{
             "cost_price": self.cost,
             "price": self.price_1,
             "sale_price": self.price_2,
@@ -1004,8 +1359,12 @@ class Product:
                     "label": self.variant_name,
                 }
             ]
-        }
-        return payload
+        }]
+        return variants
+
+    def get_product_schema(self):
+        if self.is_bound and not self.is_parent:
+            self.item_schema = "variant"
 
     def get_processing_method(self, middleware_catalog) -> None:
         if self.sku not in middleware_catalog.products:
@@ -1229,39 +1588,7 @@ class Product:
                     "length": "string"
                 }
             ],
-            # "variants": [
-            #     {
-            #         "cost_price": 0.1,
-            #         "price": 0.1,
-            #         "sale_price": 0.1,
-            #         "retail_price": 0.1,
-            #         "weight": 0.1,
-            #         "width": 0.1,
-            #         "height": 0.1,
-            #         "depth": 0.1,
-            #         "is_free_shipping": False,
-            #         "fixed_cost_shipping_price": 0.1,
-            #         "purchasing_disabled": False,
-            #         "purchasing_disabled_message": "string",
-            #         "upc": "string",
-            #         "inventory_level": 2147483647,
-            #         "inventory_warning_level": 2147483647,
-            #         "bin_picking_number": "string",
-            #         "mpn": "string",
-            #         "gtin": "012345678905",
-            #         "product_id": 0,
-            #         "id": 0,
-            #         "sku": "string",
-            #         "option_values": [
-            #             {
-            #                 "option_display_name": "Color",
-            #                 "label": "Beige"
-            #             }
-            #         ],
-            #         "calculated_price": 0.1,
-            #         "calculated_weight": 0
-            #     }
-            # ],
+            "variants": self.construct_variant_payload(),
         }
         return payload
 
@@ -1303,10 +1630,34 @@ class Product:
         self.bc_update_product()
         self.middleware_update_product()
 
+    def delete(self):
+        self.bc_delete_product()
+        self.middleware_delete_product()
+
     def bc_delete_product(self):
-        url = f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/products/{self.product_id}'
-        response = requests.delete(url=url, headers=creds.bc_api_headers)
-        return response.json()
+        # Delete product VARIANT from BigCommerce
+        if self.is_bound and not self.is_parent:
+            url = (f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/products/{self.product_id}'
+                   f'/variants/{self.variant_id}')
+        else:
+            # This will delete single products and bound parent products
+            url = f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/products/{self.product_id}'
+        try:
+            response = requests.delete(url=url, headers=creds.bc_api_headers)
+        except Exception as e:
+            print(f"Error deleting product {self.sku}: {e}")
+        else:
+            if response.status_code == 204:
+                print(f"Product {self.sku} deleted successfully.")
+                return response.json()
+
+    def middleware_delete_product(self):
+        # First delete product images
+        for image in self.images:
+            image.delete()
+        # Delete product from product table
+        query = f"DELETE FROM {creds.bc_product_table} WHERE ITEM_NO = '{self.sku}'"
+        query_engine.QueryEngine().query_db(query, commit=True)
 
 
 # ------------------------
@@ -1314,14 +1665,13 @@ class Product:
 # -----------------------
 
 class ProductImage:
-    def __init__(self, image_name: str, item_no="", file_path="", image_url="", product_id=0, variant_id=0, image_id=0,
+    def __init__(self, image_name: str, item_no="", image_url="", product_id=0, variant_id=0, image_id=0,
                  is_thumbnail=False, sort_order=0, is_binding_image=False, is_binding_id=None, is_variant_image=False,
-                 description="", lst_maint_dt=datetime(1970, 1, 1),
-                 lst_run_time=datetime(1970, 1, 1)):
+                 description="", lst_run_time=datetime(1970, 1, 1)):
 
         self.image_name = image_name
         self.item_no = item_no
-        self.file_path = file_path
+        self.file_path = f"{creds.photo_path}/{self.image_name}"
         self.image_url = image_url
         self.product_id = product_id
         self.variant_id = variant_id
@@ -1332,16 +1682,23 @@ class ProductImage:
         self.binding_id = is_binding_id
         self.is_variant_image = is_variant_image
         self.description = description
-        self.lst_maint_dt = lst_maint_dt
+        self.lst_maint_dt = get_lst_maint_dt(self.file_path)
 
-        if self.lst_maint_dt > lst_run_time:
+        if self.lst_maint_dt >= lst_run_time:
             # Image has been updated since last run. Check image for valid size and format.
             if self.validate_image():
+                # Input image file is valid. Rebuild image record in database.
                 self.initialize_image_details()
 
         else:
             # Image has not been updated since last run. Get image details from database.
             self.get_image_details_from_db()
+
+    def __str__(self):
+        result = ""
+        for k, v in self.__dict__.items():
+            result += f"{k}: {v}\n"
+        return result
 
     def validate_image(self):
         print(f"Validating image {self.image_name}")
@@ -1421,6 +1778,8 @@ class ProductImage:
                 else:
                     print("Conversion successful.")
                     return True
+        print(f"Image {self.image_name} is valid.")
+        return True
 
     def get_image_details_from_db(self):
         db = query_engine.QueryEngine()
@@ -1445,17 +1804,17 @@ class ProductImage:
             self.lst_maint_dt = response[0][13]
 
     def initialize_image_details(self):
-        # Path
-        self.file_path = f"{creds.photo_path}/{self.image_name}"
-
         # URL
-        self.image_url = self.upload_product_image()
+        try:
+            self.image_url = self.upload_product_image()
+        except Exception as e:
+            print(f"Error uploading image: {e}")
 
         # Sort Order
         if "^" not in self.image_name.split(".")[0]:
             self.sort_order = 1
         else:
-            self.sort_order = int(self.file_path.split(".")[0].split("^")[1]) + 1
+            self.sort_order = int(self.image_name.split(".")[0].split("^")[1]) + 1
 
         # Dates
         self.lst_maint_dt = datetime.fromtimestamp(os.path.getmtime(self.file_path))
@@ -1486,12 +1845,12 @@ class ProductImage:
             # Only non-binding images have descriptions at this time. Though, this could be handled with JSON reference
             # in the future for binding images.
             for x in range(1, 5):
-                if self.image_name.split(".")[0].split("^")[1] == x:
+                if self.image_name.split(".")[0].split("^")[0] == x:
                     self.description = self.get_image_description(x)
 
         self.product_id, self.variant_id = self.get_product_and_variant_ids()
-        self.image_id = self.bc_post_image()
-        self.write_image_to_db()
+        # self.image_id = self.bc_post_image()
+        # self.write_image_to_db()
 
     def write_image_to_db(self):
         query = f"""
@@ -1522,7 +1881,7 @@ class ProductImage:
 
     def get_binding_id(self):
         query = f"""
-        SELECT USR_PROF_ALPHA_16 FROM IM_ITEMS
+        SELECT USR_PROF_ALPHA_16 FROM IM_ITEM
         WHERE ITEM_NO = '{self.item_no}'
         """
         response = query_engine.QueryEngine().query_db(query)
@@ -1543,11 +1902,11 @@ class ProductImage:
     def upload_product_image(self) -> str:
         """Upload file to import folder on webDAV server and turn public url"""
         data = open(self.file_path, 'rb')
-        url = creds.public_web_dav_photos + self.image_name
+        new_name = self.image_name.replace("^", "-")
+        url = f"{creds.web_dav_product_photos}/{new_name}"
         response = requests.put(url, data=data, auth=HTTPDigestAuth(creds.web_dav_user, creds.web_dav_pw))
-        print(response.status_code)
         # return public url of image
-        return f"{creds.public_web_dav_photos}/{self.image_name}"
+        return f"{creds.public_web_dav_photos}/{new_name}"
 
     def resize_image(self):
         size = (1280, 1280)
@@ -1675,303 +2034,29 @@ class ProductImage:
         print(f"Photo {self.name} deleted from database.")
 
 
-# ------------------------
-# STATIC METHODS
-# -----------------------
-def get_updated_photos(date):
-    result = set()
-    # Iterate over all files in the directory
-    for filename in os.listdir(creds.photo_path):
-        file_path = os.path.join(creds.photo_path, filename)
-
-        # Get the last modified date of the file
-        modified_date = datetime.fromtimestamp(os.path.getmtime(file_path))
-
-        # If the file has been modified since the input date, print its name
-        if modified_date > date:
-            sku = filename.split(".")[0].split("^")[0]
-            if sku != "":
-                result.add(sku)
-    return result
-
-
-def get_all_images(mode="local"):
-    if mode == "local":
-        return [x for x in os.listdir(creds.photo_path) if x not in ["", ".DS_Store"]]
-    elif mode == "middleware":
-        query = f"SELECT IMAGE_NAME FROM SN_IMAGES"
-        response = query_engine.QueryEngine().query_db(query)
-        if response is not None:
-            return [x[0] for x in response]
-
-
-def update_product_timestamps(sku_list, table_name):
-    """Takes in a list of SKUs and updates the last maintenance date in input table for each product in the list"""
-    tuple_list = tuple(sku_list)
-    db = query_engine.QueryEngine()
-
-    query = f"""
-    UPDATE '{table_name}
-    SET LST_MAINT_DT = GETDATE()
-    WHERE ITEM_NO in {tuple_list}
-    """
-
-    try:
-        db.query_db(query, commit=True)
-    except Exception as e:
-        print(f"Error updating product timestamps: {e}")
-    else:
-        print("Product timestamps updated: ", sku_list)
-
-
-def get_updated_products(last_run_date):
-    """Get a list of all products that have been updated since the last run date. Will check IM_ITEM, IM_PRC, IM_INV,
-    EC_ITEM_DESCR, and EC_CATEG_ITEM tables for updates."""
-
-    updated_products = set()
-    db = query_engine.QueryEngine()
-    query = f"""
-    SELECT ITEM.ITEM_NO
-    FROM IM_ITEM ITEM
-    LEFT OUTER JOIN IM_PRC PRC ON ITEM.ITEM_NO=PRC.ITEM_NO
-    LEFT OUTER JOIN IM_INV INV ON ITEM.ITEM_NO=INV.ITEM_NO
-    LEFT OUTER JOIN EC_ITEM_DESCR ON ITEM.ITEM_NO=EC_ITEM_DESCR.ITEM_NO
-    LEFT OUTER JOIN EC_CATEG_ITEM ON ITEM.ITEM_NO=EC_CATEG_ITEM.ITEM_NO
-    WHERE ITEM.LST_MAINT_DT > '{last_run_date}' or PRC.LST_MAINT_DT > '{last_run_date}' 
-    or INV.LST_MAINT_DT > '{last_run_date}' or EC_ITEM_DESCR.LST_MAINT_DT > '{last_run_date}'
-    or EC_CATEG_ITEM.LST_MAINT_DT > '{last_run_date}'
-    """
-    response = db.query_db(query)
-    if response is not None:
-        for x in response:
-            updated_products.add(x[0])
-
-    return list(updated_products)
-
-
-def get_binding_id_from_sku(sku):
-    db = query_engine.QueryEngine()
-    query = f"""
-    SELECT USR_PROF_ALPHA_16
-    FROM IM_ITEM
-    WHERE ITEM_NO = '{sku}'
-    """
-    response = db.query_db(query)
-    if response is not None:
-        return response[0][0]
-
-
-def get_binding_ids_to_process(product_list):
-    binding_ids = set()
-    for product in product_list:
-        binding_id = get_binding_id_from_sku(product)
-        if binding_id:
-            binding_ids.add(binding_id)
-    return list(binding_ids)
-
-
-def get_all_binding_ids():
-    binding_ids = set()
-    db = query_engine.QueryEngine()
-    query = f"""
-    SELECT USR_PROF_ALPHA_16
-    FROM IM_ITEM
-    WHERE USR_PROF_ALPHA_16 IS NOT NULL
-    """
-    response = db.query_db(query)
-    if response is not None:
-        for x in response:
-            binding_ids.add(x[0])
-    return list(binding_ids)
-
-
-def get_deletion_target(counterpoint_list, middleware_list):
-    return [element for element in counterpoint_list if element not in middleware_list]
-
-
-def process_product_deletions():
-    # Products
-    # ------------------------
-    # Step 1 - Get list of all products in Counterpoint
-    cp_products = get_all_products()
-
-    # Step 2 - Get list of all products in Middleware
-    middleware_products = get_all_middleware_products()
-
-    # Step 3 - Get list of products to delete
-    deletions = get_deletion_target(cp_products, middleware_products)
-
-    # Step 4 - Delete products
-    for product in deletions:
-        delete_product(product)
-
-
-def process_image_deletions(last_run_date):
-    # Step 1 - Get list of all images in ItemImages Folder
-    images = get_all_images(mode="local")
-
-    # Step 2 - Get list of all images in Middleware
-    middleware_images = get_all_images(mode="middleware")
-
-    # Step 3 - Get list of images to delete
-    deletions = get_deletion_target(images, middleware_list=middleware_images)
-
-    # Step 4 - Delete images
-    for image in deletions:
-        im = ProductImage(image)
-        # delete image from BigCommerce
-        im.bc_delete_product_image()
-        # delete image from Middleware
-        im.sql_delete_photo()
-
-
-def get_all_categories(mode="counterpoint"):
-    db = query_engine.QueryEngine()
-    if mode == "counterpoint":
-        query = f"""
-        SELECT CP_CATEG_ID
-        FROM SN_CATEGORIES
-        """
-    else:
-        query = f"""
-        SELECT CP_CATEG_ID
-        FROM SN_CATEGORIES
-        """
-    response = db.query_db(query)
-    if response is not None:
-        return [x[0] for x in response]
-
-
-def process_category_deletions():
-    # Step 1 - Get list of all categories in Counterpoint
-    cp_categories = get_all_categories(mode="counterpoint")
-
-    # Step 2 - Get list of all categories in Middleware
-    middleware_categories = get_all_categories(mode="middleware")
-
-    # Step 3 - Get list of categories to delete
-    deletions = get_deletion_target(cp_categories, middleware_list=middleware_categories)
-
-    # Step 4 - Delete categories
-    for category in deletions:
-        delete_category(category)
-
-
-def process_deletions(last_run_date):
-    process_image_deletions(last_run_date)
-    process_product_deletions(last_run_date)
-    process_category_deltions(last_run_date)
-
-
-# ------------------------
-# DATABASE UTILITIES
-# -----------------------
-def create_image_table(table_name):
-    db = query_engine.QueryEngine()
-    query = f"""
-        CREATE TABLE {table_name} (
-        IMAGE_NAME nvarchar(255) NOT NULL PRIMARY KEY,
-        ITEM_NO varchar(50),
-        FILE_PATH nvarchar(255) NOT NULL,
-        IMAGE_URL nvarchar(255),
-        PRODUCT_ID int NOT NULL,
-        VARIANT_ID int,
-        IMAGE_ID int NOT NULL,
-        THUMBNAIL BIT NOT NULL,
-        SORT_ORDER int NOT NULL,
-        IS_BINDING_IMAGE BIT NOT NULL,
-        BINDING_ID varchar(50),
-        IS_VARIANT_IMAGE BIT NOT NULL,
-        DESCR nvarchar(100),
-        LST_MAINT_DT datetime NOT NULL DEFAULT(current_timestamp)
-        );
-        """
-    db.query_db(query, commit=True)
-
-
-def drop_table(table_name):
-    db = query_engine.QueryEngine()
-    query = f"DROP TABLE {table_name}"
-    db.query_db(query, commit=True)
-
-
-def create_product_table(table_name):
-    db = query_engine.QueryEngine()
-    query = f"""
-    CREATE TABLE {table_name} (
-    
-    ID int NOT NULL PRIMARY KEY,
-    ITEM_NO varchar(50) NOT NULL,
-    BINDING_ID varchar(10),
-    IS_PARENT BIT,
-    PRODUCT_ID int NOT NULL,
-    VARIANT_ID int,
-    BC_CATEG_ID int NOT NULL FOREIGN KEY REFERENCES {creds.category_table}(BC_CATEG_ID),
-    LST_MAINT_DT datetime NOT NULL DEFAULT(current_timestamp)
-    );
-    """
-    db.query_db(query, commit=True)
-
-
-def create_category_table(table_name):
-    db = query_engine.QueryEngine()
-    query = f"""
-    CREATE TABLE {table_name} (
-    BC_CATEG_ID int NOT NULL PRIMARY KEY,
-    BC_PARENT_CATEG int,
-    CP_CATEG_ID int NOT NULL,
-    LST_MAINT_DT datetime NOT NULL DEFAULT(current_timestamp)
-    );
-    """
-    db.query_db(query, commit=True)
+# test = BoundProduct("B0076")
+# for x in test.images:
+#     print(x)
 
 
 # ------------------------
 # DRIVER
 # -----------------------
-def process_bound_products(binding_ids, middleware_catalog):
-    """Takes in a list of binding ids and creates BoundProduct objects for each one. If the product passes input
-    validation, it will compare the product/image/category details against those in the middleware database and update
-    Returns a list of all BoundProduct objects that have been successfully updated."""
-    result = []
-    for x in binding_ids:
-        bound_product = BoundProduct(x)
-        if bound_product.validate_product():
-            bound_product.get_processing_method(middleware_catalog)
-            bound_product.process(mode=bound_product.processing_method)
-            # Build Result List
-            for child in bound_product.children:
-                result.append(child.sku)
-    return result
-
-
-def process_single_items(product_list, middleware_catalog):
-    """Takes in a list of product SKUs and creates Product objects for each one. If the product passes input validation,
-    it will compare the product/image/category details against those in the middleware database and update. Returns a list
-    of all products that have been successfully updated."""
-    result = []
-
-    while len(product_list) > 0:
-        product = Product(product_list.pop())
-        if product.validate_product():
-            product.get_processing_method(middleware_catalog)
-            product.process(mode=product.processing_method)
-        # Bear in mind: Putting result append here will put successes and failures in the same list.
-        result.append(product.sku)
-    return result
-
-
 def product_integration(last_run_date):
-    # Step 0
+    # Step 1
     # Open Time-Stamped Log File to Pass into other functions
     # log_file = open(f"logs/product_integration_{datetime.now():%Y_%m_%d_%H_%M_%S}.txt", "w")
 
-    # Step 1
+    # Step 2 - Delete categories, products, variants, and images that have been deleted in Counterpoint
+    process_deletions(last_run_date)
+
+    # Step 3 - Update LST_MAINT_DT for all updated images in local images folder
     updated_photos = get_updated_photos(last_run_date)
     # update LST_MAINT_DT for all updated images in image table
-    update_product_timestamps(updated_photos, creds.image_table)
+    # This will cause all associated images to be reprocessed
+    update_product_timestamps(updated_photos, creds.bc_image_table)
 
-    # Step 2 - Update E-Commerce Category Tree
+    # Step 3 - Update E-Commerce Category Tree
     update_category_tree()
 
     # Step 3 - Get list of all modified e-commerce items
@@ -1999,7 +2084,8 @@ def product_integration(last_run_date):
     else:
         print("No single items to process.")
 
-    # Step 8 - Process Deletions
-    process_deletions()
     # Step 8 - Close Log File
+
     # log_file.close()
+
+rebuild_tables()
