@@ -213,4 +213,3 @@ def remove_item_from_on_sale_section():
             db.query_db(query, commit=True)
             print(f"Removed {item.long_descr} from on sale section")
 
-#remove_item_from_on_sale_section()

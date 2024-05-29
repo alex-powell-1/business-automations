@@ -16,6 +16,7 @@ from product_tools import resize_photos
 from product_tools import set_inactive_status
 from product_tools import sort_order
 from product_tools import stock_buffer
+from product_tools import prices
 from reporting import lead_generator_notification
 from reporting import product_reports
 from reporting import report_builder
@@ -231,7 +232,10 @@ try:
 
         # 2 AM TASKS
         if hour == 2:
-            # if day == 21:
+            if day == 29:
+                prices.remove_sale_price()
+                prices.remove_item_from_on_sale_section()
+
             #     # Memorial Day Sale
             #     # Set sale price for all items except roses and hanging baskets
             #     try:

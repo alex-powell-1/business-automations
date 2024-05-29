@@ -5,10 +5,8 @@ import requests
 
 from product_tools import products
 from setup import creds
+from utilities.handy_tools import pretty_print
 
-
-def pretty_print(response):
-    return json.dumps(response.json(), indent=4)
 
 
 def bc_create_product(name, product_type, sku, weight, price):
