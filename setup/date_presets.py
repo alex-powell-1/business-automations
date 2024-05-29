@@ -2,6 +2,10 @@ from datetime import date, datetime
 from dateutil.relativedelta import relativedelta
 
 # Date Presets
+business_start_date = datetime(2020, 1, 1)
+thirty_mins_ago = datetime.now() + relativedelta(minutes=-30)
+twenty_four_hours_ago = datetime.now() + relativedelta(hours=-24)
+day_start = datetime.combine(date.today(), datetime.min.time())
 
 today = date.today()
 yesterday = today + relativedelta(days=-1)
