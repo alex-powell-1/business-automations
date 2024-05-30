@@ -6,7 +6,7 @@ from email.mime.image import MIMEImage
 from email.utils import formataddr
 
 
-def send_html_email(from_name, from_address, from_pw, recipients_list, subject, content, product_photo, mode, logo=True):
+def send_html_email(from_name, from_address, from_pw, recipients_list, subject, content, product_photo, mode, barcode, logo=True):
     # Dictionary of recipients in creds
     for k, v in recipients_list.items():
         to_name = k
@@ -35,6 +35,14 @@ def send_html_email(from_name, from_address, from_pw, recipients_list, subject, 
                 msg_product_photo.add_header('Content-ID', '<image2>')
                 msg_product_photo.add_header('Content-Disposition', 'inline', filename='product.jpg')
                 msg.attach(msg_product_photo)
+
+        if barcode is not None:
+            with open(barcode, 'rb') as item_photo:
+                product = item_photo.read()
+                msg_barcode = MIMEImage(product, 'png')
+                msg_barcode.add_header('Content-ID', '<image3>')
+                msg_barcode.add_header('Content-Disposition', 'inline', filename='barcode.png')
+                msg.attach(msg_barcode)
 
         with smtplib.SMTP("smtp.gmail.com", port=587) as connection:
             connection.ehlo()
