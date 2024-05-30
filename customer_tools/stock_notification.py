@@ -1,6 +1,8 @@
 import datetime
 from email import utils
 
+import os
+
 import pandas
 from dateutil.relativedelta import relativedelta
 from jinja2 import Template
@@ -63,7 +65,10 @@ def send_email(greeting, email, item_number, coupon_code, photo):
                     product_photo=photo,
                     mode="related",
                     logo=True,
-                    barcode=f"./{coupon_code}.png",)
+                    barcode=f"./{coupon_code}.png")
+    
+    os.remove(f"./{coupon_code}.png")
+    os.remove(f"./{coupon_code}.svg")
 
 
 def send_stock_notification_emails(log_file):
