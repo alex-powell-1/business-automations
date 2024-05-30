@@ -68,7 +68,6 @@ def send_email(greeting, email, item_number, coupon_code, photo):
                     barcode=f"./{coupon_code}.png")
     
     os.remove(f"./{coupon_code}.png")
-    os.remove(f"./{coupon_code}.svg")
 
 
 def send_stock_notification_emails(log_file):
