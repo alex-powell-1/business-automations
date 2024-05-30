@@ -1,6 +1,8 @@
 import datetime
 from email import utils
 
+import os
+
 import pandas
 from dateutil.relativedelta import relativedelta
 from jinja2 import Template
@@ -10,6 +12,8 @@ from big_commerce.coupons import generate_random_code, bc_create_coupon, cp_crea
 from product_tools.products import Product
 from setup import creds
 from setup.email_engine import send_html_email
+
+from setup import barcode_engine as barcode_engine
 
 
 def send_email(greeting, email, item_number, coupon_code, photo):
@@ -28,6 +32,8 @@ def send_email(greeting, email, item_number, coupon_code, photo):
         template_str = file.read()
 
     jinja_template = Template(template_str)
+
+    barcode_engine.generate_barcode(data=coupon_code, filename=coupon_code)
 
     email_data = {
         "title": email_subject,
@@ -58,7 +64,10 @@ def send_email(greeting, email, item_number, coupon_code, photo):
                     content=email_content,
                     product_photo=photo,
                     mode="related",
-                    logo=True)
+                    logo=True,
+                    barcode=f"./{coupon_code}.png")
+    
+    os.remove(f"./{coupon_code}.png")
 
 
 def send_stock_notification_emails(log_file):
