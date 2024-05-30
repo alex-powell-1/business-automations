@@ -21,6 +21,7 @@ class Integrator:
         self.last_sync = last_run_date
         self.log_file = open("test.txt", "a")
         self.category_tree = None
+        self.brands = None
         self.catalog = None
 
     def __str__(self):
@@ -30,7 +31,8 @@ class Integrator:
                f"{self.category_tree}\n"
 
     def initialize(self):
-        self.category_tree = self.CategoryTree(last_sync=self.last_sync)
+        self.category_tree = self.Catalog.CategoryTree(last_sync=self.last_sync)
+        self.brands = self.Catalog.Brands(last_sync=self.last_sync)
         # self.catalog = self.Catalog(last_run=last_run_date)
 
     def sync(self):
@@ -41,413 +43,107 @@ class Integrator:
         def __init__(self):
             self.db = query_engine.QueryEngine()
 
-        def create_category_table(self, table_name):
-            query = f"""
-            CREATE TABLE {table_name} (
-            CATEG_ID int IDENTITY(1,1) PRIMARY KEY,
-            BC_CATEG_ID int,
-            CP_CATEG_ID bigint,
-            CP_PARENT_ID bigint,
-            CATEG_NAME nvarchar(255) NOT NULL,
-            SORT_ORDER int,
-            DESCRIPTION text,
-            LST_MAINT_DT datetime NOT NULL DEFAULT(current_timestamp)
-            );
-            """
-            self.db.query_db(query, commit=True)
+        def rebuild_tables(self):
+            def drop_table(table_name):
+                self.db.query_db(f"DROP TABLE {table_name}", commit=True)
 
-        def create_category_item_table(self, table_name):
-            query = f"""
-            CREATE TABLE {table_name} (
-            ID int IDENTITY(1,1) PRIMARY KEY,
-            ITEM_NO varchar(50) NOT NULL,
-            BC_CATEG_ID int NOT NULL,
-            CATEG_ID int FOREIGN KEY REFERENCES {creds.bc_category_table}(CATEG_ID),
-            LST_MAINT_DT datetime NOT NULL DEFAULT(current_timestamp)
-            );
-            """
-            self.db.query_db(query, commit=True)
+            # Drop Tables
+            drop_table(creds.bc_image_table)
+            drop_table(creds.bc_product_table)
+            drop_table(creds.bc_brands_table)
+            drop_table(creds.bc_category_item_table)
+            drop_table(creds.bc_category_table)
 
-        def create_product_table(self, table_name):
-            query = f"""
-            CREATE TABLE {table_name} (
-            ITEM_NO varchar(50) NOT NULL PRIMARY KEY,
-            BINDING_ID varchar(10),
-            IS_PARENT BIT,
-            PRODUCT_ID int NOT NULL,
-            VARIANT_ID int,
-            CATEG_ID int NOT NULL FOREIGN KEY REFERENCES {creds.bc_category_table}(CATEG_ID),
-            LST_MAINT_DT datetime NOT NULL DEFAULT(current_timestamp)
-            );
-            """
-            self.db.query_db(query, commit=True)
-
-        def create_image_table(self, table_name):
-            query = f"""
+            def create_category_table(table_name):
+                query = f"""
                 CREATE TABLE {table_name} (
-                ID int IDENTITY(1,1) PRIMARY KEY,
-                IMAGE_NAME nvarchar(255) NOT NULL,
-                ITEM_NO varchar(50),
-                FILE_PATH nvarchar(255) NOT NULL,
-                IMAGE_URL nvarchar(255),
-                PRODUCT_ID int,
-                VARIANT_ID int,
-                IMAGE_ID int,
-                THUMBNAIL BIT DEFAULT(0),
-                IMAGE_NUMBER int DEFAULT(1),
+                CATEG_ID int IDENTITY(1,1) PRIMARY KEY,
+                BC_CATEG_ID int,
+                CP_CATEG_ID bigint NOT NULL,
+                CP_PARENT_ID bigint,
+                CATEG_NAME nvarchar(255) NOT NULL,
                 SORT_ORDER int,
-                IS_BINDING_IMAGE BIT NOT NULL,
-                BINDING_ID varchar(50),
-                IS_VARIANT_IMAGE BIT DEFAULT(0),
-                DESCR nvarchar(100),
-                LST_MOD_DT datetime NOT NULL DEFAULT(current_timestamp),
+                DESCRIPTION text,
                 LST_MAINT_DT datetime NOT NULL DEFAULT(current_timestamp)
                 );
                 """
-            self.db.query_db(query, commit=True)
+                self.db.query_db(query, commit=True)
 
-        def drop_table(self, table_name):
-            self.db.query_db(f"DROP TABLE {table_name}", commit=True)
+            def create_brand_table(table_name):
+                query = f"""
+                CREATE TABLE {table_name} (
+                ID int IDENTITY(1,1) PRIMARY KEY,
+                CP_BRAND_ID nvarchar(50) NOT NULL,
+                BC_BRAND_ID int,
+                NAME nvarchar(255) NOT NULL,
+                PAGE_TITLE nvarchar(255) NOT NULL,
+                META_KEYWORDS nvarchar(255),
+                META_DESCR nvarchar(255),
+                SEARCH_KEYWORDS nvarchar(255),
+                IMAGE_URL nvarchar(255),
+                IS_CUSTOMIZED BIT,
+                CUSTOM_URL nvarchar(255),
+                LST_MAINT_DT datetime NOT NULL DEFAULT(current_timestamp)
+                );
+                """
+                self.db.query_db(query, commit=True)
 
-        def rebuild_tables(self):
-            # Drop Tables
-            self.drop_table(creds.bc_image_table)
-            self.drop_table(creds.bc_product_table)
-            self.drop_table(creds.bc_category_item_table)
-            self.drop_table(creds.bc_category_table)
+            def create_category_item_table(table_name):
+                query = f"""
+                CREATE TABLE {table_name} (
+                ID int IDENTITY(1,1) PRIMARY KEY,
+                ITEM_NO varchar(50) NOT NULL,
+                BC_CATEG_ID int NOT NULL,
+                CATEG_ID int FOREIGN KEY REFERENCES {creds.bc_category_table}(CATEG_ID),
+                LST_MAINT_DT datetime NOT NULL DEFAULT(current_timestamp)
+                );
+                """
+                self.db.query_db(query, commit=True)
+
+            def create_product_table(table_name):
+                query = f"""
+                CREATE TABLE {table_name} (
+                ITEM_NO varchar(50) NOT NULL PRIMARY KEY,
+                BINDING_ID varchar(10),
+                IS_PARENT BIT,
+                PRODUCT_ID int NOT NULL,
+                VARIANT_ID int,
+                CATEG_ID int NOT NULL FOREIGN KEY REFERENCES {creds.bc_category_table}(CATEG_ID),
+                LST_MAINT_DT datetime NOT NULL DEFAULT(current_timestamp)
+                );
+                """
+                self.db.query_db(query, commit=True)
+
+            def create_image_table(table_name):
+                query = f"""
+                    CREATE TABLE {table_name} (
+                    ID int IDENTITY(1,1) PRIMARY KEY,
+                    IMAGE_NAME nvarchar(255) NOT NULL,
+                    ITEM_NO varchar(50),
+                    FILE_PATH nvarchar(255) NOT NULL,
+                    IMAGE_URL nvarchar(255),
+                    PRODUCT_ID int,
+                    VARIANT_ID int,
+                    IMAGE_ID int,
+                    THUMBNAIL BIT DEFAULT(0),
+                    IMAGE_NUMBER int DEFAULT(1),
+                    SORT_ORDER int,
+                    IS_BINDING_IMAGE BIT NOT NULL,
+                    BINDING_ID varchar(50),
+                    IS_VARIANT_IMAGE BIT DEFAULT(0),
+                    DESCR nvarchar(100),
+                    LST_MOD_DT datetime NOT NULL DEFAULT(current_timestamp),
+                    LST_MAINT_DT datetime NOT NULL DEFAULT(current_timestamp)
+                    );
+                    """
+                self.db.query_db(query, commit=True)
 
             # Recreate Tables
-            self.create_category_table(creds.bc_category_table)
-            self.create_category_item_table(creds.bc_category_item_table)
-            self.create_product_table(creds.bc_product_table)
-            self.create_image_table(creds.bc_image_table)
-
-    class CategoryTree:
-        def __init__(self, last_sync):
-            self.db = query_engine.QueryEngine()
-            self.last_sync = last_sync
-            self.categories = set()
-            self.heads = []
-            self.get_cp_updates()
-            self.create_tree_in_memory()
-
-        def __str__(self):
-            def print_category_tree(category, level=0):
-                # Print the category id and name, indented by the category's level in the tree
-                res = (f"{'    ' * level}Category Name: {category.category_name}\n"
-                       f"{'    ' * level}---------------------------------------\n"
-                       f"{'    ' * level}Counterpoint Category ID: {category.cp_categ_id}\n"
-                       f"{'    ' * level}Counterpoint Parent ID: {category.cp_parent_id}\n"
-                       f"{'    ' * level}BigCommerce Category ID: {category.bc_categ_id}\n"
-                       f"{'    ' * level}BigCommerce Parent ID: {category.bc_parent_id}\n"
-                       f"{'    ' * level}Sort Order: {category.sort_order}\n"
-                       f"{'    ' * level}Last Maintenance Date: {category.lst_maint_dt}\n\n")
-                # Recursively call this function for each child category
-                for child in category.children:
-                    res += print_category_tree(child, level + 1)
-                return res
-
-            # Use the helper function to print the entire tree
-            result = ""
-            for root in self.heads:
-                result += print_category_tree(root)
-
-            return result
-
-        def get_cp_updates(self):
-            query = f"""
-            SELECT cp.CATEG_ID, ISNULL(cp.PARENT_ID, 0), cp.DESCR, cp.DISP_SEQ_NO, cp.HTML_DESCR, 
-            cp.LST_MAINT_DT, sn.CP_CATEG_ID
-            FROM EC_CATEG cp
-            FULL OUTER JOIN SN_CATEG sn on cp.CATEG_ID=sn.CP_CATEG_ID
-            """
-            response = self.db.query_db(query)
-            if response:
-                for x in response:
-                    cp_categ_id = x[0]
-                    if cp_categ_id == '0':
-                        continue
-                    if cp_categ_id is None:
-                        self.delete_category(x[6])
-                        continue
-                    lst_maint_dt = x[5]
-                    sn_cp_categ_id = x[6]
-                    if sn_cp_categ_id is None:
-                        # Insert new records
-                        cp_parent_id = x[1]
-                        category_name = x[2]
-                        sort_order = x[3]
-                        description = x[4]
-                        query = f"""
-                        INSERT INTO SN_CATEG(CP_CATEG_ID, CP_PARENT_ID, CATEG_NAME, 
-                        SORT_ORDER, DESCRIPTION, LST_MAINT_DT)
-                        VALUES({cp_categ_id}, {cp_parent_id}, '{category_name}',
-                        {sort_order}, '{description}', '{lst_maint_dt:%Y-%m-%d %H:%M:%S}')
-                        """
-                        self.db.query_db(query, commit=True)
-                    else:
-                        if lst_maint_dt > self.last_sync:
-                            # Update existing records
-                            cp_parent_id = x[1]
-                            category_name = x[2]
-                            sort_order = x[3]
-                            description = x[4]
-                            lst_maint_dt = x[5]
-                            query = f"""
-                            UPDATE SN_CATEG
-                            SET CP_PARENT_ID = {cp_parent_id}, CATEG_NAME = '{category_name}',
-                            SORT_ORDER = {sort_order}, DESCRIPTION = '{description}', 
-                            LST_MAINT_DT = '{lst_maint_dt:%Y-%m-%d %H:%M:%S}'
-                            WHERE CP_CATEG_ID = {sn_cp_categ_id}
-                            """
-                            self.db.query_db(query, commit=True)
-
-        def create_tree_in_memory(self):
-            def get_categories():
-                query = f"""
-                SELECT CATEG_ID, ISNULL(PARENT_ID, 0), DESCR, DISP_SEQ_NO, HTML_DESCR, LST_MAINT_DT
-                FROM EC_CATEG
-                WHERE CATEG_ID != '0'
-                """
-                response = self.db.query_db(query)
-                if response is not None:
-                    for ec_cat in response:
-                        category = self.Category(cp_categ_id=ec_cat[0],
-                                                 cp_parent_id=ec_cat[1],
-                                                 category_name=ec_cat[2],
-                                                 sort_order=ec_cat[3],
-                                                 description=ec_cat[4],
-                                                 lst_maint_dt=ec_cat[5])
-                        self.categories.add(category)
-
-            get_categories()
-
-            for x in self.categories:
-                for y in self.categories:
-                    if y.cp_parent_id == x.cp_categ_id:
-                        x.add_child(y)
-
-            self.heads = [x for x in self.categories if x.cp_parent_id == '0']
-
-        def sync(self):
-            def build_tree(category):
-                # Get BC Category ID and Parent ID
-                if category.lst_maint_dt > self.last_sync:
-                    print(f"Updating: {category.category_name}")
-                    if category.bc_categ_id is None:
-                        category.get_bc_id()
-                    if category.bc_parent_id is None:
-                        category.get_bc_parent_id()
-                    category.update_category_in_middleware()
-                    category.bc_update_category()
-
-                # Recursively call this function for each child category
-                for child in category.children:
-                    build_tree(child)
-
-            for x in self.heads:
-                build_tree(x)
-
-        def delete_category(self, cp_categ_id):
-
-            query = f"""
-            SELECT BC_CATEG_ID
-            FROM SN_CATEG
-            WHERE CP_CATEG_ID = {cp_categ_id}
-            """
-            response = self.db.query_db(query)
-            if response:
-                bc_category_id = response[0][0]
-                print(bc_category_id)
-                if bc_category_id is not None:
-                    # Delete Category from BigCommerce
-                    print(f"BigCommerce: DELETE {bc_category_id}")
-                    url = (f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}"
-                           f"/v3/catalog/trees/categories?category_id:in={bc_category_id}")
-                    response = requests.delete(url=url, headers=creds.test_bc_api_headers)
-                    if 207 >= response.status_code >= 200:
-                        print(response.status_code)  # figure what code they are actually returning
-                        print(f"Category {bc_category_id} deleted from BigCommerce.")
-                        # Delete Category from Middleware
-                        print(f"Middleware: DELETE {cp_categ_id}")
-                        query = f"""
-                                        DELETE FROM SN_CATEG
-                                        WHERE CP_CATEG_ID = {cp_categ_id}
-                                        """
-                        try:
-                            self.db.query_db(query, commit=True)
-                        except Exception as e:
-                            print(f"Error deleting category from middleware: {e}")
-                        else:
-                            print(f"Category {cp_categ_id} deleted from Middleware.")
-                    else:
-                        print(f"Error deleting category {bc_category_id} from BigCommerce.")
-                        print(response.json())
-
-        class Category:
-            def __init__(self, cp_categ_id, cp_parent_id, category_name,
-                         bc_categ_id=None, bc_parent_id=None, sort_order=0, description="",
-                         lst_maint_dt=datetime(1970, 1, 1)):
-                # Category Properties
-                self.cp_categ_id = cp_categ_id
-                self.cp_parent_id = cp_parent_id
-                self.category_name = category_name
-                self.bc_categ_id = bc_categ_id
-                self.bc_parent_id = bc_parent_id
-                self.sort_order = sort_order
-                self.description = description
-                self.lst_maint_dt = lst_maint_dt
-                self.children = []
-
-            def __str__(self):
-                return f"Category Name: {self.category_name}\n" \
-                       f"---------------------------------------\n" \
-                       f"Counterpoint Category ID: {self.cp_categ_id}\n" \
-                       f"Counterpoint Parent ID: {self.cp_parent_id}\n" \
-                       f"BigCommerce Category ID: {self.bc_categ_id}\n" \
-                       f"BigCommerce Parent ID: {self.bc_parent_id}\n" \
-                       f"Sort Order: {self.sort_order}\n" \
-                       f"Last Maintenance Date: {self.lst_maint_dt}\n\n"
-
-            def add_child(self, child):
-                self.children.append(child)
-
-            def get_bc_id(self):
-                query = f"""
-                SELECT BC_CATEG_ID
-                FROM {creds.bc_category_table}
-                WHERE CP_CATEG_ID = {self.cp_categ_id}
-                """
-                response = query_engine.QueryEngine().query_db(query)
-                if response is not None:
-                    bc_category_id = response[0][0]
-                    if bc_category_id is not None:
-                        self.bc_categ_id = response[0][0]
-                    else:
-                        self.get_bc_parent_id()
-                        self.bc_create_category()
-
-            def get_bc_parent_id(self):
-                query = f"""
-                SELECT BC_CATEG_ID
-                FROM {creds.bc_category_table}
-                WHERE CP_CATEG_ID = (SELECT CP_PARENT_ID 
-                                    FROM {creds.bc_category_table} 
-                                    WHERE CP_CATEG_ID = {self.cp_categ_id})
-                """
-                response = query_engine.QueryEngine().query_db(query)
-                if response:
-                    self.bc_parent_id = response[0][0]
-                else:
-                    self.bc_parent_id = 0
-
-            def bc_create_category(self):
-                url = f" https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/catalog/trees/categories"
-                payload = [{
-                    "name": self.category_name,
-                    "url": {
-                        "path": f"/{self.category_name}/",
-                        "is_customized": False
-                    },
-                    "parent_id": self.bc_parent_id,
-                    "tree_id": 1,
-                    "description": self.description,
-                    "sort_order": self.sort_order,
-                    "page_title": self.category_name,
-                    # "meta_keywords": [
-                    #   "shower",
-                    #   "tub"
-                    # ],
-                    # "meta_description": "string",
-                    # "layout_file": "category.html",
-                    # "image_url": "https://cdn8.bigcommerce.com/s-123456/product_images/d/fakeimage.png",
-                    "is_visible": True,
-                    "search_keywords": "string",
-                    "default_product_sort": "use_store_settings"
-                }]
-                print(payload)
-                response = requests.post(url=url, headers=creds.test_bc_api_headers, json=payload)
-                if response.status_code == 201 or response.status_code == 207:
-                    print(f"BigCommerce: POST: {self.category_name}: SUCCESS Code: {response.status_code}")
-                    self.bc_categ_id = response.json()['data'][0]['category_id']
-                else:
-                    print(f"BigCommerce: POST: {self.category_name}: Failure Code: {response.status_code}")
-                    print(response.json())
-
-            def bc_update_category(self):
-                url = f" https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/catalog/trees/categories"
-                payload = [{
-                    "category_id": self.bc_categ_id,
-                    "name": self.category_name,
-                    "parent_id": self.bc_parent_id,
-                    "tree_id": 1,
-                    "page_title": self.category_name,
-                    "is_visible": True,
-                }]
-
-                response = requests.put(url=url, headers=creds.test_bc_api_headers, json=payload)
-                if response.status_code == 200:
-                    print(f"BigCommerce: UPDATE: {self.category_name} Category: SUCCESS Code: {response.status_code}\n")
-                else:
-                    print(f"BigCommerce: UPDATE: {self.category_name} "
-                          f"Category: FAILED Status: {response.status_code}"
-                          f"Payload: {payload}\n"
-                          f"Response: {response.text}\n")
-
-            def write_category_to_middleware(self):
-                query = f"""
-                INSERT INTO SN_CATEG (BC_CATEG_ID, CP_CATEG_ID, CP_PARENT_ID, CATEG_NAME, SORT_ORDER, DESCRIPTION)
-                VALUES ({self.bc_categ_id}, {self.cp_categ_id}, {self.cp_parent_id}, 
-                '{self.category_name}', {self.sort_order}, '{self.description}')
-                """
-                try:
-                    query_engine.QueryEngine().query_db(query, commit=True)
-                except Exception as e:
-                    print(f"Middleware: INSERT {self.category_name}: FAILED")
-                    print(e)
-                else:
-                    print(f"Middleware: INSERT {self.category_name}: SUCCESS")
-
-            def update_category_in_middleware(self):
-                query = f"""
-                UPDATE SN_CATEG
-                SET BC_CATEG_ID = {self.bc_categ_id}, CP_PARENT_ID = {self.cp_parent_id}, 
-                CATEG_NAME = '{self.category_name}', 
-                SORT_ORDER = {self.sort_order}, DESCRIPTION = '{self.description}'
-                WHERE CP_CATEG_ID = {self.cp_categ_id}
-                """
-                try:
-                    query_engine.QueryEngine().query_db(query, commit=True)
-                except Exception as e:
-                    print(f"Middleware: UPDATE {self.category_name} Category: FAILED")
-                    print(e)
-                else:
-                    print(f"Middleware: UPDATE {self.category_name} Category: SUCCESS")
-
-            def delete_category(self):
-                # Delete Category from BigCommerce
-                print(f"BigCommerce: DELETE {self.category_name}")
-                url = (f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/"
-                       f"catalog/trees/categories/{self.bc_categ_id}")
-                response = requests.delete(url=url, headers=creds.test_bc_api_headers)
-                if response.status_code == 204:
-                    print(f"Category {self.category_name} deleted from BigCommerce.")
-                else:
-                    print(f"Error deleting category {self.category_name} from BigCommerce.")
-                    print(response.json())
-
-                # Delete Category from Middleware
-                print(f"Middleware: DELETE {self.category_name}")
-                query = f"""
-                DELETE FROM SN_CATEG
-                WHERE CP_CATEG_ID = {self.cp_categ_id}
-                """
-                try:
-                    query_engine.QueryEngine().query_db(query, commit=True)
-                except Exception as e:
-                    print(f"Error deleting category from middleware: {e}")
-                else:
-                    print(f"Category {self.category_name} deleted from Middleware.")
+            create_category_table(creds.bc_category_table)
+            create_category_item_table(creds.bc_category_item_table)
+            create_brand_table(creds.bc_brands_table)
+            create_product_table(creds.bc_product_table)
+            create_image_table(creds.bc_image_table)
 
     class Catalog:
         def __init__(self, last_run):
@@ -599,6 +295,471 @@ class Integrator:
         def get_deletion_target(counterpoint_list, middleware_list):
             return [element for element in counterpoint_list if element not in middleware_list]
 
+        class CategoryTree:
+            def __init__(self, last_sync):
+                self.db = query_engine.QueryEngine()
+                self.last_sync = last_sync
+                self.categories = set()
+                self.heads = []
+                self.get_cp_updates()
+                self.create_tree_in_memory()
+
+            def __str__(self):
+                def print_category_tree(category, level=0):
+                    # Print the category id and name, indented by the category's level in the tree
+                    res = (f"{'    ' * level}Category Name: {category.category_name}\n"
+                           f"{'    ' * level}---------------------------------------\n"
+                           f"{'    ' * level}Counterpoint Category ID: {category.cp_categ_id}\n"
+                           f"{'    ' * level}Counterpoint Parent ID: {category.cp_parent_id}\n"
+                           f"{'    ' * level}BigCommerce Category ID: {category.bc_categ_id}\n"
+                           f"{'    ' * level}BigCommerce Parent ID: {category.bc_parent_id}\n"
+                           f"{'    ' * level}Sort Order: {category.sort_order}\n"
+                           f"{'    ' * level}Last Maintenance Date: {category.lst_maint_dt}\n\n")
+                    # Recursively call this function for each child category
+                    for child in category.children:
+                        res += print_category_tree(child, level + 1)
+                    return res
+
+                # Use the helper function to print the entire tree
+                result = ""
+                for root in self.heads:
+                    result += print_category_tree(root)
+
+                return result
+
+            def get_cp_updates(self):
+                query = f"""
+                SELECT cp.CATEG_ID, ISNULL(cp.PARENT_ID, 0), cp.DESCR, cp.DISP_SEQ_NO, cp.HTML_DESCR, 
+                cp.LST_MAINT_DT, sn.CP_CATEG_ID
+                FROM EC_CATEG cp
+                FULL OUTER JOIN SN_CATEG sn on cp.CATEG_ID=sn.CP_CATEG_ID
+                """
+                response = self.db.query_db(query)
+                if response:
+                    for x in response:
+                        cp_categ_id = x[0]
+                        if cp_categ_id == '0':
+                            continue
+                        if cp_categ_id is None:
+                            self.delete_category(x[6])
+                            continue
+                        lst_maint_dt = x[5]
+                        sn_cp_categ_id = x[6]
+                        if sn_cp_categ_id is None:
+                            # Insert new records
+                            cp_parent_id = x[1]
+                            category_name = x[2]
+                            sort_order = x[3]
+                            description = x[4]
+                            query = f"""
+                            INSERT INTO SN_CATEG(CP_CATEG_ID, CP_PARENT_ID, CATEG_NAME, 
+                            SORT_ORDER, DESCRIPTION, LST_MAINT_DT)
+                            VALUES({cp_categ_id}, {cp_parent_id}, '{category_name}',
+                            {sort_order}, '{description}', '{lst_maint_dt:%Y-%m-%d %H:%M:%S}')
+                            """
+                            self.db.query_db(query, commit=True)
+                        else:
+                            if lst_maint_dt > self.last_sync:
+                                # Update existing records
+                                cp_parent_id = x[1]
+                                category_name = x[2]
+                                sort_order = x[3]
+                                description = x[4]
+                                lst_maint_dt = x[5]
+                                query = f"""
+                                UPDATE SN_CATEG
+                                SET CP_PARENT_ID = {cp_parent_id}, CATEG_NAME = '{category_name}',
+                                SORT_ORDER = {sort_order}, DESCRIPTION = '{description}', 
+                                LST_MAINT_DT = '{lst_maint_dt:%Y-%m-%d %H:%M:%S}'
+                                WHERE CP_CATEG_ID = {sn_cp_categ_id}
+                                """
+                                self.db.query_db(query, commit=True)
+
+            def create_tree_in_memory(self):
+                def get_categories():
+                    query = f"""
+                    SELECT CATEG_ID, ISNULL(PARENT_ID, 0), DESCR, DISP_SEQ_NO, HTML_DESCR, LST_MAINT_DT
+                    FROM EC_CATEG
+                    WHERE CATEG_ID != '0'
+                    """
+                    response = self.db.query_db(query)
+                    if response is not None:
+                        for ec_cat in response:
+                            category = self.Category(cp_categ_id=ec_cat[0],
+                                                     cp_parent_id=ec_cat[1],
+                                                     category_name=ec_cat[2],
+                                                     sort_order=ec_cat[3],
+                                                     description=ec_cat[4],
+                                                     lst_maint_dt=ec_cat[5])
+                            self.categories.add(category)
+
+                get_categories()
+
+                for x in self.categories:
+                    for y in self.categories:
+                        if y.cp_parent_id == x.cp_categ_id:
+                            x.add_child(y)
+
+                self.heads = [x for x in self.categories if x.cp_parent_id == '0']
+
+            def sync(self):
+                def build_tree(category):
+                    # Get BC Category ID and Parent ID
+                    if category.lst_maint_dt > self.last_sync:
+                        print(f"Updating: {category.category_name}")
+                        if category.bc_categ_id is None:
+                            category.get_bc_id()
+                        if category.bc_parent_id is None:
+                            category.get_bc_parent_id()
+                        category.update_category_in_middleware()
+                        category.bc_update_category()
+
+                    # Recursively call this function for each child category
+                    for child in category.children:
+                        build_tree(child)
+
+                for x in self.heads:
+                    build_tree(x)
+
+            def delete_category(self, cp_categ_id):
+
+                query = f"""
+                SELECT BC_CATEG_ID
+                FROM SN_CATEG
+                WHERE CP_CATEG_ID = {cp_categ_id}
+                """
+                response = self.db.query_db(query)
+                if response:
+                    bc_category_id = response[0][0]
+                    print(bc_category_id)
+                    if bc_category_id is not None:
+                        # Delete Category from BigCommerce
+                        print(f"BigCommerce: DELETE {bc_category_id}")
+                        url = (f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}"
+                               f"/v3/catalog/trees/categories?category_id:in={bc_category_id}")
+                        response = requests.delete(url=url, headers=creds.test_bc_api_headers)
+                        if 207 >= response.status_code >= 200:
+                            print(response.status_code)  # figure what code they are actually returning
+                            print(f"Category {bc_category_id} deleted from BigCommerce.")
+                            # Delete Category from Middleware
+                            print(f"Middleware: DELETE {cp_categ_id}")
+                            query = f"""
+                                            DELETE FROM SN_CATEG
+                                            WHERE CP_CATEG_ID = {cp_categ_id}
+                                            """
+                            try:
+                                self.db.query_db(query, commit=True)
+                            except Exception as e:
+                                print(f"Error deleting category from middleware: {e}")
+                            else:
+                                print(f"Category {cp_categ_id} deleted from Middleware.")
+                        else:
+                            print(f"Error deleting category {bc_category_id} from BigCommerce.")
+                            print(response.json())
+
+            class Category:
+                def __init__(self, cp_categ_id, cp_parent_id, category_name,
+                             bc_categ_id=None, bc_parent_id=None, sort_order=0, description="",
+                             lst_maint_dt=datetime(1970, 1, 1)):
+                    # Category Properties
+                    self.cp_categ_id = cp_categ_id
+                    self.cp_parent_id = cp_parent_id
+                    self.category_name = category_name
+                    self.bc_categ_id = bc_categ_id
+                    self.bc_parent_id = bc_parent_id
+                    self.sort_order = sort_order
+                    self.description = description
+                    self.lst_maint_dt = lst_maint_dt
+                    self.children = []
+
+                def __str__(self):
+                    return f"Category Name: {self.category_name}\n" \
+                           f"---------------------------------------\n" \
+                           f"Counterpoint Category ID: {self.cp_categ_id}\n" \
+                           f"Counterpoint Parent ID: {self.cp_parent_id}\n" \
+                           f"BigCommerce Category ID: {self.bc_categ_id}\n" \
+                           f"BigCommerce Parent ID: {self.bc_parent_id}\n" \
+                           f"Sort Order: {self.sort_order}\n" \
+                           f"Last Maintenance Date: {self.lst_maint_dt}\n\n"
+
+                def add_child(self, child):
+                    self.children.append(child)
+
+                def get_bc_id(self):
+                    query = f"""
+                    SELECT BC_CATEG_ID
+                    FROM {creds.bc_category_table}
+                    WHERE CP_CATEG_ID = {self.cp_categ_id}
+                    """
+                    response = query_engine.QueryEngine().query_db(query)
+                    if response is not None:
+                        bc_category_id = response[0][0]
+                        if bc_category_id is not None:
+                            self.bc_categ_id = response[0][0]
+                        else:
+                            self.get_bc_parent_id()
+                            self.bc_categ_id = self.bc_create_category()
+
+                def get_bc_parent_id(self):
+                    query = f"""
+                    SELECT BC_CATEG_ID
+                    FROM {creds.bc_category_table}
+                    WHERE CP_CATEG_ID = (SELECT CP_PARENT_ID 
+                                        FROM {creds.bc_category_table} 
+                                        WHERE CP_CATEG_ID = {self.cp_categ_id})
+                    """
+                    response = query_engine.QueryEngine().query_db(query)
+                    if response:
+                        self.bc_parent_id = response[0][0]
+                    else:
+                        self.bc_parent_id = 0
+
+                def bc_create_category(self):
+                    url = f" https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/catalog/trees/categories"
+                    payload = [{
+                        "name": self.category_name,
+                        "url": {
+                            "path": f"/{self.category_name}/",
+                            "is_customized": False
+                        },
+                        "parent_id": self.bc_parent_id,
+                        "tree_id": 1,
+                        "description": self.description,
+                        "sort_order": self.sort_order,
+                        "page_title": self.category_name,
+                        # "meta_keywords": [
+                        #   "shower",
+                        #   "tub"
+                        # ],
+                        # "meta_description": "string",
+                        # "layout_file": "category.html",
+                        # "image_url": "https://cdn8.bigcommerce.com/s-123456/product_images/d/fakeimage.png",
+                        "is_visible": True,
+                        "search_keywords": "string",
+                        "default_product_sort": "use_store_settings"
+                    }]
+
+                    response = requests.post(url=url, headers=creds.test_bc_api_headers, json=payload)
+                    if response.status_code == 201 or response.status_code == 207:
+                        print(f"BigCommerce: POST: {self.category_name}: SUCCESS Code: {response.status_code}")
+                        category_id = response.json()['data'][0]['category_id']
+                        return category_id
+                    else:
+                        print(f"BigCommerce: POST: {self.category_name}: Failure Code: {response.status_code}")
+                        print(response.json())
+
+                def bc_update_category(self):
+                    url = f" https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/catalog/trees/categories"
+                    payload = [{
+                        "category_id": self.bc_categ_id,
+                        "name": self.category_name,
+                        "parent_id": self.bc_parent_id,
+                        "tree_id": 1,
+                        "page_title": self.category_name,
+                        "is_visible": True,
+                    }]
+
+                    response = requests.put(url=url, headers=creds.test_bc_api_headers, json=payload)
+                    if response.status_code == 200:
+                        print(
+                            f"BigCommerce: UPDATE: {self.category_name} Category: SUCCESS Code: {response.status_code}\n")
+                    else:
+                        print(f"BigCommerce: UPDATE: {self.category_name} "
+                              f"Category: FAILED Status: {response.status_code}"
+                              f"Payload: {payload}\n"
+                              f"Response: {response.text}\n")
+
+                def write_category_to_middleware(self):
+                    query = f"""
+                    INSERT INTO SN_CATEG (BC_CATEG_ID, CP_CATEG_ID, CP_PARENT_ID, CATEG_NAME, SORT_ORDER, DESCRIPTION)
+                    VALUES ({self.bc_categ_id}, {self.cp_categ_id}, {self.cp_parent_id}, 
+                    '{self.category_name}', {self.sort_order}, '{self.description}')
+                    """
+                    try:
+                        query_engine.QueryEngine().query_db(query, commit=True)
+                    except Exception as e:
+                        print(f"Middleware: INSERT {self.category_name}: FAILED")
+                        print(e)
+                    else:
+                        print(f"Middleware: INSERT {self.category_name}: SUCCESS")
+
+                def update_category_in_middleware(self):
+                    query = f"""
+                    UPDATE SN_CATEG
+                    SET BC_CATEG_ID = {self.bc_categ_id}, CP_PARENT_ID = {self.cp_parent_id}, 
+                    CATEG_NAME = '{self.category_name}', 
+                    SORT_ORDER = {self.sort_order}, DESCRIPTION = '{self.description}'
+                    WHERE CP_CATEG_ID = {self.cp_categ_id}
+                    """
+                    try:
+                        query_engine.QueryEngine().query_db(query, commit=True)
+                    except Exception as e:
+                        print(f"Middleware: UPDATE {self.category_name} Category: FAILED")
+                        print(e)
+                    else:
+                        print(f"Middleware: UPDATE {self.category_name} Category: SUCCESS")
+
+                def delete_category(self):
+                    # Delete Category from BigCommerce
+                    print(f"BigCommerce: DELETE {self.category_name}")
+                    url = (f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/"
+                           f"catalog/trees/categories/{self.bc_categ_id}")
+                    response = requests.delete(url=url, headers=creds.test_bc_api_headers)
+                    if response.status_code == 204:
+                        print(f"Category {self.category_name} deleted from BigCommerce.")
+                    else:
+                        print(f"Error deleting category {self.category_name} from BigCommerce.")
+                        print(response.json())
+
+                    # Delete Category from Middleware
+                    print(f"Middleware: DELETE {self.category_name}")
+                    query = f"""
+                    DELETE FROM SN_CATEG
+                    WHERE CP_CATEG_ID = {self.cp_categ_id}
+                    """
+                    try:
+                        query_engine.QueryEngine().query_db(query, commit=True)
+                    except Exception as e:
+                        print(f"Error deleting category from middleware: {e}")
+                    else:
+                        print(f"Category {self.category_name} deleted from Middleware.")
+
+        class Brands:
+            def __init__(self, last_sync):
+                self.db = query_engine.QueryEngine()
+                self.last_sync = last_sync
+                self.brands: set = set()
+                self.get_cp_brands()
+
+            def __str__(self):
+                def print_brand_tree(brand, level=0):
+                    # Print the brand id and name, indented by the brand's level in the tree
+                    res = (f"{'    ' * level}Brand Name: {brand.name}\n"
+                           f"{'    ' * level}---------------------------------------\n"
+                           f"{'    ' * level}Counterpoint Brand ID: {brand.cp_brand_id}\n"
+                           f"{'    ' * level}BigCommerce Brand ID: {brand.bc_brand_id}\n"
+                           f"{'    ' * level}Page Title: {brand.page_title}\n"
+                           f"{'    ' * level}Meta Keywords: {brand.meta_keywords}\n"
+                           f"{'    ' * level}Meta Description: {brand.meta_description}\n"
+                           f"{'    ' * level}Search Keywords: {brand.search_keywords}\n"
+                           f"{'    ' * level}Image URL: {brand.image_url}\n"
+                           f"{'    ' * level}Custom URL: {brand.custom_url}\n"
+                           f"{'    ' * level}Last Maintenance Date: {brand.lst_maint_dt}\n\n")
+                    # Recursively call this function for each child brand
+                    for child in brand.children:
+                        res += print_brand_tree(child, level + 1)
+                    return res
+
+                # Use the helper function to print the entire tree
+                result = ""
+                for root in self.heads:
+                    result += print_brand_tree(root)
+
+                return result
+
+            def get_cp_brands(self):
+                query = f"""
+                SELECT PROF_COD, DESCR, LST_MAINT_DT
+                FROM IM_ITEM_PROF_COD WHERE LST_MAINT_DT > '{self.last_sync}'
+                """
+                response = self.db.query_db(query)
+                if response:
+                    for x in response:
+                        self.brands.add(self.Brand(cp_brand_id=x[0],
+                                                   description=x[1],
+                                                   lst_maint_dt=x[2]))
+
+            class Brand:
+                def __init__(self, cp_brand_id, description, lst_maint_dt):
+                    self.db = query_engine.QueryEngine()
+                    self.cp_brand_id = cp_brand_id
+                    self.bc_brand_id = None
+                    self.name = description
+                    self.page_title = description
+                    self.meta_keywords = ""
+                    self.meta_description = ""
+                    self.search_keywords = ""
+                    self.image_url = ""
+                    self.is_custom_url = True
+                    self.custom_url = "-".join(str(self.name).split(" "))
+                    # timestamps
+                    self.lst_maint_dt = lst_maint_dt
+                    # setter
+                    self.get_brand_details()
+
+                def get_brand_details(self):
+                    query = (f"SELECT * "
+                             f"FROM {creds.bc_brands_table} "
+                             f"WHERE CP_BRAND_ID = '{self.cp_brand_id}'")
+
+                    response = self.db.query_db(query)
+                    print("HERE")
+                    if response is not None:
+                        for x in response:
+                            self.bc_brand_id = x[2]
+                            self.name = x[3]
+                            self.page_title = x[4]
+                            self.meta_keywords = x[5]
+                            self.meta_description = x[6]
+                            self.search_keywords = x[7]
+                            self.image_url = x[8]
+                            self.is_custom_url = True if x[9] == 1 else False
+                            self.custom_url = x[9]
+                    # Brand Not Found, Create New Brand
+                    else:
+                        print("No matching brand found.")
+                        self.create()
+
+                def create(self):
+                    def create_bc_brand():
+                        def construct_payload():
+                            return {
+                                "name": self.name,
+                                "page_title": self.page_title,
+                                "meta_keywords": self.meta_keywords.split(",") if self.meta_keywords else [],
+                                "meta_description": self.meta_description,
+                                "search_keywords": self.search_keywords if self.search_keywords else "",
+                                "image_url": self.image_url,
+                                # Causing Error: construct separately and add to payload
+                                # "custom_url": {
+                                #     "url": self.custom_url,
+                                #     "is_customized": self.is_custom_url
+                                # }
+                            }
+
+                        url = f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/catalog/brands"
+                        payload = construct_payload()
+                        response = requests.post(url=url, headers=creds.test_bc_api_headers, json=payload)
+                        if response.status_code in [200, 207]:
+                            print(f"BigCommerce: Brand {self.name} POST: SUCCESS. Code: {response.status_code}")
+                            return response.json()["data"]["id"]
+                        else:
+                            print(f"BigCommerce: Brand {self.name} POST: FAILED! Status Code: {response.status_code}")
+                            print(response.json())  # figure out what they are actually returning
+
+                    self.bc_brand_id = create_bc_brand()
+
+                    def write_to_middleware():
+                        query = f"""
+                        INSERT INTO {creds.bc_brands_table} (CP_BRAND_ID, BC_BRAND_ID, NAME, PAGE_TITLE, META_KEYWORDS, 
+                        META_DESCR, SEARCH_KEYWORDS, IMAGE_URL, IS_CUSTOMIZED, CUSTOM_URL, LST_MAINT_DT)
+                        VALUES ('{self.cp_brand_id}', {self.bc_brand_id}, '{self.name}', '{self.page_title}', 
+                        {f"'{self.meta_keywords}'" if self.meta_keywords else "NULL"}, 
+                        {f"'{self.meta_description}'" if self.meta_description else "NULL"}, 
+                        {f"'{self.search_keywords}'" if self.search_keywords else "NULL"}, 
+                        {f"'{self.image_url}'" if self.image_url else "NULL"}, {1 if self.is_custom_url else 0}, 
+                        {f"'{self.custom_url}'" if self.custom_url else "NULL"}, GETDATE())
+                        """
+                        try:
+                            response = self.db.query_db(query, commit=True)
+                            print(response)
+                        except Exception as e:
+                            print(f"MIDDLEWARE: Brand {self.name} INSERT: SUCCESS.\n")
+                            print(e)
+                        else:
+                            print(f"MIDDLEWARE: Brand {self.name} INSERT: SUCCESS.\n")
+
+                    write_to_middleware()
         class Product:
             def __init__(self, item_no: str, last_run_date):
 
@@ -678,9 +839,8 @@ class Integrator:
                 # E-Commerce Categories
                 self.ecommerce_categories = []
 
-                # Get Bound Product Family
-                if self.binding_id is not None:
-                    self.construct_bound_product()
+                # Property Getter
+                self.get_product_details()
 
                 # Validate Product
                 self.validation_retries = 10
@@ -694,75 +854,126 @@ class Integrator:
                     result += f"{k}: {v}\n"
                 result += line
                 result += "Printing Child Product Details\n"
-                variant_index = 1
-                for variant in self.variants:
-                    result += f"Variant: {variant_index}\n"
-                    result += line
-                    for k, v in variant.__dict__.items():
-                        result += f"{k}: {v}\n"
-                    result += line
+                if len(self.variants) > 1:
+                    variant_index = 1
+                    for variant in self.variants:
+                        result += f"Variant: {variant_index}\n"
+                        result += line
+                        for k, v in variant.__dict__.items():
+                            result += f"{k}: {v}\n"
+                        result += line
                 return result
 
-            def construct_bound_product(self):
-                # clear children list
-                self.variants = []
-                query = f"""
-                SELECT ITEM_NO
-                FROM IM_ITEM
-                WHERE USR_PROF_ALPHA_16 = '{self.binding_id}' and IS_ECOMM_ITEM = 'Y'
-                """
-                # Get children
-                response = self.db.query_db(query)
-                if response is not None:
-                    # Create Product objects for each child and add object to bound parent list
-                    for item in response:
-                        self.variants.append(self.Variant(item[0], self.last_run_date))
+            def get_product_details(self):
+                def get_bound_product_details():
+                    # clear children list
+                    self.variants = []
+                    query = f"""
+                    SELECT ITEM_NO
+                    FROM IM_ITEM
+                    WHERE USR_PROF_ALPHA_16 = '{self.binding_id}' and IS_ECOMM_ITEM = 'Y'
+                    ORDER BY PRC_1
+                    """
+                    # Get children and append to child list in order of price
+                    response = self.db.query_db(query)
+                    if response is not None:
+                        # Create Product objects for each child and add object to bound parent list
+                        for item in response:
+                            self.variants.append(self.Variant(item[0], self.last_run_date))
 
-                # Set parent
-                self.parent = [x for x in self.variants if x.is_parent]
+                    # Set parent
+                    self.parent = [x for x in self.variants if x.is_parent]
 
-                # Set total children
-                self.total_variants = len(self.variants)
+                    # Set total children
+                    self.total_variants = len(self.variants)
 
-                # Inherit Product Information from Parent Item
-                for x in self.variants:
-                    if x.is_parent:
-                        self.product_id = x.product_id
-                        self.web_title = x.web_title
-                        self.default_price = x.price_1
-                        self.cost = x.cost
-                        self.sale_price = x.price_2
-                        self.brand = x.brand
-                        self.html_description = x.html_description
-                        self.search_keywords = x.search_keywords
-                        self.meta_title = x.meta_title
-                        self.meta_description = x.meta_description
-                        self.visible = x.web_visible
-                        self.featured = x.featured
-                        self.gift_wrap = x.gift_wrap
-                        self.custom_botanical_name = x.custom_botanical_name
-                        self.custom_climate_zone = x.custom_climate_zone
-                        self.custom_plant_type = x.custom_plant_type
-                        self.custom_type = x.custom_type
-                        self.custom_height = x.custom_height
-                        self.custom_width = x.custom_width
-                        self.custom_sun_exposure = x.custom_sun_exposure
-                        self.custom_bloom_time = x.custom_bloom_time
-                        self.custom_bloom_color = x.custom_bloom_color
-                        self.custom_attracts_pollinators = x.custom_attracts_pollinators
-                        self.custom_growth_rate = x.custom_growth_rate
-                        self.custom_deer_resistant = x.custom_deer_resistant
-                        self.custom_soil_type = x.custom_soil_type
-                        self.custom_color = x.custom_color
-                        self.custom_size = x.custom_size
-                        self.ecommerce_categories = x.ecommerce_categories
+                    # Inherit Product Information from Parent Item
+                    for x in self.variants:
+                        if x.is_parent:
+                            self.product_id = x.product_id
+                            self.web_title = x.web_title
+                            self.default_price = x.price_1
+                            self.cost = x.cost
+                            self.sale_price = x.price_2
+                            self.brand = x.brand
+                            self.html_description = x.html_description
+                            self.search_keywords = x.search_keywords
+                            self.meta_title = x.meta_title
+                            self.meta_description = x.meta_description
+                            self.visible = x.web_visible
+                            self.featured = x.featured
+                            self.gift_wrap = x.gift_wrap
+                            self.custom_botanical_name = x.custom_botanical_name
+                            self.custom_climate_zone = x.custom_climate_zone
+                            self.custom_plant_type = x.custom_plant_type
+                            self.custom_type = x.custom_type
+                            self.custom_height = x.custom_height
+                            self.custom_width = x.custom_width
+                            self.custom_sun_exposure = x.custom_sun_exposure
+                            self.custom_bloom_time = x.custom_bloom_time
+                            self.custom_bloom_color = x.custom_bloom_color
+                            self.custom_attracts_pollinators = x.custom_attracts_pollinators
+                            self.custom_growth_rate = x.custom_growth_rate
+                            self.custom_deer_resistant = x.custom_deer_resistant
+                            self.custom_soil_type = x.custom_soil_type
+                            self.custom_color = x.custom_color
+                            self.custom_size = x.custom_size
+                            self.ecommerce_categories = x.ecommerce_categories
 
-                # Product Images
-                self.get_binding_id_images()
-                # Variant Images
-                for x in self.variants:
-                    for y in x.images:
-                        self.images.append(y)
+                    def get_binding_id_images():
+                        photo_path = creds.photo_path
+                        list_of_files = os.listdir(photo_path)
+                        if list_of_files is not None:
+                            for x in list_of_files:
+                                if x.split(".")[0].split("^")[0] == self.binding_id:
+                                    self.images.append(self.Image(x, last_run_time=self.last_run_date))
+
+                    # Product Images
+                    get_binding_id_images()
+
+                    # Variant Images
+                    for x in self.variants:
+                        for y in x.images:
+                            self.images.append(y)
+
+                def get_single_product_details():
+                    self.variants.append(self.Variant(self.item_no, self.last_run_date))
+                    if len(self.variants) == 1:
+                        for x in self.variants[0]:
+                            self.product_id = x.product_id
+                            self.web_title = x.web_title
+                            self.default_price = x.price_1
+                            self.cost = x.cost
+                            self.sale_price = x.price_2
+                            self.brand = x.brand
+                            self.html_description = x.html_description
+                            self.search_keywords = x.search_keywords
+                            self.meta_title = x.meta_title
+                            self.meta_description = x.meta_description
+                            self.visible = x.web_visible
+                            self.featured = x.featured
+                            self.gift_wrap = x.gift_wrap
+                            self.custom_botanical_name = x.custom_botanical_name
+                            self.custom_climate_zone = x.custom_climate_zone
+                            self.custom_plant_type = x.custom_plant_type
+                            self.custom_type = x.custom_type
+                            self.custom_height = x.custom_height
+                            self.custom_width = x.custom_width
+                            self.custom_sun_exposure = x.custom_sun_exposure
+                            self.custom_bloom_time = x.custom_bloom_time
+                            self.custom_bloom_color = x.custom_bloom_color
+                            self.custom_attracts_pollinators = x.custom_attracts_pollinators
+                            self.custom_growth_rate = x.custom_growth_rate
+                            self.custom_deer_resistant = x.custom_deer_resistant
+                            self.custom_soil_type = x.custom_soil_type
+                            self.custom_color = x.custom_color
+                            self.custom_size = x.custom_size
+                            self.ecommerce_categories = x.ecommerce_categories
+
+                if self.is_bound:
+                    get_bound_product_details()
+                else:
+                    get_single_product_details()
 
             def validate_product(self):
                 def set_parent(status: bool = True) -> None:
@@ -1259,15 +1470,6 @@ class Integrator:
                 self.bc_create_product()
                 self.middleware_create_product()
 
-            def get_binding_id_images(self):
-                photo_path = creds.photo_path
-                list_of_files = os.listdir(photo_path)
-                if list_of_files is not None:
-                    for x in list_of_files:
-                        if x.split(".")[0].split("^")[0] == self.binding_id:
-                            self.images.append(self.Image(x, last_run_time=self.last_run_date))
-
-
             def bc_create_product(self):
                 payload = self.construct_product_payload()
                 url = f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/catalog/products"
@@ -1460,19 +1662,19 @@ class Integrator:
                     EC_ITEM_DESCR.LST_MAINT_DT, EC_CATEG_ITEM.LST_MAINT_DT, EC_CATEG_ITEM.CATEG_ID, ITEM.LST_COST, 
                     COD.DESCR
 
-                           FROM IM_ITEM ITEM
+                   FROM IM_ITEM ITEM
 
-                           INNER JOIN IM_PRC PRC ON ITEM.ITEM_NO=PRC.ITEM_NO
+                   INNER JOIN IM_PRC PRC ON ITEM.ITEM_NO=PRC.ITEM_NO
 
-                           LEFT OUTER JOIN IM_INV INV ON ITEM.ITEM_NO=INV.ITEM_NO
-                           LEFT OUTER JOIN EC_ITEM_DESCR ON ITEM.ITEM_NO=EC_ITEM_DESCR.ITEM_NO
-                           LEFT OUTER JOIN EC_CATEG_ITEM ON ITEM.ITEM_NO=EC_CATEG_ITEM.ITEM_NO
-                           LEFT OUTER JOIN EC_CATEG ON EC_CATEG.CATEG_ID=EC_CATEG_ITEM.CATEG_ID
-                           INNER JOIN IM_ITEM_PROF_COD COD ON ITEM.PROF_COD_1 = COD.PROF_COD
+                   LEFT OUTER JOIN IM_INV INV ON ITEM.ITEM_NO=INV.ITEM_NO
+                   LEFT OUTER JOIN EC_ITEM_DESCR ON ITEM.ITEM_NO=EC_ITEM_DESCR.ITEM_NO
+                   LEFT OUTER JOIN EC_CATEG_ITEM ON ITEM.ITEM_NO=EC_CATEG_ITEM.ITEM_NO
+                   LEFT OUTER JOIN EC_CATEG ON EC_CATEG.CATEG_ID=EC_CATEG_ITEM.CATEG_ID
+                   INNER JOIN IM_ITEM_PROF_COD COD ON ITEM.PROF_COD_1 = COD.PROF_COD
 
 
-                           WHERE ITEM.ITEM_NO = '{self.item_no}' and ITEM.IS_ECOMM_ITEM = 'Y'
-                           """
+                   WHERE ITEM.ITEM_NO = '{self.item_no}' and ITEM.IS_ECOMM_ITEM = 'Y'
+                   """
                     response = db.query_db(query)
                     if response is not None:
                         self.binding_id: str = response[0][0] if response[0][0] else ""
@@ -1573,23 +1775,25 @@ class Integrator:
                         def bc_create_variant():
                             """Create product in BigCommerce. For this implementation, this is a single product with
                             no variants"""
-                            url = f'https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/catalog/products'
-                            payload = self.construct_product_payload()
+                            url = (f'https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/'
+                                   f'catalog/products/{self.product_id}/variants')
+                            payload = self.construct_variant_payload()
                             response = requests.post(url=url, headers=creds.test_bc_api_headers, json=payload)
                             if response.status_code in [200, 207]:
                                 print(f"BigCommerce POST {self.item_no}: SUCCESS. Code: {response.status_code}")
                             else:
                                 print(f"BigCommerce POST {self.item_no}: FAILED. Code: {response.status_code}")
                                 print(response.content)
+
                             return response.status_code
 
                         def middleware_create_variant():
                             """NOT DONE"""
                             query = f"""
                                    INSERT INTO {creds.bc_product_table}
-                                   (ITEM_NO, WEB_TITLE, DESCRIPTION, HTML_DESCRIPTION)
-                                   VALUES ('{self.item_no}', '{self.web_title}', '{self.description}', 
-                                   '{self.html_description}'),
+                                   (ITEM_NO, BINDING_ID, IS_PARENT, PRODUCT_ID, VARIANT_ID, LST_MAINT_DT
+                                   VALUES ('{self.item_no}', '{self.binding_id}', '{self.is_parent}', 
+                                   '{self.product_id}', '{self.variant_id}'), '{self.lst_maint_dt}',
                                    """
                             try:
                                 query_engine.QueryEngine().query_db(query, commit=True)
@@ -1599,13 +1803,13 @@ class Integrator:
                             else:
                                 print(f"Middleware INSERT product {self.item_no}: SUCCESS")
 
-                        if bc_create_product() in [200, 207]:
-                            middleware_create_product()
+                        if create() in [200, 207]:
+                            middleware_create_variant()
 
                     def update():
                         def bc_update_variant():
-                            url = (f'https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/'
-                                   f'catalog/products/{self.product_id}')
+                            url = (f'https://api.bigcommerce.com/stores/{store_hash}/v3/'
+                                   f'catalog/products/{product_id}/variants/{variant_id}')
                             payload = self.construct_product_payload()
                             response = requests.put(url=url, headers=creds.test_bc_api_headers, json=payload)
                             if response.status_code == 200:
@@ -2146,7 +2350,7 @@ class Integrator:
                     
                     VALUES ('{self.image_name}', {f"{self.item_no}" if self.item_no else "NULL"}, '{self.file_path}', 
                     '{self.image_url}', {self.image_number}, {1 if self.is_binding_image else 0}, '{self.binding_id}',
-                    {f"{self.description}" if self.description else "NULL"}', '{self.last_modified_dt:%Y-%m-%d %H:%M:%S}')
+                    {f"'{self.description}'" if self.description else "NULL"}, '{self.last_modified_dt:%Y-%m-%d %H:%M:%S}')
                            """
                     try:
                         query_engine.QueryEngine().query_db(query, commit=True)
@@ -2156,15 +2360,17 @@ class Integrator:
                         print(f"Image {self.image_name} written to db.\n")
 
                 def get_image_description(self):
-                    query = f"""
-                           SELECT USR_PROF_ALPHA_{self.image_number + 21} FROM IM_ITEM
-                           WHERE ITEM_NO = '{self.item_no}'
-                           """
-                    response = query_engine.QueryEngine().query_db(query)
-                    if response is not None:
-                        return response[0][0]
-                    else:
-                        return ""
+                    # currently there are only 4 counterpoint fields for descriptions.
+                    if self.image_number < 5:
+                        query = f"""
+                               SELECT USR_PROF_ALPHA_{self.image_number + 21} FROM IM_ITEM
+                               WHERE ITEM_NO = '{self.item_no}'
+                               """
+                        response = query_engine.QueryEngine().query_db(query)
+                        if response is not None:
+                            return response[0][0]
+                        else:
+                            return ""
 
                 def upload_product_image(self) -> str:
                     """Upload file to import folder on webDAV server and turn public url"""
@@ -2290,14 +2496,6 @@ class Integrator:
                 """Placeholder for modifier class"""
                 pass
 
-    class Customers:
-        """Placeholder for customers class"""
-        pass
-
-    class Orders:
-        """Placeholder for orders class"""
-        pass
-
 
 def initialize_integration():
     """Clear Tables and Initialize Integration from Business Start Date"""
@@ -2317,13 +2515,19 @@ def run_integration(last_sync):
     integrator.initialize()
     integrator.category_tree.sync()
 
-
 # run_integration(date_presets.twenty_four_hours_ago)
 # initialize_integration()
 
-database = Integrator.Database()
-database.rebuild_tables()
+# database = Integrator.Database()
+# database.rebuild_tables()
+
+# tree = Integrator.CategoryTree(last_sync=date_presets.business_start_date)
+# tree.sync()
+
 # photo = Integrator.Catalog.Product.Image("202896.jpg", last_run_time=datetime(2021, 1, 1))
 
-product = Integrator.Catalog.Product("B0001", last_run_date=datetime(2020, 5, 30))
+# product = Integrator.Catalog.Product("45", last_run_date=datetime(2020, 5, 30))
+# print(product)
 
+
+brands = Integrator.Catalog.Brands(last_sync=date_presets.business_start_date)
