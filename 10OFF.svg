@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="330px" height="100px" xmlns="http://www.w3.org/2000/svg">
+    <rect width="330" height="100" fill="white"/>
+    <rect x="30" width="6" height="100"/>
+    <rect x="39" width="3" height="100"/>
+    <rect x="48" width="3" height="100"/>
+    <rect x="63" width="3" height="100"/>
+    <rect x="72" width="9" height="100"/>
+    <rect x="87" width="6" height="100"/>
+    <rect x="96" width="3" height="100"/>
+    <rect x="105" width="9" height="100"/>
+    <rect x="117" width="6" height="100"/>
+    <rect x="129" width="3" height="100"/>
+    <rect x="141" width="9" height="100"/>
+    <rect x="153" width="6" height="100"/>
+    <rect x="162" width="3" height="100"/>
+    <rect x="174" width="6" height="100"/>
+    <rect x="189" width="3" height="100"/>
+    <rect x="195" width="3" height="100"/>
+    <rect x="207" width="6" height="100"/>
+    <rect x="222" width="3" height="100"/>
+    <rect x="228" width="6" height="100"/>
+    <rect x="240" width="9" height="100"/>
+    <rect x="255" width="3" height="100"/>
+    <rect x="261" width="6" height="100"/>
+    <rect x="276" width="9" height="100"/>
+    <rect x="288" width="3" height="100"/>
+    <rect x="294" width="6" height="100"/>
+</svg>
