@@ -51,8 +51,8 @@ def send_email(greeting, email, item_number, coupon_code, photo):
     email_content = jinja_template.render(email_data)
 
     send_html_email(from_name=creds.company_name,
-                    from_address=creds.gmail_sales_user,
-                    from_pw=creds.gmail_sales_pw,
+                    from_address=creds.sales_email,
+                    from_pw=creds.sales_password,
                     recipients_list=recipient,
                     subject=email_subject,
                     content=email_content,

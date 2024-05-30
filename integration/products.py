@@ -85,19 +85,22 @@ class Integrator:
         def create_image_table(self, table_name):
             query = f"""
                 CREATE TABLE {table_name} (
-                IMAGE_NAME nvarchar(255) NOT NULL PRIMARY KEY,
+                ID int IDENTITY(1,1) PRIMARY KEY,
+                IMAGE_NAME nvarchar(255) NOT NULL,
                 ITEM_NO varchar(50),
                 FILE_PATH nvarchar(255) NOT NULL,
                 IMAGE_URL nvarchar(255),
-                PRODUCT_ID int NOT NULL,
+                PRODUCT_ID int,
                 VARIANT_ID int,
-                IMAGE_ID int NOT NULL,
-                THUMBNAIL BIT NOT NULL,
-                SORT_ORDER int NOT NULL,
+                IMAGE_ID int,
+                THUMBNAIL BIT DEFAULT(0),
+                IMAGE_NUMBER int DEFAULT(1),
+                SORT_ORDER int,
                 IS_BINDING_IMAGE BIT NOT NULL,
                 BINDING_ID varchar(50),
-                IS_VARIANT_IMAGE BIT NOT NULL,
+                IS_VARIANT_IMAGE BIT DEFAULT(0),
                 DESCR nvarchar(100),
+                LST_MOD_DT datetime NOT NULL DEFAULT(current_timestamp),
                 LST_MAINT_DT datetime NOT NULL DEFAULT(current_timestamp)
                 );
                 """
@@ -209,12 +212,12 @@ class Integrator:
                 response = self.db.query_db(query)
                 if response is not None:
                     for ec_cat in response:
-                        category = self.CounterpointCategory(cp_categ_id=ec_cat[0],
-                                                             cp_parent_id=ec_cat[1],
-                                                             category_name=ec_cat[2],
-                                                             sort_order=ec_cat[3],
-                                                             description=ec_cat[4],
-                                                             lst_maint_dt=ec_cat[5])
+                        category = self.Category(cp_categ_id=ec_cat[0],
+                                                 cp_parent_id=ec_cat[1],
+                                                 category_name=ec_cat[2],
+                                                 sort_order=ec_cat[3],
+                                                 description=ec_cat[4],
+                                                 lst_maint_dt=ec_cat[5])
                         self.categories.add(category)
 
             get_categories()
@@ -281,7 +284,7 @@ class Integrator:
                         print(f"Error deleting category {bc_category_id} from BigCommerce.")
                         print(response.json())
 
-        class CounterpointCategory:
+        class Category:
             def __init__(self, cp_categ_id, cp_parent_id, category_name,
                          bc_categ_id=None, bc_parent_id=None, sort_order=0, description="",
                          lst_maint_dt=datetime(1970, 1, 1)):
@@ -452,7 +455,9 @@ class Integrator:
             self.products = []
             self.binding_ids = []
             self.single_products = []
-            self.update_product_timestamps(self.get_updated_photos(date=last_run), creds.bc_image_table)
+            # Will update SN.PROD and SN.IMAGES tables LST_MAINT_DT for associated images
+            self.update_image_timestamps(last_run=last_run)
+            # Will get all products that have been updated since the last sync date
             self.get_products(last_sync_date=last_run)
 
         def __str__(self):
@@ -534,29 +539,43 @@ class Integrator:
             # self.log_file.close()
 
         @staticmethod
-        def get_updated_photos(date):
-            result = set()
-            # Iterate over all files in the directory
-            for filename in os.listdir(creds.photo_path):
-                file_path = os.path.join(creds.photo_path, filename)
-
-                # Get the last modified date of the file
-                modified_date = datetime.fromtimestamp(os.path.getmtime(file_path))
-
-                # If the file has been modified since the input date, print its name
-                if modified_date > date:
-                    sku = filename.split(".")[0].split("^")[0]
-                    if sku != "":
-                        result.add(sku)
-            return result
-
-        @staticmethod
-        def update_product_timestamps(sku_list, table_name):
+        def update_image_timestamps(last_run):
             """Takes in a list of SKUs and updates the last maintenance date in input table for each product in the 
             list"""
-            tuple_list = tuple(sku_list)
+
+            def get_updated_photos(date):
+                """Get a tuple of two sets:
+                    1. all SKUs that have had their photo modified since the input date.
+                    2. all file names that have been modified since the input date."""
+                sku_result = set()
+                file_result = set()
+                # Iterate over all files in the directory
+                for filename in os.listdir(creds.photo_path):
+                    if filename not in ["Thumbs.db", "desktop.ini", ".DS_Store"]:
+                        # Get the full path of the file
+                        file_path = os.path.join(creds.photo_path, filename)
+
+                        # Get the last modified date of the file
+                        modified_date = datetime.fromtimestamp(os.path.getmtime(file_path))
+
+                        # If the file has been modified since the input date, print its name
+                        if modified_date > date:
+                            sku = filename.split(".")[0].split("^")[0]
+                            sku_result.add(sku)
+                            file_result.add(filename)
+
+                return sku_result, file_result
+
+            sku_list, file_list = get_updated_photos(last_run)
+
             db = query_engine.QueryEngine()
-            query = f"UPDATE {table_name} SET LST_MAINT_DT = GETDATE() WHERE ITEM_NO in {tuple_list}"
+            query = (f"UPDATE {creds.bc_product_table} "
+                     f"SET LST_MAINT_DT = GETDATE() "
+                     f"WHERE ITEM_NO in {sku_list} "
+
+                     f"UPDATE {creds.bc_image_table} "
+                     f"SET LST_MAINT_DT = GETDATE() "
+                     f"WHERE IMAGE_NAME in {file_list} ")
             try:
                 db.query_db(query, commit=True)
             except Exception as e:
@@ -580,8 +599,11 @@ class Integrator:
         def get_deletion_target(counterpoint_list, middleware_list):
             return [element for element in counterpoint_list if element not in middleware_list]
 
-        class Product():
+        class Product:
             def __init__(self, item_no: str, last_run_date):
+
+                print("INITIALIZING PRODUCT CLASS FOR ITEM: ", item_no)
+                print()
                 self.db = query_engine.QueryEngine()
                 self.item_no = item_no
                 self.last_run_date = last_run_date
@@ -735,8 +757,9 @@ class Integrator:
                         self.custom_size = x.custom_size
                         self.ecommerce_categories = x.ecommerce_categories
 
-
                 # Product Images
+                self.get_binding_id_images()
+                # Variant Images
                 for x in self.variants:
                     for y in x.images:
                         self.images.append(y)
@@ -1236,6 +1259,15 @@ class Integrator:
                 self.bc_create_product()
                 self.middleware_create_product()
 
+            def get_binding_id_images(self):
+                photo_path = creds.photo_path
+                list_of_files = os.listdir(photo_path)
+                if list_of_files is not None:
+                    for x in list_of_files:
+                        if x.split(".")[0].split("^")[0] == self.binding_id:
+                            self.images.append(self.Image(x, last_run_time=self.last_run_date))
+
+
             def bc_create_product(self):
                 payload = self.construct_product_payload()
                 url = f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/catalog/products"
@@ -1315,6 +1347,8 @@ class Integrator:
 
             class Variant:
                 def __init__(self, sku: str, last_run_date):
+                    print("INITIALIZING VARIANT CLASS FOR ITEM: ", sku)
+                    print()
                     self.last_run_date = last_run_date
                     # Product ID Info
                     self.item_no: str = sku
@@ -1689,8 +1723,9 @@ class Integrator:
                     list_of_files = os.listdir(photo_path)
                     if list_of_files is not None:
                         for x in list_of_files:
-                            if x.split(".")[0].split("^")[0] in [self.item_no, self.binding_id]:
-                                self.images.append(Integrator.Catalog.Product.Image(x, last_run_time=self.last_run_date))
+                            if x.split(".")[0].split("^")[0] == self.item_no:
+                                self.images.append(
+                                    Integrator.Catalog.Product.Image(x, last_run_time=self.last_run_date))
 
                 def get_bc_product_images(self):
                     """Get BigCommerce image information for product's images"""
@@ -1897,13 +1932,33 @@ class Integrator:
                         1970, 1, 1)
 
             class Image:
-                def __init__(self, image_name: str, item_no="", image_url="", product_id=0, variant_id=0,
-                             image_id=0,
-                             is_thumbnail=False, sort_order=0, is_binding_image=False, is_binding_id=None,
-                             is_variant_image=False, lst_maint_dt=datetime(1970, 1, 1),
-                             description="", last_run_time=datetime(1970, 1, 1)):
+                @staticmethod
+                def get_all_binding_ids():
+                    binding_ids = set()
+                    db = query_engine.QueryEngine()
+                    query = f"""
+                    SELECT USR_PROF_ALPHA_16
+                    FROM IM_ITEM
+                    WHERE USR_PROF_ALPHA_16 IS NOT NULL
+                    """
+                    response = db.query_db(query)
+                    if response is not None:
+                        for x in response:
+                            binding_ids.add(x[0])
+                    return list(binding_ids)
+
+                binding_id_list = get_all_binding_ids()
+
+                def __init__(self, image_name: str, last_run_time, item_no="", image_url="", product_id=0, variant_id=0,
+                             image_id=0, is_thumbnail=False, sort_order=0, is_binding_image=False, is_binding_id=None,
+                             is_variant_image=False, description=None):
+
+                    print("INITIALIZING IMAGE CLASS FOR ITEM: ", image_name)
+                    print()
+
                     self.last_run_time = last_run_time
-                    self.image_name = image_name
+                    self.id = None
+                    self.image_name = image_name  # This is the file name
                     self.item_no = item_no
                     self.file_path = f"{creds.photo_path}/{self.image_name}"
                     self.image_url = image_url
@@ -1911,24 +1966,27 @@ class Integrator:
                     self.variant_id = variant_id
                     self.image_id = image_id
                     self.is_thumbnail = is_thumbnail
+                    self.image_number = 1
                     self.sort_order = sort_order
                     self.is_binding_image = is_binding_image
                     self.binding_id = is_binding_id
                     self.is_variant_image = is_variant_image
                     self.description = description
-                    self.lst_maint_dt = datetime.fromtimestamp(os.path.getmtime(self.file_path))
-                    if self.lst_maint_dt >= self.last_run_time:
+                    self.last_modified_dt = datetime.fromtimestamp(os.path.getmtime(self.file_path))
+                    self.last_maintained_dt = None
+
+                    if self.last_modified_dt >= self.last_run_time:
                         print(f"Image {self.image_name} has been updated since last run.")
-                        self.get_image_details_from_db()
                         # Image has been updated since last run. Check image for valid size and format.
                         if self.validate_image():
-                            # Input image file is valid. Rebuild image record in database.
-                            self.initialize_image_details()
-
+                            # Input image file is valid.
+                            # Set image properties with this new information.
+                            # Write local image information to database.
+                            # BigCommerce uploading will be handled by the Product class.
+                            self.initialize_image_details(binding_id_list=self.binding_id_list)
                     else:
-                        print(f"Image {self.image_name} has not been updated since last run.")
-                        # Image has not been updated since last run. Get image details from database.
-                        pass
+                        # Set image details for existing photos with no update
+                        self.get_image_details_from_db()
 
                 def __str__(self):
                     result = ""
@@ -2019,121 +2077,87 @@ class Integrator:
 
                 def get_image_details_from_db(self):
                     db = query_engine.QueryEngine()
-                    query = f""" SELECT ITEM_NO, FILE_PATH, IMAGE_URL, PRODUCT_ID, VARIANT_ID, IMAGE_ID, THUMBNAIL, 
-                    SORT_ORDER, IS_BINDING_IMAGE, BINDING_ID, IS_VARIANT_IMAGE, DESCR, LST_MAINT_DT FROM SN_IMAGES 
-                    WHERE IMAGE_NAME = '{self.image_name}'
-                           """
+                    query = f"SELECT * FROM SN_IMAGES WHERE IMAGE_NAME = '{self.image_name}'"
                     response = db.query_db(query)
                     if response is not None:
-                        self.item_no = response[0][1] if response[0][1] else ""
-                        self.file_path = response[0][2]
-                        self.image_url = response[0][3]
-                        self.product_id = response[0][4]
-                        self.variant_id = response[0][5]
-                        self.image_id = response[0][6] if response[0][6] else 0
-                        self.is_thumbnail = True if response[0][7] == 1 else False
-                        self.sort_order = response[0][8]
-                        self.is_binding_image = True if response[0][9] == 1 else False
-                        self.binding_id = response[0][10] if response[0][10] else None
-                        self.is_variant_image = True if response[0][11] == 1 else False
-                        self.description = response[0][12]
-                        self.lst_maint_dt = response[0][13]
+                        self.id = response[0][0]
+                        self.image_name = response[0][1]
+                        self.item_no = response[0][2]
+                        self.file_path = response[0][3]
+                        self.image_url = response[0][4]
+                        self.product_id = response[0][5]
+                        self.variant_id = response[0][6]
+                        self.image_id = response[0][7]
+                        self.is_thumbnail = True if response[0][8] == 1 else False
+                        self.image_number = response[0][9]
+                        self.sort_order = response[0][10]
+                        self.is_binding_image = True if response[0][11] == 1 else False
+                        self.binding_id = response[0][12]
+                        self.is_variant_image = True if response[0][13] == 1 else False
+                        self.description = response[0][14]
+                        self.last_maintained_dt = response[0][16]
 
-                def initialize_image_details(self):
-                    # Check for image in database
+                def initialize_image_details(self, binding_id_list):
+                    def get_item_no_from_image_name(image_name, binding_id_list):
+                        def get_binding_id():
+                            query = f"""
+                                   SELECT USR_PROF_ALPHA_16 FROM IM_ITEM
+                                   WHERE ITEM_NO = '{self.item_no}'
+                                   """
+                            response = query_engine.QueryEngine().query_db(query)
+                            if response is not None:
+                                return response[0][0] if response[0][0] else None
 
-                    # Need work here with fresh brain...
-                    if self.image_id == 0:
-                        # URL
-                        try:
-                            self.image_url = self.upload_product_image()
-                        except Exception as e:
-                            print(f"Error uploading image: {e}")
-
-                        self.image_id = self.bc_post_image()
-
-                        self.write_image_to_db()
-
-
-                    # Sort Order
-                    if "^" not in self.image_name.split(".")[0]:
-                        self.sort_order = 1
-                    else:
-                        self.sort_order = int(self.image_name.split(".")[0].split("^")[1]) + 1
-
-
-
-                    binding_ids = Integrator.Catalog.Product.get_all_binding_ids()
-                    # Binding Image Flow
-                    if self.image_name.split(".")[0].split("^")[0] in binding_ids:
-                        self.is_binding_image = True
-                        self.binding_id = self.image_name.split(".")[0].split("^")[0]
-                        self.is_thumbnail = True if "^" not in self.image_name.split(".")[0] else False
-
-                    # Non-Binding Image Flow
-                    else:
-                        self.is_binding_image = False
-                        # SKU
-                        self.item_no = self.image_name.split(".")[0].split("^")[0]
-                        self.binding_id = self.get_binding_id()
-
-                        # No Binding ID
-                        if self.binding_id == "":
-                            self.is_thumbnail = True if "^" not in self.image_name.split(".")[0] else False
-                        # Binding ID
+                        # Check for binding image
+                        if image_name.split(".")[0].split("^")[0] in binding_id_list:
+                            item_no = None
+                            binding_id = image_name.split(".")[0].split("^")[0]
                         else:
-                            if "^" not in self.image_name.split(".")[0]:
-                                self.is_variant_image = True
+                            item_no = image_name.split(".")[0].split("^")[0]
+                            binding_id = get_binding_id()
 
-                        # Image Description Only non-binding images have descriptions at this time. Though,
-                        # this could be handled with JSON reference in the future for binding images.
-                        for x in range(1, 5):
-                            if self.image_name.split(".")[0].split("^")[0] == x:
-                                self.description = self.get_image_description(x)
+                        return item_no, binding_id
 
-                    self.product_id, self.variant_id = self.get_product_and_variant_ids()
-                    # self.image_id = self.bc_post_image()
-                    # self.write_image_to_db()
+                    def get_image_number():
+                        image_number = 1
+                        if "^" in self.image_name:
+                            # secondary images
+                            for x in range(1, 100):
+                                if int(self.image_name.split(".")[0].split("^")[1]) == x:
+                                    image_number = x + 1
+                                    break
+                        return image_number
+
+                    self.item_no, self.binding_id = get_item_no_from_image_name(self.image_name, binding_id_list)
+                    self.image_number = get_image_number()
+                    self.image_url = self.upload_product_image()
+                    self.is_binding_image = True if self.binding_id else False
+
+                    # Image Description Only non-binding images have descriptions at this time. Though,
+                    # this could be handled with JSON reference in the future for binding images.
+                    if not self.is_binding_image:
+                        self.description = self.get_image_description()
+
+                    self.write_image_to_db()
 
                 def write_image_to_db(self):
-                    query = f""" INSERT INTO SN_IMAGES (IMAGE_NAME, ITEM_NO, FILE_PATH, IMAGE_URL, PRODUCT_ID, 
-                    VARIANT_ID, IMAGE_ID, THUMBNAIL, SORT_ORDER, IS_BINDING_IMAGE, BINDING_ID, IS_VARIANT_IMAGE, 
-                    DESCR, LST_MAINT_DT) VALUES ('{self.image_name}', '{self.item_no}', '{self.file_path}', 
-                    '{self.image_url}',
-                           {self.product_id}, {self.variant_id}, {self.image_id}, {1 if self.is_thumbnail else 0}, 
-                           {self.sort_order}, {1 if self.is_binding_image else 0}, 
-                           '{self.binding_id if self.binding_id else None}', {1 if self.is_variant_image else 0},
-                            '{self.description}', '{self.lst_maint_dt:%Y-%m-%d %H:%M:%S}')
+                    query = f""" INSERT INTO SN_IMAGES (IMAGE_NAME, ITEM_NO, FILE_PATH, IMAGE_URL, IMAGE_NUMBER,
+                    IS_BINDING_IMAGE, BINDING_ID, DESCR, LST_MOD_DT)
+                    
+                    VALUES ('{self.image_name}', {f"{self.item_no}" if self.item_no else "NULL"}, '{self.file_path}', 
+                    '{self.image_url}', {self.image_number}, {1 if self.is_binding_image else 0}, '{self.binding_id}',
+                    {f"{self.description}" if self.description else "NULL"}', '{self.last_modified_dt:%Y-%m-%d %H:%M:%S}')
                            """
                     try:
                         query_engine.QueryEngine().query_db(query, commit=True)
                     except Exception as e:
                         print(f"Error writing image to db: {e}")
                     else:
-                        print(f"Image {self.image_name} written to db.")
+                        print(f"Image {self.image_name} written to db.\n")
 
-                def get_product_and_variant_ids(self):
+                def get_image_description(self):
                     query = f"""
-                           SELECT PRODUCT_ID, VARIANT_ID FROM {creds.bc_product_table} WHERE ITEM_NO = '{self.item_no}'
-                           """
-                    response = query_engine.QueryEngine().query_db(query)
-                    if response is not None:
-                        return response[0][0], response[0][1]
-                    else:
-                        return 0, 0
-
-                def get_binding_id(self):
-                    query = f"""
-                           SELECT USR_PROF_ALPHA_16 FROM IM_ITEM
-                           WHERE ITEM_NO = '{self.item_no}'
-                           """
-                    response = query_engine.QueryEngine().query_db(query)
-                    if response is not None:
-                        return response[0][0] if response[0][0] else ""
-
-                def get_image_description(self, image_number):
-                    query = f"""
-                           SELECT USR_PROF_ALPHA_{image_number + 21} FROM IM_ITEMS
+                           SELECT USR_PROF_ALPHA_{self.image_number + 21} FROM IM_ITEM
                            WHERE ITEM_NO = '{self.item_no}'
                            """
                     response = query_engine.QueryEngine().query_db(query)
@@ -2147,9 +2171,13 @@ class Integrator:
                     data = open(self.file_path, 'rb')
                     new_name = self.image_name.replace("^", "-")
                     url = f"{creds.web_dav_product_photos}/{new_name}"
-                    requests.put(url, data=data, auth=HTTPDigestAuth(creds.web_dav_user, creds.web_dav_pw))
-                    # return public url of image
-                    return f"{creds.public_web_dav_photos}/{new_name}"
+                    try:
+                        requests.put(url, data=data, auth=HTTPDigestAuth(creds.web_dav_user, creds.web_dav_pw))
+                    except Exception as e:
+                        print(f"Error uploading image: {e}")
+                    else:
+                        # return public url of image
+                        return f"{creds.public_web_dav_photos}/{new_name}"
 
                 def resize_image(self):
                     size = (1280, 1280)
@@ -2293,20 +2321,9 @@ def run_integration(last_sync):
 # run_integration(date_presets.twenty_four_hours_ago)
 # initialize_integration()
 
-product = Integrator.Catalog.Product("B0001", date_presets.twenty_four_hours_ago)
-print(product)
-# for x in product.images:
-#     print(x)
-#     print(x.file_path)
-#     print(x.image_url)
-#     print(x.product_id)
-#     print(x.variant_id)
-#     print(x.image_id)
-#     print(x.is_thumbnail)
-#     print(x.sort_order)
-#     print(x.is_binding_image)
-#     print(x.binding_id)
-#     print(x.is_variant_image)
-#     print(x.description)
-#     print(x.lst_maint_dt)
-#     print("\n")
+database = Integrator.Database()
+database.rebuild_tables()
+# photo = Integrator.Catalog.Product.Image("202896.jpg", last_run_time=datetime(2021, 1, 1))
+
+product = Integrator.Catalog.Product("B0001", last_run_date=datetime(2020, 5, 30))
+
