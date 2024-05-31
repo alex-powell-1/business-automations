@@ -1,5 +1,6 @@
 from setup.creds import *
 import pyodbc
+from pyodbc import ProgrammingError
 
 
 class QueryEngine:
@@ -16,13 +17,19 @@ class QueryEngine:
             f'UID={self.__USERNAME};PWD={self.__PASSWORD};TrustServerCertificate=yes;timeout=3')
         cursor = connection.cursor()
         if commit:
-            sql_data = cursor.execute(query)
-            connection.commit()
+            try:
+                sql_data = cursor.execute(query)
+                connection.commit()
+            except ProgrammingError as e:
+                sql_data = {"code": f"{e.args[0]}", "message": f"{e.args[1]}"}
+            else:
+                sql_data = {"code": 200, "message": "Query Successful"}
         else:
-            sql_data = cursor.execute(query).fetchall()
+            try:
+                sql_data = cursor.execute(query).fetchall()
+            except ProgrammingError as e:
+                sql_data = {"code": f"{e.args[0]}", "message": f"{e.args[1]}"}
+
         cursor.close()
         connection.close()
-        if sql_data:
-            return sql_data
-        else:
-            return
+        return sql_data

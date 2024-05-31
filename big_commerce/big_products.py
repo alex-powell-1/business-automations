@@ -275,7 +275,6 @@ def get_category_trees():
     return response.json()
 
 
-
 def fix_missing_thumbnails(log_file):
     """In response to a bug with CPIce Data Integration, this function will correct products with missing
     thumbnail flags on the e-commerce site"""
@@ -332,13 +331,25 @@ def fix_missing_thumbnails(log_file):
     print("-----------------------", file=log_file)
 
 
-
-
-
 def remove_workshop_modifier(product_id):
-    modifier_id = get_modifier_id(product_id)
+    modifier_id = get_modifier(product_id)
     if modifier_id is not None:
         delete_product_modifier(product_id, modifier_id)
         return f"Deleted modifier {modifier_id} from product {product_id}"
     else:
         return f"No modifier found for product {product_id}"
+
+
+def remove_workshop_from_pottery():
+    """Run in sandbox.py to remove workshop modifiers from pottery products."""
+    for x in products.get_pottery_for_workshop("sku"):
+        product_id = products.get_bc_product_id(x)
+        modifier_id = big_products.get_modifier(product_id)
+        print(x, product_id, modifier_id)
+        if modifier_id is not None and len(modifier_id) > 0:
+            try:
+                for y in modifier_id:
+                    big_products.delete_product_modifier(product_id, y['id'])
+            except Exception as err:
+                print(err)
+                continue
