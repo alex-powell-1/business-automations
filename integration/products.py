@@ -152,52 +152,130 @@ class Integrator:
     class Catalog:
         def __init__(self, last_sync):
             # self.log_file = log_file
-            self.cp_products = set()
+            self.last_sync = last_sync
+            self.update_image_timestamps(last_run=self.last_sync)
+            self.products = self.get_products()
+            # Still need to get ALL list from mw and cp
             self.mw_products = set()
             self.binding_ids = set()
             self.single_products = set()
             # Will update SN.PROD and SN.IMAGES tables LST_MAINT_DT for associated images
-            self.update_image_timestamps(last_run=last_sync)
             # Process Deletes
             # self.process_deletes()
             # Will get all products that have been updated since the last sync date. Create objects for each product.
-            self.get_products(last_sync_date=last_sync)
 
         def __str__(self):
             return f"Products ({len(self.products)}): {self.products}\n" \
                    f"Binding IDs ({len(self.binding_ids)}): {self.binding_ids}\n" \
                    f"Single Products ({len(self.single_products)}): {self.single_products}\n"
 
-        def get_products(self, last_sync_date):
+        def get_products(self):
             # Get all products that have been updated since the last sync date
-            def get_updated_products(last_sync):
-                """Get a list of all products that have been updated since the last run date.
-                Will check IM_ITEM. IM_PRC, IM_INV, EC_ITEM_DESCR, EC_CATEG_ITEM, and Image tables
-                have an after update Trigger implemented for updating IM_ITEM.LST_MAINT_DT."""
-                result = set()
-                db = query_engine.QueryEngine()
-                query = f"""
-                SELECT ITEM.ITEM_NO, ITEM.LST_MAINT_DT
-                FROM IM_ITEM ITEM
-                WHERE IS_ECOMM_ITEM = 'Y' AND LST_MAINT_DT > '{last_sync}' 
-                """
-                response = db.query_db(query)
-                if response is not None:
-                    for x in response:
-                        result.add((x[0], x[1]))
-                return result
 
-            def get_binding_ids(product_list):
-                binding_ids = set()
-                for product in product_list:
-                    binding_id = self.get_binding_id_from_sku(product[0])
-                    if binding_id:
-                        binding_ids.add(binding_id)
-                return binding_ids
+            """Get a list of all products that have been updated since the last run date.
+            Will check IM_ITEM. IM_PRC, IM_INV, EC_ITEM_DESCR, EC_CATEG_ITEM, and Image tables
+            have an after update Trigger implemented for updating IM_ITEM.LST_MAINT_DT."""
+            result = []
+            db = query_engine.QueryEngine()
+            query = f""" select ISNULL(ITEM.USR_PROF_ALPHA_16, '') as 'Binding ID(0)', 
+            ITEM.IS_ECOMM_ITEM as 'Web Enabled(1)', ITEM.IS_ADM_TKT as 'Is Parent(2)', 
+            BC_PROD.PRODUCT_ID as 'Product ID (3)', 
+            BC_PROD.VARIANT_ID as 'Variant ID(4)', ITEM.USR_CPC_IS_ENABLED as 'Web Visible(5)', 
+            ITEM.USR_ALWAYS_ONLINE as 'ALWAYS ONLINE(6)', ITEM.IS_FOOD_STMP_ITEM as 'GIFT_WRAP(7)', 
+            ITEM.PROF_COD_1 as 'BRAND_CP_COD(8)', ITEM.ECOMM_NEW as 'IS_FEATURED(9)', 
+            ITEM.USR_IN_STORE_ONLY as 'IN_STORE_ONLY(10)', ITEM.USR_PROF_ALPHA_27 as 'SORT ORDER(11)', 
+            ISNULL(ITEM.ADDL_DESCR_1, '') as 'WEB_TITLE(12)', ISNULL(ITEM.ADDL_DESCR_2, '') as 'META_TITLE(13)', 
+            ISNULL(USR_PROF_ALPHA_21, '') as 'META_DESCRIPTION(14)', 
+            ISNULL(ITEM.USR_PROF_ALPHA_17, '') as 'VARIANT NAME(15)', 
+            ITEM.STAT as 'STATUS(16)', ISNULL(ITEM.REG_PRC, 0) as 'REG_PRC(17)', 
+            ISNULL(ITEM.PRC_1, 0) as 'PRC_1(18)', ISNULL(PRC.PRC_2, 0) as 'PRC_2(19)', 
+            ISNULL(INV.QTY_AVAIL, 0) as 'QUANTITY_AVAILABLE(20)', ISNULL(ITEM.PROF_NO_1, 0) as 'BUFFER(21)', 
+            ITEM.ITEM_TYP as 'ITEM_TYPE(22)', ITEM.LONG_DESCR as 'LONG_DESCR(23)', 
+            ITEM.USR_PROF_ALPHA_26 as 'SEARCH_KEYWORDS(24)', ITEM.USR_PROF_ALPHA_19 as 'PREORDER_MESSAGE(25)', 
+            EC_ITEM_DESCR.HTML_DESCR as 'HTML_DESCRIPTION(26)', ISNULL(USR_PROF_ALPHA_22, '') as 'ALT_TEXT_1(27)', 
+            ISNULL(USR_PROF_ALPHA_23, '') as 'ALT_TEXT_2(28)', ISNULL(USR_PROF_ALPHA_24, '') as 'ALT_TEXT_3(29)', 
+            ISNULL(USR_PROF_ALPHA_25, '') as 'ALT_TEXT_4(30)', ISNULL(PROF_ALPHA_1, '') as 'BOTANICAL_NAM(31)', 
+            ISNULL(PROF_ALPHA_2, '') as 'CLIMATE_ZONE(32)', ISNULL(PROF_ALPHA_3, '') as 'PLANT_TYPE(33)', 
+            ISNULL(PROF_ALPHA_4, '') as 'TYPE(34)', ISNULL(PROF_ALPHA_5, '') as 'HEIGHT(35)', 
+            ISNULL(USR_PROF_ALPHA_6, '') as 'WIDTH(36)', ISNULL(USR_PROF_ALPHA_7, '') as 'SUN_EXPOSURE(37)', 
+            ISNULL(USR_PROF_ALPHA_8, '') as 'BLOOM_TIME(38)', ISNULL(USR_PROF_ALPHA_9, '') as 'BLOOM_COLOR(39)', 
+            ISNULL(USR_PROF_ALPHA_10, '') as 'ATTRACTS_POLLINATORS(40)', 
+            ISNULL(USR_PROF_ALPHA_11, '') as 'GROWTH_RATE(41)', 
+            ISNULL(USR_PROF_ALPHA_12, '') as 'DEER_RESISTANT(42)', ISNULL(USR_PROF_ALPHA_13, '') as 'SOIL_TYPE(43)', 
+            ISNULL(USR_PROF_ALPHA_14, '') as 'COLOR(44)', ISNULL(USR_PROF_ALPHA_15, '') as 'SIZE(45)', 
+            ITEM.LST_MAINT_DT as 'LST_MAINT_DT(46)', ISNULL(ITEM.LST_COST, 0) as 'LAST_COST(47)', 
+            ITEM.ITEM_NO as 'ITEM_NO (48)'
+            FROM IM_ITEM ITEM
+            INNER JOIN IM_PRC PRC ON ITEM.ITEM_NO=PRC.ITEM_NO
+            LEFT OUTER JOIN IM_INV INV ON ITEM.ITEM_NO=INV.ITEM_NO
+            LEFT OUTER JOIN EC_ITEM_DESCR ON ITEM.ITEM_NO=EC_ITEM_DESCR.ITEM_NO
+            LEFT OUTER JOIN EC_CATEG_ITEM ON ITEM.ITEM_NO=EC_CATEG_ITEM.ITEM_NO
+            LEFT OUTER JOIN EC_CATEG ON EC_CATEG.CATEG_ID=EC_CATEG_ITEM.CATEG_ID
+            LEFT OUTER JOIN {creds.bc_product_table} BC_PROD ON ITEM.ITEM_NO=BC_PROD.ITEM_NO
+            INNER JOIN IM_ITEM_PROF_COD COD ON ITEM.PROF_COD_1 = COD.PROF_COD
+            WHERE ITEM.LST_MAINT_DT > '{self.last_sync: %Y-%m-%d %H:%M:%S}' and ITEM.IS_ECOMM_ITEM = 'Y'"""
+            response = db.query_db(query)
+            if response is not None:
+                for item in response:
+                    result.append({
+                        'sku': item[48],
+                        'binding_id': item[0],
+                        'is_bound': True if item[0] else False,
+                        'web_enabled': True if item[1] == 'Y' else False,
+                        'is_parent': True if item[2] == 'Y' else False,
+                        'product_id': item[3],
+                        'variant_id': item[4],
+                        'web_visible': True if item[5] == 'Y' else False,
+                        'always_online': True if item[6] == 'Y' else False,
+                        'gift_wrap': True if item[7] == 'Y' else False,
+                        'brand_cp_cod': item[8],
+                        'is_featured': True if item[9] == 'Y' else False,
+                        'in_store_only': True if item[10] == 'Y' else False,
+                        'sort_order': int(item[11]) if item[11] else 0,
+                        'web_title': item[12],
+                        'meta_title': item[13],
+                        'meta_description': item[14],
+                        'variant_name': item[15],
+                        'status': item[16],
+                        # Product Pricing
+                        'reg_price': item[17],
+                        'price_1': item[18],
+                        'price_2': item[19],
+                        # # Inventory Levels
+                        'quantity_available': int(item[20]),
+                        'buffer': int(item[21]),
+                        'buffered_quantity': int(item[20]) - int(item[21]),
+                        # Additional Details
+                        'item_type': item[22],
+                        'long_description': item[23],
+                        'search_keywords': item[24],
+                        'preorder_message': item[25],
+                        'html_description': item[26],
+                        'alt_text_1': item[27],
+                        'alt_text_2': item[28],
+                        'alt_text_3': item[29],
+                        'alt_text_4': item[30],
+                        # Custom Fields
+                        'custom_botanical_name': item[31],
+                        'custom_climate_zone': item[32],
+                        'custom_plant_type': item[33],
+                        'custom_type': item[34],
+                        'custom_height': item[35],
+                        'custom_width': item[36],
+                        'custom_sun_exposure': item[37],
+                        'custom_bloom_time': item[38],
+                        'custom_bloom_color': item[39],
+                        'custom_attracts_pollinators': item[40],
+                        'custom_growth_rate': item[41],
+                        'custom_deer_resistant': item[42],
+                        'custom_soil_type': item[43],
+                        'custom_color': item[44],
+                        'custom_size': item[45],
+                        'lst_maint_dt': item[46],
+                        'last_cost': item[47],
+                    })
 
-            self.cp_products = get_updated_products(last_sync_date)
-            self.binding_ids = get_binding_ids(self.cp_products)
-            self.single_products = self.cp_products.copy()
+            return result
 
         def sync(self):
             def sync_bound_products(binding_ids):
@@ -289,10 +367,11 @@ class Integrator:
 
             print(f"Deleted {delete_count} brands.")
 
-        @staticmethod
-        def update_image_timestamps(last_run):
-            """Takes in a list of SKUs and updates the last maintenance date in input table for each product in the 
-            list"""
+        def update_image_timestamps(self):
+            """Takes in a list of SKUs and updates the last maintenance date in IM_ITEM and MW_IMAGES table for each
+            product in the list. Updating IM_ITEM will trigger a sync of that item and it will then look for photos
+            during the sync process."""
+            print("Image Update: Updating product timestamps.")
 
             def get_updated_photos(date):
                 """Get a tuple of two sets:
@@ -317,10 +396,15 @@ class Integrator:
 
                 return sku_result, file_result
 
-            sku_list, file_list = get_updated_photos(last_run)
+            sku_list, file_list = get_updated_photos(self.last_sync)
+
+            if len(sku_list) > 0:
+                print(f"Updating {len(sku_list)} product timestamps.")
+            else:
+                print("No new images")
 
             db = query_engine.QueryEngine()
-            query = (f"UPDATE {creds.bc_product_table} "
+            query = (f"UPDATE IM_ITEM "
                      f"SET LST_MAINT_DT = GETDATE() "
                      f"WHERE ITEM_NO in {sku_list} "
 
@@ -333,29 +417,6 @@ class Integrator:
                 print(f"Error updating product timestamps: {e}")
             else:
                 print("Product timestamps updated: ", sku_list)
-
-        def update_product_timestamps(self, last_run):
-            query = f"""
-            SELECT MAX(LST_MAINT_DT) FROM (SELECT LST_MAINT_DT
-            FROM IM_ITEM
-            WHERE ITEM_NO = 'BTSP4MP'
-            UNION
-            SELECT LST_MAINT_DT
-            FROM IM_PRC
-            WHERE ITEM_NO = '{self.ite}'
-            UNION
-            SELECT LST_MAINT_DT
-            FROM IM_INV
-            WHERE ITEM_NO = 'BTSP4MP'
-            UNION
-            SELECT LST_MAINT_DT
-            FROM EC_ITEM_DESCR
-            WHERE ITEM_NO = 'BTSP4MP'
-            UNION
-            SELECT LST_MAINT_DT
-            FROM EC_CATEG_ITEM
-            WHERE ITEM_NO = 'BTSP4MP'
-            ) as subquery;"""
 
         @staticmethod
         def get_binding_id_from_sku(sku):
@@ -1137,7 +1198,7 @@ class Integrator:
 
                 # Product Information
                 self.product_id: int = 0
-                self.web_title: str = ""
+                self.web_title: ""
                 self.default_price = 0
                 self.cost = 0
                 self.sale_price = 0
@@ -1146,43 +1207,43 @@ class Integrator:
                 self.height = 0.1
                 self.depth = 0.1
                 self.is_price_hidden = False
-                self.brand: str = ""
-                self.html_description: str = ""
-                self.search_keywords: str = ""
-                self.meta_title: str = ""
-                self.meta_description: str = ""
+                self.brand: ""
+                self.html_description: ""
+                self.search_keywords: ""
+                self.meta_title: ""
+                self.meta_description: ""
                 self.visible: bool = False
                 self.featured: bool = False
                 self.gift_wrap: bool = False
-                self.search_keywords: str = ""
-                self.availability: str = "available"
+                self.search_keywords: ""
+                self.availability: "available"
                 self.is_preorder = False
                 self.preorder_release_date = datetime(1970, 1, 1)
-                self.preorder_message: str = ""
-                self.meta_title: str = ""
-                self.meta_description: str = ""
-                self.alt_text_1: str = ""
-                self.alt_text_2: str = ""
-                self.alt_text_3: str = ""
-                self.alt_text_4: str = ""
+                self.preorder_message: ""
+                self.meta_title: ""
+                self.meta_description: ""
+                self.alt_text_1: ""
+                self.alt_text_2: ""
+                self.alt_text_3: ""
+                self.alt_text_4: ""
 
                 # Custom Fields
-                self.custom_botanical_name: str = ""
-                self.custom_climate_zone: str = ""
-                self.custom_plant_type: str = ""
-                self.custom_type: str = ""
-                self.custom_height: str = ""
-                self.custom_width: str = ""
-                self.custom_sun_exposure: str = ""
-                self.custom_bloom_time: str = ""
-                self.custom_bloom_color: str = ""
-                self.custom_attracts_pollinators: str = ""
-                self.custom_attracts_butterflies: str = ""
-                self.custom_growth_rate: str = ""
-                self.custom_deer_resistant: str = ""
-                self.custom_soil_type: str = ""
-                self.custom_color: str = ""
-                self.custom_size: str = ""
+                self.custom_botanical_name: ""
+                self.custom_climate_zone: ""
+                self.custom_plant_type: ""
+                self.custom_type: ""
+                self.custom_height: ""
+                self.custom_width: ""
+                self.custom_sun_exposure: ""
+                self.custom_bloom_time: ""
+                self.custom_bloom_color: ""
+                self.custom_attracts_pollinators: ""
+                self.custom_attracts_butterflies: ""
+                self.custom_growth_rate: ""
+                self.custom_deer_resistant: ""
+                self.custom_soil_type: ""
+                self.custom_color: ""
+                self.custom_size: ""
 
                 # E-Commerce Categories
                 self.ecommerce_categories = []
@@ -1676,7 +1737,7 @@ class Integrator:
                         })
                     return result
 
-                def construct_image_payload(mode: str = "create"):
+                def construct_image_payload(mode: "create"):
                     result = []
                     # Child Images
                     for child in self.variants:
@@ -1878,8 +1939,8 @@ class Integrator:
                     print()
                     self.last_run_date = last_run_date
                     # Product ID Info
-                    self.item_no: str = sku
-                    self.binding_id: str = ""
+                    self.item_no: sku
+                    self.binding_id: ""
                     self.product_id: int = 0
                     self.variant_id: int = 0
 
@@ -1892,15 +1953,15 @@ class Integrator:
                     self.always_online: bool = False
                     self.gift_wrap: bool = False
                     self.brand_cp_cod = ""
-                    self.brand: str = ""
+                    self.brand: ""
                     self.featured: bool = False
                     self.in_store_only: bool = False
                     self.sort_order: int = 0
                     self.is_bound = False
                     self.is_parent: bool = False
-                    self.web_title: str = ""
-                    self.variant_name: str = ""
-                    self.status: str = ""
+                    self.web_title: ""
+                    self.variant_name: ""
+                    self.status: ""
 
                     # Product Pricing
                     self.reg_price: float = 0
@@ -1921,36 +1982,36 @@ class Integrator:
                     self.depth = 0.1
                     self.parent_category = ""
                     self.sub_category = ""
-                    self.description: str = ""
-                    self.long_description: str = ""
-                    self.search_keywords: str = ""
-                    self.preorder_message: str = ""
-                    self.meta_title: str = ""
-                    self.meta_description: str = ""
-                    self.html_description: str = ""
+                    self.description: ""
+                    self.long_description: ""
+                    self.search_keywords: ""
+                    self.preorder_message: ""
+                    self.meta_title: ""
+                    self.meta_description: ""
+                    self.html_description: ""
 
                     # Photo Alt Text
-                    self.alt_text_1: str = ""
-                    self.alt_text_2: str = ""
-                    self.alt_text_3: str = ""
-                    self.alt_text_4: str = ""
+                    self.alt_text_1: ""
+                    self.alt_text_2: ""
+                    self.alt_text_3: ""
+                    self.alt_text_4: ""
 
                     # Custom Fields
-                    self.custom_botanical_name: str = ""
-                    self.custom_climate_zone: str = ""
-                    self.custom_plant_type: str = ""
-                    self.custom_type: str = ""
-                    self.custom_height: str = ""
-                    self.custom_width: str = ""
-                    self.custom_sun_exposure: str = ""
-                    self.custom_bloom_time: str = ""
-                    self.custom_bloom_color: str = ""
-                    self.custom_attracts_pollinators: str = ""
-                    self.custom_growth_rate: str = ""
-                    self.custom_deer_resistant: str = ""
-                    self.custom_soil_type: str = ""
-                    self.custom_color: str = ""
-                    self.custom_size: str = ""
+                    self.custom_botanical_name: ""
+                    self.custom_climate_zone: ""
+                    self.custom_plant_type: ""
+                    self.custom_type: ""
+                    self.custom_height: ""
+                    self.custom_width: ""
+                    self.custom_sun_exposure: ""
+                    self.custom_bloom_time: ""
+                    self.custom_bloom_color: ""
+                    self.custom_attracts_pollinators: ""
+                    self.custom_growth_rate: ""
+                    self.custom_deer_resistant: ""
+                    self.custom_soil_type: ""
+                    self.custom_color: ""
+                    self.custom_size: ""
                     # Product Images
                     self.images = []
                     # Dates
@@ -2002,7 +2063,7 @@ class Integrator:
                    """
                     response = db.query_db(query)
                     if response is not None:
-                        self.binding_id: str = response[0][0] if response[0][0] else ""
+                        self.binding_id: response[0][0] if response[0][0] else ""
                         self.is_bound: bool = True if self.binding_id != "" else False
 
                         # self.product_id: int = 0 This could be in separate table or would need to add columns to
@@ -2015,14 +2076,14 @@ class Integrator:
                         self.web_visible: bool = True if response[0][3] == 'Y' else False
                         self.always_online: bool = True if response[0][4] == 'Y' else False
                         self.gift_wrap: bool = True if response[0][5] == 'Y' else False
-                        self.brand_cp_cod: str = response[0][6] if response[0][6] else ""
-                        self.brand: str = response[0][54] if response[0][54] else ""
+                        self.brand_cp_cod: response[0][6] if response[0][6] else ""
+                        self.brand: response[0][54] if response[0][54] else ""
                         self.featured: bool = True if response[0][7] == 'Y' else False
                         self.in_store_only: bool = True if response[0][8] == 'Y' else False
                         self.sort_order: int = int(response[0][9]) if response[0][9] else 0
-                        self.web_title: str = response[0][10] if response[0][10] else ""
-                        self.variant_name: str = response[0][11] if response[0][11] else ""
-                        self.status: str = response[0][27] if response[0][27] else ""
+                        self.web_title: response[0][10] if response[0][10] else ""
+                        self.variant_name: response[0][11] if response[0][11] else ""
+                        self.status: response[0][27] if response[0][27] else ""
 
                         # Product Pricing
                         self.reg_price: float = response[0][12] if response[0][12] else 0
@@ -2035,37 +2096,37 @@ class Integrator:
                         self.buffered_quantity: int = self.quantity_available - self.buffer
 
                         # Product Details
-                        self.item_type: str = response[0][17] if response[0][17] else ""
+                        self.item_type: response[0][17] if response[0][17] else ""
                         self.parent_category = response[0][18] if response[0][18] else ""
                         self.sub_category = response[0][19] if response[0][19] else ""
-                        self.description: str = response[0][20] if response[0][20] else ""
-                        self.long_description: str = response[0][21] if response[0][21] else ""
-                        self.search_keywords: str = response[0][22] if response[0][22] else ""
-                        self.preorder_message: str = response[0][23] if response[0][23] else ""
-                        self.meta_title: str = response[0][24] if response[0][24] else ""
-                        self.meta_description: str = response[0][25] if response[0][25] else ""
-                        self.html_description: str = response[0][26] if response[0][26] else ""
-                        self.alt_text_1: str = response[0][28] if response[0][28] else ""
-                        self.alt_text_2: str = response[0][29] if response[0][29] else ""
-                        self.alt_text_3: str = response[0][30] if response[0][30] else ""
-                        self.alt_text_4: str = response[0][31] if response[0][31] else ""
+                        self.description: response[0][20] if response[0][20] else ""
+                        self.long_description: response[0][21] if response[0][21] else ""
+                        self.search_keywords: response[0][22] if response[0][22] else ""
+                        self.preorder_message: response[0][23] if response[0][23] else ""
+                        self.meta_title: response[0][24] if response[0][24] else ""
+                        self.meta_description: response[0][25] if response[0][25] else ""
+                        self.html_description: response[0][26] if response[0][26] else ""
+                        self.alt_text_1: response[0][28] if response[0][28] else ""
+                        self.alt_text_2: response[0][29] if response[0][29] else ""
+                        self.alt_text_3: response[0][30] if response[0][30] else ""
+                        self.alt_text_4: response[0][31] if response[0][31] else ""
 
                         # Custom Fields
-                        self.custom_botanical_name: str = response[0][32] if response[0][32] else ""
-                        self.custom_climate_zone: str = response[0][33] if response[0][33] else ""
-                        self.custom_plant_type: str = response[0][34] if response[0][34] else ""
-                        self.custom_type: str = response[0][35] if response[0][35] else ""
-                        self.custom_height: str = response[0][36] if response[0][36] else ""
-                        self.custom_width: str = response[0][37] if response[0][37] else ""
-                        self.custom_sun_exposure: str = response[0][38] if response[0][38] else ""
-                        self.custom_bloom_time: str = response[0][39] if response[0][39] else ""
-                        self.custom_bloom_color: str = response[0][40] if response[0][40] else ""
-                        self.custom_attracts_pollinators: str = response[0][41] if response[0][41] else ""
-                        self.custom_growth_rate: str = response[0][42] if response[0][42] else ""
-                        self.custom_deer_resistant: str = response[0][43] if response[0][43] else ""
-                        self.custom_soil_type: str = response[0][44] if response[0][44] else ""
-                        self.custom_color: str = response[0][45] if response[0][45] else ""
-                        self.custom_size: str = response[0][46] if response[0][46] else ""
+                        self.custom_botanical_name: response[0][32] if response[0][32] else ""
+                        self.custom_climate_zone: response[0][33] if response[0][33] else ""
+                        self.custom_plant_type: response[0][34] if response[0][34] else ""
+                        self.custom_type: response[0][35] if response[0][35] else ""
+                        self.custom_height: response[0][36] if response[0][36] else ""
+                        self.custom_width: response[0][37] if response[0][37] else ""
+                        self.custom_sun_exposure: response[0][38] if response[0][38] else ""
+                        self.custom_bloom_time: response[0][39] if response[0][39] else ""
+                        self.custom_bloom_color: response[0][40] if response[0][40] else ""
+                        self.custom_attracts_pollinators: response[0][41] if response[0][41] else ""
+                        self.custom_growth_rate: response[0][42] if response[0][42] else ""
+                        self.custom_deer_resistant: response[0][43] if response[0][43] else ""
+                        self.custom_soil_type: response[0][44] if response[0][44] else ""
+                        self.custom_color: response[0][45] if response[0][45] else ""
+                        self.custom_size: response[0][46] if response[0][46] else ""
                         # Dates
                         self.get_last_maintained_dates(response[0][47:52])
                         # E-Commerce Categories
@@ -2856,6 +2917,9 @@ def run_integration(last_sync):
 # product = Integrator.Catalog.Product("45", last_run_date=datetime(2020, 5, 30))
 # print(product)
 
-flag = Integrator.Catalog.Product("201213", last_sync=date_presets.business_start_date)
-print(flag.process())
+# flag = Integrator.Catalog.Product("201213", last_sync=date_presets.business_start_date)
+# print(flag.process())
 #brands = Integrator.Catalog.Brands(last_sync=date_presets.five_minutes_ago)
+
+# catalog = Integrator.Catalog(last_sync=date_presets.twenty_four_hours_ago)
+# print(catalog)
