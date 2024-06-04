@@ -16,7 +16,6 @@ Author: Alex Powell
 Contributors: Luke Barrier
 """
 
-
 class Integrator:
     def __init__(self, last_sync):
         self.last_sync = last_sync
@@ -25,6 +24,8 @@ class Integrator:
         self.category_tree = None
         self.brands = None
         self.catalog = None
+
+        self.customers = None
 
     def __str__(self):
         return f"Integration Object\n" \
@@ -36,10 +37,13 @@ class Integrator:
         self.category_tree = self.Catalog.CategoryTree(last_sync=self.last_sync)
         self.brands = self.Catalog.Brands(last_sync=self.last_sync)
         self.catalog = self.Catalog(last_sync=self.last_sync)
+        self.customers = self.Customers(last_sync=self.last_sync)
 
     def sync(self):
         self.catalog.sync()
         self.category_tree.build_bc_category_tree()
+
+        self.customers.sync()
 
     class Database:
         def __init__(self):
@@ -2998,7 +3002,73 @@ class Integrator:
                 pass
 
     class Customers:
-        pass
+        def __init__(self, last_sync):
+            self.last_sync = last_sync
+            self.db = query_engine.QueryEngine()
+            self.customers = self.get_customers()
+
+        def get_customers(self):
+            query = f"SELECT * FROM IM_CUST WHERE LST_MAINT_DT > '{self.last_sync}'"
+            response = self.db.query_db(query)
+            if response is not None:
+                result = []
+                for x in response:
+                    if x is not None:
+                        result.append(self.Customer(x))
+                return result
+
+        def process(self):
+            for customer in self.customers:
+                customer.process()
+
+        def sync(self):
+            for customer in self.customers:
+                customer.process()
+                
+
+        class Customer:
+            def __init__(self, cust_result):
+                self.cust_no = cust_result[1]
+                self.db = query_engine.QueryEngine()
+                self.cust_result = self.from_ar_cust()
+                self.fst_nam = self.cust_result[0]
+                self.lst_nam = self.cust_result[1]
+                self.email = self.cust_result[2]
+                self.loyalty_points = self.cust_result[3]
+
+            def from_ar_cust(self):
+                query = f"""
+                SELECT FST_NAM, LST_NAM, EMAIL_ADRS_1, LOY_PTS_BAL
+                FROM AR_CUST
+                WHERE CUST_NO = '{self.cust_no}'
+                """
+                response = self.db.query_db(query)
+                if response is not None:
+                    result = []
+                    for x in response:
+                        if x is not None:
+                            result.append()
+                    return result
+                
+            def process(self):
+                def create():
+                    print(f"Creating customer {self.cust_no}")
+                    url = f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/customers"
+                    payload = {
+                        "first_name": self.fst_nam,
+                        "last_name": self.lst_nam,
+                        "email": self.email,
+                        "store_credit_amounts": [self.loyalty_points]
+                    }
+                    response = requests.post(url=url, headers=creds.test_bc_api_headers, json=payload)
+                
+                    if response.status_code == 200:
+                        print(f"Customer {self.cust_no} created successfully.")
+                    else:
+                        print(f"Error creating customer {self.cust_no}.")
+                        print(response.content)
+                create()
+
 
     class Orders:
         pass
