@@ -4,7 +4,7 @@ from datetime import datetime
 
 import requests
 from PIL import Image, ImageOps
-
+from utilities import handy_tools
 from setup import creds
 from setup import query_engine
 from setup import date_presets
@@ -51,6 +51,7 @@ class Integrator:
 
             # Drop Tables
             drop_table(creds.bc_customer_table)
+            drop_table(creds.bc_custom_fields)
             drop_table(creds.bc_custom_fields)
             drop_table(creds.bc_image_table)
             drop_table(creds.bc_product_table)
@@ -145,6 +146,76 @@ class Integrator:
                     """
                 self.db.query_db(query, commit=True)
 
+            def create_custom_fields_table(table_name):
+                query = f"""
+                CREATE TABLE SN_CUSTOM_FIELDS (
+                ID int IDENTITY(1,1) PRIMARY KEY,
+				ITEM_NO nvarchar(50),
+				PRODUCT_ID int,
+                FIELD_1_ID int,
+				FIELD_1_NAME varchar(60),
+                FIELD_1_VALUE varchar(255),
+                FIELD_1_DT datetime DEFAULT(current_timestamp),
+				FIELD_2_ID int,
+                FIELD_2_NAME varchar(60),
+                FIELD_2_VALUE varchar(255),
+                FIELD_2_DT datetime DEFAULT(current_timestamp),
+				FIELD_3_ID int,
+                FIELD_3_NAME varchar(60),
+                FIELD_3_VALUE varchar(255),
+                FIELD_3_DT datetime DEFAULT(current_timestamp),
+				FIELD_4_ID int,
+                FIELD_4_NAME varchar(60),
+                FIELD_4_VALUE varchar(255),
+                FIELD_4_DT datetime DEFAULT(current_timestamp),
+				FIELD_5_ID int,
+                FIELD_5_NAME varchar(60),
+                FIELD_5_VALUE varchar(255),
+                FIELD_5_DT datetime DEFAULT(current_timestamp),
+				FIELD_6_ID int,
+                FIELD_6_NAME varchar(60),
+                FIELD_6_VALUE varchar(255),
+                FIELD_6_DT datetime DEFAULT(current_timestamp),
+				FIELD_7_ID int,
+                FIELD_7_NAME varchar(60),
+                FIELD_7_VALUE varchar(255),
+                FIELD_7_DT datetime DEFAULT(current_timestamp),
+                FIELD_8_ID int,
+				FIELD_8_NAME varchar(60),
+                FIELD_8_VALUE varchar(255),
+                FIELD_8_DT datetime DEFAULT(current_timestamp),
+                FIELD_9_ID int,
+				FIELD_9_NAME varchar(60),
+                FIELD_9_VALUE varchar(255),
+                FIELD_9_DT datetime DEFAULT(current_timestamp),
+                FIELD_10_ID int,
+				FIELD_10_NAME varchar(60),
+                FIELD_10_VALUE varchar(255),
+                FIELD_10_DT datetime DEFAULT(current_timestamp),
+                FIELD_11_ID int,
+				FIELD_11_NAME varchar(60),
+                FIELD_11_VALUE varchar(255),
+                FIELD_11_DT datetime DEFAULT(current_timestamp),
+                FIELD_12_ID int,
+				FIELD_12_NAME varchar(60),
+                FIELD_12_VALUE varchar(255),
+                FIELD_12_DT datetime DEFAULT(current_timestamp),
+                FIELD_13_ID int,
+				FIELD_13_NAME varchar(60),
+                FIELD_13_VALUE varchar(255),
+                FIELD_13_DT datetime DEFAULT(current_timestamp),
+                FIELD_14_ID int,
+				FIELD_14_NAME varchar(60),
+                FIELD_14_VALUE varchar(255),
+                FIELD_14_DT datetime DEFAULT(current_timestamp),
+                FIELD_15_ID int,
+				FIELD_15_NAME varchar(60),
+                FIELD_15_VALUE varchar(255),
+                FIELD_15_DT datetime DEFAULT(current_timestamp),
+                LST_MAINT_DT datetime DEFAULT(current_timestamp),
+                );"""
+                self.db.query_db(query, commit=True)
+
             def create_customer_table(table_name):
                 query = f"""
                 CREATE TABLE {table_name} (
@@ -162,6 +233,7 @@ class Integrator:
             create_brand_table(creds.bc_brands_table)
             create_product_table(creds.bc_product_table)
             create_image_table(creds.bc_image_table)
+            create_custom_fields_table(creds.bc_custom_fields)
             create_customer_table(creds.bc_customer_table)
 
     class Catalog:
@@ -204,22 +276,22 @@ class Integrator:
                     f"Binding IDs with Updates: {len(self.binding_ids)}\n")
 
         def get_products(self):
-            # return [{'sku': '10337', 'binding_id': 'B0006'}]
-            db = query_engine.QueryEngine()
-            query = f"""
-            SELECT ITEM_NO, ISNULL(ITEM.USR_PROF_ALPHA_16, '') as 'Binding ID'
-            FROM IM_ITEM ITEM
-            WHERE ITEM.LST_MAINT_DT > '{self.last_sync: %Y-%m-%d %H:%M:%S}' and ITEM.IS_ECOMM_ITEM = 'Y'
-            """
-            response = db.query_db(query)
-            if response is not None:
-                result = []
-                for item in response:
-                    result.append({
-                        'sku': item[0],
-                        'binding_id': item[1]
-                    })
-                return result
+            return [{'sku': '10337', 'binding_id': 'B0006'}]
+            # db = query_engine.QueryEngine()
+            # query = f"""
+            # SELECT ITEM_NO, ISNULL(ITEM.USR_PROF_ALPHA_16, '') as 'Binding ID'
+            # FROM IM_ITEM ITEM
+            # WHERE ITEM.LST_MAINT_DT > '{self.last_sync: %Y-%m-%d %H:%M:%S}' and ITEM.IS_ECOMM_ITEM = 'Y'
+            # """
+            # response = db.query_db(query)
+            # if response is not None:
+            #     result = []
+            #     for item in response:
+            #         result.append({
+            #             'sku': item[0],
+            #             'binding_id': item[1]
+            #         })
+            #     return result
 
         def sync(self):
             general_errors = []
@@ -232,6 +304,7 @@ class Integrator:
                 if prod.validate_product_inputs():
                     print(f"Product sku:{prod.sku}, binding: {prod.binding_id}: "
                           f"{prod.web_title} PASSED input validation.")
+                    prod.process()
                     try:
                         prod.process()
                     except Exception as e:
@@ -1175,7 +1248,6 @@ class Integrator:
                 self.custom_color = ""
                 self.custom_size = ""
                 self.custom_field_response = []  # Will be list of dictionaries from BC API
-                self.custom_field_ids = ""  # Will be list of custom field IDs from Middleware
 
                 # E-Commerce Categories
                 self.ecommerce_categories = []
@@ -1271,7 +1343,6 @@ class Integrator:
                             self.ecommerce_categories = bound.ecommerce_categories
                             self.custom_url = bound.custom_url
                             self.is_custom_url = bound.is_custom_url
-                            self.custom_field_ids = bound.custom_field_ids
 
                     def get_binding_id_images():
                         binding_images = []
@@ -1348,7 +1419,6 @@ class Integrator:
                     self.images = single.images
                     self.custom_url = single.custom_url
                     self.is_custom_url = single.is_custom_url
-                    self.custom_field_ids = single.custom_field_ids
 
                 if self.is_bound:
                     get_bound_product_details()
@@ -1674,6 +1744,16 @@ class Integrator:
 
                         return success
 
+                    def middleware_insert_custom_fields():
+                        success = True
+                        if self.custom_field_response:
+                            for cust_field in self.custom_field_response:
+                                cust_field_id = cust_field["id"]
+                                name = cust_field["name"]
+                                value = cust_field["value"]
+                                # This is where I left off. Need to insert custom fields into middleware
+                                # names and values need to go into their corresponding columns.
+
                     def middleware_insert_images():
                         success = True
                         for image in self.images:
@@ -1735,13 +1815,17 @@ class Integrator:
 
                     if bc_create_product():
                         if middleware_insert_product():
+                            middleware_insert_custom_fields()
                             middleware_insert_images()
 
                 def update():
+                    # Create an updated Payload
+                    update_payload = self.construct_product_payload()
 
+                    # Delete all Custom Fields
                     def bc_delete_custom_fields():
-                        url = f"""https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/
-                        catalog/products/{self.product_id}/custom-fields?include_fields='{self.custom_field_ids}"""
+                        url = f"""https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/catalog/products/{self.product_id}/custom-fields/"""
+                        print(url)
                         response = requests.delete(url=url, headers=creds.test_bc_api_headers)
                         if response.status_code == 204:
                             print(f"Custom Fields for Product {self.sku} deleted successfully.")
@@ -1750,17 +1834,18 @@ class Integrator:
                             print(response.content)
                         return response.status_code
 
-                    def bc_update_product():
-                        url = (f'https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/'
-                               f'catalog/products/{self.product_id}')
-                        payload = self.construct_product_payload()
-                        response = requests.put(url=url, headers=creds.test_bc_api_headers, json=payload)
-                        if response.status_code == 200:
-                            print(f"Product {self.sku} updated successfully.")
-                        else:
-                            print(f"Error updating product {self.sku}.")
-                            print(response.content)
-                        return response.status_code
+                    bc_delete_custom_fields()
+
+                    # def bc_update_product():
+                    #     url = (f'https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/'
+                    #            f'catalog/products/{self.product_id}')
+                    #     response = requests.put(url=url, headers=creds.test_bc_api_headers, json=update_payload)
+                    #     if response.status_code == 200:
+                    #         print(f"Product {self.sku} updated successfully.")
+                    #     else:
+                    #         print(f"Error updating product {self.sku}.")
+                    #         print(response.content)
+                    #     return response.status_code
 
                     # def middleware_update_product():
                     #     query = f"""
@@ -2255,7 +2340,7 @@ class Integrator:
                                                         from EC_CATEG_ITEM
                                                         where EC_CATEG_ITEM.ITEM_NO =ITEM.ITEM_NO
                                                         for xml path('')),1,1,'') as categories, 
-                    ISNULL(PROD.CUSTOM_FIELDS, '') as custom_fields
+                    
                                                         
                     FROM IM_ITEM ITEM
                     LEFT OUTER JOIN IM_PRC PRC ON ITEM.ITEM_NO=PRC.ITEM_NO
@@ -2325,7 +2410,6 @@ class Integrator:
                             'categories': str(item[0][49]).split(',') if item[0][49] else [],
                             'custom_url': '',
                             'is_custom_url': False,
-                            'custom_field_ids': item[0][50]
                         }
                         # for x in details:
                         #     print(f"{x}: {details[x]}")
@@ -2753,6 +2837,31 @@ class Integrator:
                         result += f"{k}: {v}\n"
                     return result
 
+                def get_image_details(self):
+                    db = query_engine.QueryEngine()
+                    query = f"SELECT * FROM SN_IMAGES WHERE IMAGE_NAME = '{self.image_name}'"
+                    response = db.query_db(query)
+                    if response is not None:
+                        self.id = response[0][0]
+                        self.image_name = response[0][1]
+                        self.sku = response[0][2]
+                        self.file_path = response[0][3]
+                        self.image_url = response[0][4]
+                        self.product_id = response[0][5]
+                        self.image_id = response[0][6]
+                        self.is_thumbnail = True if response[0][7] == 1 else False
+                        self.image_number = response[0][8]
+                        self.sort_order = response[0][9]
+                        self.is_binding_image = True if response[0][10] == 1 else False
+                        self.binding_id = response[0][11]
+                        self.is_variant_image = True if response[0][12] == 1 else False
+                        self.description = response[0][13] if response[0][13] else ""
+                        self.last_modified_dt = response[0][14]
+                        self.last_maintained_dt = response[0][15]
+                    else:
+                        self.image_url = self.upload_product_image()
+                        self.set_image_details()
+
                 def validate(self):
                     try:
                         file_size = os.path.getsize(self.file_path)
@@ -2841,30 +2950,6 @@ class Integrator:
                     # print(f"Image {self.image_name} is valid.")
                     return True
 
-                def get_image_details(self):
-                    db = query_engine.QueryEngine()
-                    query = f"SELECT * FROM SN_IMAGES WHERE IMAGE_NAME = '{self.image_name}'"
-                    response = db.query_db(query)
-                    if response is not None:
-                        self.id = response[0][0]
-                        self.image_name = response[0][1]
-                        self.sku = response[0][2]
-                        self.file_path = response[0][3]
-                        self.image_url = response[0][4]
-                        self.product_id = response[0][5]
-                        self.variant_id = response[0][6]
-                        self.image_id = response[0][7]
-                        self.is_thumbnail = True if response[0][8] == 1 else False
-                        self.image_number = response[0][9]
-                        self.sort_order = response[0][10]
-                        self.is_binding_image = True if response[0][11] == 1 else False
-                        self.binding_id = response[0][12]
-                        self.is_variant_image = True if response[0][13] == 1 else False
-                        self.description = response[0][14] if response[0][14] else ""
-                        self.last_maintained_dt = response[0][15]
-                    else:
-                        self.image_url = self.upload_product_image()
-                        self.set_image_details()
 
                 def set_image_details(self):
                     def get_item_no_from_image_name(image_name):
