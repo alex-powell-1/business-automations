@@ -13,6 +13,7 @@ from requests.auth import HTTPDigestAuth
 """
 BigCommerce Middleware Integration
 Author: Alex Powell
+Contributors: Luke Barrier
 """
 
 
