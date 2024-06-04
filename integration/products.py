@@ -49,6 +49,8 @@ class Integrator:
                 self.db.query_db(f"DROP TABLE {table_name}", commit=True)
 
             # Drop Tables
+            drop_table(creds.bc_customer_table)
+            drop_table(creds.bc_custom_fields)
             drop_table(creds.bc_image_table)
             drop_table(creds.bc_product_table)
             drop_table(creds.bc_brands_table)
@@ -112,7 +114,8 @@ class Integrator:
                 IS_PARENT BIT,
                 PRODUCT_ID int NOT NULL,
                 VARIANT_ID int,
-                CATEG_ID int NOT NULL FOREIGN KEY REFERENCES {creds.bc_category_table}(CATEG_ID),
+                CATEG_ID varchar(100),
+                CUSTOM_FIELDS varchar(255),
                 LST_MAINT_DT datetime NOT NULL DEFAULT(current_timestamp)
                 );
                 """
@@ -127,7 +130,6 @@ class Integrator:
                     FILE_PATH nvarchar(255) NOT NULL,
                     IMAGE_URL nvarchar(255),
                     PRODUCT_ID int,
-                    VARIANT_ID int,
                     IMAGE_ID int,
                     THUMBNAIL BIT DEFAULT(0),
                     IMAGE_NUMBER int DEFAULT(1),
@@ -135,11 +137,22 @@ class Integrator:
                     IS_BINDING_IMAGE BIT NOT NULL,
                     BINDING_ID varchar(50),
                     IS_VARIANT_IMAGE BIT DEFAULT(0),
-                    DESCR nvarchar(100),
+                    DESCR nvarchar(255),
                     LST_MOD_DT datetime NOT NULL DEFAULT(current_timestamp),
                     LST_MAINT_DT datetime NOT NULL DEFAULT(current_timestamp)
                     );
                     """
+                self.db.query_db(query, commit=True)
+
+            def create_customer_table(table_name):
+                query = f"""
+                CREATE TABLE {table_name} (
+                ID int IDENTITY(1,1) PRIMARY KEY,
+                CUST_NO varchar(50) NOT NULL,
+                BC_CUST_ID int,
+                LST_MAINT_DT datetime NOT NULL DEFAULT(current_timestamp)
+                );
+                """
                 self.db.query_db(query, commit=True)
 
             # Recreate Tables
@@ -148,226 +161,145 @@ class Integrator:
             create_brand_table(creds.bc_brands_table)
             create_product_table(creds.bc_product_table)
             create_image_table(creds.bc_image_table)
+            create_customer_table(creds.bc_customer_table)
 
     class Catalog:
-        def __init__(self, last_sync):
-            # self.log_file = log_file
-            self.last_sync = last_sync
-            self.update_image_timestamps(last_run=self.last_sync)
-            self.products = self.get_products()
-            # Still need to get ALL list from mw and cp
-            self.mw_products = set()
-            self.binding_ids = set()
-            self.single_products = set()
-            # Will update SN.PROD and SN.IMAGES tables LST_MAINT_DT for associated images
-            # Process Deletes
-            # self.process_deletes()
-            # Will get all products that have been updated since the last sync date. Create objects for each product.
-
-        def __str__(self):
-            return f"Products ({len(self.products)}): {self.products}\n" \
-                   f"Binding IDs ({len(self.binding_ids)}): {self.binding_ids}\n" \
-                   f"Single Products ({len(self.single_products)}): {self.single_products}\n"
-
-        def get_products(self):
-            # Get all products that have been updated since the last sync date
-
-            """Get a list of all products that have been updated since the last run date.
-            Will check IM_ITEM. IM_PRC, IM_INV, EC_ITEM_DESCR, EC_CATEG_ITEM, and Image tables
-            have an after update Trigger implemented for updating IM_ITEM.LST_MAINT_DT."""
-            result = []
+        @staticmethod
+        def get_all_binding_ids():
             db = query_engine.QueryEngine()
-            query = f""" select ISNULL(ITEM.USR_PROF_ALPHA_16, '') as 'Binding ID(0)', 
-            ITEM.IS_ECOMM_ITEM as 'Web Enabled(1)', ITEM.IS_ADM_TKT as 'Is Parent(2)', 
-            BC_PROD.PRODUCT_ID as 'Product ID (3)', 
-            BC_PROD.VARIANT_ID as 'Variant ID(4)', ITEM.USR_CPC_IS_ENABLED as 'Web Visible(5)', 
-            ITEM.USR_ALWAYS_ONLINE as 'ALWAYS ONLINE(6)', ITEM.IS_FOOD_STMP_ITEM as 'GIFT_WRAP(7)', 
-            ITEM.PROF_COD_1 as 'BRAND_CP_COD(8)', ITEM.ECOMM_NEW as 'IS_FEATURED(9)', 
-            ITEM.USR_IN_STORE_ONLY as 'IN_STORE_ONLY(10)', ITEM.USR_PROF_ALPHA_27 as 'SORT ORDER(11)', 
-            ISNULL(ITEM.ADDL_DESCR_1, '') as 'WEB_TITLE(12)', ISNULL(ITEM.ADDL_DESCR_2, '') as 'META_TITLE(13)', 
-            ISNULL(USR_PROF_ALPHA_21, '') as 'META_DESCRIPTION(14)', 
-            ISNULL(ITEM.USR_PROF_ALPHA_17, '') as 'VARIANT NAME(15)', 
-            ITEM.STAT as 'STATUS(16)', ISNULL(ITEM.REG_PRC, 0) as 'REG_PRC(17)', 
-            ISNULL(ITEM.PRC_1, 0) as 'PRC_1(18)', ISNULL(PRC.PRC_2, 0) as 'PRC_2(19)', 
-            ISNULL(INV.QTY_AVAIL, 0) as 'QUANTITY_AVAILABLE(20)', ISNULL(ITEM.PROF_NO_1, 0) as 'BUFFER(21)', 
-            ITEM.ITEM_TYP as 'ITEM_TYPE(22)', ITEM.LONG_DESCR as 'LONG_DESCR(23)', 
-            ITEM.USR_PROF_ALPHA_26 as 'SEARCH_KEYWORDS(24)', ITEM.USR_PROF_ALPHA_19 as 'PREORDER_MESSAGE(25)', 
-            EC_ITEM_DESCR.HTML_DESCR as 'HTML_DESCRIPTION(26)', ISNULL(USR_PROF_ALPHA_22, '') as 'ALT_TEXT_1(27)', 
-            ISNULL(USR_PROF_ALPHA_23, '') as 'ALT_TEXT_2(28)', ISNULL(USR_PROF_ALPHA_24, '') as 'ALT_TEXT_3(29)', 
-            ISNULL(USR_PROF_ALPHA_25, '') as 'ALT_TEXT_4(30)', ISNULL(PROF_ALPHA_1, '') as 'BOTANICAL_NAM(31)', 
-            ISNULL(PROF_ALPHA_2, '') as 'CLIMATE_ZONE(32)', ISNULL(PROF_ALPHA_3, '') as 'PLANT_TYPE(33)', 
-            ISNULL(PROF_ALPHA_4, '') as 'TYPE(34)', ISNULL(PROF_ALPHA_5, '') as 'HEIGHT(35)', 
-            ISNULL(USR_PROF_ALPHA_6, '') as 'WIDTH(36)', ISNULL(USR_PROF_ALPHA_7, '') as 'SUN_EXPOSURE(37)', 
-            ISNULL(USR_PROF_ALPHA_8, '') as 'BLOOM_TIME(38)', ISNULL(USR_PROF_ALPHA_9, '') as 'BLOOM_COLOR(39)', 
-            ISNULL(USR_PROF_ALPHA_10, '') as 'ATTRACTS_POLLINATORS(40)', 
-            ISNULL(USR_PROF_ALPHA_11, '') as 'GROWTH_RATE(41)', 
-            ISNULL(USR_PROF_ALPHA_12, '') as 'DEER_RESISTANT(42)', ISNULL(USR_PROF_ALPHA_13, '') as 'SOIL_TYPE(43)', 
-            ISNULL(USR_PROF_ALPHA_14, '') as 'COLOR(44)', ISNULL(USR_PROF_ALPHA_15, '') as 'SIZE(45)', 
-            ITEM.LST_MAINT_DT as 'LST_MAINT_DT(46)', ISNULL(ITEM.LST_COST, 0) as 'LAST_COST(47)', 
-            ITEM.ITEM_NO as 'ITEM_NO (48)'
-            FROM IM_ITEM ITEM
-            INNER JOIN IM_PRC PRC ON ITEM.ITEM_NO=PRC.ITEM_NO
-            LEFT OUTER JOIN IM_INV INV ON ITEM.ITEM_NO=INV.ITEM_NO
-            LEFT OUTER JOIN EC_ITEM_DESCR ON ITEM.ITEM_NO=EC_ITEM_DESCR.ITEM_NO
-            LEFT OUTER JOIN EC_CATEG_ITEM ON ITEM.ITEM_NO=EC_CATEG_ITEM.ITEM_NO
-            LEFT OUTER JOIN EC_CATEG ON EC_CATEG.CATEG_ID=EC_CATEG_ITEM.CATEG_ID
-            LEFT OUTER JOIN {creds.bc_product_table} BC_PROD ON ITEM.ITEM_NO=BC_PROD.ITEM_NO
-            INNER JOIN IM_ITEM_PROF_COD COD ON ITEM.PROF_COD_1 = COD.PROF_COD
-            WHERE ITEM.LST_MAINT_DT > '{self.last_sync: %Y-%m-%d %H:%M:%S}' and ITEM.IS_ECOMM_ITEM = 'Y'"""
-            response = db.query_db(query)
-            if response is not None:
-                for item in response:
-                    result.append({
-                        'sku': item[48],
-                        'binding_id': item[0],
-                        'is_bound': True if item[0] else False,
-                        'web_enabled': True if item[1] == 'Y' else False,
-                        'is_parent': True if item[2] == 'Y' else False,
-                        'product_id': item[3],
-                        'variant_id': item[4],
-                        'web_visible': True if item[5] == 'Y' else False,
-                        'always_online': True if item[6] == 'Y' else False,
-                        'gift_wrap': True if item[7] == 'Y' else False,
-                        'brand_cp_cod': item[8],
-                        'is_featured': True if item[9] == 'Y' else False,
-                        'in_store_only': True if item[10] == 'Y' else False,
-                        'sort_order': int(item[11]) if item[11] else 0,
-                        'web_title': item[12],
-                        'meta_title': item[13],
-                        'meta_description': item[14],
-                        'variant_name': item[15],
-                        'status': item[16],
-                        # Product Pricing
-                        'reg_price': item[17],
-                        'price_1': item[18],
-                        'price_2': item[19],
-                        # # Inventory Levels
-                        'quantity_available': int(item[20]),
-                        'buffer': int(item[21]),
-                        'buffered_quantity': int(item[20]) - int(item[21]),
-                        # Additional Details
-                        'item_type': item[22],
-                        'long_description': item[23],
-                        'search_keywords': item[24],
-                        'preorder_message': item[25],
-                        'html_description': item[26],
-                        'alt_text_1': item[27],
-                        'alt_text_2': item[28],
-                        'alt_text_3': item[29],
-                        'alt_text_4': item[30],
-                        # Custom Fields
-                        'custom_botanical_name': item[31],
-                        'custom_climate_zone': item[32],
-                        'custom_plant_type': item[33],
-                        'custom_type': item[34],
-                        'custom_height': item[35],
-                        'custom_width': item[36],
-                        'custom_sun_exposure': item[37],
-                        'custom_bloom_time': item[38],
-                        'custom_bloom_color': item[39],
-                        'custom_attracts_pollinators': item[40],
-                        'custom_growth_rate': item[41],
-                        'custom_deer_resistant': item[42],
-                        'custom_soil_type': item[43],
-                        'custom_color': item[44],
-                        'custom_size': item[45],
-                        'lst_maint_dt': item[46],
-                        'last_cost': item[47],
-                    })
+            """Returns a list of unique and validated binding IDs from the IM_ITEM table."""
+            response = db.query_db(f"SELECT DISTINCT USR_PROF_ALPHA_16 FROM IM_ITEM WHERE IS_ECOMM_ITEM = 'Y'"
+                                   f"AND USR_PROF_ALPHA_16 IS NOT NULL")
+
+            result = []
+
+            def valid(binding_id):
+                if re.match(r'B\d{4}', binding_id):
+                    return binding_id
+
+            for x in response:
+                binding = valid(x[0])
+                if binding:
+                    result.append(binding)
 
             return result
 
+        all_binding_ids = get_all_binding_ids()
+
+        def __init__(self, last_sync):
+            # self.log_file = log_file
+            self.last_sync = last_sync
+            self.db = query_engine.QueryEngine()
+            # self.update_image_timestamps(self.last_sync)
+            # self.process_deletes()
+            # lists of products with updated timestamps
+            self.products = self.get_products()
+            self.binding_ids = set(x['binding_id'] for x in self.products)
+            self.product_errors = []
+            # Still need to get ALL list from mw and cp
+
+        def __str__(self):
+            return (f"Items to Process: {len(self.products)}\n"
+                    f"Binding IDs with Updates: {len(self.binding_ids)}\n")
+
+        def get_products(self):
+            # return [{'sku': '10337', 'binding_id': 'B0006'}]
+            db = query_engine.QueryEngine()
+            query = f"""
+            SELECT ITEM_NO, ISNULL(ITEM.USR_PROF_ALPHA_16, '') as 'Binding ID'
+            FROM IM_ITEM ITEM
+            WHERE ITEM.LST_MAINT_DT > '{self.last_sync: %Y-%m-%d %H:%M:%S}' and ITEM.IS_ECOMM_ITEM = 'Y'
+            """
+            response = db.query_db(query)
+            if response is not None:
+                result = []
+                for item in response:
+                    result.append({
+                        'sku': item[0],
+                        'binding_id': item[1]
+                    })
+                return result
+
         def sync(self):
-            def sync_bound_products(binding_ids):
-                """Takes in a list of binding ids and creates BoundProduct objects for each one. If the product
-                passes input validation, it will compare the product/image/category details against those in the
-                middleware database and update."""
-                for x in binding_ids:
-                    bound_product = self.Product(x)
-                    if bound_product.validate_product():
-                        bound_product.process()
+            general_errors = []
+            print(f"Syncing {len(self.products)} products.")
+            while len(self.products) > 0:
+                target = self.products.pop()
+                print(f"Starting Product: {target['sku']}, Binding: {target['sku']}")
+                prod = self.Product(target, last_sync=self.last_sync)
+                print(f"Processing Product: {prod.sku}, Binding: {prod.binding_id}, Title: {prod.web_title}")
+                if prod.validate_product_inputs():
+                    print(f"Product sku:{prod.sku}, binding: {prod.binding_id}: "
+                          f"{prod.web_title} PASSED input validation.")
+                    try:
+                        prod.process()
+                    except Exception as e:
+                        message = f"General Error with Product {prod.sku}: {e}"
+                        print(message)
+                        general_errors.append(message)
                     else:
-                        print(f"Product {x} failed validation.")
+                        if prod.errors:
+                            self.product_errors.append(prod)
+                else:
+                    print(f"Product sku:{prod.sku}, binding: {prod.binding_id}: "
+                          f"{prod.web_title} FAILED input validation.")
+                    self.product_errors.append(prod)
 
-                    # Subtract SKUs from single_product List
-                    for variant in bound_product.variants:
-                        self.single_products.remove(variant.sku)
+                # Remove all variants from the queue
+                products_to_remove = [y.sku for y in prod.variants]
+                for x in products_to_remove:
+                    for y in self.products:
+                        if y['sku'] == x:
+                            print(f"Removing {y}")
+                            self.products.remove(y)  # remove all variants from the list
+                print(f"Products Remaining: {len(self.products)}\n\n")
 
-            def sync_single_products(single_products):
-                """Takes in a list of product SKUs and creates Product objects for each one. If the product passes input
-                validation, it will compare the product/image/category details against those in the middleware database
-                and update. Returns a list of all products that have been successfully updated."""
-                while len(single_products) > 0:
-                    product = self.Product(single_products.pop())
-                    if product.validate_product():
-                        product.process()
+            print("-----------------------\n")
 
-            if len(self.binding_ids) > 0:
-                print(f"Syncing Bound Products: {len(self.binding_ids)} products")
-                sync_bound_products(self.binding_ids)
+            if len(general_errors) > 0:
+                print("-----------------------\n")
+                print("General Errors:")
+                for error in general_errors:
+                    print(error)
+                print("-----------------------\n")
 
-            if len(self.single_products) > 0:
-                print(f"Syncing Single Products: {len(self.binding_ids)} products")
-                sync_single_products(self.single_products)
+            print(f"Sync Complete. {len(self.product_errors)} Product Errors.")
+            # Print Errors
+            if len(self.product_errors) > 0:
+                for product in self.product_errors:
+                    print(f"Error Processing Product: {product.sku}")
+                    if len(product.errors) > 0:
+                        print("Error Messages:")
+                        for message in product.errors:
+                            print(message)
+                    print("\n\n")
 
-            # self.log_file.close()
-
-        def process_deletes(self):
+        @staticmethod
+        def process_deletes():
+            db = query_engine.QueryEngine()
+            all_cp_products = [x[0] for x in db.query_db(f"SELECT ITEM_NO FROM IM_ITEM WHERE IS_ECOMM_ITEM = 'Y'") if x]
+            all_mw_products = [x[0] for x in db.query_db(f"SELECT ITEM_NO FROM {creds.bc_product_table}") if x]
             delete_count = 0
-            mw_product_ids = [x[0] for x in self.products]
-            cp_product_ids = [x[0] for x in self.cp_brands]
-            delete_targets = Integrator.Catalog.get_deletion_target(middleware_list=mw_product_ids,
-                                                                    counterpoint_list=cp_product_ids)
+            delete_targets = Integrator.Catalog.get_deletion_target(middleware_list=all_mw_products,
+                                                                    counterpoint_list=all_cp_products)
+            print(f"Delete Targets: {delete_targets}")
 
             def delete_from_bigcommerce(target):
-                url = (f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/"
-                       f"catalog/brands/{target}")
-                response = requests.delete(url=url, headers=creds.test_bc_api_headers)
-                if response.status_code == 204:
-                    print(f"BigCommerce: Brand {x} DELETE: SUCCESS. Code: {response.status_code}")
-                elif response.status_code == 404:
-                    print(f"BigCommerce: Brand {x} DELETE: Brand Not Found.")
-                else:
-                    print(f"BigCommerce: Brand {x} DELETE: FAILED! Status Code: {response.status_code}")
-                    print(response.json())
+                print(f"Deleting Product from bigcommerce: {target}. TEST MODE")
 
             def delete_from_middleware(target):
-                query = f"""
-                DELETE FROM {creds.bc_product_table}
-                WHERE CP_BRAND_ID = '{target}'
-                """
-                try:
-                    self.db.query_db(query, commit=True)
-                except Exception as e:
-                    print(f"Error deleting brand {target} from middleware: {e}")
-                else:
-                    print(f"Brand {target} deleted from middleware.")
-
-            def get_bc_brand_id(cp_brand_id):
-                query = f"""
-                SELECT BC_BRAND_ID
-                FROM {creds.bc_brands_table}
-                WHERE CP_BRAND_ID = '{cp_brand_id}'
-                """
-                response = self.db.query_db(query)
-                if response:
-                    return response[0][0]
-                else:
-                    return None
+                print(f"Deleting Product from middleware: {target}. TEST MODE")
 
             for x in delete_targets:
-                bc_brand_id = get_bc_brand_id(x)
-                if bc_brand_id is not None:
-                    print(f"Deleting Brand {x}.")
-                    bc_delete(bc_brand_id)
-                    delete_from_middleware(x)
-                    delete_count += 1
-                else:
-                    print(f"Brand {x} not found in middleware.")
+                print(f"Deleting Product {x}.")
+                delete_from_bigcommerce(x)
+                delete_from_middleware(x)
+                delete_count += 1
 
             print(f"Deleted {delete_count} brands.")
 
-        def update_image_timestamps(self):
+        @staticmethod
+        def update_image_timestamps(last_sync):
             """Takes in a list of SKUs and updates the last maintenance date in IM_ITEM and MW_IMAGES table for each
             product in the list. Updating IM_ITEM will trigger a sync of that item and it will then look for photos
             during the sync process."""
@@ -396,27 +328,25 @@ class Integrator:
 
                 return sku_result, file_result
 
-            sku_list, file_list = get_updated_photos(self.last_sync)
+            sku_list, file_list = get_updated_photos(last_sync)
 
             if len(sku_list) > 0:
-                print(f"Updating {len(sku_list)} product timestamps.")
+                db = query_engine.QueryEngine()
+                query = (f"UPDATE IM_ITEM "
+                         f"SET LST_MAINT_DT = GETDATE() "
+                         f"WHERE ITEM_NO in {sku_list} "
+
+                         f"UPDATE {creds.bc_image_table} "
+                         f"SET LST_MAINT_DT = GETDATE() "
+                         f"WHERE IMAGE_NAME in {file_list} ")
+                try:
+                    db.query_db(query, commit=True)
+                except Exception as e:
+                    print(f"Error updating product timestamps: {e}")
+                else:
+                    print("Product timestamps updated: ", sku_list)
             else:
                 print("No new images")
-
-            db = query_engine.QueryEngine()
-            query = (f"UPDATE IM_ITEM "
-                     f"SET LST_MAINT_DT = GETDATE() "
-                     f"WHERE ITEM_NO in {sku_list} "
-
-                     f"UPDATE {creds.bc_image_table} "
-                     f"SET LST_MAINT_DT = GETDATE() "
-                     f"WHERE IMAGE_NAME in {file_list} ")
-            try:
-                db.query_db(query, commit=True)
-            except Exception as e:
-                print(f"Error updating product timestamps: {e}")
-            else:
-                print("Product timestamps updated: ", sku_list)
 
         @staticmethod
         def get_binding_id_from_sku(sku):
@@ -964,7 +894,7 @@ class Integrator:
                     WHERE CP_BRAND_ID = '{self.cp_brand_id}'"""
 
                     response = self.db.query_db(query)
-                    if len(response) > 0:
+                    if response is not None:
                         # Brand Found, Update Brand in middleware first with pull from counterpoint
                         # if upon fresh pull, data doesn't exist, then delete, otherwise update and then
                         # run the following code
@@ -1170,21 +1100,19 @@ class Integrator:
                         return f"{creds.public_web_dav_photos}/{self.image_name}"
 
         class Product:
-            def __init__(self, item_no: str, last_sync):
-
-                print("INITIALIZING PRODUCT CLASS FOR ITEM: ", item_no)
-                print()
+            def __init__(self, product_data, last_sync):
+                # if product_data['binding_id'] == "":
+                #     print("INITIALIZING PRODUCT CLASS FOR ITEM: ", product_data['sku'])
+                # else:
+                #     print("INITIALIZING PRODUCT CLASS FOR ITEM: ", product_data['binding_id'])
                 self.db = query_engine.QueryEngine()
-                self.item_no = item_no
+                self.sku = product_data['sku']
+                self.binding_id = product_data['binding_id']
+
                 self.last_sync = last_sync
 
                 # Determine if Bound
-                if self.item_no in self.get_all_binding_ids():
-                    self.binding_id = self.item_no
-                    self.is_bound = True
-                else:
-                    self.binding_id = None
-                    self.is_bound = False
+                self.is_bound = True if self.binding_id != "" else False
 
                 # For Bound Items
                 self.total_variants: int = 0
@@ -1197,53 +1125,56 @@ class Integrator:
                 self.images: list = []
 
                 # Product Information
-                self.product_id: int = 0
-                self.web_title: ""
-                self.default_price = 0
-                self.cost = 0
-                self.sale_price = 0
+                self.product_id = ""
+                self.web_title: str = ""
+                self.default_price = 0.0
+                self.cost = 0.0
+                self.sale_price = 0.0
                 self.weight = 0.1
                 self.width = 0.1
                 self.height = 0.1
                 self.depth = 0.1
+                self.buffered_quantity = 0
                 self.is_price_hidden = False
-                self.brand: ""
-                self.html_description: ""
-                self.search_keywords: ""
-                self.meta_title: ""
-                self.meta_description: ""
+                self.brand = ""
+                self.html_description = ""
+                self.search_keywords = ""
+                self.meta_title = ""
+                self.meta_description = ""
                 self.visible: bool = False
                 self.featured: bool = False
+                self.sort_order = 0
                 self.gift_wrap: bool = False
-                self.search_keywords: ""
-                self.availability: "available"
-                self.is_preorder = False
-                self.preorder_release_date = datetime(1970, 1, 1)
-                self.preorder_message: ""
-                self.meta_title: ""
-                self.meta_description: ""
-                self.alt_text_1: ""
-                self.alt_text_2: ""
-                self.alt_text_3: ""
-                self.alt_text_4: ""
+                self.in_store_only: bool = False
+                self.is_preorder_only = False
+                self.is_free_shipping = False
+                self.preorder_release_date = f"{datetime(1970, 1, 1):%Y-%m-%d}"
+                self.preorder_message = ""
+                self.alt_text_1 = ""
+                self.alt_text_2 = ""
+                self.alt_text_3 = ""
+                self.alt_text_4 = ""
+                self.custom_url = ""
+                self.is_custom_url = True
 
                 # Custom Fields
-                self.custom_botanical_name: ""
-                self.custom_climate_zone: ""
-                self.custom_plant_type: ""
-                self.custom_type: ""
-                self.custom_height: ""
-                self.custom_width: ""
-                self.custom_sun_exposure: ""
-                self.custom_bloom_time: ""
-                self.custom_bloom_color: ""
-                self.custom_attracts_pollinators: ""
-                self.custom_attracts_butterflies: ""
-                self.custom_growth_rate: ""
-                self.custom_deer_resistant: ""
-                self.custom_soil_type: ""
-                self.custom_color: ""
-                self.custom_size: ""
+                self.custom_botanical_name = ""
+                self.custom_climate_zone = ""
+                self.custom_plant_type = ""
+                self.custom_type = ""
+                self.custom_height = ""
+                self.custom_width = ""
+                self.custom_sun_exposure = ""
+                self.custom_bloom_time = ""
+                self.custom_bloom_color = ""
+                self.custom_attracts_pollinators = ""
+                self.custom_growth_rate = ""
+                self.custom_deer_resistant = ""
+                self.custom_soil_type = ""
+                self.custom_color = ""
+                self.custom_size = ""
+                self.custom_field_response = []  # Will be list of dictionaries from BC API
+                self.custom_field_ids = ""  # Will be list of custom field IDs from Middleware
 
                 # E-Commerce Categories
                 self.ecommerce_categories = []
@@ -1253,7 +1184,8 @@ class Integrator:
 
                 # Validate Product
                 self.validation_retries = 10
-                self.validate_product()
+
+                self.errors = []
 
             def __str__(self):
                 result = ""
@@ -1270,7 +1202,13 @@ class Integrator:
                         result += line
                         for k, v in variant.__dict__.items():
                             result += f"{k}: {v}\n"
+                        for image in variant.images:
+                            result += f"Image: {image.image_name}\n"
+                            result += f"Thumbnail: {image.is_thumbnail}\n"
+                            result += f"Variant Image: {image.is_variant_image}\n"
+                            result += f"Sort Order: {image.sort_order}\n"
                         result += line
+                        variant_index += 1
                 return result
 
             def get_product_details(self):
@@ -1288,7 +1226,7 @@ class Integrator:
                     if response is not None:
                         # Create Product objects for each child and add object to bound parent list
                         for item in response:
-                            self.variants.append(self.Variant(item[0], self.last_sync))
+                            self.variants.append(self.Variant(item[0], last_run_date=self.last_sync))
 
                     # Set parent
                     self.parent = [x for x in self.variants if x.is_parent]
@@ -1297,99 +1235,161 @@ class Integrator:
                     self.total_variants = len(self.variants)
 
                     # Inherit Product Information from Parent Item
-                    for x in self.variants:
-                        if x.is_parent:
-                            self.product_id = x.product_id
-                            self.web_title = x.web_title
-                            self.default_price = x.price_1
-                            self.cost = x.cost
-                            self.sale_price = x.price_2
-                            self.brand = x.brand
-                            self.html_description = x.html_description
-                            self.search_keywords = x.search_keywords
-                            self.meta_title = x.meta_title
-                            self.meta_description = x.meta_description
-                            self.visible = x.web_visible
-                            self.featured = x.featured
-                            self.gift_wrap = x.gift_wrap
-                            self.custom_botanical_name = x.custom_botanical_name
-                            self.custom_climate_zone = x.custom_climate_zone
-                            self.custom_plant_type = x.custom_plant_type
-                            self.custom_type = x.custom_type
-                            self.custom_height = x.custom_height
-                            self.custom_width = x.custom_width
-                            self.custom_sun_exposure = x.custom_sun_exposure
-                            self.custom_bloom_time = x.custom_bloom_time
-                            self.custom_bloom_color = x.custom_bloom_color
-                            self.custom_attracts_pollinators = x.custom_attracts_pollinators
-                            self.custom_growth_rate = x.custom_growth_rate
-                            self.custom_deer_resistant = x.custom_deer_resistant
-                            self.custom_soil_type = x.custom_soil_type
-                            self.custom_color = x.custom_color
-                            self.custom_size = x.custom_size
-                            self.ecommerce_categories = x.ecommerce_categories
+                    for bound in self.variants:
+                        if bound.is_parent:
+                            self.product_id = bound.product_id
+                            self.web_title = bound.web_title
+                            self.default_price = bound.price_1
+                            self.cost = bound.cost
+                            self.sale_price = bound.price_2
+                            self.in_store_only = bound.in_store_only
+                            self.brand = bound.brand
+                            self.sort_order = bound.sort_order
+                            self.html_description = bound.html_description
+                            self.search_keywords = bound.search_keywords
+                            self.meta_title = bound.meta_title
+                            self.meta_description = bound.meta_description
+                            self.visible = bound.visible
+                            self.featured = bound.featured
+                            self.gift_wrap = bound.gift_wrap
+                            self.custom_botanical_name = bound.custom_botanical_name
+                            self.custom_climate_zone = bound.custom_climate_zone
+                            self.custom_plant_type = bound.custom_plant_type
+                            self.custom_type = bound.custom_type
+                            self.custom_height = bound.custom_height
+                            self.custom_width = bound.custom_width
+                            self.custom_sun_exposure = bound.custom_sun_exposure
+                            self.custom_bloom_time = bound.custom_bloom_time
+                            self.custom_bloom_color = bound.custom_bloom_color
+                            self.custom_attracts_pollinators = bound.custom_attracts_pollinators
+                            self.custom_growth_rate = bound.custom_growth_rate
+                            self.custom_deer_resistant = bound.custom_deer_resistant
+                            self.custom_soil_type = bound.custom_soil_type
+                            self.custom_color = bound.custom_color
+                            self.custom_size = bound.custom_size
+                            self.ecommerce_categories = bound.ecommerce_categories
+                            self.custom_url = bound.custom_url
+                            self.is_custom_url = bound.is_custom_url
+                            self.custom_field_ids = bound.custom_field_ids
 
                     def get_binding_id_images():
+                        binding_images = []
                         photo_path = creds.photo_path
                         list_of_files = os.listdir(photo_path)
                         if list_of_files is not None:
                             for x in list_of_files:
                                 if x.split(".")[0].split("^")[0] == self.binding_id:
-                                    self.images.append(self.Image(x, last_run_time=self.last_run_date))
+                                    binding_images.append(x)
+                        total_binding_images = len(binding_images)
+                        if total_binding_images > 0:
+                            # print(f"Found {total_binding_images} binding images for Binding ID: {self.binding_id}")
+                            for image in binding_images:
+                                binding_img = self.Image(image, last_run_time=self.last_sync)
+                                if binding_img.last_modified_dt > self.last_sync and binding_img.validate():
+                                    self.images.append(binding_img)
 
-                    # Product Images
+                        else:
+                            print(f"No binding images found for Binding ID: {self.binding_id}")
+
+                    # Add Binding ID Images to image list
                     get_binding_id_images()
 
-                    # Variant Images
-                    for x in self.variants:
-                        for y in x.images:
-                            self.images.append(y)
+                    # Add Variant Images to image list and establish which image is the variant thumbnail
+                    for variant in self.variants:
+                        variant_image_count = 0
+                        for variant_image in variant.images:
+                            if variant_image_count == 0:
+                                variant_image.is_variant_image = True
+                            self.images.append(variant_image)
+                            variant_image_count += 1
 
                 def get_single_product_details():
-                    self.variants.append(self.Variant(self.item_no, self.last_sync))
-                    if len(self.variants) == 1:
-                        for x in self.variants:
-                            self.product_id = x.product_id
-                            self.web_title = x.web_title
-                            self.default_price = x.price_1
-                            self.cost = x.cost
-                            self.sale_price = x.price_2
-                            self.weight = x.weight
-                            self.width = x.width
-                            self.height = x.height
-                            self.depth = x.depth
-                            self.brand = x.brand
-                            self.html_description = x.html_description
-                            self.search_keywords = x.search_keywords
-                            self.meta_title = x.meta_title
-                            self.meta_description = x.meta_description
-                            self.visible = x.web_visible
-                            self.featured = x.featured
-                            self.gift_wrap = x.gift_wrap
-                            self.custom_botanical_name = x.custom_botanical_name
-                            self.custom_climate_zone = x.custom_climate_zone
-                            self.custom_plant_type = x.custom_plant_type
-                            self.custom_type = x.custom_type
-                            self.custom_height = x.custom_height
-                            self.custom_width = x.custom_width
-                            self.custom_sun_exposure = x.custom_sun_exposure
-                            self.custom_bloom_time = x.custom_bloom_time
-                            self.custom_bloom_color = x.custom_bloom_color
-                            self.custom_attracts_pollinators = x.custom_attracts_pollinators
-                            self.custom_growth_rate = x.custom_growth_rate
-                            self.custom_deer_resistant = x.custom_deer_resistant
-                            self.custom_soil_type = x.custom_soil_type
-                            self.custom_color = x.custom_color
-                            self.custom_size = x.custom_size
-                            self.ecommerce_categories = x.ecommerce_categories
-                            self.images = x.images
+                    self.variants.append(self.Variant(self.sku, self.last_sync))
+                    single = self.variants[0]
+                    self.product_id = single.product_id
+                    self.web_title = single.web_title
+                    self.default_price = single.price_1
+                    self.cost = single.cost
+                    self.sale_price = single.price_2
+                    self.weight = single.weight
+                    self.width = single.width
+                    self.height = single.height
+                    self.depth = single.depth
+                    self.brand = single.brand
+                    self.in_store_only = single.in_store_only
+                    self.sort_order = single.sort_order
+                    self.buffered_quantity = single.quantity_available - single.buffer
+                    if self.buffered_quantity < 0:
+                        self.buffered_quantity = 0
+                    self.html_description = single.html_description
+                    self.search_keywords = single.search_keywords
+                    self.meta_title = single.meta_title
+                    self.meta_description = single.meta_description
+                    self.visible = single.visible
+                    self.featured = single.featured
+                    self.gift_wrap = single.gift_wrap
+                    self.custom_botanical_name = single.custom_botanical_name
+                    self.custom_climate_zone = single.custom_climate_zone
+                    self.custom_plant_type = single.custom_plant_type
+                    self.custom_type = single.custom_type
+                    self.custom_height = single.custom_height
+                    self.custom_width = single.custom_width
+                    self.custom_sun_exposure = single.custom_sun_exposure
+                    self.custom_bloom_time = single.custom_bloom_time
+                    self.custom_bloom_color = single.custom_bloom_color
+                    self.custom_attracts_pollinators = single.custom_attracts_pollinators
+                    self.custom_growth_rate = single.custom_growth_rate
+                    self.custom_deer_resistant = single.custom_deer_resistant
+                    self.custom_soil_type = single.custom_soil_type
+                    self.custom_color = single.custom_color
+                    self.custom_size = single.custom_size
+                    self.ecommerce_categories = single.ecommerce_categories
+                    self.images = single.images
+                    self.custom_url = single.custom_url
+                    self.is_custom_url = single.is_custom_url
+                    self.custom_field_ids = single.custom_field_ids
 
                 if self.is_bound:
                     get_bound_product_details()
                 else:
                     get_single_product_details()
 
-            def validate_product(self):
+                def get_bc_categories():
+                    result = []
+                    if self.ecommerce_categories is not None:
+                        for category in self.ecommerce_categories:
+                            categ_query = f"""
+                            SELECT BC_CATEG_ID 
+                            FROM SN_CATEG
+                            WHERE CP_CATEG_ID = '{category}'
+                            """
+                            db = query_engine.QueryEngine()
+                            cat_response = db.query_db(categ_query)
+                            if cat_response is not None:
+                                result.append(cat_response[0][0])
+                        return result
+                    else:
+                        return []
+
+                self.ecommerce_categories = get_bc_categories()
+
+                # Now all images are in self.images list and are in order by binding img first then variant img
+
+                sort_order = 0
+                for x in self.images:
+                    if sort_order == 0:
+                        x.is_thumbnail = True
+                    x.sort_order = sort_order
+                    sort_order += 1
+
+            def validate_product_inputs(self):
+                check_web_title = True
+                check_for_missing_categories = True
+                check_html_description = False
+                min_description_length = 20
+                check_missing_images = True
+                check_for_missing_brand = True
+
                 def set_parent(status: bool = True) -> None:
                     """Target lowest price item in family to set as parent."""
                     # Reestablish parent relationship
@@ -1404,36 +1404,44 @@ class Integrator:
                     """
                     self.db.query_db(query, commit=True)
                     print(f"Parent status set to {flag} for {target_item}")
-                    print("Reestablishing products.")
-                    return self.construct_bound_product()
+                    return self.get_product_details()
 
                 # Bound Product Validation
                 if self.is_bound:
-                    while self.validation_retries > 0:
-                        print(f"Validating {self.binding_id}")
-
+                    # print(f"Product {self.binding_id} is a bound product. Validation starting...")
+                    if self.validation_retries > 0:
                         # Test for missing binding ID. Potentially add corrective action
                         # (i.e. generate binding ID or remove product
                         # and rebuild as a new single product)
                         if self.binding_id == "":
-                            print(f"Product {self.binding_id} has no binding ID. Validation failed.")
-
+                            message = f"Product {self.binding_id} has no binding ID. Validation failed."
+                            self.errors.append(message)
+                            print(message)
                             return False
 
                         # Test for valid Binding ID Schema (ex. B0001)
                         pattern = r'B\d{4}'
                         if not bool(re.fullmatch(pattern, self.binding_id)):
-                            print(f"Product {self.binding_id} has an invalid binding ID. Validation failed.")
+                            message = f"Product {self.binding_id} has an invalid binding ID. Validation failed."
+                            self.errors.append(message)
+                            print(message)
                             return False
 
                         # Test for parent product problems
                         if len(self.parent) != 2:
                             # Test for missing parent
                             if len(self.parent) == 0:
-                                print(f"Product {self.binding_id} has no parent. Will reestablish parent.")
+                                message = f"Product {self.binding_id} has no parent. Will reestablish parent."
+                                print(message)
                                 set_parent()
                                 self.validation_retries -= 1
-                                return self.validate_product()
+                                if self.validation_retries > 1:
+                                    return self.validate_product_inputs()
+                                else:
+                                    message = f"Product {self.binding_id} has no parent. Validation failed."
+                                    self.errors.append(message)
+                                    print(message)
+                                    return False
 
                             # Test for multiple parents
                             if len(self.parent) > 1:
@@ -1441,77 +1449,103 @@ class Integrator:
                                 self.remove_parent()
                                 set_parent()
                                 self.validation_retries -= 1
-                                return self.validate_product()
+                                if self.validation_retries > 1:
+                                    return self.validate_product_inputs()
+                                else:
+                                    message = f"Product {self.binding_id} has multiple parents. Validation failed."
+                                    self.errors.append(message)
+                                    print(message)
+                                    return False
 
-                        # Test for missing web title
-                        if self.web_title == "":
-                            print(f"Product {self.binding_id} is missing a web title. Validation failed.")
-                            return False
+                        if check_web_title:
+                            # Test for missing web title
+                            if self.web_title == "":
+                                message = f"Product {self.binding_id} is missing a web title. Validation failed."
+                                self.errors.append(message)
+                                print(message)
+                                return False
 
                         # Test for missing html description
-                        if self.html_description == "":
-                            print(f"Product {self.binding_id} is missing an html description. Validation failed.")
-                            return False
-
-                        # Test for missing product images
-                        if len(self.images) == 0:
-                            print(f"Product {self.binding_id} is missing images. Will turn visibility to off.")
-                            self.visible = False
+                        if check_html_description:
+                            if len(self.html_description) < min_description_length:
+                                message = f"Product {self.binding_id} is missing an html description. Validation failed."
+                                self.errors.append(message)
+                                print(message)
+                                return False
 
                         # Test for missing E-Commerce Categories
                         if len(self.ecommerce_categories) == 0:
-                            print(f"Product {self.binding_id} is missing E-Commerce Categories. Validation failed.")
+                            message = f"Product {self.binding_id} is missing E-Commerce Categories. Validation failed."
+                            self.errors.append(message)
+                            print(message)
                             return False
 
                         # Test for missing variant names
                         for child in self.variants:
                             if child.variant_name == "":
-                                print(f"Product {child.sku} is missing a variant name. Validation failed.")
+                                message = f"Product {child.sku} is missing a variant name. Validation failed."
+                                self.errors.append(message)
+                                print(message)
                                 return False
-                        print(f"Product {self.binding_id} is valid.")
-                        print("\n")
-                        return True
-                else:
-                    # Single Product Validation
-                    print(f"Validating product {self.item_no}")
 
-                    # Test for missing web title
-                    if self.web_title == "":
-                        print(f"Product {self.item_no} is missing a web title. Validation failed.")
-                        return False
+                # ALL PRODUCTS
 
-                    # Test for missing html description
-                    if self.html_description == "":
-                        print(f"Product {self.item_no} is missing an html description. Validation failed.")
-                        return False
-
+                if check_for_missing_categories:
                     # Test for missing E-Commerce Categories
                     if len(self.ecommerce_categories) == 0:
-                        print(f"Product {self.item_no} is missing E-Commerce Categories. Validation failed.")
+                        message = f"Product {self.sku} is missing E-Commerce Categories. Validation failed."
+                        self.errors.append(message)
+                        print(message)
                         return False
-
+                if check_for_missing_brand:
                     # Test for missing brand
                     if self.brand == "":
-                        print(f"Product {self.item_no} is missing a brand. Validation failed.")
+                        message = f"Product {self.sku} is missing a brand. Validation failed."
+                        self.errors.append(message)
+                        print(message)
                         return False
 
-                    # Test for missing cost
-                    if self.cost == 0:
-                        print(f"Product {self.item_no} is missing a cost. Validation failed.")
+                # Test for missing cost
+                if self.cost == 0:
+                    message = f"Product {self.sku} is missing a cost. Validation passed for now :)."
+                    self.errors.append(message)
+                    print(message)
+
+                # Test for missing price 1
+                if self.default_price == 0:
+                    message = f"Product {self.sku} is missing a price 1. Validation failed."
+                    self.errors.append(message)
+                    print(message)
+                    return False
+
+                if check_html_description:
+                    # Test for missing html description
+                    if len(self.html_description) < min_description_length:
+                        message = f"Product {self.sku} is missing an html description. Validation failed."
+                        self.errors.append(message)
+                        print(message)
                         return False
 
-                    # Test for missing price 1
-                    if self.default_price == 0:
-                        print(f"Product {self.item_no} is missing a price 1. Validation failed.")
+                if check_web_title:
+                    # Single Product Validation
+                    # Test for missing web title
+                    if self.web_title == "":
+                        message = f"Product {self.sku} is missing a web title. Validation failed."
+                        self.errors.append(message)
+                        print(message)
                         return False
 
-                    # Test for missing weight
-                    if self.weight == 0:
-                        print(f"Product {self.item_no} is missing a weight. Validation failed.")
-                        return False
+                if check_missing_images:
+                    # Test for missing product images
+                    if len(self.images) == 0:
+                        message = f"Product {self.binding_id} is missing images. Will turn visibility to off."
+                        print(message)
+                        self.visible = False
 
-                    # Validation has Passed.
-                    return True
+                # Need validations for character counts on all fields
+                # print(f"Product {self.sku} has passed validation.")
+                # Validation has Passed.
+                return True
 
             def process(self):
 
@@ -1520,95 +1554,247 @@ class Integrator:
                         """Create product in BigCommerce. For this implementation, this is a single product with no
                         variants"""
                         url = f'https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/catalog/products'
-                        payload = construct_product_payload()
-                        response = requests.post(url=url, headers=creds.test_bc_api_headers, json=payload)
-                        if response.status_code in [200, 207]:
-                            print(f"BigCommerce POST {self.item_no}: SUCCESS. Code: {response.status_code}")
+                        payload = self.construct_product_payload()
+                        bc_response = requests.post(url=url, headers=creds.test_bc_api_headers, json=payload)
+
+                        if bc_response.status_code in [200, 207]:
+                            print(f"BigCommerce POST {self.sku}: SUCCESS. Code: {bc_response.status_code}")
+
+                            # from utilities import handy_tools
+                            # print(handy_tools.pretty_print(bc_response))
+
+                            # assign PRODUCT_ID, VARIANT_ID, and CATEG_ID to product and insert into middleware
+                            self.product_id = bc_response.json()["data"]["id"]
+                            self.custom_field_response = bc_response.json()["data"]["custom_fields"]
+
+                            for x in range(0, len(self.variants)):
+                                self.variants[x].binding_id = self.binding_id
+                                self.variants[x].product_id = self.product_id
+                                self.variants[x].variant_id = bc_response.json()["data"]["variants"][x]["id"]
+
+                            for x in range(0, len(self.images)):
+                                self.images[x].binding_id = self.binding_id
+                                self.images[x].product_id = self.product_id
+                                self.images[x].image_id = bc_response.json()["data"]["images"][x]["id"]
+
+                            return True
+
+                        elif bc_response.status_code == 409:
+                            message = f"Product {self.sku} already exists in BigCommerce."
+                            self.errors.append(message)
+                            self.errors.append(bc_response.content)
+                            print(message)
+                            return False
+
+                        elif bc_response.status_code == 422:
+                            message = f"Product {self.sku} failed to create in BigCommerce. Invalid Fields: Code 422"
+                            self.errors.append(message)
+                            self.errors.append(bc_response.content)
+                            print(message)
+                            return False
+
                         else:
-                            print(f"BigCommerce POST {self.item_no}: FAILED. Code: {response.status_code}")
+                            error_message = (f"BigCommerce POST {self.sku}: "
+                                             f"FAILED! Status Code: {bc_response.status_code}")
+                            self.errors.append(error_message)
+                            self.errors.append(bc_response.content)
+                            print(error_message)
+                            return False
+
+                    def middleware_insert_product():
+                        def stringify_categories():
+                            return ",".join(str(category) for category in self.ecommerce_categories)
+
+                        success = True
+
+                        db = query_engine.QueryEngine()
+
+                        custom_field_ids = []
+                        custom_field_string = "NULL"
+                        if self.custom_field_response:
+                            for entry in self.custom_field_response:
+                                custom_field_ids.append(entry["id"])
+                            custom_field_string = ",".join(str(cust_field) for cust_field in custom_field_ids)
+
+                        for variant in self.variants:
+                            if not variant.is_parent:
+                                custom_field_string = "NULL"
+
+                            insert_query = (f"INSERT INTO {creds.bc_product_table} (ITEM_NO, BINDING_ID, IS_PARENT, "
+                                            f"PRODUCT_ID, VARIANT_ID, CATEG_ID, CUSTOM_FIELDS) VALUES ('{variant.sku}', "
+                                            f"{f"'{self.binding_id}'" if self.binding_id != '' else 'NULL'}, "
+                                            f"{1 if variant.is_parent else 0}, {self.product_id}, "
+                                            f"{variant.variant_id if variant.variant_id != '' else "NULL"}, "
+                                            f"'{stringify_categories()}', '{custom_field_string}')")
+
+                            # MAKE INSERT
+                            try:
+                                insert_product_response = db.query_db(insert_query, commit=True)
+                            except Exception as e:
+                                insert_prod_message = f"Middleware INSERT product {self.sku}: FAILED {e}"
+                                print(insert_prod_message)
+                                self.errors.append(insert_prod_message)
+                                success = False
+                            else:
+                                if insert_product_response["code"] == 200:
+                                    # print(f"SKU: {variant.sku} Binding: {self.binding_id} "
+                                    #       f"Product : inserted into middleware.")
+                                    pass
+
+                                else:
+                                    message = (f"Middleware INSERT product {self.sku}: "
+                                               f"Non 200 response: {insert_product_response}")
+                                    print(message)
+                                    self.errors.append(message)
+                                    self.errors.append(insert_product_response)
+                                    success = False
+
+                        if success:
+                            print(f"Product {self.sku} Binding: {self.binding_id} inserted into middleware.")
+                        else:
+                            # Rollback
+                            # If any of the variants failed to write to the middleware, delete associated skus from
+                            # middleware and BigCommerce
+                            query = f"DELETE FROM {creds.bc_product_table} WHERE PRODUCT_ID = '{self.product_id}'"
+                            db.query_db(query, commit=True)
+                            # Delete product from BigCommerce
+                            url = (f'https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/'
+                                   f'catalog/products/{self.product_id}')
+                            delete_response = requests.delete(url=url, headers=creds.test_bc_api_headers)
+                            if delete_response.status_code == 204:
+                                message = f"Product {self.sku} deleted from BigCommerce."
+                                print(message)
+                                self.errors.append(message)
+                            else:
+                                message = f"Error deleting product {self.sku} from BigCommerce."
+                                print(message)
+                                self.errors.append(message)
+                                self.errors.append(delete_response.content)
+
+                        return success
+
+                    def middleware_insert_images():
+                        success = True
+                        for image in self.images:
+                            query = (f"INSERT INTO {creds.bc_image_table} (IMAGE_NAME, ITEM_NO, FILE_PATH, IMAGE_URL, "
+                                     f"PRODUCT_ID, IMAGE_ID, THUMBNAIL, IMAGE_NUMBER, SORT_ORDER, IS_BINDING_IMAGE, "
+                                     f"BINDING_ID, IS_VARIANT_IMAGE, DESCR, LST_MOD_DT) VALUES ('{image.image_name}', "
+                                     f"{f"'{image.sku}'" if image.sku != '' else 'NULL'}, '{image.file_path}', "
+                                     f"'{image.image_url}', '{image.product_id}', '{image.image_id}', "
+                                     f"'{1 if image.is_thumbnail else 0}', '{image.image_number}', "
+                                     f"'{image.sort_order}', '{image.is_binding_image}', "
+                                     f"{f"'{image.binding_id}'" if image.binding_id != '' else 'NULL'}, "
+                                     f"'{image.is_variant_image}', "
+
+                                     f"{f"'{image.description.replace("'", "''")}'" if
+                                     image.description != '' else 'NULL'}, "
+
+                                     f"'{image.last_modified_dt:%Y-%m-%d %H:%M:%S}')")
+                            try:
+                                insert_image_response = query_engine.QueryEngine().query_db(query, commit=True)
+                            except Exception as e:
+                                message = f"Middleware INSERT image {image.image_name}: FAILED {e}"
+                                print(message)
+                                self.errors.append(message)
+                                success = False
+                            else:
+                                if insert_image_response["code"] == 200:
+                                    # print(f"Image: {image.image_name}: inserted into middleware.")
+                                    pass
+                                else:
+                                    message = (f"Middleware INSERT image {image.image_name}: "
+                                               f"Non 200 response: {insert_image_response}")
+                                    print(message)
+                                    self.errors.append(message)
+                                    self.errors.append(insert_image_response)
+                                    success = False
+                        if success:
+                            print(f"Product {self.sku} Binding: {self.binding_id} Images: inserted into middleware.")
+                        if not success:
+                            # Rollback
+                            # If any of the images failed to write to the middleware, delete associated images from
+                            # middleware and BigCommerce
+                            query = f"DELETE FROM {creds.bc_image_table} WHERE PRODUCT_ID = '{self.product_id}'"
+                            query_engine.QueryEngine().query_db(query, commit=True)
+                            # Delete product from BigCommerce
+                            url = (f'https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/'
+                                   f'catalog/products/{self.product_id}')
+                            delete_response = requests.delete(url=url, headers=creds.test_bc_api_headers)
+                            if delete_response.status_code == 204:
+                                message = f"Product {self.sku} deleted from BigCommerce."
+                                print(message)
+                                self.errors.append(message)
+                            else:
+                                message = f"Error deleting product {self.sku} from BigCommerce."
+                                print(message)
+                                self.errors.append(message)
+                                self.errors.append(delete_response.content)
+
+                        return success
+
+                    if bc_create_product():
+                        if middleware_insert_product():
+                            middleware_insert_images()
+
+                def update():
+
+                    def bc_delete_custom_fields():
+                        url = f"""https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/
+                        catalog/products/{self.product_id}/custom-fields?include_fields='{self.custom_field_ids}"""
+                        response = requests.delete(url=url, headers=creds.test_bc_api_headers)
+                        if response.status_code == 204:
+                            print(f"Custom Fields for Product {self.sku} deleted successfully.")
+                        else:
+                            print(f"Error deleting custom fields for Product {self.sku}.")
                             print(response.content)
                         return response.status_code
 
-                    def middleware_create_product():
-                        """NOT DONE"""
-                        query = f"""
-                        INSERT INTO {creds.bc_product_table}
-                        (ITEM_NO, WEB_TITLE, HTML_DESCRIPTION)
-                        VALUES ('{self.item_no}', '{self.web_title}', '{self.html_description}'),
-                        """
-                        try:
-                            query_engine.QueryEngine().query_db(query, commit=True)
-                        except Exception as e:
-                            print(f"Middleware INSERT product {self.item_no}: FAILED")
-                            print(e)
-                        else:
-                            print(f"Middleware INSERT product {self.item_no}: SUCCESS")
-
-                    if bc_create_product() in [200, 207]:
-                        middleware_create_product()
-
-                def update():
                     def bc_update_product():
                         url = (f'https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/'
                                f'catalog/products/{self.product_id}')
-                        payload = construct_product_payload()
+                        payload = self.construct_product_payload()
                         response = requests.put(url=url, headers=creds.test_bc_api_headers, json=payload)
                         if response.status_code == 200:
-                            print(f"Product {self.item_no} updated successfully.")
+                            print(f"Product {self.sku} updated successfully.")
                         else:
-                            print(f"Error updating product {self.item_no}.")
+                            print(f"Error updating product {self.sku}.")
                             print(response.content)
                         return response.status_code
 
-                    def middleware_update_product():
-                        query = f"""
-                        UPDATE {creds.bc_product_table}
-                        SET WEB_TITLE = '{self.web_title}', 
-                        HTML_DESCRIPTION = '{self.html_description}'
-                        WHERE ITEM_NO = '{self.item_no}'
-                        """
-                        try:
-                            query_engine.QueryEngine().query_db(query, commit=True)
-                        except Exception as e:
-                            print(f"Middleware UPDATE product {self.item_no}: FAILED")
-                            print(e)
-                        else:
-                            print(f"Middleware UPDATE product {self.item_no}: SUCCESS")
-
-                    if bc_update_product() == 200:
-                        middleware_update_product()
+                    # def middleware_update_product():
+                    #     query = f"""
+                    #     UPDATE {creds.bc_product_table}
+                    #     SET WEB_TITLE = '{self.web_title}',
+                    #     HTML_DESCRIPTION = '{self.html_description}'
+                    #     WHERE ITEM_NO = '{self.sku}'
+                    #     """
+                    #     try:
+                    #         query_engine.QueryEngine().query_db(query, commit=True)
+                    #     except Exception as e:
+                    #         print(f"Middleware UPDATE product {self.sku}: FAILED")
+                    #         print(e)
+                    #     else:
+                    #         print(f"Middleware UPDATE product {self.sku}: SUCCESS")
+                    #
+                    # if bc_update_product() == 200:
+                    #     middleware_update_product()
 
                 def get_processing_method():
                     query = f"""SELECT *
                     FROM {creds.bc_product_table}
-                    WHERE ITEM_NO = '{self.item_no}'"""
+                    WHERE ITEM_NO = '{self.sku}'"""
 
                     response = self.db.query_db(query)
-                    if len(response) == 0:
+                    if response is None:
                         # Product Not Found, Create New Product
                         create()
-                    elif len(response) == 1:
-                        # Product Found, Update Product in middleware first with pull from counterpoint
-                        for x in response:
-                            self.lst_maint_dt = x[6]
-                            if self.lst_maint_dt > self.last_sync:
-                                self.binding_id = x[1]
-                                self.is_parent = True if x[2] == 1 else False
-                                self.product_id = x[3]
-                                self.variant_id = x[4]
-                                self.categ_id = x[5]
-                                if self.validate_product():
-                                    update()
                     else:
-                        print("Multiple products found in product table for this SKU.")
+                        # Product Found, Update Product
+                        update()
 
                 get_processing_method()
 
-            def create_bound_product(self):
-                self.bc_create_product()
-                self.middleware_create_product()
-
-            def construct_product_payload():
+            def construct_product_payload(self):
 
                 def get_ecomm_categories():
                     """EDIT!!! YOU NEED TO GET the separate categories from EC_CATEG_LIN for the item and then
@@ -1616,7 +1802,7 @@ class Integrator:
                     each of those items. Finally return the BC category ID for each of those items in a list for
                     payload."""
                     result = []
-                    for category in self.ecommerce_categories:
+                    for category in str(self.ecommerce_categories).split(","):
                         query = f"""
                         SELECT BC_CATEG_ID 
                         FROM SN_CATEG MW
@@ -1647,164 +1833,168 @@ class Integrator:
 
                     if self.custom_botanical_name:
                         result.append({
-                            "id": 1,
                             "name": "Botanical Name",
                             "value": self.custom_botanical_name
                         })
                     if self.custom_climate_zone:
                         result.append({
-                            "id": 2,
                             "name": "Climate Zone",
                             "value": self.custom_climate_zone
                         })
                     if self.custom_plant_type:
                         result.append({
-                            "id": 3,
                             "name": "Plant Type",
                             "value": self.custom_plant_type
                         })
                     if self.custom_type:
                         result.append({
-                            "id": 4,
                             "name": "Type",
                             "value": self.custom_type
                         })
                     if self.custom_height:
                         result.append({
-                            "id": 5,
                             "name": "Height",
                             "value": self.custom_height
                         })
                     if self.custom_width:
                         result.append({
-                            "id": 6,
                             "name": "Width",
                             "value": self.custom_width
                         })
                     if self.custom_sun_exposure:
                         result.append({
-                            "id": 7,
                             "name": "Sun Exposure",
                             "value": self.custom_sun_exposure
                         })
                     if self.custom_bloom_time:
                         result.append({
-                            "id": 8,
                             "name": "Bloom Time",
                             "value": self.custom_bloom_time
                         })
                     if self.custom_bloom_color:
                         result.append({
-                            "id": 9,
                             "name": "Bloom Color",
                             "value": self.custom_bloom_color
                         })
                     if self.custom_attracts_pollinators:
                         result.append({
-                            "id": 10,
                             "name": "Attracts Pollinators",
                             "value": self.custom_attracts_pollinators
                         })
                     if self.custom_growth_rate:
                         result.append({
-                            "id": 11,
                             "name": "Growth Rate",
                             "value": self.custom_growth_rate
                         })
                     if self.custom_deer_resistant:
                         result.append({
-                            "id": 12,
                             "name": "Deer Resistant",
                             "value": self.custom_deer_resistant
                         })
                     if self.custom_soil_type:
                         result.append({
-                            "id": 13,
                             "name": "Soil Type",
                             "value": self.custom_soil_type
                         })
                     if self.custom_color:
                         result.append({
-                            "id": 14,
                             "name": "Color",
                             "value": self.custom_color
                         })
                     if self.custom_size:
                         result.append({
-                            "id": 15,
                             "name": "Size",
                             "value": self.custom_size
                         })
                     return result
 
-                def construct_image_payload(mode: "create"):
+                def construct_image_payload(mode="create"):
                     result = []
                     # Child Images
-                    for child in self.variants:
-                        for image in child.images:
-                            if mode == "create":
-                                result.append({
-                                    "product_id": child.product_id,
-                                    "image_file": image.name,
-                                    "is_thumbnail": image.is_thumbnail,
-                                    "sort_order": image.sort_order,
-                                    "description": image.description,
-                                    "image_url": image.image_url,
-                                })
-                            elif mode == "update":
-                                result.append({
-                                    "product_id": child.product_id,
-                                    "image_file": image.name,
-                                    "is_thumbnail": image.is_thumbnail,
-                                    "sort_order": image.sort_order,
-                                    "description": image.description,
-                                    "image_url": image.image_url,
-                                    "id": image.id,
-                                })
+                    for image in self.images:
+                        if mode == "create":
+                            result.append({
+                                "product_id": self.product_id,
+                                "is_thumbnail": image.is_thumbnail,
+                                "sort_order": image.sort_order,
+                                "description": f"""{image.description}""",
+                                "image_url": image.image_url,
+                            })
+
+                        elif mode == "update":
+                            result.append({
+                                "product_id": self.product_id,
+                                "is_thumbnail": image.is_thumbnail,
+                                "sort_order": image.sort_order,
+                                "description": image.description,
+                                "image_url": image.image_url,
+                                "id": image.id,
+                            })
                     return result
+
+                def construct_video_payload():
+                    return []
+                    # result = []
+                    # for video in self.videos:
+                    #     result.append([
+                    #     {
+                    #         "title": "Writing Great Documentation",
+                    #         "description": "A video about documentation",
+                    #         "sort_order": 1,
+                    #         "type": "youtube",
+                    #         "video_id": "z3fRu9pkuXE",
+                    #         "id": 0,
+                    #         "product_id": 0,
+                    #         "length": "string"
+                    #     }
+                    # ])
 
                 def construct_variant_payload():
                     result = []
-                    id_index = 1
-                    for child in self.variants:
-                        result.append({
-                            "cost_price": child.cost,
-                            "price": child.price_1,
-                            "sale_price": child.price_2,
-                            "retail_price": child.price_1,
-                            "weight": child.weight,
-                            "width": child.width,
-                            "height": child.height,
-                            "depth": child.depth,
-                            "is_free_shipping": child.is_free_shipping,
-                            # "fixed_cost_shipping_price": 0.1,
-                            "purchasing_disabled": child.purchasing_disabled,
-                            "purchasing_disabled_message": child.purchasing_disabled_message,
-                            "upc": "string",
-                            "inventory_level": child.buffered_quantity,
-                            # "inventory_warning_level": 2147483647,
-                            # "bin_picking_number": "string",
-                            # "mpn": "string",
-                            # "gtin": "012345678905",
-                            "product_id": child.product_id,
-                            "id": id_index,
-                            "sku": "string",
-                            "option_values": [
-                                {
-                                    "option_display_name": "Color",
-                                    "label": "Beige"
-                                }
-                            ],
-                            "calculated_price": 0.1,
-                            "calculated_weight": 0
-                        })
+                    if len(self.variants) > 1:
+                        id_index = 1
+                        for child in self.variants:
+                            variant_payload = {
+                                "cost_price": child.cost,
+                                "price": child.price_1,
+                                "image_url": child.variant_image_url,
+                                "sale_price": child.price_2,
+                                "retail_price": child.price_1,
+                                "weight": child.weight,
+                                "width": child.width,
+                                "height": child.height,
+                                "depth": child.depth,
+                                "is_free_shipping": child.is_free_shipping,
+                                # "fixed_cost_shipping_price": 0.1,
+                                "purchasing_disabled": child.purchasing_disabled,
+                                "purchasing_disabled_message": child.purchasing_disabled_message,
+                                "upc": "string",
+                                "inventory_level": child.buffered_quantity,
+                                # "inventory_warning_level": 2147483647,
+                                # "bin_picking_number": "string",
+                                # "mpn": "string",
+                                # "gtin": "012345678905",
+                                "product_id": child.product_id,
+                                "id": id_index,
+                                "sku": child.sku,
+                                "option_values": [
+                                    {
+                                        "option_display_name": "Option",
+                                        "label": child.variant_name
+                                    }
+                                ],
+                                "calculated_price": 0.1,
+                                "calculated_weight": 0.1
+                            }
+                            result.append(variant_payload)
+
                     return result
 
                 payload = {
                     "name": self.web_title,
                     "type": "physical",
-                    "sku": self.binding_id,
-                    "description": self.html_description,
+                    "sku": self.binding_id if self.binding_id != "" else self.sku,
+                    "description": f"""{self.html_description}""",
                     "weight": self.weight,
                     "width": self.width,
                     "depth": self.depth,
@@ -1816,38 +2006,34 @@ class Integrator:
                     "map_price": 0,
                     "tax_class_id": 0,
                     "product_tax_code": "string",
-                    "categories": get_ecomm_categories(),
+                    "categories": self.ecommerce_categories,
                     "brand_id": get_brand_id(),
                     "brand_name": self.brand,
-                    "inventory_level": sum(x.buffered_quantity for x in self.variants),
+                    "inventory_level": self.buffered_quantity,
                     "inventory_warning_level": 10,
                     "inventory_tracking": "variant" if self.is_bound else "product",
                     # "fixed_cost_shipping_price": 0.1,
                     "is_free_shipping": False,
                     "is_visible": self.visible,
                     "is_featured": self.featured,
+                    "sort_order": self.sort_order,
                     "search_keywords": self.search_keywords,
-                    "availability": self.availability,
-                    "gift_wrapping_options_type": "any",
-                    "gift_wrapping_options_list": [
-                        0
-                    ],
+                    "availability": "available" if not self.in_store_only else "disabled",
+                    "gift_wrapping_options_type": "none" if not self.gift_wrap else "any",
+                    # "gift_wrapping_options_list": [
+                    #     0
+                    # ],
                     "condition": "New",
                     "is_condition_shown": True,
                     "page_title": self.meta_title,
                     "meta_description": self.meta_description,
-                    "preorder_release_date": self.preorder_release_date,
+                    # "preorder_release_date": self.preorder_release_date,
                     "preorder_message": self.preorder_message,
-                    "is_preorder_only": self.is_preorder,
+                    "is_preorder_only": self.is_preorder_only,
                     "is_price_hidden": self.is_price_hidden,
                     "price_hidden_label": "string",
-                    # "custom_url": {
-                    #   "url": "string",
-                    #   "is_customized": True,
-                    #   "create_redirect": True
-                    # },
 
-                    "date_last_imported": "string",
+                    # "date_last_imported": "string",
 
                     "custom_fields": construct_custom_fields(),
 
@@ -1860,21 +2046,16 @@ class Integrator:
                         }
                     ],
                     "images": construct_image_payload(),
-                    "videos": [
-                        {
-                            "title": "Writing Great Documentation",
-                            "description": "A video about documentation",
-                            "sort_order": 1,
-                            "type": "youtube",
-                            "video_id": "z3fRu9pkuXE",
-                            "id": 0,
-                            "product_id": 0,
-                            "length": "string"
-                        }
-                    ],
+                    "videos": construct_video_payload(),
                     "variants": construct_variant_payload(),
                 }
-
+                if self.custom_url != "":
+                    print("adding custom url")
+                    payload["custom_url"] = {
+                        "url": f"/{self.custom_url}/",
+                        "is_customized": self.is_custom_url,
+                        "create_redirect": True
+                    }
                 return payload
 
             def middleware_create_product(self):
@@ -1934,96 +2115,100 @@ class Integrator:
                 return list(binding_ids)
 
             class Variant:
-                def __init__(self, sku: str, last_run_date):
-                    print("INITIALIZING VARIANT CLASS FOR ITEM: ", sku)
-                    print()
+
+                def __init__(self, sku, last_run_date):
+
+                    self.sku = sku
+                    # print("INITIALIZING VARIANT CLASS FOR ITEM: ", sku)
                     self.last_run_date = last_run_date
+
                     # Product ID Info
-                    self.item_no: sku
-                    self.binding_id: ""
-                    self.product_id: int = 0
-                    self.variant_id: int = 0
+                    product_data = self.get_variant_details()
 
-                    # Status
-                    self.web_enabled: bool = False
-                    self.web_visible: bool = False
-                    self.purchasing_disabled = False
-                    self.purchasing_disabled_message = ""
-                    self.is_free_shipping = False
-                    self.always_online: bool = False
-                    self.gift_wrap: bool = False
-                    self.brand_cp_cod = ""
-                    self.brand: ""
-                    self.featured: bool = False
-                    self.in_store_only: bool = False
-                    self.sort_order: int = 0
-                    self.is_bound = False
-                    self.is_parent: bool = False
-                    self.web_title: ""
-                    self.variant_name: ""
-                    self.status: ""
-
-                    # Product Pricing
-                    self.reg_price: float = 0
-                    self.price_1: float = 0
-                    self.price_2: float = 0
-                    self.cost: float = 0
-
+                    # Product Information
+                    self.binding_id = product_data['binding_id']
+                    self.is_parent = True if product_data['is_parent'] == 'Y' else False
+                    self.product_id: int = product_data['product_id']
+                    self.variant_id: int = product_data['variant_id']
+                    self.web_title: str = product_data['web_title']
+                    self.variant_name = product_data['variant_name']
+                    self.status = product_data['status']
+                    self.price_1 = float(product_data['price_1'])
+                    self.cost = float(product_data['cost'])
+                    self.price_2 = float(product_data['price_2'])
                     # Inventory Levels
-                    self.quantity_available: int = 0
-                    self.buffer: int = 0
-                    self.buffered_quantity: int = 0
-
-                    # Product Details
-                    self.item_type = ""
+                    self.quantity_available = product_data['quantity_available']
+                    self.buffer = product_data['buffer']
+                    self.buffered_quantity = self.quantity_available - self.buffer
+                    if self.buffered_quantity < 0:
+                        self.buffered_quantity = 0
                     self.weight = 0.1
                     self.width = 0.1
                     self.height = 0.1
                     self.depth = 0.1
-                    self.parent_category = ""
-                    self.sub_category = ""
-                    self.description: ""
-                    self.long_description: ""
-                    self.search_keywords: ""
-                    self.preorder_message: ""
-                    self.meta_title: ""
-                    self.meta_description: ""
-                    self.html_description: ""
-
-                    # Photo Alt Text
-                    self.alt_text_1: ""
-                    self.alt_text_2: ""
-                    self.alt_text_3: ""
-                    self.alt_text_4: ""
+                    self.in_store_only = product_data['in_store_only']
+                    self.sort_order = product_data['sort_order']
+                    self.is_price_hidden = False
+                    # Purchasing Disabled is for Variants Only
+                    self.purchasing_disabled = False
+                    self.purchasing_disabled_message = ""
+                    # Brand
+                    self.brand = product_data['brand']
+                    self.html_description = product_data['html_description']
+                    self.search_keywords = product_data['search_keywords']
+                    self.meta_title = product_data['meta_title']
+                    self.meta_description = product_data['meta_description']
+                    self.visible: bool = product_data['web_visible']
+                    self.featured: bool = product_data['is_featured']
+                    self.gift_wrap: bool = product_data['gift_wrap']
+                    self.is_free_shipping = False
+                    self.is_preorder = False
+                    self.preorder_release_date = datetime(1970, 1, 1)
+                    self.preorder_message = product_data['preorder_message']
+                    self.alt_text_1 = product_data['alt_text_1']
+                    self.alt_text_2 = product_data['alt_text_2']
+                    self.alt_text_3 = product_data['alt_text_3']
+                    self.alt_text_4 = product_data['alt_text_4']
 
                     # Custom Fields
-                    self.custom_botanical_name: ""
-                    self.custom_climate_zone: ""
-                    self.custom_plant_type: ""
-                    self.custom_type: ""
-                    self.custom_height: ""
-                    self.custom_width: ""
-                    self.custom_sun_exposure: ""
-                    self.custom_bloom_time: ""
-                    self.custom_bloom_color: ""
-                    self.custom_attracts_pollinators: ""
-                    self.custom_growth_rate: ""
-                    self.custom_deer_resistant: ""
-                    self.custom_soil_type: ""
-                    self.custom_color: ""
-                    self.custom_size: ""
+                    self.custom_botanical_name = product_data['custom_botanical_name']
+                    self.custom_climate_zone = product_data['custom_climate_zone']
+                    self.custom_plant_type = product_data['custom_plant_type']
+                    self.custom_type = product_data['custom_type']
+                    self.custom_height = product_data['custom_height']
+                    self.custom_width = product_data['custom_width']
+                    self.custom_sun_exposure = product_data['custom_sun_exposure']
+                    self.custom_bloom_time = product_data['custom_bloom_time']
+                    self.custom_bloom_color = product_data['custom_bloom_color']
+                    self.custom_attracts_pollinators = product_data['custom_attracts_pollinators']
+                    self.custom_growth_rate = product_data['custom_growth_rate']
+                    self.custom_deer_resistant = product_data['custom_deer_resistant']
+                    self.custom_soil_type = product_data['custom_soil_type']
+                    self.custom_color = product_data['custom_color']
+                    self.custom_size = product_data['custom_size']
+                    self.custom_url = product_data['custom_url']
+                    self.custom_url = "-".join(str(re.sub('[^A-Za-z0-9 ]+', '', self.custom_url)).split(" "))
+                    self.is_custom_url = product_data['is_custom_url']
+                    self.custom_field_ids = product_data['custom_field_ids']
+
                     # Product Images
                     self.images = []
+
                     # Dates
                     self.lst_maint_dt = datetime(1970, 1, 1)
                     # E-Commerce Categories
-                    self.ecommerce_categories = []
+                    self.ecommerce_categories = product_data['categories']
                     # Product Schema (i.e. Bound, Single, Variant.)
                     self.item_schema = ""
                     # Processing Method
                     self.processing_method = ""
-                    # Initialize Product Details
-                    self.get_product_details()
+
+                    # Initialize Images
+                    self.get_local_product_images()
+                    if len(self.images) > 0:
+                        self.variant_image_url = self.images[0].image_url
+                    else:
+                        self.variant_image_url = ""
 
                 def __str__(self):
                     result = ""
@@ -2031,119 +2216,125 @@ class Integrator:
                         result += f"{k}: {v}\n"
                     return result
 
-                def get_product_details(self):
+                def get_variant_details(self):
+                    # Get all products that have been updated since the last sync date
+
+                    """Get a list of all products that have been updated since the last run date.
+                    Will check IM_ITEM. IM_PRC, IM_INV, EC_ITEM_DESCR, EC_CATEG_ITEM, and Image tables
+                    have an after update Trigger implemented for updating IM_ITEM.LST_MAINT_DT."""
+                    query = f""" select ISNULL(ITEM.USR_PROF_ALPHA_16, '') as 'Binding ID(0)', 
+                    ITEM.IS_ECOMM_ITEM as 'Web Enabled(1)', ISNULL(ITEM.IS_ADM_TKT, 'N') as 'Is Parent(2)', 
+                    ISNULL(BC_PROD.PRODUCT_ID, '') as 'Product ID (3)', 
+                    ISNULL(BC_PROD.VARIANT_ID, '') as 'Variant ID(4)', ITEM.USR_CPC_IS_ENABLED as 'Web Visible(5)', 
+                    ITEM.USR_ALWAYS_ONLINE as 'ALWAYS ONLINE(6)', ITEM.IS_FOOD_STMP_ITEM as 'GIFT_WRAP(7)', 
+                    ITEM.PROF_COD_1 as 'BRAND_CP_COD(8)', ITEM.ECOMM_NEW as 'IS_FEATURED(9)', 
+                    ITEM.USR_IN_STORE_ONLY as 'IN_STORE_ONLY(10)', ITEM.USR_PROF_ALPHA_27 as 'SORT ORDER(11)', 
+                    ISNULL(ITEM.ADDL_DESCR_1, '') as 'WEB_TITLE(12)', ISNULL(ITEM.ADDL_DESCR_2, '') as 'META_TITLE(13)', 
+                    ISNULL(USR_PROF_ALPHA_21, '') as 'META_DESCRIPTION(14)', 
+                    ISNULL(ITEM.USR_PROF_ALPHA_17, '') as 'VARIANT NAME(15)', 
+                    ITEM.STAT as 'STATUS(16)', ISNULL(ITEM.REG_PRC, 0) as 'REG_PRC(17)', 
+                    ISNULL(ITEM.PRC_1, 0) as 'PRC_1(18)', ISNULL(PRC.PRC_2, 0) as 'PRC_2(19)', 
+                    CAST(ISNULL(INV.QTY_AVAIL, 0) as INTEGER) as 'QUANTITY_AVAILABLE(20)', CAST(ISNULL(ITEM.PROF_NO_1, 0) as INTEGER) as 'BUFFER(21)', 
+                    ITEM.ITEM_TYP as 'ITEM_TYPE(22)', ITEM.LONG_DESCR as 'LONG_DESCR(23)', 
+                    ISNULL(ITEM.USR_PROF_ALPHA_26, '') as 'SEARCH_KEYWORDS(24)', ITEM.USR_PROF_ALPHA_19 as 'PREORDER_MESSAGE(25)', 
+                    ISNULL(EC_ITEM_DESCR.HTML_DESCR, '') as 'HTML_DESCRIPTION(26)', ISNULL(USR_PROF_ALPHA_22, '') as 'ALT_TEXT_1(27)', 
+                    ISNULL(USR_PROF_ALPHA_23, '') as 'ALT_TEXT_2(28)', ISNULL(USR_PROF_ALPHA_24, '') as 'ALT_TEXT_3(29)', 
+                    ISNULL(USR_PROF_ALPHA_25, '') as 'ALT_TEXT_4(30)', ISNULL(PROF_ALPHA_1, '') as 'BOTANICAL_NAM(31)', 
+                    ISNULL(PROF_ALPHA_2, '') as 'CLIMATE_ZONE(32)', ISNULL(PROF_ALPHA_3, '') as 'PLANT_TYPE(33)', 
+                    ISNULL(PROF_ALPHA_4, '') as 'TYPE(34)', ISNULL(PROF_ALPHA_5, '') as 'HEIGHT(35)', 
+                    ISNULL(USR_PROF_ALPHA_6, '') as 'WIDTH(36)', ISNULL(USR_PROF_ALPHA_7, '') as 'SUN_EXPOSURE(37)', 
+                    ISNULL(USR_PROF_ALPHA_8, '') as 'BLOOM_TIME(38)', ISNULL(USR_PROF_ALPHA_9, '') as 'BLOOM_COLOR(39)', 
+                    ISNULL(USR_PROF_ALPHA_10, '') as 'ATTRACTS_POLLINATORS(40)', 
+                    ISNULL(USR_PROF_ALPHA_11, '') as 'GROWTH_RATE(41)', 
+                    ISNULL(USR_PROF_ALPHA_12, '') as 'DEER_RESISTANT(42)', ISNULL(USR_PROF_ALPHA_13, '') as 'SOIL_TYPE(43)', 
+                    ISNULL(USR_PROF_ALPHA_14, '') as 'COLOR(44)', ISNULL(USR_PROF_ALPHA_15, '') as 'SIZE(45)', 
+                    ITEM.LST_MAINT_DT as 'LST_MAINT_DT(46)', ISNULL(ITEM.LST_COST, 0) as 'LAST_COST(47)', 
+                    ITEM.ITEM_NO as 'ITEM_NO (48)', stuff((
+                                                        select ',' + EC_CATEG_ITEM.CATEG_ID
+                                                        from EC_CATEG_ITEM
+                                                        where EC_CATEG_ITEM.ITEM_NO =ITEM.ITEM_NO
+                                                        for xml path('')),1,1,'') as categories, 
+                    ISNULL(PROD.CUSTOM_FIELDS, '') as custom_fields
+                                                        
+                    FROM IM_ITEM ITEM
+                    LEFT OUTER JOIN IM_PRC PRC ON ITEM.ITEM_NO=PRC.ITEM_NO
+                    LEFT OUTER JOIN IM_INV INV ON ITEM.ITEM_NO=INV.ITEM_NO
+                    LEFT OUTER JOIN EC_ITEM_DESCR ON ITEM.ITEM_NO=EC_ITEM_DESCR.ITEM_NO
+                    LEFT OUTER JOIN {creds.bc_product_table} BC_PROD ON ITEM.ITEM_NO=BC_PROD.ITEM_NO
+                    LEFT OUTER JOIN IM_ITEM_PROF_COD COD ON ITEM.PROF_COD_1 = COD.PROF_COD
+                    WHERE ITEM.ITEM_NO = '{self.sku}'"""
                     db = query_engine.QueryEngine()
-
-                    query = f""" select ITEM.USR_PROF_ALPHA_16, ITEM.IS_ECOMM_ITEM, ITEM.IS_ADM_TKT, 
-                    ITEM.USR_CPC_IS_ENABLED, ITEM.USR_ALWAYS_ONLINE, ITEM.IS_FOOD_STMP_ITEM, ITEM.PROF_COD_1, 
-                    ITEM.ECOMM_NEW, ITEM.USR_IN_STORE_ONLY, ITEM.USR_PROF_ALPHA_27, ITEM.ADDL_DESCR_1, 
-                    ITEM.USR_PROF_ALPHA_17, ITEM.REG_PRC, ITEM.PRC_1, PRC.PRC_2, ISNULL(INV.QTY_AVAIL, 0), 
-                    ISNULL(ITEM.PROF_NO_1, 0), ITEM.ITEM_TYP,ITEM.CATEG_COD, ITEM.SUBCAT_COD, ITEM.DESCR, 
-                    ITEM.LONG_DESCR, ITEM.USR_PROF_ALPHA_26, ITEM.USR_PROF_ALPHA_19, ITEM.ADDL_DESCR_2, 
-                    USR_PROF_ALPHA_21, EC_ITEM_DESCR.HTML_DESCR, ITEM.STAT, USR_PROF_ALPHA_22, USR_PROF_ALPHA_23, 
-                    USR_PROF_ALPHA_24, USR_PROF_ALPHA_25, PROF_ALPHA_1, PROF_ALPHA_2, PROF_ALPHA_3, PROF_ALPHA_4, 
-                    PROF_ALPHA_5, USR_PROF_ALPHA_6, USR_PROF_ALPHA_7, USR_PROF_ALPHA_8, USR_PROF_ALPHA_9, 
-                    USR_PROF_ALPHA_10, USR_PROF_ALPHA_11, USR_PROF_ALPHA_12, USR_PROF_ALPHA_13, USR_PROF_ALPHA_14, 
-                    USR_PROF_ALPHA_15, ITEM.LST_MAINT_DT, INV.LST_MAINT_DT, PRC.LST_MAINT_DT,
-                    EC_ITEM_DESCR.LST_MAINT_DT, EC_CATEG_ITEM.LST_MAINT_DT, EC_CATEG_ITEM.CATEG_ID, ITEM.LST_COST, 
-                    COD.DESCR
-
-                   FROM IM_ITEM ITEM
-
-                   INNER JOIN IM_PRC PRC ON ITEM.ITEM_NO=PRC.ITEM_NO
-
-                   LEFT OUTER JOIN IM_INV INV ON ITEM.ITEM_NO=INV.ITEM_NO
-                   LEFT OUTER JOIN EC_ITEM_DESCR ON ITEM.ITEM_NO=EC_ITEM_DESCR.ITEM_NO
-                   LEFT OUTER JOIN EC_CATEG_ITEM ON ITEM.ITEM_NO=EC_CATEG_ITEM.ITEM_NO
-                   LEFT OUTER JOIN EC_CATEG ON EC_CATEG.CATEG_ID=EC_CATEG_ITEM.CATEG_ID
-                   INNER JOIN IM_ITEM_PROF_COD COD ON ITEM.PROF_COD_1 = COD.PROF_COD
-
-
-                   WHERE ITEM.ITEM_NO = '{self.item_no}' and ITEM.IS_ECOMM_ITEM = 'Y'
-                   """
-                    response = db.query_db(query)
-                    if response is not None:
-                        self.binding_id: response[0][0] if response[0][0] else ""
-                        self.is_bound: bool = True if self.binding_id != "" else False
-
-                        # self.product_id: int = 0 This could be in separate table or would need to add columns to
-                        # IM_ITEM self.variant_id: int = 0 This could be in separate table or would need to add
-                        # columns to IM_ITEM
-
-                        # Status
-                        self.web_enabled: bool = True if response[0][1] == 'Y' else False
-                        self.is_parent: bool = True if response[0][2] == 'Y' else False
-                        self.web_visible: bool = True if response[0][3] == 'Y' else False
-                        self.always_online: bool = True if response[0][4] == 'Y' else False
-                        self.gift_wrap: bool = True if response[0][5] == 'Y' else False
-                        self.brand_cp_cod: response[0][6] if response[0][6] else ""
-                        self.brand: response[0][54] if response[0][54] else ""
-                        self.featured: bool = True if response[0][7] == 'Y' else False
-                        self.in_store_only: bool = True if response[0][8] == 'Y' else False
-                        self.sort_order: int = int(response[0][9]) if response[0][9] else 0
-                        self.web_title: response[0][10] if response[0][10] else ""
-                        self.variant_name: response[0][11] if response[0][11] else ""
-                        self.status: response[0][27] if response[0][27] else ""
-
-                        # Product Pricing
-                        self.reg_price: float = response[0][12] if response[0][12] else 0
-                        self.price_1: float = response[0][13] if response[0][13] else 0
-                        self.price_2: float = response[0][14] if response[0][14] else 0
-
-                        # Inventory Levels
-                        self.quantity_available: int = int(response[0][15]) if response[0][15] else 0
-                        self.buffer: int = int(response[0][16]) if response[0][16] else 0
-                        self.buffered_quantity: int = self.quantity_available - self.buffer
-
-                        # Product Details
-                        self.item_type: response[0][17] if response[0][17] else ""
-                        self.parent_category = response[0][18] if response[0][18] else ""
-                        self.sub_category = response[0][19] if response[0][19] else ""
-                        self.description: response[0][20] if response[0][20] else ""
-                        self.long_description: response[0][21] if response[0][21] else ""
-                        self.search_keywords: response[0][22] if response[0][22] else ""
-                        self.preorder_message: response[0][23] if response[0][23] else ""
-                        self.meta_title: response[0][24] if response[0][24] else ""
-                        self.meta_description: response[0][25] if response[0][25] else ""
-                        self.html_description: response[0][26] if response[0][26] else ""
-                        self.alt_text_1: response[0][28] if response[0][28] else ""
-                        self.alt_text_2: response[0][29] if response[0][29] else ""
-                        self.alt_text_3: response[0][30] if response[0][30] else ""
-                        self.alt_text_4: response[0][31] if response[0][31] else ""
-
-                        # Custom Fields
-                        self.custom_botanical_name: response[0][32] if response[0][32] else ""
-                        self.custom_climate_zone: response[0][33] if response[0][33] else ""
-                        self.custom_plant_type: response[0][34] if response[0][34] else ""
-                        self.custom_type: response[0][35] if response[0][35] else ""
-                        self.custom_height: response[0][36] if response[0][36] else ""
-                        self.custom_width: response[0][37] if response[0][37] else ""
-                        self.custom_sun_exposure: response[0][38] if response[0][38] else ""
-                        self.custom_bloom_time: response[0][39] if response[0][39] else ""
-                        self.custom_bloom_color: response[0][40] if response[0][40] else ""
-                        self.custom_attracts_pollinators: response[0][41] if response[0][41] else ""
-                        self.custom_growth_rate: response[0][42] if response[0][42] else ""
-                        self.custom_deer_resistant: response[0][43] if response[0][43] else ""
-                        self.custom_soil_type: response[0][44] if response[0][44] else ""
-                        self.custom_color: response[0][45] if response[0][45] else ""
-                        self.custom_size: response[0][46] if response[0][46] else ""
-                        # Dates
-                        self.get_last_maintained_dates(response[0][47:52])
-                        # E-Commerce Categories
-                        for x in response:
-                            if x is not None:
-                                self.ecommerce_categories.append(x[52])
-                        # Last Cost
-                        self.cost = response[0][53] if response[0][53] else 0
-
-                        # Product Images
-                        self.get_local_product_images()
+                    item = db.query_db(query)
+                    if item is not None:
+                        details = {
+                            'sku': item[0][48],
+                            'binding_id': item[0][0],
+                            'is_bound': True if item[0][0] else False,
+                            'web_enabled': True if item[0][1] == 'Y' else False,
+                            'is_parent': item[0][2],
+                            'product_id': item[0][3],
+                            'variant_id': item[0][4],
+                            'web_visible': True if item[0][5] == 'Y' else False,
+                            'always_online': True if item[0][6] == 'Y' else False,
+                            'gift_wrap': True if item[0][7] == 'Y' else False,
+                            'brand': item[0][8],
+                            'is_featured': True if item[0][9] == 'Y' else False,
+                            'in_store_only': True if item[0][10] == 'Y' else False,
+                            'sort_order': int(item[0][11]) if item[0][11] else 0,
+                            'web_title': item[0][12],
+                            'meta_title': item[0][13],
+                            'meta_description': item[0][14],
+                            'variant_name': item[0][15],
+                            'status': item[0][16],
+                            # Product Pricing
+                            'reg_price': item[0][17],
+                            'price_1': item[0][18],
+                            'price_2': item[0][19],
+                            # # Inventory Levels
+                            'quantity_available': item[0][20],
+                            'buffer': item[0][21],
+                            # Additional Details
+                            'item_type': item[0][22],
+                            'long_description': item[0][23],
+                            'search_keywords': item[0][24],
+                            'preorder_message': item[0][25],
+                            'html_description': item[0][26],
+                            'alt_text_1': item[0][27],
+                            'alt_text_2': item[0][28],
+                            'alt_text_3': item[0][29],
+                            'alt_text_4': item[0][30],
+                            # Custom Fields
+                            'custom_botanical_name': item[0][31],
+                            'custom_climate_zone': item[0][32],
+                            'custom_plant_type': item[0][33],
+                            'custom_type': item[0][34],
+                            'custom_height': item[0][35],
+                            'custom_width': item[0][36],
+                            'custom_sun_exposure': item[0][37],
+                            'custom_bloom_time': item[0][38],
+                            'custom_bloom_color': item[0][39],
+                            'custom_attracts_pollinators': item[0][40],
+                            'custom_growth_rate': item[0][41],
+                            'custom_deer_resistant': item[0][42],
+                            'custom_soil_type': item[0][43],
+                            'custom_color': item[0][44],
+                            'custom_size': item[0][45],
+                            'lst_maint_dt': item[0][46],
+                            'cost': item[0][47],
+                            'categories': str(item[0][49]).split(',') if item[0][49] else [],
+                            'custom_url': '',
+                            'is_custom_url': False,
+                            'custom_field_ids': item[0][50]
+                        }
+                        # for x in details:
+                        #     print(f"{x}: {details[x]}")
+                        return details
 
                 def validate_product(self):
-                    print(f"Validating product {self.item_no}")
+                    print(f"Validating product {self.sku}")
                     # Test for missing variant name
                     if self.variant_name == "":
-                        print(f"Product {self.item_no} is missing a variant name. Validation failed.")
+                        print(f"Product {self.sku} is missing a variant name. Validation failed.")
                         return False
                     # Test for missing price 1
                     if self.price_1 == 0:
@@ -2152,153 +2343,153 @@ class Integrator:
 
                     return True
 
-                def process(self):
-                    def get_processing_method() -> str:
-                        # Check for delete needed
-                        pass
-
-                    def create():
-                        def bc_create_variant():
-                            """Create product in BigCommerce. For this implementation, this is a single product with
-                            no variants"""
-                            url = (f'https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/'
-                                   f'catalog/products/{self.product_id}/variants')
-                            payload = self.construct_variant_payload()
-                            response = requests.post(url=url, headers=creds.test_bc_api_headers, json=payload)
-                            if response.status_code in [200, 207]:
-                                print(f"BigCommerce POST {self.item_no}: SUCCESS. Code: {response.status_code}")
-                            else:
-                                print(f"BigCommerce POST {self.item_no}: FAILED. Code: {response.status_code}")
-                                print(response.content)
-
-                            return response.status_code
-
-                        def middleware_create_variant():
-                            """NOT DONE"""
-                            query = f"""
-                                   INSERT INTO {creds.bc_product_table}
-                                   (ITEM_NO, BINDING_ID, IS_PARENT, PRODUCT_ID, VARIANT_ID, LST_MAINT_DT
-                                   VALUES ('{self.item_no}', '{self.binding_id}', '{self.is_parent}', 
-                                   '{self.product_id}', '{self.variant_id}'), '{self.lst_maint_dt}',
-                                   """
-                            try:
-                                query_engine.QueryEngine().query_db(query, commit=True)
-                            except Exception as e:
-                                print(f"Middleware INSERT product {self.item_no}: FAILED")
-                                print(e)
-                            else:
-                                print(f"Middleware INSERT product {self.item_no}: SUCCESS")
-
-                        if create() in [200, 207]:
-                            middleware_create_variant()
-
-                    def update():
-                        def bc_update_variant():
-                            url = (f'https://api.bigcommerce.com/stores/{store_hash}/v3/'
-                                   f'catalog/products/{product_id}/variants/{variant_id}')
-                            payload = self.construct_product_payload()
-                            response = requests.put(url=url, headers=creds.test_bc_api_headers, json=payload)
-                            if response.status_code == 200:
-                                print(f"Product {self.item_no} updated successfully.")
-                            else:
-                                print(f"Error updating product {self.item_no}.")
-                                print(response.content)
-                            return response.status_code
-
-                        def middleware_update_variant():
-                            query = f"""
-                                   UPDATE {creds.bc_product_table}
-                                   SET WEB_TITLE = '{self.web_title}', DESCRIPTION = '{self.description}', 
-                                   HTML_DESCRIPTION = '{self.html_description}'
-                                   WHERE ITEM_NO = '{self.item_no}'
-                                   """
-                            try:
-                                query_engine.QueryEngine().query_db(query, commit=True)
-                            except Exception as e:
-                                print(f"Middleware UPDATE product {self.item_no}: FAILED")
-                                print(e)
-                            else:
-                                print(f"Middleware UPDATE product {self.item_no}: SUCCESS")
-
-                        if bc_update_variant() == 200:
-                            middleware_update_variant()
-
-                    def delete():
-                        def bc_delete_variant():
-                            # Delete product VARIANT from BigCommerce
-                            if self.is_bound and not self.is_parent:
-                                url = (
-                                    f'https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/'
-                                    f'catalog/products/{self.product_id}'
-                                    f'/variants/{self.variant_id}')
-                            else:
-                                # This will delete single products and bound parent products
-                                url = (f'https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/'
-                                       f'catalog/products/{self.product_id}')
-                            try:
-                                response = requests.delete(url=url, headers=creds.test_bc_api_headers)
-                            except Exception as e:
-                                print(f"Error deleting product {self.item_no}: {e}")
-                            else:
-                                if response.status_code == 204:
-                                    print(f"Product {self.item_no} deleted successfully.")
-                                    return response.json()
-
-                        def middleware_delete_product():
-                            # First delete product images
-                            for image in self.images:
-                                image.delete()
-                            # Delete product from product table
-                            query = f"DELETE FROM {creds.bc_product_table} WHERE ITEM_NO = '{self.item_no}'"
-                            query_engine.QueryEngine().query_db(query, commit=True)
-
-                        bc_delete_variant()
-                        middleware_delete_variant()
-
-                    method = get_processing_method()
-
-                    if method == "delete":
-                        delete()
-                    elif method == "create":
-                        create()
-                    elif method == "update":
-                        update()
-
-                def construct_variant_payload(self):
-                    variants = [{
-                        "cost_price": self.cost,
-                        "price": self.price_1,
-                        "sale_price": self.price_2,
-                        "retail_price": self.price_1,
-                        "weight": self.weight,
-                        "width": self.width,
-                        "height": self.height,
-                        "depth": self.depth,
-                        "is_free_shipping": self.is_free_shipping,
-                        # "fixed_cost_shipping_price": 0.1,
-                        "purchasing_disabled": self.purchasing_disabled,
-                        "purchasing_disabled_message": self.purchasing_disabled_message,
-                        # "upc": self.upc,
-                        "inventory_level": self.buffered_quantity,
-                        # "inventory_warning_level": self.inventory_warning_level,
-                        # "bin_picking_number": self.bin_picking_number,
-                        "image_url": self.images[0].image_url,
-                        # "gtin": self.gtin,
-                        # "mpn": self.mpn,
-                        "product_id": self.product_id,
-                        "sku": self.item_no,
-                        "option_values": [
-                            {
-                                "option_display_name": "Option",
-                                "label": self.variant_name,
-                            }
-                        ]
-                    }]
-                    return variants
-
-                def get_product_schema(self):
-                    if self.is_bound and not self.is_parent:
-                        self.item_schema = "variant"
+                # def process(self):
+                #     def get_processing_method() -> str:
+                #         # Check for delete needed
+                #         pass
+                #
+                #     def create():
+                #         def bc_create_variant():
+                #             """Create product in BigCommerce. For this implementation, this is a single product with
+                #             no variants"""
+                #             url = (f'https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/'
+                #                    f'catalog/products/{self.product_id}/variants')
+                #             payload = self.construct_variant_payload()
+                #             response = requests.post(url=url, headers=creds.test_bc_api_headers, json=payload)
+                #             if response.status_code in [200, 207]:
+                #                 print(f"BigCommerce POST {self.sku}: SUCCESS. Code: {response.status_code}")
+                #             else:
+                #                 print(f"BigCommerce POST {self.sku}: FAILED. Code: {response.status_code}")
+                #                 print(response.content)
+                #
+                #             return response.status_code
+                #
+                #         def middleware_create_variant():
+                #             """NOT DONE"""
+                #             query = f"""
+                #                    INSERT INTO {creds.bc_product_table}
+                #                    (ITEM_NO, BINDING_ID, IS_PARENT, PRODUCT_ID, VARIANT_ID, LST_MAINT_DT
+                #                    VALUES ('{self.item_no}', '{self.binding_id}', '{self.is_parent}',
+                #                    '{self.product_id}', '{self.variant_id}'), '{self.lst_maint_dt}',
+                #                    """
+                #             try:
+                #                 query_engine.QueryEngine().query_db(query, commit=True)
+                #             except Exception as e:
+                #                 print(f"Middleware INSERT product {self.item_no}: FAILED")
+                #                 print(e)
+                #             else:
+                #                 print(f"Middleware INSERT product {self.item_no}: SUCCESS")
+                #
+                #         if create() in [200, 207]:
+                #             middleware_create_variant()
+                #
+                #     def update():
+                #         def bc_update_variant():
+                #             url = (f'https://api.bigcommerce.com/stores/{store_hash}/v3/'
+                #                    f'catalog/products/{product_id}/variants/{variant_id}')
+                #             payload = self.construct_product_payload()
+                #             response = requests.put(url=url, headers=creds.test_bc_api_headers, json=payload)
+                #             if response.status_code == 200:
+                #                 print(f"Product {self.item_no} updated successfully.")
+                #             else:
+                #                 print(f"Error updating product {self.item_no}.")
+                #                 print(response.content)
+                #             return response.status_code
+                #
+                #         def middleware_update_variant():
+                #             query = f"""
+                #                    UPDATE {creds.bc_product_table}
+                #                    SET WEB_TITLE = '{self.web_title}', DESCRIPTION = '{self.description}',
+                #                    HTML_DESCRIPTION = '{self.html_description}'
+                #                    WHERE ITEM_NO = '{self.item_no}'
+                #                    """
+                #             try:
+                #                 query_engine.QueryEngine().query_db(query, commit=True)
+                #             except Exception as e:
+                #                 print(f"Middleware UPDATE product {self.item_no}: FAILED")
+                #                 print(e)
+                #             else:
+                #                 print(f"Middleware UPDATE product {self.item_no}: SUCCESS")
+                #
+                #         if bc_update_variant() == 200:
+                #             middleware_update_variant()
+                #
+                #     def delete():
+                #         def bc_delete_variant():
+                #             # Delete product VARIANT from BigCommerce
+                #             if self.is_bound and not self.is_parent:
+                #                 url = (
+                #                     f'https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/'
+                #                     f'catalog/products/{self.product_id}'
+                #                     f'/variants/{self.variant_id}')
+                #             else:
+                #                 # This will delete single products and bound parent products
+                #                 url = (f'https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/'
+                #                        f'catalog/products/{self.product_id}')
+                #             try:
+                #                 response = requests.delete(url=url, headers=creds.test_bc_api_headers)
+                #             except Exception as e:
+                #                 print(f"Error deleting product {self.item_no}: {e}")
+                #             else:
+                #                 if response.status_code == 204:
+                #                     print(f"Product {self.item_no} deleted successfully.")
+                #                     return response.json()
+                #
+                #         def middleware_delete_product():
+                #             # First delete product images
+                #             for image in self.images:
+                #                 image.delete()
+                #             # Delete product from product table
+                #             query = f"DELETE FROM {creds.bc_product_table} WHERE ITEM_NO = '{self.item_no}'"
+                #             query_engine.QueryEngine().query_db(query, commit=True)
+                #
+                #         bc_delete_variant()
+                #         middleware_delete_variant()
+                #
+                #     method = get_processing_method()
+                #
+                #     if method == "delete":
+                #         delete()
+                #     elif method == "create":
+                #         create()
+                #     elif method == "update":
+                #         update()
+                #
+                # def construct_variant_payload(self):
+                #     variants = [{
+                #         "cost_price": self.cost,
+                #         "price": self.price_1,
+                #         "sale_price": self.price_2,
+                #         "retail_price": self.price_1,
+                #         "weight": self.weight,
+                #         "width": self.width,
+                #         "height": self.height,
+                #         "depth": self.depth,
+                #         "is_free_shipping": self.is_free_shipping,
+                #         # "fixed_cost_shipping_price": 0.1,
+                #         "purchasing_disabled": self.purchasing_disabled,
+                #         "purchasing_disabled_message": self.purchasing_disabled_message,
+                #         # "upc": self.upc,
+                #         "inventory_level": self.buffered_quantity,
+                #         # "inventory_warning_level": self.inventory_warning_level,
+                #         # "bin_picking_number": self.bin_picking_number,
+                #         "image_url": self.images[0].image_url,
+                #         # "gtin": self.gtin,
+                #         # "mpn": self.mpn,
+                #         "product_id": self.product_id,
+                #         "sku": self.sku,
+                #         "option_values": [
+                #             {
+                #                 "option_display_name": "Option",
+                #                 "label": self.variant_name,
+                #             }
+                #         ]
+                #     }]
+                #     return variants
+                #
+                # def get_product_schema(self):
+                #     if self.is_bound and not self.is_parent:
+                #         self.item_schema = "variant"
 
                 def get_last_maintained_dates(self, dates):
                     """Get last maintained dates for product"""
@@ -2309,13 +2500,21 @@ class Integrator:
 
                 def get_local_product_images(self):
                     """Get local image information for product"""
+                    product_images = []
                     photo_path = creds.photo_path
                     list_of_files = os.listdir(photo_path)
                     if list_of_files is not None:
                         for x in list_of_files:
-                            if x.split(".")[0].split("^")[0] == self.item_no:
-                                self.images.append(
-                                    Integrator.Catalog.Product.Image(x, last_run_time=self.last_run_date))
+                            if x.split(".")[0].split("^")[0] == self.sku:
+                                product_images.append(x)
+                    total_images = len(product_images)
+                    if total_images > 0:
+                        # print(f"Found {total_images} product images for item: {self.sku}")
+                        for image in product_images:
+                            img = Integrator.Catalog.Product.Image(image_name=image,
+                                                                   last_run_time=self.last_run_date)
+                            if img.last_modified_dt > self.last_run_date and img.validate():
+                                self.images.append(img)
 
                 def get_bc_product_images(self):
                     """Get BigCommerce image information for product's images"""
@@ -2441,7 +2640,7 @@ class Integrator:
                     payload = {
                         "name": self.web_title,
                         "type": "physical",
-                        "sku": self.item_no,
+                        "sku": self.sku,
                         "description": self.html_description,
                         "weight": self.weight,
                         "width": self.width,
@@ -2466,7 +2665,7 @@ class Integrator:
                         "is_visible": self.web_visible,
                         "is_featured": self.featured,
                         "search_keywords": self.search_keywords,
-                        "availability": "available",
+                        "availability": "available" if not self.in_store_only else "disabled",
                         "gift_wrapping_options_type": "any",
                         "gift_wrapping_options_list": [
                             0
@@ -2522,34 +2721,15 @@ class Integrator:
                         1970, 1, 1)
 
             class Image:
-                @staticmethod
-                def get_all_binding_ids():
-                    binding_ids = set()
-                    db = query_engine.QueryEngine()
-                    query = f"""
-                    SELECT USR_PROF_ALPHA_16
-                    FROM IM_ITEM
-                    WHERE USR_PROF_ALPHA_16 IS NOT NULL
-                    """
-                    response = db.query_db(query)
-                    if response is not None:
-                        for x in response:
-                            binding_ids.add(x[0])
-                    return list(binding_ids)
 
-                binding_id_list = get_all_binding_ids()
-
-                def __init__(self, image_name: str, last_run_time, item_no="", image_url="", product_id=0, variant_id=0,
+                def __init__(self, image_name: str, last_run_time, sku="", image_url="", product_id=0, variant_id=0,
                              image_id=0, is_thumbnail=False, sort_order=0, is_binding_image=False, is_binding_id=None,
-                             is_variant_image=False, description=None):
-
-                    print("INITIALIZING IMAGE CLASS FOR ITEM: ", image_name)
-                    print()
+                             is_variant_image=False, description=""):
 
                     self.last_run_time = last_run_time
                     self.id = None
                     self.image_name = image_name  # This is the file name
-                    self.item_no = item_no
+                    self.sku = sku
                     self.file_path = f"{creds.photo_path}/{self.image_name}"
                     self.image_url = image_url
                     self.product_id = product_id
@@ -2564,19 +2744,7 @@ class Integrator:
                     self.description = description
                     self.last_modified_dt = datetime.fromtimestamp(os.path.getmtime(self.file_path))
                     self.last_maintained_dt = None
-
-                    if self.last_modified_dt >= self.last_run_time:
-                        print(f"Image {self.image_name} has been updated since last run.")
-                        # Image has been updated since last run. Check image for valid size and format.
-                        if self.validate_image():
-                            # Input image file is valid.
-                            # Set image properties with this new information.
-                            # Write local image information to database.
-                            # BigCommerce uploading will be handled by the Product class.
-                            self.initialize_image_details(binding_id_list=self.binding_id_list)
-                    else:
-                        # Set image details for existing photos with no update
-                        self.get_image_details_from_db()
+                    self.get_image_details()
 
                 def __str__(self):
                     result = ""
@@ -2584,95 +2752,102 @@ class Integrator:
                         result += f"{k}: {v}\n"
                     return result
 
-                def validate_image(self):
-                    print(f"Validating image {self.image_name}")
+                def validate(self):
                     try:
                         file_size = os.path.getsize(self.file_path)
                     except FileNotFoundError:
                         print(f"File {self.file_path} not found.")
                         return False
-                    else:
-                        size = (1280, 1280)
-                        q = 90
-                        exif_orientation = 0x0112
-                        if self.image_name.lower().endswith("jpg"):
-                            # Resize files larger than 1.8 MB
-                            if file_size > 1800000:
-                                print(f"Found large file {self.image_name}. Attempting to resize.")
-                                try:
-                                    im = Image.open(self.file_path)
-                                    im.thumbnail(size, Image.LANCZOS)
-                                    code = im.getexif().get(exif_orientation, 1)
-                                    if code and code != 1:
-                                        im = ImageOps.exif_transpose(im)
-                                    im.save(self.file_path, 'JPEG', quality=q)
-                                    print(f"{self.image_name} resized.")
-                                except Exception as e:
-                                    print(f"Error resizing {self.image_name}: {e}")
-                                    return False
-                                else:
-                                    return True
-
-                        # Remove Alpha Layer and Convert PNG to JPG
-                        if self.image_name.lower().endswith("png"):
-                            print(f"Found PNG file: {self.image_name}. Attempting to reformat.")
+                    # Check for valid file size/format
+                    size = (1280, 1280)
+                    q = 90
+                    exif_orientation = 0x0112
+                    if self.image_name.lower().endswith("jpg"):
+                        # Resize files larger than 1.8 MB
+                        if file_size > 1800000:
+                            print(f"Found large file {self.image_name}. Attempting to resize.")
                             try:
                                 im = Image.open(self.file_path)
                                 im.thumbnail(size, Image.LANCZOS)
-                                # Preserve Rotational Data
                                 code = im.getexif().get(exif_orientation, 1)
                                 if code and code != 1:
                                     im = ImageOps.exif_transpose(im)
-                                print(f"Stripping Alpha Layer.")
-                                rgb_im = im.convert('RGB')
-                                print(f"Saving new file in JPG format.")
-                                new_file_path = f"{self.file_path[:-4]}.jpg"
-                                rgb_im.save(new_file_path, 'JPEG', quality=q)
-                                im.close()
-                                print(f"Removing old PNG file")
-                                os.remove(self.file_path)
-                                self.file_path = new_file_path
+                                im.save(self.file_path, 'JPEG', quality=q)
+                                print(f"{self.image_name} resized.")
                             except Exception as e:
-                                print(f"Error converting {self.image_name}: {e}")
+                                print(f"Error resizing {self.image_name}: {e}")
                                 return False
                             else:
-                                print("Conversion successful.")
-                                return True
+                                print(f"Image {self.image_name} was resized.")
 
-                        # replace .JPEG with .JPG
-                        if self.image_name.lower().endswith("jpeg"):
-                            print(f"Found file ending with .JPEG. Attempting to reformat.")
-                            try:
-                                im = Image.open(self.file_path)
-                                im.thumbnail(size, Image.LANCZOS)
-                                # Preserve Rotational Data
-                                code = im.getexif().get(exif_orientation, 1)
-                                if code and code != 1:
-                                    im = ImageOps.exif_transpose(im)
-                                print(f"Saving new file in JPG format.")
-                                new_file_path = f"{self.file_path[:-5]}.jpg"
-                                im.save(new_file_path, 'JPEG', quality=q)
-                                im.close()
-                                print(f"Removing old JPEG file")
-                                os.remove(self.file_path)
-                                self.file_path = new_file_path
-                            except Exception as e:
-                                print(f"Error converting {self.image_name}: {e}")
-                                return False
-                            else:
-                                print("Conversion successful.")
-                                return True
-                    print(f"Image {self.image_name} is valid.")
+                    # Remove Alpha Layer and Convert PNG to JPG
+                    if self.image_name.lower().endswith("png"):
+                        print(f"Found PNG file: {self.image_name}. Attempting to reformat.")
+                        try:
+                            im = Image.open(self.file_path)
+                            im.thumbnail(size, Image.LANCZOS)
+                            # Preserve Rotational Data
+                            code = im.getexif().get(exif_orientation, 1)
+                            if code and code != 1:
+                                im = ImageOps.exif_transpose(im)
+                            print(f"Stripping Alpha Layer.")
+                            rgb_im = im.convert('RGB')
+                            print(f"Saving new file in JPG format.")
+                            new_file_path = f"{self.file_path[:-4]}.jpg"
+                            rgb_im.save(new_file_path, 'JPEG', quality=q)
+                            im.close()
+                            print(f"Removing old PNG file")
+                            os.remove(self.file_path)
+                            self.file_path = new_file_path
+                        except Exception as e:
+                            print(f"Error converting {self.image_name}: {e}")
+                            return False
+                        else:
+                            print("Conversion successful.")
+
+                    # replace .JPEG with .JPG
+                    if self.image_name.lower().endswith("jpeg"):
+                        print(f"Found file ending with .JPEG. Attempting to reformat.")
+                        try:
+                            im = Image.open(self.file_path)
+                            im.thumbnail(size, Image.LANCZOS)
+                            # Preserve Rotational Data
+                            code = im.getexif().get(exif_orientation, 1)
+                            if code and code != 1:
+                                im = ImageOps.exif_transpose(im)
+                            print(f"Saving new file in JPG format.")
+                            new_file_path = f"{self.file_path[:-5]}.jpg"
+                            im.save(new_file_path, 'JPEG', quality=q)
+                            im.close()
+                            print(f"Removing old JPEG file")
+                            os.remove(self.file_path)
+                            self.file_path = new_file_path
+                        except Exception as e:
+                            print(f"Error converting {self.image_name}: {e}")
+                            return False
+                        else:
+                            print("Conversion successful.")
+                    if len(self.description) >= 500:
+                        print(f"Description for {self.image_name} is too long. Validation failed.")
+                        return False
+
+                    # Check for images with words or trailing numbers in the name
+                    if "^" in self.image_name and not self.image_name.split(".")[0].split("^")[1].isdigit():
+                        print(f"Image {self.image_name} is not valid.")
+                        return False
+
+                    # Valid Image
+                    # print(f"Image {self.image_name} is valid.")
                     return True
 
-                def get_image_details_from_db(self):
+                def get_image_details(self):
                     db = query_engine.QueryEngine()
                     query = f"SELECT * FROM SN_IMAGES WHERE IMAGE_NAME = '{self.image_name}'"
                     response = db.query_db(query)
                     if response is not None:
                         self.id = response[0][0]
                         self.image_name = response[0][1]
-                        self.item_no = response[0][2]
+                        self.sku = response[0][2]
                         self.file_path = response[0][3]
                         self.image_url = response[0][4]
                         self.product_id = response[0][5]
@@ -2684,34 +2859,37 @@ class Integrator:
                         self.is_binding_image = True if response[0][11] == 1 else False
                         self.binding_id = response[0][12]
                         self.is_variant_image = True if response[0][13] == 1 else False
-                        self.description = response[0][14]
-                        self.last_maintained_dt = response[0][16]
+                        self.description = response[0][14] if response[0][14] else ""
+                        self.last_maintained_dt = response[0][15]
+                    else:
+                        self.image_url = self.upload_product_image()
+                        self.set_image_details()
 
-                def initialize_image_details(self, binding_id_list):
-                    def get_item_no_from_image_name(image_name, binding_id_list):
-                        def get_binding_id():
+                def set_image_details(self):
+                    def get_item_no_from_image_name(image_name):
+                        def get_binding_id(item_no):
                             query = f"""
                                    SELECT USR_PROF_ALPHA_16 FROM IM_ITEM
-                                   WHERE ITEM_NO = '{self.item_no}'
+                                   WHERE ITEM_NO = '{item_no}'
                                    """
                             response = query_engine.QueryEngine().query_db(query)
-                            if len(response) > 0:
-                                print(response)
-                                return response[0][0] if response[0][0] else None
+                            if response is not None:
+                                return response[0][0] if response[0][0] else ''
 
                         # Check for binding image
-                        if image_name.split(".")[0].split("^")[0] in binding_id_list:
-                            item_no = None
+                        if image_name.split(".")[0].split("^")[0] in Integrator.Catalog.all_binding_ids:
+                            item_no = ""
                             binding_id = image_name.split(".")[0].split("^")[0]
+                            self.is_binding_image = True
                         else:
                             item_no = image_name.split(".")[0].split("^")[0]
-                            binding_id = get_binding_id()
+                            binding_id = get_binding_id(item_no)
 
                         return item_no, binding_id
 
                     def get_image_number():
                         image_number = 1
-                        if "^" in self.image_name:
+                        if "^" in self.image_name and self.image_name.split(".")[0].split("^")[1].isdigit():
                             # secondary images
                             for x in range(1, 100):
                                 if int(self.image_name.split(".")[0].split("^")[1]) == x:
@@ -2719,45 +2897,39 @@ class Integrator:
                                     break
                         return image_number
 
-                    self.item_no, self.binding_id = get_item_no_from_image_name(self.image_name, binding_id_list)
+                    self.sku, self.binding_id = get_item_no_from_image_name(self.image_name)
                     self.image_number = get_image_number()
-                    self.image_url = self.upload_product_image()
-                    self.is_binding_image = True if self.binding_id else False
 
                     # Image Description Only non-binding images have descriptions at this time. Though,
                     # this could be handled with JSON reference in the future for binding images.
-                    if not self.is_binding_image:
-                        self.description = self.get_image_description()
+                    self.description = self.get_image_description()
 
-                    self.write_image_to_db()
-
-                def write_image_to_db(self):
-                    query = f""" INSERT INTO SN_IMAGES (IMAGE_NAME, ITEM_NO, FILE_PATH, IMAGE_URL, IMAGE_NUMBER,
-                    IS_BINDING_IMAGE, BINDING_ID, DESCR, LST_MOD_DT)
-                    
-                    VALUES ('{self.image_name}', {f"{self.item_no}" if self.item_no else "NULL"}, '{self.file_path}', 
-                    '{self.image_url}', {self.image_number}, {1 if self.is_binding_image else 0}, '{self.binding_id}',
-                    {f"'{self.description}'" if self.description else "NULL"}, '{self.last_modified_dt:%Y-%m-%d %H:%M:%S}')
-                           """
-                    try:
-                        query_engine.QueryEngine().query_db(query, commit=True)
-                    except Exception as e:
-                        print(f"Error writing image to db: {e}")
-                    else:
-                        print(f"Image {self.image_name} written to db.\n")
+                    # print(f"Image {self.image_name} details set.\n"
+                    #       f"SKU: {self.sku}\n"
+                    #       f"Binding ID: {self.binding_id}\n"
+                    #       f"Image Number: {self.image_number}\n"
+                    #       f"Is Binding Image: {self.is_binding_image}\n"
+                    #       f"Description: {self.description}\n")
 
                 def get_image_description(self):
                     # currently there are only 4 counterpoint fields for descriptions.
                     if self.image_number < 5:
                         query = f"""
-                               SELECT USR_PROF_ALPHA_{self.image_number + 21} FROM IM_ITEM
-                               WHERE ITEM_NO = '{self.item_no}'
+                               SELECT {str(f'USR_PROF_ALPHA_{self.image_number + 21}')} FROM IM_ITEM
+                               WHERE ITEM_NO = '{self.sku}'
                                """
                         response = query_engine.QueryEngine().query_db(query)
+
                         if response is not None:
-                            return response[0][0]
+                            if response[0][0]:
+                                return response[0][0]
+                            else:
+                                return ""
                         else:
                             return ""
+                    else:
+                        # If image number is greater than 4, it  will not have a description
+                        return ""
 
                 def upload_product_image(self) -> str:
                     """Upload file to import folder on webDAV server and turn public url"""
@@ -2789,65 +2961,6 @@ class Integrator:
                     url = (f'https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/catalog/'
                            f'products/{self.product_id}/images/{self.image_id}')
                     response = requests.get(url=url, headers=creds.test_bc_api_headers)
-                    return response.content
-
-                def bc_post_image(self) -> int:
-                    if self.is_variant_image:
-                        url = (f'https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/catalog/'
-                               f'products/{self.product_id}/variants/{self.variant_id}/images')
-                        payload = {
-                            "product_id": self.product_id,
-                            "variant_id": self.variant_id,
-                            "is_thumbnail": self.is_thumbnail,
-                            "sort_order": self.sort_order,
-                            "description": self.description,
-                            "image_url": self.image_url
-                        }
-                        print(f"Posting variant image {self.image_name} to item {self.item_no}.")
-                        response = requests.post(url=url, headers=creds.test_bc_api_headers, json=payload)
-                        if response.status_code == 200:
-                            return 0
-                        elif response.status_code == 500:
-                            print("Image too large, will resize and try again.")
-                            self.resize_image()
-                            self.bc_post_image()
-                        else:
-                            print(f"Error posting image: {response.content}")
-                            return 0
-
-                    else:
-                        url = (f'https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/catalog'
-                               f'products/{self.product_id}/images')
-                        payload = {
-                            "product_id": self.product_id,
-                            "is_thumbnail": self.is_thumbnail,
-                            "sort_order": self.sort_order,
-                            "description": self.description,
-                            "image_url": self.image_url
-                        }
-                        print(f"Posting image {self.image_name} to item {self.item_no}.")
-                        response = requests.post(url=url, headers=creds.test_bc_api_headers, json=payload)
-                        if response.status_code == 200:
-                            return response.json()["data"]["id"]
-
-                        elif response.status_code == 404:
-                            print("Product not found.")
-                            return 0
-                        else:
-                            print(f"Error posting image: {response.content}")
-                            return 0
-
-                def bc_update_product_image(self, source_url, description=""):
-                    url = (f'https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/catalog/'
-                           f'products/{self.product_id}/images/{self.image_id}')
-                    payload = {
-                        "product_id": self.product_id,
-                        "is_thumbnail": self.is_thumbnail,
-                        "sort_order": self.sort_order,
-                        "description": description,
-                        "image_url": source_url
-                    }
-                    response = requests.put(url=url, headers=creds.test_bc_api_headers, json=payload)
                     return response.content
 
                 def bc_delete_image(self):
@@ -2883,6 +2996,12 @@ class Integrator:
                 """Placeholder for modifier class"""
                 pass
 
+    class Customers:
+        pass
+
+    class Orders:
+        pass
+
 
 def initialize_integration():
     """Clear Tables and Initialize Integration from Business Start Date"""
@@ -2908,18 +3027,23 @@ def run_integration(last_sync):
 
 # database = Integrator.Database()
 # database.rebuild_tables()
-
-# tree = Integrator.CategoryTree(last_sync=date_presets.business_start_date)
+#
+# tree = Integrator.Catalog.CategoryTree(last_sync=date_presets.business_start_date)
 # tree.sync()
+#
+# brands = Integrator.Catalog.Brands(last_sync=date_presets.business_start_date)
+
 
 # photo = Integrator.Catalog.Product.Image("202896.jpg", last_run_time=datetime(2021, 1, 1))
 
-# product = Integrator.Catalog.Product("45", last_run_date=datetime(2020, 5, 30))
-# print(product)
+catalog = Integrator.Catalog(last_sync=date_presets.business_start_date)
+
+catalog.sync()
 
 # flag = Integrator.Catalog.Product("201213", last_sync=date_presets.business_start_date)
 # print(flag.process())
-#brands = Integrator.Catalog.Brands(last_sync=date_presets.five_minutes_ago)
+# brands = Integrator.Catalog.Brands(last_sync=date_presets.five_minutes_ago)
 
 # catalog = Integrator.Catalog(last_sync=date_presets.twenty_four_hours_ago)
 # print(catalog)
+# catalog.sync()

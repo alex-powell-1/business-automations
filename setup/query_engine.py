@@ -15,10 +15,13 @@ class QueryEngine:
         connection = pyodbc.connect(
             f'DRIVER={{ODBC Driver 18 for SQL Server}};SERVER={self.__SERVER};PORT=1433;DATABASE={self.__DATABASE};'
             f'UID={self.__USERNAME};PWD={self.__PASSWORD};TrustServerCertificate=yes;timeout=3')
+        connection.setdecoding(pyodbc.SQL_CHAR, encoding='latin1')
+        connection.setencoding('latin1')
+
         cursor = connection.cursor()
         if commit:
             try:
-                sql_data = cursor.execute(query)
+                cursor.execute(query)
                 connection.commit()
             except ProgrammingError as e:
                 sql_data = {"code": f"{e.args[0]}", "message": f"{e.args[1]}"}
@@ -32,4 +35,4 @@ class QueryEngine:
 
         cursor.close()
         connection.close()
-        return sql_data
+        return sql_data if sql_data else None

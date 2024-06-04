@@ -23,6 +23,14 @@ def bc_create_product(name, product_type, sku, weight, price):
     return response.json()
 
 
+def bc_get_custom_fields(product_id):
+    url = f" https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/products/{product_id}/custom-fields"
+    response = requests.get(url, headers=creds.bc_api_headers)
+    print(pretty_print(response))
+    return response.json()
+
+bc_get_custom_fields(5573)
+
 def bc_update_product(product_id, payload, log_file, pretty=False):
     url = f" https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/products/{product_id}"
     response = (requests.put(url, headers=creds.bc_api_headers, json=payload))
@@ -344,12 +352,12 @@ def remove_workshop_from_pottery():
     """Run in sandbox.py to remove workshop modifiers from pottery products."""
     for x in products.get_pottery_for_workshop("sku"):
         product_id = products.get_bc_product_id(x)
-        modifier_id = big_products.get_modifier(product_id)
+        modifier_id = get_modifier(product_id)
         print(x, product_id, modifier_id)
         if modifier_id is not None and len(modifier_id) > 0:
             try:
                 for y in modifier_id:
-                    big_products.delete_product_modifier(product_id, y['id'])
+                    delete_product_modifier(product_id, y['id'])
             except Exception as err:
                 print(err)
                 continue
