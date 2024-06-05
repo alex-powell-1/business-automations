@@ -8,9 +8,11 @@ import asyncio
 
 from PIL import Image, ImageOps
 from utilities import handy_tools
+
 from setup import creds
 from setup import query_engine
 from setup import date_presets
+
 from requests.auth import HTTPDigestAuth
 
 """
@@ -47,7 +49,6 @@ class Integrator:
     def sync(self):
         self.catalog.sync()
         self.category_tree.build_bc_category_tree()
-
         self.customers.sync()
 
     class Database:
@@ -309,11 +310,10 @@ class Integrator:
             while len(self.products) > 0:
                 target = self.products.pop()
                 print(f"Starting Product: {target['sku']}, Binding: {target['sku']}")
+
                 prod = self.Product(target, last_sync=self.last_sync)
                 print(f"Processing Product: {prod.sku}, Binding: {prod.binding_id}, Title: {prod.web_title}")
                 if prod.validate_product_inputs():
-                    print(f"Product sku:{prod.sku}, binding: {prod.binding_id}: "
-                          f"{prod.web_title} PASSED input validation.")
                     try:
                         prod.process()
                     except Exception as e:
@@ -326,6 +326,7 @@ class Integrator:
                 else:
                     print(f"Product sku:{prod.sku}, binding: {prod.binding_id}: "
                           f"{prod.web_title} FAILED input validation.")
+
                     self.product_errors.append(prod)
 
                 # Remove all variants from the queue
@@ -3199,7 +3200,6 @@ class Integrator:
         def sync(self):
             for customer in self.customers:
                 customer.process()
-                
 
         class Customer:
             def __init__(self, cust_result):
@@ -3216,18 +3216,19 @@ class Integrator:
                 self.zip = cust_result[9]
                 self.country = cust_result[10]
             
-            def hasPhone(self):
-                return self.phone is not None
+            def has_phone(self):
+                return self.phone is not None or self.phone != ""
             
-            def hasAddress(self):
+            def has_address(self):
                 return self.address is not None and self.city is not None and self.country is not None
 
             def sync(self):
-                class CSync:
-                    def __init__(self):
+                class SQLSync:
+                    def __init__(self, cust_no):
                         self.db = Integrator.db
-                    
-                    def create(self, bc_cust_id: int):
+                        self.cust_no = cust_no
+
+                    def insert(self, bc_cust_id: int):
                         query = f"""
                         INSERT INTO {creds.bc_customer_table}
                         (CUST_NO, BC_CUST_ID)
@@ -3253,7 +3254,7 @@ class Integrator:
 
                         self.db.query_db(query, commit=True)
 
-                return CSync()
+                return SQLSync(cust_no=self.cust_no)
 
             def process(self):
                 def write_customer_payload(bc_cust_id: int = None):
@@ -3266,10 +3267,10 @@ class Integrator:
                     payload["email"] = self.email
                     payload["store_credit_amounts"] = [{"amount": self.loyalty_points}]
 
-                    if self.hasPhone():
+                    if self.has_phone():
                         payload["phone"] = self.phone
                     
-                    if self.hasAddress():
+                    if self.has_address():
                         address = {
                             "first_name": self.fst_nam,
                             "last_name": self.lst_nam,
@@ -3297,9 +3298,10 @@ class Integrator:
                 
                     if response.status_code == 200:
                         print(f"Customer {self.cust_no} created successfully.")
-                        self.sync().create(response.json()["data"]["id"])
+                        self.sync().insert(response.json()["data"]["id"])
                     else:
                         print(f"Error creating customer {self.cust_no}.")
+
 
                 def get_bc_id():
                     query = f"""
@@ -3418,9 +3420,11 @@ def run_integration(last_sync):
 
 # photo = Integrator.Catalog.Product.Image("202896.jpg", last_run_time=datetime(2021, 1, 1))
 
-catalog = Integrator.Catalog(last_sync=date_presets.business_start_date)
+# catalog = Integrator.Catalog(last_sync=date_presets.business_start_date)
+#
+# catalog.sync()
 
-catalog.sync()
+
 
 # flag = Integrator.Catalog.Product("201213", last_sync=date_presets.business_start_date)
 # print(flag.process())
