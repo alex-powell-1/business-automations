@@ -3,6 +3,9 @@ import re
 from datetime import datetime
 
 import requests
+import aiohttp
+import asyncio
+
 from PIL import Image, ImageOps
 from utilities import handy_tools
 from setup import creds
@@ -111,7 +114,8 @@ class Integrator:
             def create_product_table(table_name):
                 query = f"""
                 CREATE TABLE {table_name} (
-                ITEM_NO varchar(50) NOT NULL PRIMARY KEY,
+                ID int IDENTITY(1,1) PRIMARY KEY,
+                ITEM_NO varchar(50) NOT NULL,
                 BINDING_ID varchar(10),
                 IS_PARENT BIT,
                 PRODUCT_ID int NOT NULL,
@@ -304,7 +308,6 @@ class Integrator:
                 if prod.validate_product_inputs():
                     print(f"Product sku:{prod.sku}, binding: {prod.binding_id}: "
                           f"{prod.web_title} PASSED input validation.")
-                    prod.process()
                     try:
                         prod.process()
                     except Exception as e:
@@ -1180,6 +1183,7 @@ class Integrator:
                 # else:
                 #     print("INITIALIZING PRODUCT CLASS FOR ITEM: ", product_data['binding_id'])
                 self.db = query_engine.QueryEngine()
+
                 self.sku = product_data['sku']
                 self.binding_id = product_data['binding_id']
 
@@ -1248,6 +1252,7 @@ class Integrator:
                 self.custom_color = ""
                 self.custom_size = ""
                 self.custom_field_response = []  # Will be list of dictionaries from BC API
+                self.custom_field_ids = ""
 
                 # E-Commerce Categories
                 self.ecommerce_categories = []
@@ -1343,6 +1348,7 @@ class Integrator:
                             self.ecommerce_categories = bound.ecommerce_categories
                             self.custom_url = bound.custom_url
                             self.is_custom_url = bound.is_custom_url
+                            self.custom_field_ids = bound.custom_field_ids
 
                     def get_binding_id_images():
                         binding_images = []
@@ -1419,6 +1425,7 @@ class Integrator:
                     self.images = single.images
                     self.custom_url = single.custom_url
                     self.is_custom_url = single.is_custom_url
+                    self.custom_field_ids = single.custom_field_ids
 
                 if self.is_bound:
                     get_bound_product_details()
@@ -1619,7 +1626,6 @@ class Integrator:
                 return True
 
             def process(self):
-
                 def create():
                     def bc_create_product():
                         """Create product in BigCommerce. For this implementation, this is a single product with no
@@ -1676,29 +1682,30 @@ class Integrator:
                         def stringify_categories():
                             return ",".join(str(category) for category in self.ecommerce_categories)
 
-                        success = True
-
                         db = query_engine.QueryEngine()
 
                         custom_field_ids = []
-                        custom_field_string = "NULL"
+                        custom_field_string = None
+
                         if self.custom_field_response:
                             for entry in self.custom_field_response:
                                 custom_field_ids.append(entry["id"])
                             custom_field_string = ",".join(str(cust_field) for cust_field in custom_field_ids)
 
+                        success = True
+
                         for variant in self.variants:
                             if not variant.is_parent:
-                                custom_field_string = "NULL"
-
+                                custom_field_string = None
                             insert_query = (f"INSERT INTO {creds.bc_product_table} (ITEM_NO, BINDING_ID, IS_PARENT, "
                                             f"PRODUCT_ID, VARIANT_ID, CATEG_ID, CUSTOM_FIELDS) VALUES ('{variant.sku}', "
                                             f"{f"'{self.binding_id}'" if self.binding_id != '' else 'NULL'}, "
                                             f"{1 if variant.is_parent else 0}, {self.product_id}, "
                                             f"{variant.variant_id if variant.variant_id != '' else "NULL"}, "
-                                            f"'{stringify_categories()}', '{custom_field_string}')")
+                                            f"'{stringify_categories()}', "
+                                            f"{f"'{custom_field_string}'" if custom_field_string else "NULL"})")
 
-                            # MAKE INSERT
+                            # INSERT INTO SQL
                             try:
                                 insert_product_response = db.query_db(insert_query, commit=True)
                             except Exception as e:
@@ -1722,12 +1729,14 @@ class Integrator:
 
                         if success:
                             print(f"Product {self.sku} Binding: {self.binding_id} inserted into middleware.")
+
                         else:
                             # Rollback
                             # If any of the variants failed to write to the middleware, delete associated skus from
                             # middleware and BigCommerce
-                            query = f"DELETE FROM {creds.bc_product_table} WHERE PRODUCT_ID = '{self.product_id}'"
-                            db.query_db(query, commit=True)
+                            create_rollback_query = (f"DELETE FROM {creds.bc_product_table} "
+                                                     f"WHERE PRODUCT_ID = '{self.product_id}'")
+                            db.query_db(create_rollback_query, commit=True)
                             # Delete product from BigCommerce
                             url = (f'https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/'
                                    f'catalog/products/{self.product_id}')
@@ -1743,16 +1752,6 @@ class Integrator:
                                 self.errors.append(delete_response.content)
 
                         return success
-
-                    def middleware_insert_custom_fields():
-                        success = True
-                        if self.custom_field_response:
-                            for cust_field in self.custom_field_response:
-                                cust_field_id = cust_field["id"]
-                                name = cust_field["name"]
-                                value = cust_field["value"]
-                                # This is where I left off. Need to insert custom fields into middleware
-                                # names and values need to go into their corresponding columns.
 
                     def middleware_insert_images():
                         success = True
@@ -1815,37 +1814,274 @@ class Integrator:
 
                     if bc_create_product():
                         if middleware_insert_product():
-                            middleware_insert_custom_fields()
                             middleware_insert_images()
+                            return
 
                 def update():
-                    # Create an updated Payload
-                    update_payload = self.construct_product_payload()
+                    """Will update existing product. Will clear out custom field data and reinsert."""
+                    # Step 1: Process Deleting Variants
+                    # Get a list of variants in DB. Compare to list of variants in self.variants.
+                    # If a variant exists in DB but not in self.variants, delete it from DB and BC.
 
-                    # Delete all Custom Fields
-                    def bc_delete_custom_fields():
-                        url = f"""https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/catalog/products/{self.product_id}/custom-fields/"""
-                        print(url)
-                        response = requests.delete(url=url, headers=creds.test_bc_api_headers)
-                        if response.status_code == 204:
-                            print(f"Custom Fields for Product {self.sku} deleted successfully.")
+                    # Step 2: Second-State Validation
+                    # Validate the product again after the variants have been deleted.
+                    # Specifically, check for a bound product turning into a single product.
+                    # check for single product becoming bound.
+                    # Check for change of parent.
+                    # If these product breaking things occur, delete the product from BC and Middleware.
+                    # Add them both back into the product queue
+                    # OR we could simply FAIL and return an error in log.
+
+                    # Step 3: Create an updated Payload
+                    update_payload = self.construct_product_payload(mode="update_product")
+
+                    # Step 4: Delete all Custom Fields
+                    def bc_delete_custom_fields(asynchronous=False):
+                        def get_custom_fields_from_bc():
+                            custom_fields = []
+                            cf_url = (f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/"
+                                      f"catalog/products/{self.product_id}/custom-fields")
+                            cf_response = requests.get(url=cf_url, headers=creds.test_bc_api_headers)
+                            if cf_response.status_code == 200:
+                                custom_field_data = cf_response.json()["data"]
+                                for field in custom_field_data:
+                                    custom_fields.append(field["id"])
+                            return custom_fields
+
+                        id_list = self.custom_field_ids.split(",")
+
+                        if not id_list:
+                            return
+
+                        if asynchronous:
+                            async def bc_delete_custom_fields_async():
+                                async with aiohttp.ClientSession() as session:
+                                    for field_id in id_list:
+                                        async_url = f"""https://api.bigcommerce.com/stores/{creds.test_big_store_hash}
+                                        /v3/catalog/products/{self.product_id}/custom-fields/{field_id}"""
+                                        async with session.get(url=async_url, headers=creds.test_header) as resp:
+                                            text_response = await resp.text()
+                                            print(text_response)
+
+                            asyncio.run(bc_delete_custom_fields_async())
                         else:
-                            print(f"Error deleting custom fields for Product {self.sku}.")
-                            print(response.content)
-                        return response.status_code
+                            # Synchronous Version
+                            success = True
+                            success_list = []
+                            db = query_engine.QueryEngine()
+                            # Delete Each Custom Field
+                            for number in id_list:
+                                url = (f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/"
+                                       f"catalog/products/{self.product_id}/custom-fields/{number}")
+
+                                cf_remove_response = requests.delete(url=url, headers=creds.test_bc_api_headers)
+                                if cf_remove_response.status_code == 204:
+                                    success_list.append(number)
+                                else:
+                                    success = False
+                                    message = f"BigCommerce: Error deleting custom fields for Product {self.sku}."
+                                    print(message)
+                                    self.errors.append(message)
+                                    print(cf_remove_response.content)
+                            # If all custom fields were deleted successfully, remove CUSTOM_FIELDS from middleware
+                            if success:
+                                update_cf1_query = f"""UPDATE {creds.bc_product_table}
+                                        SET CUSTOM_FIELDS = NULL, LST_MAINT_DT = GETDATE()
+                                        WHERE PRODUCT_ID = '{self.product_id}' AND IS_PARENT = 1
+                                        """
+                                try:
+                                    db.query_db(update_cf1_query, commit=True)
+                                except Exception as e:
+                                    message = f"Middleware REMOVE CUSTOM_FIELDS: {self.sku}: FAILED ", e
+                                    print(message)
+                                    self.errors.append(message)
+                            else:
+                                # Partial Success
+                                # If this wasn't totally successful, but some were deleted,
+                                # update the CUSTOM_FIELDS in middleware
+                                if success_list:
+                                    success_list_string = ",".join(str(cust_field) for cust_field in success_list)
+                                    update_cf2_query = f"""
+                                    UPDATE {creds.bc_product_table}
+                                    SET CUSTOM_FIELDS = '{success_list_string}', LST_MAINT_DT = GETDATE()
+                                    WHERE PRODUCT_ID = '{self.product_id}' AND IS_PARENT = 1
+                                    """
+                                    try:
+                                        db.query_db(update_cf2_query, commit=True)
+                                    except Exception as e:
+                                        message = f"Middleware CUSTOM_FIELDS ROLLBACK: {self.sku}: FAILED ", e
+                                        print(message)
+                                        self.errors.append(message)
+                                else:
+                                    # If no custom fields were deleted, but there was an error,
+                                    # don't update the CUSTOM_FIELDS in middleware
+                                    pass
 
                     bc_delete_custom_fields()
 
-                    # def bc_update_product():
-                    #     url = (f'https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/'
-                    #            f'catalog/products/{self.product_id}')
-                    #     response = requests.put(url=url, headers=creds.test_bc_api_headers, json=update_payload)
-                    #     if response.status_code == 200:
-                    #         print(f"Product {self.sku} updated successfully.")
-                    #     else:
-                    #         print(f"Error updating product {self.sku}.")
-                    #         print(response.content)
-                    #     return response.status_code
+                    # Step 5: Add any new variants if needed
+
+                    # Step 6: Update Product on BC with new Payload, which will include new sort order, etc for new
+                    # images and variants
+                    def bc_update_product():
+                        url = (f'https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/'
+                               f'catalog/products/{self.product_id}?include=custom_fields,variants,images')
+                        update_response = requests.put(url=url, headers=creds.test_bc_api_headers, json=update_payload)
+                        if update_response.status_code in [200, 201, 207]:
+                            self.product_id = update_response.json()["data"]["id"]
+                            self.custom_field_response = update_response.json()["data"]["custom_fields"]
+                            for x in range(0, len(self.variants)):
+                                self.variants[x].binding_id = self.binding_id
+                                self.variants[x].product_id = self.product_id
+                                self.variants[x].variant_id = update_response.json()["data"]["variants"][x]["id"]
+                            for x in range(0, len(self.images)):
+                                self.images[x].binding_id = self.binding_id
+                                self.images[x].product_id = self.product_id
+                                self.images[x].image_id = update_response.json()["data"]["images"][x]["id"]
+                            if self.custom_field_response:
+                                custom_field_list = []
+                                for x in self.custom_field_response:
+                                    custom_field_list.append(x['id'])
+                                self.custom_field_ids = ",".join(str(x) for x in custom_field_list)
+                                return True
+
+                        elif update_response.status_code == 404:
+                            message = f"Product {self.sku} failed to update in BigCommerce. Product not found."
+                        elif update_response.status_code == 409:
+                            message = f"Product {self.sku} failed to update in BigCommerce. Product already exists."
+                        elif update_response.status_code == 422:
+                            message = f"Product {self.sku} failed to update in BigCommerce. Invalid Fields: Code 422"
+                        else:
+                            message = f"Product {self.sku} failed to update in BigCommerce. Invalid Fields: Code 422"
+                        self.errors.append(message)
+                        self.errors.append(update_response.content)
+                        print(message)
+                        return False
+
+                    def middleware_sync_product():
+                        def stringify_categories():
+                            return ",".join(str(category) for category in self.ecommerce_categories)
+
+                        success = True
+
+                        db = query_engine.QueryEngine()
+
+                        custom_field_ids = []
+                        custom_field_string = None
+                        if self.custom_field_response:
+                            for entry in self.custom_field_response:
+                                custom_field_ids.append(entry["id"])
+                            custom_field_string = ",".join(str(cust_field) for cust_field in custom_field_ids)
+
+                        for variant in self.variants:
+                            if not variant.is_parent:
+                                custom_field_string = None
+                            # ---------------------------- #
+                            # NEW PRODUCT INSERTS INTO SQL #
+                            # ---------------------------- #
+                            if variant.db_id is None:
+                                # If variant.db_id is None, this is a new product to be inserted into SQL
+                                insert_query = (
+                                    f"INSERT INTO {creds.bc_product_table} (ITEM_NO, BINDING_ID, IS_PARENT, "
+                                    f"PRODUCT_ID, VARIANT_ID, CATEG_ID) VALUES ('{variant.sku}', "
+                                    f"{f"'{self.binding_id}'" if self.binding_id != '' else 'NULL'}, "
+                                    f"{1 if variant.is_parent else 0}, {self.product_id}, "
+                                    f"{variant.variant_id if variant.variant_id != '' else "NULL"}, "
+                                    f"'{stringify_categories()}')")
+
+                                # INSERT INTO SQL
+                                try:
+                                    insert_product_response = db.query_db(insert_query, commit=True)
+                                except Exception as e:
+                                    insert_prod_message = f"Middleware INSERT product {self.sku}: FAILED {e}"
+                                    print(insert_prod_message)
+                                    self.errors.append(insert_prod_message)
+                                    success = False
+                                else:
+                                    if insert_product_response["code"] == 200:
+                                        # print(f"SKU: {variant.sku} Binding: {self.binding_id} "
+                                        #       f"Product : inserted into middleware.")
+                                        pass
+
+                                    else:
+                                        message = (f"Middleware INSERT product {self.sku}: "
+                                                   f"Non 200 response: {insert_product_response}")
+                                        print(message)
+                                        self.errors.append(message)
+                                        self.errors.append(insert_product_response)
+                                        success = False
+                            else:
+                                # ---------------------------- #
+                                # NEW PRODUCT INSERTS INTO SQL #
+                                # ---------------------------- #
+                                # If variant.db_id is not None, this is an existing product to be updated in SQL
+
+                                update_query = (f"UPDATE {creds.bc_product_table} "
+                                                f"SET ITEM_NO = '{variant.sku}', "
+                                                f"BINDING_ID = "
+                                                f"{f"'{self.binding_id}'" if self.binding_id != '' else 'NULL'}, "
+                                                f"IS_PARENT = {1 if variant.is_parent else 0}, "
+                                                f"PRODUCT_ID = {self.product_id}, "
+                                                f"VARIANT_ID = "
+                                                f"{variant.variant_id if variant.variant_id != '' else 'NULL'}, "
+                                                f"CATEG_ID = '{stringify_categories()}', "
+                                                f"CUSTOM_FIELDS = '{custom_field_string}', "
+                                                f"LST_MAINT_DT = GETDATE() "
+                                                f"WHERE ID = {variant.db_id}")
+
+                                # UPDATE VARIANT IN SQL
+                                try:
+                                    update_product_response = db.query_db(update_query, commit=True)
+                                except Exception as e:
+                                    insert_prod_message = f"Middleware UPDATE product {self.sku}: FAILED {e}"
+                                    print(insert_prod_message)
+                                    self.errors.append(insert_prod_message)
+                                    success = False
+                                else:
+                                    if update_product_response["code"] == 200:
+                                        # print(f"SKU: {variant.sku} Binding: {self.binding_id} "
+                                        #       f"Product : inserted into middleware.")
+                                        pass
+
+                                    else:
+                                        message = (f"Middleware UPDATE product {self.sku}: "
+                                                   f"Non 200 response: {update_product_response}")
+                                        print(message)
+                                        self.errors.append(message)
+                                        self.errors.append(update_product_response)
+                                        success = False
+
+                        if not success:
+                            # Rollback
+                            # If any of the variants failed to write to the middleware, delete associated skus from
+                            # middleware and BigCommerce
+                            product_rollback_query = (f"DELETE FROM {creds.bc_product_table} "
+                                                      f"WHERE PRODUCT_ID = '{self.product_id}'")
+                            db.query_db(product_rollback_query, commit=True)
+                            # Could improve this with a join or SQL trigger...
+                            images_rollback_query = (f"DELETE FROM {creds.bc_image_table} "
+                                                     f"WHERE PRODUCT_ID = '{self.product_id}'")
+
+                            db.query_db(images_rollback_query, commit=True)
+
+                            # Delete product from BigCommerce
+                            url = (f'https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/'
+                                   f'catalog/products/{self.product_id}')
+                            delete_response = requests.delete(url=url, headers=creds.test_bc_api_headers)
+                            if delete_response.status_code == 204:
+                                message = f"Product {self.sku} deleted from BigCommerce."
+                                print(message)
+                                self.errors.append(message)
+                            else:
+                                message = f"Error deleting product {self.sku} from BigCommerce."
+                                print(message)
+                                self.errors.append(message)
+                                self.errors.append(delete_response.content)
+
+                        return success
+
+                    if bc_update_product():
+                        middleware_sync_product()
 
                     # def middleware_update_product():
                     #     query = f"""
@@ -1865,22 +2101,18 @@ class Integrator:
                     # if bc_update_product() == 200:
                     #     middleware_update_product()
 
-                def get_processing_method():
-                    query = f"""SELECT *
-                    FROM {creds.bc_product_table}
-                    WHERE ITEM_NO = '{self.sku}'"""
+                query = f"""SELECT *
+                        FROM {creds.bc_product_table}
+                        WHERE ITEM_NO = '{self.sku}'"""
+                response = self.db.query_db(query)
+                if response is None:
+                    # Product Not Found, Create New Product
+                    create()
+                else:
+                    # Product Found, Update Product
+                    update()
 
-                    response = self.db.query_db(query)
-                    if response is None:
-                        # Product Not Found, Create New Product
-                        create()
-                    else:
-                        # Product Found, Update Product
-                        update()
-
-                get_processing_method()
-
-            def construct_product_payload(self):
+            def construct_product_payload(self, mode="create"):
 
                 def get_ecomm_categories():
                     """EDIT!!! YOU NEED TO GET the separate categories from EC_CATEG_LIN for the item and then
@@ -1994,28 +2226,23 @@ class Integrator:
                         })
                     return result
 
-                def construct_image_payload(mode="create"):
+                def construct_image_payload():
                     result = []
                     # Child Images
                     for image in self.images:
-                        if mode == "create":
-                            result.append({
+                        if image.last_modified_dt > self.last_sync and image.validate():
+                            image_payload = {
                                 "product_id": self.product_id,
                                 "is_thumbnail": image.is_thumbnail,
                                 "sort_order": image.sort_order,
                                 "description": f"""{image.description}""",
                                 "image_url": image.image_url,
-                            })
+                            }
+                            if image.image_id:
+                                image_payload["id"] = image.image_id
 
-                        elif mode == "update":
-                            result.append({
-                                "product_id": self.product_id,
-                                "is_thumbnail": image.is_thumbnail,
-                                "sort_order": image.sort_order,
-                                "description": image.description,
-                                "image_url": image.image_url,
-                                "id": image.id,
-                            })
+                            result.append(image_payload)
+
                     return result
 
                 def construct_video_payload():
@@ -2061,7 +2288,7 @@ class Integrator:
                                 # "mpn": "string",
                                 # "gtin": "012345678905",
                                 "product_id": child.product_id,
-                                "id": id_index,
+                                "id": child.variant_id,
                                 "sku": child.sku,
                                 "option_values": [
                                     {
@@ -2123,18 +2350,21 @@ class Integrator:
 
                     "custom_fields": construct_custom_fields(),
 
-                    "bulk_pricing_rules": [
-                        {
-                            "quantity_min": 10,
-                            "quantity_max": 50,
-                            "type": "price",
-                            "amount": 10
-                        }
-                    ],
+                    # "bulk_pricing_rules": [
+                    #     {
+                    #         "quantity_min": 10,
+                    #         "quantity_max": 50,
+                    #         "type": "price",
+                    #         "amount": 10
+                    #     }
+                    # ],
                     "images": construct_image_payload(),
                     "videos": construct_video_payload(),
                     "variants": construct_variant_payload(),
                 }
+                if mode == "update_product":
+                    payload["id"] = self.product_id
+
                 if self.custom_url != "":
                     print("adding custom url")
                     payload["custom_url"] = {
@@ -2142,6 +2372,7 @@ class Integrator:
                         "is_customized": self.is_custom_url,
                         "create_redirect": True
                     }
+
                 return payload
 
             def middleware_create_product(self):
@@ -2203,8 +2434,8 @@ class Integrator:
             class Variant:
 
                 def __init__(self, sku, last_run_date):
-
                     self.sku = sku
+                    print("INITIALIZING VARIANT CLASS FOR ITEM: ", sku)
                     # print("INITIALIZING VARIANT CLASS FOR ITEM: ", sku)
                     self.last_run_date = last_run_date
 
@@ -2212,6 +2443,7 @@ class Integrator:
                     product_data = self.get_variant_details()
 
                     # Product Information
+                    self.db_id = product_data['db_id']
                     self.binding_id = product_data['binding_id']
                     self.is_parent = True if product_data['is_parent'] == 'Y' else False
                     self.product_id: int = product_data['product_id']
@@ -2272,10 +2504,10 @@ class Integrator:
                     self.custom_soil_type = product_data['custom_soil_type']
                     self.custom_color = product_data['custom_color']
                     self.custom_size = product_data['custom_size']
+                    self.custom_field_ids = product_data['custom_field_ids']
                     self.custom_url = product_data['custom_url']
                     self.custom_url = "-".join(str(re.sub('[^A-Za-z0-9 ]+', '', self.custom_url)).split(" "))
                     self.is_custom_url = product_data['is_custom_url']
-                    self.custom_field_ids = product_data['custom_field_ids']
 
                     # Product Images
                     self.images = []
@@ -2291,6 +2523,8 @@ class Integrator:
 
                     # Initialize Images
                     self.get_local_product_images()
+
+                    # Initialize Variant Image URL
                     if len(self.images) > 0:
                         self.variant_image_url = self.images[0].image_url
                     else:
@@ -2339,7 +2573,9 @@ class Integrator:
                                                         select ',' + EC_CATEG_ITEM.CATEG_ID
                                                         from EC_CATEG_ITEM
                                                         where EC_CATEG_ITEM.ITEM_NO =ITEM.ITEM_NO
-                                                        for xml path('')),1,1,'') as categories, 
+                                                        for xml path('')),1,1,'') as 'categories(49)', 
+                    
+                    BC_PROD.ID as 'db_id(50)', BC_PROD.CUSTOM_FIELDS as 'custom_field_ids(51)'
                     
                                                         
                     FROM IM_ITEM ITEM
@@ -2349,11 +2585,13 @@ class Integrator:
                     LEFT OUTER JOIN {creds.bc_product_table} BC_PROD ON ITEM.ITEM_NO=BC_PROD.ITEM_NO
                     LEFT OUTER JOIN IM_ITEM_PROF_COD COD ON ITEM.PROF_COD_1 = COD.PROF_COD
                     WHERE ITEM.ITEM_NO = '{self.sku}'"""
+
                     db = query_engine.QueryEngine()
                     item = db.query_db(query)
                     if item is not None:
                         details = {
                             'sku': item[0][48],
+                            'db_id': item[0][50],
                             'binding_id': item[0][0],
                             'is_bound': True if item[0][0] else False,
                             'web_enabled': True if item[0][1] == 'Y' else False,
@@ -2410,6 +2648,7 @@ class Integrator:
                             'categories': str(item[0][49]).split(',') if item[0][49] else [],
                             'custom_url': '',
                             'is_custom_url': False,
+                            'custom_field_ids': item[0][51]
                         }
                         # for x in details:
                         #     print(f"{x}: {details[x]}")
@@ -2427,154 +2666,6 @@ class Integrator:
                         return False
 
                     return True
-
-                # def process(self):
-                #     def get_processing_method() -> str:
-                #         # Check for delete needed
-                #         pass
-                #
-                #     def create():
-                #         def bc_create_variant():
-                #             """Create product in BigCommerce. For this implementation, this is a single product with
-                #             no variants"""
-                #             url = (f'https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/'
-                #                    f'catalog/products/{self.product_id}/variants')
-                #             payload = self.construct_variant_payload()
-                #             response = requests.post(url=url, headers=creds.test_bc_api_headers, json=payload)
-                #             if response.status_code in [200, 207]:
-                #                 print(f"BigCommerce POST {self.sku}: SUCCESS. Code: {response.status_code}")
-                #             else:
-                #                 print(f"BigCommerce POST {self.sku}: FAILED. Code: {response.status_code}")
-                #                 print(response.content)
-                #
-                #             return response.status_code
-                #
-                #         def middleware_create_variant():
-                #             """NOT DONE"""
-                #             query = f"""
-                #                    INSERT INTO {creds.bc_product_table}
-                #                    (ITEM_NO, BINDING_ID, IS_PARENT, PRODUCT_ID, VARIANT_ID, LST_MAINT_DT
-                #                    VALUES ('{self.item_no}', '{self.binding_id}', '{self.is_parent}',
-                #                    '{self.product_id}', '{self.variant_id}'), '{self.lst_maint_dt}',
-                #                    """
-                #             try:
-                #                 query_engine.QueryEngine().query_db(query, commit=True)
-                #             except Exception as e:
-                #                 print(f"Middleware INSERT product {self.item_no}: FAILED")
-                #                 print(e)
-                #             else:
-                #                 print(f"Middleware INSERT product {self.item_no}: SUCCESS")
-                #
-                #         if create() in [200, 207]:
-                #             middleware_create_variant()
-                #
-                #     def update():
-                #         def bc_update_variant():
-                #             url = (f'https://api.bigcommerce.com/stores/{store_hash}/v3/'
-                #                    f'catalog/products/{product_id}/variants/{variant_id}')
-                #             payload = self.construct_product_payload()
-                #             response = requests.put(url=url, headers=creds.test_bc_api_headers, json=payload)
-                #             if response.status_code == 200:
-                #                 print(f"Product {self.item_no} updated successfully.")
-                #             else:
-                #                 print(f"Error updating product {self.item_no}.")
-                #                 print(response.content)
-                #             return response.status_code
-                #
-                #         def middleware_update_variant():
-                #             query = f"""
-                #                    UPDATE {creds.bc_product_table}
-                #                    SET WEB_TITLE = '{self.web_title}', DESCRIPTION = '{self.description}',
-                #                    HTML_DESCRIPTION = '{self.html_description}'
-                #                    WHERE ITEM_NO = '{self.item_no}'
-                #                    """
-                #             try:
-                #                 query_engine.QueryEngine().query_db(query, commit=True)
-                #             except Exception as e:
-                #                 print(f"Middleware UPDATE product {self.item_no}: FAILED")
-                #                 print(e)
-                #             else:
-                #                 print(f"Middleware UPDATE product {self.item_no}: SUCCESS")
-                #
-                #         if bc_update_variant() == 200:
-                #             middleware_update_variant()
-                #
-                #     def delete():
-                #         def bc_delete_variant():
-                #             # Delete product VARIANT from BigCommerce
-                #             if self.is_bound and not self.is_parent:
-                #                 url = (
-                #                     f'https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/'
-                #                     f'catalog/products/{self.product_id}'
-                #                     f'/variants/{self.variant_id}')
-                #             else:
-                #                 # This will delete single products and bound parent products
-                #                 url = (f'https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/'
-                #                        f'catalog/products/{self.product_id}')
-                #             try:
-                #                 response = requests.delete(url=url, headers=creds.test_bc_api_headers)
-                #             except Exception as e:
-                #                 print(f"Error deleting product {self.item_no}: {e}")
-                #             else:
-                #                 if response.status_code == 204:
-                #                     print(f"Product {self.item_no} deleted successfully.")
-                #                     return response.json()
-                #
-                #         def middleware_delete_product():
-                #             # First delete product images
-                #             for image in self.images:
-                #                 image.delete()
-                #             # Delete product from product table
-                #             query = f"DELETE FROM {creds.bc_product_table} WHERE ITEM_NO = '{self.item_no}'"
-                #             query_engine.QueryEngine().query_db(query, commit=True)
-                #
-                #         bc_delete_variant()
-                #         middleware_delete_variant()
-                #
-                #     method = get_processing_method()
-                #
-                #     if method == "delete":
-                #         delete()
-                #     elif method == "create":
-                #         create()
-                #     elif method == "update":
-                #         update()
-                #
-                # def construct_variant_payload(self):
-                #     variants = [{
-                #         "cost_price": self.cost,
-                #         "price": self.price_1,
-                #         "sale_price": self.price_2,
-                #         "retail_price": self.price_1,
-                #         "weight": self.weight,
-                #         "width": self.width,
-                #         "height": self.height,
-                #         "depth": self.depth,
-                #         "is_free_shipping": self.is_free_shipping,
-                #         # "fixed_cost_shipping_price": 0.1,
-                #         "purchasing_disabled": self.purchasing_disabled,
-                #         "purchasing_disabled_message": self.purchasing_disabled_message,
-                #         # "upc": self.upc,
-                #         "inventory_level": self.buffered_quantity,
-                #         # "inventory_warning_level": self.inventory_warning_level,
-                #         # "bin_picking_number": self.bin_picking_number,
-                #         "image_url": self.images[0].image_url,
-                #         # "gtin": self.gtin,
-                #         # "mpn": self.mpn,
-                #         "product_id": self.product_id,
-                #         "sku": self.sku,
-                #         "option_values": [
-                #             {
-                #                 "option_display_name": "Option",
-                #                 "label": self.variant_name,
-                #             }
-                #         ]
-                #     }]
-                #     return variants
-                #
-                # def get_product_schema(self):
-                #     if self.is_bound and not self.is_parent:
-                #         self.item_schema = "variant"
 
                 def get_last_maintained_dates(self, dates):
                     """Get last maintained dates for product"""
@@ -2919,6 +3010,8 @@ class Integrator:
                     if self.image_name.lower().endswith("jpeg"):
                         print(f"Found file ending with .JPEG. Attempting to reformat.")
                         try:
+                            print("Start")
+                            print(self.file_path)
                             im = Image.open(self.file_path)
                             im.thumbnail(size, Image.LANCZOS)
                             # Preserve Rotational Data
@@ -2926,12 +3019,15 @@ class Integrator:
                             if code and code != 1:
                                 im = ImageOps.exif_transpose(im)
                             print(f"Saving new file in JPG format.")
-                            new_file_path = f"{self.file_path[:-5]}.jpg"
+                            new_image_name = self.image_name.split(".")[0] + ".jpg"
+                            new_file_path = f"{creds.photo_path}/{new_image_name}"
                             im.save(new_file_path, 'JPEG', quality=q)
                             im.close()
                             print(f"Removing old JPEG file")
                             os.remove(self.file_path)
                             self.file_path = new_file_path
+                            self.image_name = new_image_name
+                            print("End", self.file_path)
                         except Exception as e:
                             print(f"Error converting {self.image_name}: {e}")
                             return False
@@ -2949,7 +3045,6 @@ class Integrator:
                     # Valid Image
                     # print(f"Image {self.image_name} is valid.")
                     return True
-
 
                 def set_image_details(self):
                     def get_item_no_from_image_name(image_name):
@@ -2989,13 +3084,6 @@ class Integrator:
                     # Image Description Only non-binding images have descriptions at this time. Though,
                     # this could be handled with JSON reference in the future for binding images.
                     self.description = self.get_image_description()
-
-                    # print(f"Image {self.image_name} details set.\n"
-                    #       f"SKU: {self.sku}\n"
-                    #       f"Binding ID: {self.binding_id}\n"
-                    #       f"Image Number: {self.image_number}\n"
-                    #       f"Is Binding Image: {self.is_binding_image}\n"
-                    #       f"Description: {self.description}\n")
 
                 def get_image_description(self):
                     # currently there are only 4 counterpoint fields for descriptions.
