@@ -17,6 +17,8 @@ Contributors: Luke Barrier
 """
 
 class Integrator:
+    db = query_engine.QueryEngine()
+
     def __init__(self, last_sync):
         self.last_sync = last_sync
         self.log_file = open("test.txt", "a")
@@ -47,7 +49,7 @@ class Integrator:
 
     class Database:
         def __init__(self):
-            self.db = query_engine.QueryEngine()
+            self.db = Integrator.db
 
         def rebuild_tables(self):
             def drop_table(table_name):
@@ -266,7 +268,7 @@ class Integrator:
         def __init__(self, last_sync):
             # self.log_file = log_file
             self.last_sync = last_sync
-            self.db = query_engine.QueryEngine()
+            self.db = Integrator.db
             # self.update_image_timestamps(self.last_sync)
             # self.process_deletes()
             # lists of products with updated timestamps
@@ -3089,7 +3091,7 @@ class Integrator:
     class Customers:
         def __init__(self, last_sync):
             self.last_sync = last_sync
-            self.db = query_engine.QueryEngine()
+            self.db = Integrator.db
             self.customers = self.get_customers()
 
         def get_customers(self):
@@ -3114,7 +3116,7 @@ class Integrator:
         class Customer:
             def __init__(self, cust_result):
                 self.cust_no = cust_result[0]
-                self.db = query_engine.QueryEngine()
+                self.db = Integrator.db
                 self.fst_nam = cust_result[1]
                 self.lst_nam = cust_result[2]
                 self.email = cust_result[3] if cust_result[3] else f"{self.cust_no}@store.com"
@@ -3142,6 +3144,23 @@ class Integrator:
                         INSERT INTO {creds.bc_customer_table}
                         (CUST_NO, BC_CUST_ID)
                         VALUES ('{self.cust_no}', {bc_cust_id})
+                        """
+
+                        self.db.query_db(query, commit=True)
+
+                    def update(self, bc_cust_id: int):
+                        query = f"""
+                        UPDATE {creds.bc_customer_table}
+                        SET BC_CUST_ID = {bc_cust_id}
+                        WHERE CUST_NO = '{self.cust_no}'
+                        """
+
+                        self.db.query_db(query, commit=True)
+
+                    def delete(self):
+                        query = f"""
+                        DELETE FROM {creds.bc_customer_table}
+                        WHERE CUST_NO = '{self.cust_no}'
                         """
 
                         self.db.query_db(query, commit=True)
@@ -3180,8 +3199,54 @@ class Integrator:
                         self.sync().create(response.json()["data"]["id"])
                     else:
                         print(f"Error creating customer {self.cust_no}.")
-                        print(response.content)
                 create()
+
+                def get_bc_id():
+                    query = f"""
+                    SELECT BC_CUST_ID FROM {creds.bc_customer_table}
+                    WHERE CUST_NO = '{self.cust_no}'
+                    """
+                    response = self.db.query_db(query)
+                    if response is not None:
+                        return response[0][0]
+                    else:
+                        return None
+
+                def update():
+                    id = get_bc_id()
+                    if id is None:
+                        print(f"Customer {self.cust_no} not found in database.")
+                    else:
+                        print(f"Updating customer {self.cust_no}")
+                        url = f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/customers/{self.bc_cust_id}"
+                        payload = {
+                            "id": id,
+                            "first_name": self.fst_nam,
+                            "last_name": self.lst_nam,
+                            "email": self.email,
+                            "store_credit_amounts": [self.loyalty_points]
+                        }
+
+                        if self.hasPhone():
+                            payload["phone"] = self.phone
+
+                        if self.hasAddress():
+                            payload["addresses"] = [{
+                                "first_name": self.fst_nam,
+                                "last_name": self.lst_nam,
+                                "address1": self.address,
+                                "city": self.city,
+                                "state_or_province": self.state,
+                                "postal_code": self.zip,
+                                "country_code": country_to_country_code(self.country)
+                            }]
+
+                        response = requests.put(url=url, headers=creds.test_bc_api_headers, json=payload)
+                    
+                        if response.status_code == 200:
+                            print(f"Customer {self.cust_no} updated successfully.")
+                        else:
+                            print(f"Error updating customer {self.cust_no}.")
 
 
     class Orders:
