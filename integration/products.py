@@ -3132,12 +3132,12 @@ class Integrator:
                 return self.phone is not None
             
             def hasAddress(self):
-                return self.address is not None and self.city is not None and self.state is not None and self.zip is not None and self.country is not None
+                return self.address is not None and self.city is not None and self.country is not None
 
             def sync(self):
                 class CSync:
                     def __init__(self):
-                        pass
+                        self.db = Integrator.db
                     
                     def create(self, bc_cust_id: int):
                         query = f"""
@@ -3168,29 +3168,42 @@ class Integrator:
                 return CSync()
 
             def process(self):
-                def create():
-                    print(f"Creating customer {self.cust_no}")
-                    url = f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/customers"
-                    payload = {
-                        "first_name": self.fst_nam,
-                        "last_name": self.lst_nam,
-                        "email": self.email,
-                        "store_credit_amounts": [self.loyalty_points]
-                    }
+                def write_customer_payload(bc_cust_id: int = None):
+                    payload = {}
+                    if bc_cust_id is not None:
+                        payload["id"] = bc_cust_id
+                    
+                    payload["first_name"] = self.fst_nam
+                    payload["last_name"] = self.lst_nam
+                    payload["email"] = self.email
+                    payload["store_credit_amounts"] = [{"amount": self.loyalty_points}]
 
                     if self.hasPhone():
                         payload["phone"] = self.phone
-
+                    
                     if self.hasAddress():
-                        payload["addresses"] = [{
+                        address = {
                             "first_name": self.fst_nam,
                             "last_name": self.lst_nam,
                             "address1": self.address,
                             "city": self.city,
-                            "state_or_province": self.state,
-                            "postal_code": self.zip,
-                            "country_code": country_to_country_code(self.country)
-                        }]
+                            "country_code": country_to_country_code(self.country if self.country is not None else "United States")
+                        }
+
+                        if self.state is not None:
+                            address["state"] = self.state
+                        
+                        if self.zip is not None:
+                            address["zip"] = self.zip
+
+                        payload["addresses"] = [address]
+                    
+                    return payload
+
+                def create():
+                    print(f"Creating customer {self.cust_no}")
+                    url = f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/customers"
+                    payload = write_customer_payload()
 
                     response = requests.post(url=url, headers=creds.test_bc_api_headers, json=payload)
                 
@@ -3199,7 +3212,6 @@ class Integrator:
                         self.sync().create(response.json()["data"]["id"])
                     else:
                         print(f"Error creating customer {self.cust_no}.")
-                create()
 
                 def get_bc_id():
                     query = f"""
@@ -3218,36 +3230,58 @@ class Integrator:
                         print(f"Customer {self.cust_no} not found in database.")
                     else:
                         print(f"Updating customer {self.cust_no}")
-                        url = f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/customers/{self.bc_cust_id}"
-                        payload = {
-                            "id": id,
-                            "first_name": self.fst_nam,
-                            "last_name": self.lst_nam,
-                            "email": self.email,
-                            "store_credit_amounts": [self.loyalty_points]
-                        }
-
-                        if self.hasPhone():
-                            payload["phone"] = self.phone
-
-                        if self.hasAddress():
-                            payload["addresses"] = [{
-                                "first_name": self.fst_nam,
-                                "last_name": self.lst_nam,
-                                "address1": self.address,
-                                "city": self.city,
-                                "state_or_province": self.state,
-                                "postal_code": self.zip,
-                                "country_code": country_to_country_code(self.country)
-                            }]
+                        url = f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/customers"
+                        payload = write_customer_payload(bc_cust_id=id)
 
                         response = requests.put(url=url, headers=creds.test_bc_api_headers, json=payload)
                     
                         if response.status_code == 200:
                             print(f"Customer {self.cust_no} updated successfully.")
+                            self.sync().update(id)
                         else:
                             print(f"Error updating customer {self.cust_no}.")
 
+                def delete():
+                    id = get_bc_id()
+                    if id is None:
+                        print(f"Customer {self.cust_no} not found in database.")
+                    else:
+                        print(f"Deleting customer {self.cust_no}")
+                        url = f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/customers?id:in={id}"
+                        response = requests.delete(url=url, headers=creds.test_bc_api_headers)
+                    
+                        if response.status_code == 204:
+                            print(f"Customer {self.cust_no} deleted successfully.")
+                            self.sync().delete()
+                        else:
+                            print(f"Error deleting customer {self.cust_no}.")
+
+                def get_processing_method():
+                    del_query = f"""
+                    SELECT CUST_NO FROM AR_CUST
+                    WHERE CUST_NO = '{self.cust_no}'
+                    """
+
+                    response = self.db.query_db(del_query)
+                    if response is None or len(response) == 0:
+                        return "delete"
+
+                    query = f"""
+                    SELECT BC_CUST_ID FROM {creds.bc_customer_table}
+                    WHERE CUST_NO = '{self.cust_no}'
+                    """
+                    response = self.db.query_db(query)
+                    if response is not None:
+                        return "update"
+                    else:
+                        return "create"
+                    
+                if get_processing_method() == "create":
+                    create()
+                elif get_processing_method() == "update":
+                    update()
+                elif get_processing_method() == "delete":
+                    delete()
 
     class Orders:
         pass
