@@ -8,9 +8,11 @@ import asyncio
 
 from PIL import Image, ImageOps
 from utilities import handy_tools
+
 from setup import creds
 from setup import query_engine
 from setup import date_presets
+
 from requests.auth import HTTPDigestAuth
 
 """
@@ -47,7 +49,6 @@ class Integrator:
     def sync(self):
         self.catalog.sync()
         self.category_tree.build_bc_category_tree()
-
         self.customers.sync()
 
     class Database:
@@ -309,11 +310,10 @@ class Integrator:
             while len(self.products) > 0:
                 target = self.products.pop()
                 print(f"Starting Product: {target['sku']}, Binding: {target['sku']}")
+
                 prod = self.Product(target, last_sync=self.last_sync)
                 print(f"Processing Product: {prod.sku}, Binding: {prod.binding_id}, Title: {prod.web_title}")
                 if prod.validate_product_inputs():
-                    print(f"Product sku:{prod.sku}, binding: {prod.binding_id}: "
-                          f"{prod.web_title} PASSED input validation.")
                     try:
                         prod.process()
                     except Exception as e:
@@ -326,6 +326,7 @@ class Integrator:
                 else:
                     print(f"Product sku:{prod.sku}, binding: {prod.binding_id}: "
                           f"{prod.web_title} FAILED input validation.")
+
                     self.product_errors.append(prod)
 
                 # Remove all variants from the queue
@@ -3183,10 +3184,15 @@ class Integrator:
             self.customers = self.get_customers()
 
         def get_customers(self):
+            # query = f"""
+            # SELECT CUST_NO, FST_NAM, LST_NAM, EMAIL_ADRS_1, PHONE_1, LOY_PTS_BAL, ADRS_1, CITY, STATE, ZIP_COD, CNTRY
+            # FROM AR_CUST
+            # WHERE LST_MAINT_DT > '{self.last_sync}'
+            # """
             query = f"""
-            SELECT FST_NAM, LST_NAM, EMAIL_ADRS_1, PHONE_1, LOY_PTS_BAL, ADRS_1, CITY, STATE, ZIP_COD, CNTRY
+            SELECT CUST_NO, FST_NAM, LST_NAM, EMAIL_ADRS_1, PHONE_1, LOY_PTS_BAL, ADRS_1, CITY, STATE, ZIP_COD, CNTRY
             FROM AR_CUST
-            WHERE LST_MAINT_DT > '{self.last_sync}'
+            WHERE CUST_NO = 'OL-100778'
             """
             response = self.db.query_db(query)
             if response is not None:
@@ -3199,7 +3205,6 @@ class Integrator:
         def sync(self):
             for customer in self.customers:
                 customer.process()
-                
 
         class Customer:
             def __init__(self, cust_result):
@@ -3216,18 +3221,19 @@ class Integrator:
                 self.zip = cust_result[9]
                 self.country = cust_result[10]
             
-            def hasPhone(self):
-                return self.phone is not None
+            def has_phone(self):
+                return self.phone is not None or self.phone != ""
             
-            def hasAddress(self):
-                return self.address is not None and self.city is not None and self.state is not None and self.zip is not None and self.country is not None
+            def has_address(self):
+                return self.address is not None and self.city is not None and self.country is not None
 
             def sync(self):
-                class CSync:
-                    def __init__(self):
-                        pass
-                    
-                    def create(self, bc_cust_id: int):
+                class SQLSync:
+                    def __init__(self, cust_no):
+                        self.db = Integrator.db
+                        self.cust_no = cust_no
+
+                    def insert(self, bc_cust_id: int):
                         query = f"""
                         INSERT INTO {creds.bc_customer_table}
                         (CUST_NO, BC_CUST_ID)
@@ -3253,41 +3259,112 @@ class Integrator:
 
                         self.db.query_db(query, commit=True)
 
-                return CSync()
+                return SQLSync(cust_no=self.cust_no)
 
             def process(self):
-                def create():
-                    print(f"Creating customer {self.cust_no}")
-                    url = f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/customers"
-                    payload = {
-                        "first_name": self.fst_nam,
-                        "last_name": self.lst_nam,
-                        "email": self.email,
-                        "store_credit_amounts": [self.loyalty_points]
-                    }
+                def write_customer_payload(bc_cust_id: int = None):
+                    payload = {}
+                    if bc_cust_id is not None:
+                        payload["id"] = bc_cust_id
+                    
+                    payload["first_name"] = self.fst_nam
+                    payload["last_name"] = self.lst_nam
+                    payload["email"] = self.email
+                    payload["store_credit_amounts"] = [{"amount": self.loyalty_points}]
 
-                    if self.hasPhone():
+                    if self.has_phone():
                         payload["phone"] = self.phone
+                    
+                    if self.has_address():
+                        def state_code_to_full_name(state_code):
+                            states = {
+                                "AL": "Alabama",
+                                "AK": "Alaska",
+                                "AZ": "Arizona",
+                                "AR": "Arkansas",
+                                "CA": "California",
+                                "CO": "Colorado",
+                                "CT": "Connecticut",
+                                "DE": "Delaware",
+                                "FL": "Florida",
+                                "GA": "Georgia",
+                                "HI": "Hawaii",
+                                "ID": "Idaho",
+                                "IL": "Illinois",
+                                "IN": "Indiana",
+                                "IA": "Iowa",
+                                "KS": "Kansas",
+                                "KY": "Kentucky",
+                                "LA": "Louisiana",
+                                "ME": "Maine",
+                                "MD": "Maryland",
+                                "MA": "Massachusetts",
+                                "MI": "Michigan",
+                                "MN": "Minnesota",
+                                "MS": "Mississippi",
+                                "MO": "Missouri",
+                                "MT": "Montana",
+                                "NE": "Nebraska",
+                                "NV": "Nevada",
+                                "NH": "New Hampshire",
+                                "NJ": "New Jersey",
+                                "NM": "New Mexico",
+                                "NY": "New York",
+                                "NC": "North Carolina",
+                                "ND": "North Dakota",
+                                "OH": "Ohio",
+                                "OK": "Oklahoma",
+                                "OR": "Oregon",
+                                "PA": "Pennsylvania",
+                                "RI": "Rhode Island",
+                                "SC": "South Carolina",
+                                "SD": "South Dakota",
+                                "TN": "Tennessee",
+                                "TX": "Texas",
+                                "UT": "Utah",
+                                "VT": "Vermont",
+                                "VA": "Virginia",
+                                "WA": "Washington",
+                                "WV": "West Virginia",
+                                "WI": "Wisconsin",
+                                "WY": "Wyoming"
+                            }
 
-                    if self.hasAddress():
-                        payload["addresses"] = [{
+                            return states[state_code] if state_code in states else state_code
+
+                        address = {
                             "first_name": self.fst_nam,
                             "last_name": self.lst_nam,
                             "address1": self.address,
                             "city": self.city,
-                            "state_or_province": self.state,
-                            "postal_code": self.zip,
-                            "country_code": country_to_country_code(self.country)
-                        }]
+                            "country_code": country_to_country_code(self.country if self.country is not None else "United States")
+                        }
+
+                        if self.state is not None:
+                            address["state_or_province"] = state_code_to_full_name(self.state)
+                        
+                        if self.zip is not None:
+                            address["postal_code"] = self.zip
+
+                        payload["addresses"] = [address]
+                    
+                    print(payload)
+                    return [payload]
+
+                def create():
+                    print(f"Creating customer {self.cust_no}")
+                    url = f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/customers"
+                    payload = write_customer_payload()
 
                     response = requests.post(url=url, headers=creds.test_bc_api_headers, json=payload)
                 
                     if response.status_code == 200:
                         print(f"Customer {self.cust_no} created successfully.")
-                        self.sync().create(response.json()["data"]["id"])
+                        self.sync().insert(response.json()["data"]["id"])
                     else:
                         print(f"Error creating customer {self.cust_no}.")
-                create()
+                        print(response.json())
+
 
                 def get_bc_id():
                     query = f"""
@@ -3306,36 +3383,58 @@ class Integrator:
                         print(f"Customer {self.cust_no} not found in database.")
                     else:
                         print(f"Updating customer {self.cust_no}")
-                        url = f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/customers/{self.bc_cust_id}"
-                        payload = {
-                            "id": id,
-                            "first_name": self.fst_nam,
-                            "last_name": self.lst_nam,
-                            "email": self.email,
-                            "store_credit_amounts": [self.loyalty_points]
-                        }
-
-                        if self.hasPhone():
-                            payload["phone"] = self.phone
-
-                        if self.hasAddress():
-                            payload["addresses"] = [{
-                                "first_name": self.fst_nam,
-                                "last_name": self.lst_nam,
-                                "address1": self.address,
-                                "city": self.city,
-                                "state_or_province": self.state,
-                                "postal_code": self.zip,
-                                "country_code": country_to_country_code(self.country)
-                            }]
+                        url = f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/customers"
+                        payload = write_customer_payload(bc_cust_id=id)
 
                         response = requests.put(url=url, headers=creds.test_bc_api_headers, json=payload)
                     
                         if response.status_code == 200:
                             print(f"Customer {self.cust_no} updated successfully.")
+                            self.sync().update(id)
                         else:
                             print(f"Error updating customer {self.cust_no}.")
 
+                def delete():
+                    id = get_bc_id()
+                    if id is None:
+                        print(f"Customer {self.cust_no} not found in database.")
+                    else:
+                        print(f"Deleting customer {self.cust_no}")
+                        url = f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/customers?id:in={id}"
+                        response = requests.delete(url=url, headers=creds.test_bc_api_headers)
+                    
+                        if response.status_code == 204:
+                            print(f"Customer {self.cust_no} deleted successfully.")
+                            self.sync().delete()
+                        else:
+                            print(f"Error deleting customer {self.cust_no}.")
+
+                def get_processing_method():
+                    del_query = f"""
+                    SELECT CUST_NO FROM AR_CUST
+                    WHERE CUST_NO = '{self.cust_no}'
+                    """
+
+                    response = self.db.query_db(del_query)
+                    if response is None or len(response) == 0:
+                        return "delete"
+
+                    query = f"""
+                    SELECT BC_CUST_ID FROM {creds.bc_customer_table}
+                    WHERE CUST_NO = '{self.cust_no}'
+                    """
+                    response = self.db.query_db(query)
+                    if response is not None:
+                        return "update"
+                    else:
+                        return "create"
+                    
+                if get_processing_method() == "create":
+                    create()
+                elif get_processing_method() == "update":
+                    update()
+                elif get_processing_method() == "delete":
+                    delete()
 
     class Orders:
         pass
@@ -3384,9 +3483,10 @@ def run_integration(last_sync):
 
 # photo = Integrator.Catalog.Product.Image("202896.jpg", last_run_time=datetime(2021, 1, 1))
 
-catalog = Integrator.Catalog(last_sync=date_presets.business_start_date)
+# catalog = Integrator.Catalog(last_sync=date_presets.business_start_date)
+#
+# catalog.sync()
 
-catalog.sync()
 
 # flag = Integrator.Catalog.Product("201213", last_sync=date_presets.business_start_date)
 # print(flag.process())
