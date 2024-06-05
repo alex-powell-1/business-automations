@@ -3093,7 +3093,11 @@ class Integrator:
             self.customers = self.get_customers()
 
         def get_customers(self):
-            query = f"SELECT * FROM IM_CUST WHERE LST_MAINT_DT > '{self.last_sync}'"
+            query = f"""
+            SELECT FST_NAM, LST_NAM, EMAIL_ADRS_1, PHONE_1, LOY_PTS_BAL, ADRS_1, CITY, STATE, ZIP_COD, CNTRY
+            FROM AR_CUST
+            WHERE LST_MAINT_DT > '{self.last_sync}'
+            """
             response = self.db.query_db(query)
             if response is not None:
                 result = []
@@ -3102,10 +3106,6 @@ class Integrator:
                         result.append(self.Customer(x))
                 return result
 
-        def process(self):
-            for customer in self.customers:
-                customer.process()
-
         def sync(self):
             for customer in self.customers:
                 customer.process()
@@ -3113,28 +3113,41 @@ class Integrator:
 
         class Customer:
             def __init__(self, cust_result):
-                self.cust_no = cust_result[1]
+                self.cust_no = cust_result[0]
                 self.db = query_engine.QueryEngine()
-                self.cust_result = self.from_ar_cust()
-                self.fst_nam = self.cust_result[0]
-                self.lst_nam = self.cust_result[1]
-                self.email = self.cust_result[2]
-                self.loyalty_points = self.cust_result[3]
+                self.fst_nam = cust_result[1]
+                self.lst_nam = cust_result[2]
+                self.email = cust_result[3] if cust_result[3] else f"{self.cust_no}@store.com"
+                self.phone = cust_result[4]
+                self.loyalty_points = cust_result[5]
+                self.address = cust_result[6]
+                self.city = cust_result[7]
+                self.state = cust_result[8]
+                self.zip = cust_result[9]
+                self.country = cust_result[10]
+            
+            def hasPhone(self):
+                return self.phone is not None
+            
+            def hasAddress(self):
+                return self.address is not None and self.city is not None and self.state is not None and self.zip is not None and self.country is not None
 
-            def from_ar_cust(self):
-                query = f"""
-                SELECT FST_NAM, LST_NAM, EMAIL_ADRS_1, LOY_PTS_BAL
-                FROM AR_CUST
-                WHERE CUST_NO = '{self.cust_no}'
-                """
-                response = self.db.query_db(query)
-                if response is not None:
-                    result = []
-                    for x in response:
-                        if x is not None:
-                            result.append()
-                    return result
-                
+            def sync(self):
+                class CSync:
+                    def __init__(self):
+                        pass
+                    
+                    def create(self, bc_cust_id: int):
+                        query = f"""
+                        INSERT INTO {creds.bc_customer_table}
+                        (CUST_NO, BC_CUST_ID)
+                        VALUES ('{self.cust_no}', {bc_cust_id})
+                        """
+
+                        self.db.query_db(query, commit=True)
+
+                return CSync()
+
             def process(self):
                 def create():
                     print(f"Creating customer {self.cust_no}")
@@ -3145,10 +3158,26 @@ class Integrator:
                         "email": self.email,
                         "store_credit_amounts": [self.loyalty_points]
                     }
+
+                    if self.hasPhone():
+                        payload["phone"] = self.phone
+
+                    if self.hasAddress():
+                        payload["addresses"] = [{
+                            "first_name": self.fst_nam,
+                            "last_name": self.lst_nam,
+                            "address1": self.address,
+                            "city": self.city,
+                            "state_or_province": self.state,
+                            "postal_code": self.zip,
+                            "country_code": country_to_country_code(self.country)
+                        }]
+
                     response = requests.post(url=url, headers=creds.test_bc_api_headers, json=payload)
                 
                     if response.status_code == 200:
                         print(f"Customer {self.cust_no} created successfully.")
+                        self.sync().create(response.json()["data"]["id"])
                     else:
                         print(f"Error creating customer {self.cust_no}.")
                         print(response.content)
@@ -3158,6 +3187,16 @@ class Integrator:
     class Orders:
         pass
 
+
+def country_to_country_code(country):
+    country_codes = {
+        "United States": "US",
+        "Canada": "CA",
+        "Mexico": "MX",
+        "United Kingdom": "GB"
+    }
+
+    return country_codes[country] if country in country_codes else country
 
 def initialize_integration():
     """Clear Tables and Initialize Integration from Business Start Date"""
