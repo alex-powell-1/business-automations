@@ -3184,10 +3184,15 @@ class Integrator:
             self.customers = self.get_customers()
 
         def get_customers(self):
+            # query = f"""
+            # SELECT CUST_NO, FST_NAM, LST_NAM, EMAIL_ADRS_1, PHONE_1, LOY_PTS_BAL, ADRS_1, CITY, STATE, ZIP_COD, CNTRY
+            # FROM AR_CUST
+            # WHERE LST_MAINT_DT > '{self.last_sync}'
+            # """
             query = f"""
-            SELECT FST_NAM, LST_NAM, EMAIL_ADRS_1, PHONE_1, LOY_PTS_BAL, ADRS_1, CITY, STATE, ZIP_COD, CNTRY
+            SELECT CUST_NO, FST_NAM, LST_NAM, EMAIL_ADRS_1, PHONE_1, LOY_PTS_BAL, ADRS_1, CITY, STATE, ZIP_COD, CNTRY
             FROM AR_CUST
-            WHERE LST_MAINT_DT > '{self.last_sync}'
+            WHERE CUST_NO = 'OL-100778'
             """
             response = self.db.query_db(query)
             if response is not None:
@@ -3271,6 +3276,62 @@ class Integrator:
                         payload["phone"] = self.phone
                     
                     if self.has_address():
+                        def state_code_to_full_name(state_code):
+                            states = {
+                                "AL": "Alabama",
+                                "AK": "Alaska",
+                                "AZ": "Arizona",
+                                "AR": "Arkansas",
+                                "CA": "California",
+                                "CO": "Colorado",
+                                "CT": "Connecticut",
+                                "DE": "Delaware",
+                                "FL": "Florida",
+                                "GA": "Georgia",
+                                "HI": "Hawaii",
+                                "ID": "Idaho",
+                                "IL": "Illinois",
+                                "IN": "Indiana",
+                                "IA": "Iowa",
+                                "KS": "Kansas",
+                                "KY": "Kentucky",
+                                "LA": "Louisiana",
+                                "ME": "Maine",
+                                "MD": "Maryland",
+                                "MA": "Massachusetts",
+                                "MI": "Michigan",
+                                "MN": "Minnesota",
+                                "MS": "Mississippi",
+                                "MO": "Missouri",
+                                "MT": "Montana",
+                                "NE": "Nebraska",
+                                "NV": "Nevada",
+                                "NH": "New Hampshire",
+                                "NJ": "New Jersey",
+                                "NM": "New Mexico",
+                                "NY": "New York",
+                                "NC": "North Carolina",
+                                "ND": "North Dakota",
+                                "OH": "Ohio",
+                                "OK": "Oklahoma",
+                                "OR": "Oregon",
+                                "PA": "Pennsylvania",
+                                "RI": "Rhode Island",
+                                "SC": "South Carolina",
+                                "SD": "South Dakota",
+                                "TN": "Tennessee",
+                                "TX": "Texas",
+                                "UT": "Utah",
+                                "VT": "Vermont",
+                                "VA": "Virginia",
+                                "WA": "Washington",
+                                "WV": "West Virginia",
+                                "WI": "Wisconsin",
+                                "WY": "Wyoming"
+                            }
+
+                            return states[state_code] if state_code in states else state_code
+
                         address = {
                             "first_name": self.fst_nam,
                             "last_name": self.lst_nam,
@@ -3280,14 +3341,15 @@ class Integrator:
                         }
 
                         if self.state is not None:
-                            address["state"] = self.state
+                            address["state_or_province"] = state_code_to_full_name(self.state)
                         
                         if self.zip is not None:
-                            address["zip"] = self.zip
+                            address["postal_code"] = self.zip
 
                         payload["addresses"] = [address]
                     
-                    return payload
+                    print(payload)
+                    return [payload]
 
                 def create():
                     print(f"Creating customer {self.cust_no}")
@@ -3301,6 +3363,7 @@ class Integrator:
                         self.sync().insert(response.json()["data"]["id"])
                     else:
                         print(f"Error creating customer {self.cust_no}.")
+                        print(response.json())
 
 
                 def get_bc_id():
@@ -3423,7 +3486,6 @@ def run_integration(last_sync):
 # catalog = Integrator.Catalog(last_sync=date_presets.business_start_date)
 #
 # catalog.sync()
-
 
 
 # flag = Integrator.Catalog.Product("201213", last_sync=date_presets.business_start_date)
