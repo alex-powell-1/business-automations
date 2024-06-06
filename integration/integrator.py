@@ -44,6 +44,3 @@ class Integrator:
 
 
 integrator = Integrator(last_sync=date_presets.business_start_date)
-# integrator.sync()
-
-print(integrator)

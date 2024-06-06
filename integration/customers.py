@@ -17,7 +17,7 @@ class Customers:
         # FROM AR_CUST
         # WHERE LST_MAINT_DT > '{self.last_sync}'
         # """
-        query = f"""
+        query = """
         SELECT CUST_NO, FST_NAM, LST_NAM, EMAIL_ADRS_1, PHONE_1, LOY_PTS_BAL, ADRS_1, CITY, STATE, ZIP_COD, CNTRY
         FROM AR_CUST
         WHERE CUST_NO = 'OL-100778'
