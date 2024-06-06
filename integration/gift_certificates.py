@@ -20,7 +20,9 @@ class GiftCertificates:
         query = f"""
         SELECT TOP 20 GFC_NO, ORIG_AMT, CURR_AMT, ORIG_DAT, ORIG_CUST_NO
         FROM {creds.sy_gfc_table}
-        WHERE LST_MAINT_DT > '{self.last_sync}'
+        WHERE
+        LST_MAINT_DT > '{self.last_sync}' and
+        ORIG_DAT > '2024-1-1'
         ORDER BY NEWID()
         """
 
@@ -65,7 +67,7 @@ class GiftCertificates:
                     if x is not None:
                         result.append({
                             "name": f"{x[0]} {x[1]}",
-                            "email": x[2]
+                            "email": x[2] if (x[2] is not None and x[2] != "") else f"{self.cust_no}@store.com"
                         })
 
                 if len(result) > 0:
@@ -103,8 +105,8 @@ class GiftCertificates:
             def write_payload(bc_id:int = None):
                 payload = {
                     "code": self.gift_card_no,
-                    "amount": self.original_amount,
-                    "balance": self.current_amount,
+                    "amount": str(self.original_amount),
+                    "balance": str(self.current_amount),
                     "purchase_date": utilities.convert_to_rfc2822(self.original_date),
                     "to_name": self.user_info['name'],
                     "to_email": self.user_info['email'],
