@@ -1,7 +1,9 @@
-from catalog import Catalog
-from customers import Customers
+from integration.catalog import Catalog
+from integration.customers import Customers
+from integration.database import Database
+
 from setup import date_presets
-from database import Database
+
 import time
 
 
@@ -42,4 +44,6 @@ class Integrator:
 
 
 integrator = Integrator(last_sync=date_presets.business_start_date)
-integrator.sync()
+# integrator.sync()
+
+print(integrator)

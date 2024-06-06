@@ -8,32 +8,14 @@ import requests
 from PIL import Image, ImageOps
 from requests.auth import HTTPDigestAuth
 
-from database import Database
+from integration.database import Database
+
 from setup import creds
 from setup import query_engine
-from utilities import pretty_print
+from integration.utilities import pretty_print, get_all_binding_ids
 
 
 class Catalog:
-    @staticmethod
-    def get_all_binding_ids():
-        db = query_engine.QueryEngine()
-        """Returns a list of unique and validated binding IDs from the IM_ITEM table."""
-        response = db.query_db(f"SELECT DISTINCT USR_PROF_ALPHA_16 FROM IM_ITEM WHERE IS_ECOMM_ITEM = 'Y'"
-                               f"AND USR_PROF_ALPHA_16 IS NOT NULL")
-
-        result = []
-
-        def valid(binding_id):
-            if re.match(r'B\d{4}', binding_id):
-                return binding_id
-
-        for x in response:
-            binding = valid(x[0])
-            if binding:
-                result.append(binding)
-
-        return result
 
     all_binding_ids = get_all_binding_ids()
 
@@ -2875,3 +2857,4 @@ class Catalog:
                 query = f"DELETE FROM {creds.bc_image_table} WHERE IMAGE_NAME = '{self.image_name}'"
                 query_engine.QueryEngine().query_db(query, commit=True)
                 print(f"Photo {self.image_name} deleted from database.")
+
