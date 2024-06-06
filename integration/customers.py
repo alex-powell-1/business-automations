@@ -19,15 +19,7 @@ class Customers:
         LST_MAINT_DT > '{self.last_sync}' and
         CUST_NAM_TYP = 'P'
         """
-        # query = """
-        # SELECT CUST_NO, FST_NAM, LST_NAM, EMAIL_ADRS_1, PHONE_1, LOY_PTS_BAL, ADRS_1, CITY, STATE, ZIP_COD, CNTRY
-        # FROM AR_CUST
-        # WHERE
-        # CUST_NAM_TYP = 'P' and
-        # ADRS_1 is not null and
-        # STATE is null and
-        # CITY is null
-        # """
+        
         response = self.db.query_db(query)
         if response is not None:
             result = []
