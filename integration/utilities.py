@@ -2,6 +2,14 @@ import json
 from integration.database import query_engine
 import re
 
+from datetime import datetime
+from email.utils import formatdate
+
+def convert_to_rfc2822(date: datetime):
+    return formatdate(int(date.timestamp()))
+
+
+
 
 def country_to_country_code(country):
     country_codes = {
@@ -12,6 +20,9 @@ def country_to_country_code(country):
     }
 
     return country_codes[country] if country in country_codes else country
+
+
+
 
 
 def pretty_print(response):

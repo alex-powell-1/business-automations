@@ -14,7 +14,7 @@ class Customers:
     def get_customers(self):
         query = f"""
         SELECT CUST_NO, FST_NAM, LST_NAM, EMAIL_ADRS_1, PHONE_1, LOY_PTS_BAL, ADRS_1, CITY, STATE, ZIP_COD, CNTRY
-        FROM AR_CUST
+        FROM {creds.ar_cust_table}
         WHERE
         LST_MAINT_DT > '{self.last_sync}' and
         CUST_NAM_TYP = 'P'
@@ -254,7 +254,7 @@ class Customers:
 
             def get_processing_method():
                 del_query = f"""
-                SELECT CUST_NO FROM AR_CUST
+                SELECT CUST_NO FROM {creds.ar_cust_table}
                 WHERE CUST_NO = '{self.cust_no}'
                 """
 
