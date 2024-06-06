@@ -21,6 +21,7 @@ Author: Alex Powell
 Contributors: Luke Barrier
 """
 
+
 class Integrator:
     db = query_engine.QueryEngine()
 
@@ -1826,9 +1827,53 @@ class Integrator:
 
                 def update():
                     """Will update existing product. Will clear out custom field data and reinsert."""
+
                     # Step 1: Process Deleting Variants
                     # Get a list of variants in DB. Compare to list of variants in self.variants.
                     # If a variant exists in DB but not in self.variants, delete it from DB and BC.
+                    # Delete Images
+                    def delete_images():
+                        # Process Image Deletes
+                        middleware_image_list = []
+                        mw_img = f"SELECT IMAGE_NAME FROM {creds.bc_image_table} WHERE PRODUCT_ID = {self.product_id}"
+                        mw_img_res = self.db.query_db(mw_img)
+                        mw_img_list = [img[0] for img in mw_img_res if mw_img_res]
+                        payload_img_list = [img.image_name for img in self.images]
+                        for y in payload_img_list:
+                            if y in mw_img_list:
+                                mw_img_list.remove(y)  # remove all variants from the list
+                        delete_targets = mw_img_list
+
+                        for delete_target in delete_targets:
+                            print(f"Deleting {delete_target}")
+                            # GET IMAGE ID FROM SQL
+                            i_id_q = f"SELECT IMAGE_ID FROM {creds.bc_image_table} WHERE IMAGE_NAME = '{delete_target}'"
+                            img_id_res = self.db.query_db(i_id_q)
+                            if img_id_res is not None:
+                                image_id = img_id_res[0][0]
+                                print(f"Image Id: {image_id}")
+                                delete_img_url = (f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/"
+                                                  f"catalog/products/{self.product_id}/images/{image_id}")
+                                print(delete_img_url)
+                                img_del_res = requests.delete(url=delete_img_url, headers=creds.test_bc_api_headers)
+                                if img_del_res.status_code == 204:
+                                    print(f"{delete_target} deleted from BigCommerce")
+                                    sql_del_image = f"""
+                                    DELETE FROM {creds.bc_image_table}
+                                    WHERE IMAGE_NAME = '{delete_target}'"""
+                                    try:
+                                        self.db.query_db(sql_del_image, commit=True)
+                                    except Exception as e:
+                                        message = f"Image: {delete_target} Failed to Delete from SQL ", e
+                                        print(message)
+                                        self.errors.append(message)
+                                    else:
+                                        print(f"{delete_target} deleted from SQL")
+
+                                else:
+                                    print(img_del_res.status_code, img_del_res.content)
+
+                    delete_images()
 
                     # Step 2: Second-State Validation
                     # Validate the product again after the variants have been deleted.
@@ -1935,7 +1980,7 @@ class Integrator:
                                f'catalog/products/{self.product_id}?include=custom_fields,variants,images')
                         update_response = requests.put(url=url, headers=creds.test_bc_api_headers, json=update_payload)
                         if update_response.status_code in [200, 201, 207]:
-                            #print(handy_tools.pretty_print(update_response))
+                            print(handy_tools.pretty_print(update_response))
                             self.product_id = update_response.json()["data"]["id"]
                             self.custom_field_response = update_response.json()["data"]["custom_fields"]
                             for x in range(0, len(self.variants)):
@@ -1946,8 +1991,6 @@ class Integrator:
                                 self.images[x].binding_id = self.binding_id
                                 self.images[x].product_id = self.product_id
                                 self.images[x].image_id = update_response.json()["data"]["images"][x]["id"]
-                            for x in self.images:
-                                print(x.image_name, x.image_id)
                             if self.custom_field_response:
                                 custom_field_list = []
                                 for x in self.custom_field_response:
@@ -2094,27 +2137,27 @@ class Integrator:
                     def middleware_sync_images():
                         rollback = False
                         for image in self.images:
-                            if image.db_id is None:
+                            if image.id is None:
                                 # ---------------------------- #
                                 # ------- IMAGE INSERT ------- #
                                 # ---------------------------- #
                                 img_insert = f"""
-                                INSERT INTO {creds.bc_image_table} (IMAGE_NAME, ITEM_NO, FILE_PATH, 
-                                IMAGE_URL, PRODUCT_ID, IMAGE_ID, THUMBNAIL, IMAGE_NUMBER, SORT_ORDER, 
-                                IS_BINDING_IMAGE, BINDING_ID, IS_VARIANT_IMAGE, DESCR, LST_MOD_DT) 
+                                INSERT INTO {creds.bc_image_table} (IMAGE_NAME, ITEM_NO, FILE_PATH,
+                                IMAGE_URL, PRODUCT_ID, IMAGE_ID, THUMBNAIL, IMAGE_NUMBER, SORT_ORDER,
+                                IS_BINDING_IMAGE, BINDING_ID, IS_VARIANT_IMAGE, DESCR, LST_MOD_DT)
                                 VALUES (
-                                '{image.image_name}', 
-                                {f"'{image.sku}'" if image.sku != '' else 'NULL'}, 
-                                '{image.file_path}', 
-                                '{image.image_url}', 
-                                '{image.product_id}', 
-                                '{image.image_id}', 
-                                '{1 if image.is_thumbnail else 0}', '{image.image_number}', 
-                                '{image.sort_order}', 
-                                '{image.is_binding_image}', 
-                                {f"'{image.binding_id}'" if image.binding_id != '' else 'NULL'}, 
-                                '{image.is_variant_image}', 
-                                {f"'{image.description.replace("'", "''")}'" if image.description != '' else 'NULL'}, 
+                                '{image.image_name}',
+                                {f"'{image.sku}'" if image.sku != '' else 'NULL'},
+                                '{image.file_path}',
+                                '{image.image_url}',
+                                '{image.product_id}',
+                                '{image.image_id}',
+                                '{1 if image.is_thumbnail else 0}', '{image.image_number}',
+                                '{image.sort_order}',
+                                '{image.is_binding_image}',
+                                {f"'{image.binding_id}'" if image.binding_id != '' else 'NULL'},
+                                '{image.is_variant_image}',
+                                {f"'{image.description.replace("'", "''")}'" if image.description != '' else 'NULL'},
                                 '{image.last_modified_dt:%Y-%m-%d %H:%M:%S}')"""
                                 try:
                                     insert_img_response = query_engine.QueryEngine().query_db(img_insert, commit=True)
@@ -2126,7 +2169,7 @@ class Integrator:
                                 else:
                                     if insert_img_response["code"] != 200:
                                         message = (f"Middleware INSERT image {image.image_name}: "
-                                                   f"Non 200 response: {insert_image_response}")
+                                                   f"Non 200 response: {insert_img_response}")
                                         print(message)
                                         self.errors.append(message)
                                         self.errors.append(insert_img_response)
@@ -2136,23 +2179,23 @@ class Integrator:
                                 # ------- IMAGE UPDATE ------- #
                                 # ---------------------------- #
                                 img_update = f"""
-                                UPDATE {creds.bc_image_table} 
-                                SET IMAGE_NAME = '{image.image_name}', 
-                                ITEM_NO = '{image.sku}', 
-                                FILE_PATH = '{image.file_path}', 
-                                IMAGE_URL = '{image.image_url}', 
-                                PRODUCT_ID = '{image.product_id}', 
-                                IMAGE_ID = '{image.image_id}', 
-                                THUMBNAIL = '{1 if image.is_thumbnail else 0}', 
-                                IMAGE_NUMBER = '{image.image_number}', 
-                                SORT_ORDER = '{image.sort_order}', 
-                                IS_BINDING_IMAGE = '{image.is_binding_image}', 
-                                BINDING_ID = {f"'{image.binding_id}'" if image.binding_id != '' else 'NULL'}, 
-                                IS_VARIANT_IMAGE = '{image.is_variant_image}', 
-                                DESCR = {f"'{image.description.replace("'", "''")}'" if 
-                                image.description != '' else 'NULL'}, 
-                                LST_MOD_DT = '{image.last_modified_dt:%Y-%m-%d %H:%M:%S}' 
-                                WHERE ID = {image.db_id}"""
+                                UPDATE {creds.bc_image_table}
+                                SET IMAGE_NAME = '{image.image_name}',
+                                ITEM_NO = '{image.sku}',
+                                FILE_PATH = '{image.file_path}',
+                                IMAGE_URL = '{image.image_url}',
+                                PRODUCT_ID = '{image.product_id}',
+                                IMAGE_ID = '{image.image_id}',
+                                THUMBNAIL = '{1 if image.is_thumbnail else 0}',
+                                IMAGE_NUMBER = '{image.image_number}',
+                                SORT_ORDER = '{image.sort_order}',
+                                IS_BINDING_IMAGE = '{image.is_binding_image}',
+                                BINDING_ID = {f"'{image.binding_id}'" if image.binding_id != '' else 'NULL'},
+                                IS_VARIANT_IMAGE = '{image.is_variant_image}',
+                                DESCR = {f"'{image.description.replace("'", "''")}'" if
+                                image.description != '' else 'NULL'},
+                                LST_MOD_DT = '{image.last_modified_dt:%Y-%m-%d %H:%M:%S}'
+                                WHERE ID = {image.id}"""
 
                                 try:
                                     self.db.query_db(img_update, commit=True)
@@ -2188,7 +2231,6 @@ class Integrator:
                         if middleware_sync_product():
                             if self.images:
                                 middleware_sync_images()
-
 
                     # def middleware_update_product():
                     #     query = f"""
@@ -2337,18 +2379,17 @@ class Integrator:
                     result = []
                     # Child Images
                     for image in self.images:
-                        if image.last_modified_dt > self.last_sync and image.validate():
-                            image_payload = {
-                                "product_id": self.product_id,
-                                "is_thumbnail": image.is_thumbnail,
-                                "sort_order": image.sort_order,
-                                "description": f"""{image.description}""",
-                                "image_url": image.image_url,
-                            }
-                            if image.image_id:
-                                image_payload["id"] = image.image_id
+                        image_payload = {
+                            "product_id": self.product_id,
+                            "is_thumbnail": image.is_thumbnail,
+                            "sort_order": image.sort_order,
+                            "description": f"""{image.description}""",
+                            "image_url": image.image_url,
+                        }
+                        if image.image_id:
+                            image_payload["id"] = image.image_id
 
-                            result.append(image_payload)
+                        result.append(image_payload)
 
                     return result
 
@@ -3063,97 +3104,103 @@ class Integrator:
                         self.set_image_details()
 
                 def validate(self):
-                    try:
-                        file_size = os.path.getsize(self.file_path)
-                    except FileNotFoundError:
-                        print(f"File {self.file_path} not found.")
-                        return False
-                    # Check for valid file size/format
-                    size = (1280, 1280)
-                    q = 90
-                    exif_orientation = 0x0112
-                    if self.image_name.lower().endswith("jpg"):
-                        # Resize files larger than 1.8 MB
-                        if file_size > 1800000:
-                            print(f"Found large file {self.image_name}. Attempting to resize.")
+                    """Images will be validated for size and format before being uploaded and written to middleware.
+                    Images that have been written to database previously will be considered valid and will pass."""
+                    if self.id:
+                        # These items have already been through check before.
+                        return True
+                    else:
+                        try:
+                            file_size = os.path.getsize(self.file_path)
+                        except FileNotFoundError:
+                            print(f"File {self.file_path} not found.")
+                            return False
+                        # Check for valid file size/format
+                        size = (1280, 1280)
+                        q = 90
+                        exif_orientation = 0x0112
+                        if self.image_name.lower().endswith("jpg"):
+                            # Resize files larger than 1.8 MB
+                            if file_size > 1800000:
+                                print(f"Found large file {self.image_name}. Attempting to resize.")
+                                try:
+                                    im = Image.open(self.file_path)
+                                    im.thumbnail(size, Image.LANCZOS)
+                                    code = im.getexif().get(exif_orientation, 1)
+                                    if code and code != 1:
+                                        im = ImageOps.exif_transpose(im)
+                                    im.save(self.file_path, 'JPEG', quality=q)
+                                    print(f"{self.image_name} resized.")
+                                except Exception as e:
+                                    print(f"Error resizing {self.image_name}: {e}")
+                                    return False
+                                else:
+                                    print(f"Image {self.image_name} was resized.")
+
+                        # Remove Alpha Layer and Convert PNG to JPG
+                        if self.image_name.lower().endswith("png"):
+                            print(f"Found PNG file: {self.image_name}. Attempting to reformat.")
                             try:
                                 im = Image.open(self.file_path)
                                 im.thumbnail(size, Image.LANCZOS)
+                                # Preserve Rotational Data
                                 code = im.getexif().get(exif_orientation, 1)
                                 if code and code != 1:
                                     im = ImageOps.exif_transpose(im)
-                                im.save(self.file_path, 'JPEG', quality=q)
-                                print(f"{self.image_name} resized.")
+                                print(f"Stripping Alpha Layer.")
+                                rgb_im = im.convert('RGB')
+                                print(f"Saving new file in JPG format.")
+                                new_image_name = self.image_name.split(".")[0] + ".jpg"
+                                new_file_path = f"{creds.photo_path}/{new_image_name}"
+                                rgb_im.save(new_file_path, 'JPEG', quality=q)
+                                im.close()
+                                print(f"Removing old PNG file")
+                                os.remove(self.file_path)
+                                self.file_path = new_file_path
+                                self.image_name = new_image_name
                             except Exception as e:
-                                print(f"Error resizing {self.image_name}: {e}")
+                                print(f"Error converting {self.image_name}: {e}")
                                 return False
                             else:
-                                print(f"Image {self.image_name} was resized.")
+                                print("Conversion successful.")
 
-                    # Remove Alpha Layer and Convert PNG to JPG
-                    if self.image_name.lower().endswith("png"):
-                        print(f"Found PNG file: {self.image_name}. Attempting to reformat.")
-                        try:
-                            im = Image.open(self.file_path)
-                            im.thumbnail(size, Image.LANCZOS)
-                            # Preserve Rotational Data
-                            code = im.getexif().get(exif_orientation, 1)
-                            if code and code != 1:
-                                im = ImageOps.exif_transpose(im)
-                            print(f"Stripping Alpha Layer.")
-                            rgb_im = im.convert('RGB')
-                            print(f"Saving new file in JPG format.")
-                            new_file_path = f"{self.file_path[:-4]}.jpg"
-                            rgb_im.save(new_file_path, 'JPEG', quality=q)
-                            im.close()
-                            print(f"Removing old PNG file")
-                            os.remove(self.file_path)
-                            self.file_path = new_file_path
-                        except Exception as e:
-                            print(f"Error converting {self.image_name}: {e}")
+                        # replace .JPEG with .JPG
+                        if self.image_name.lower().endswith("jpeg"):
+                            print(f"Found file ending with .JPEG. Attempting to reformat.")
+                            try:
+                                print(self.file_path)
+                                im = Image.open(self.file_path)
+                                im.thumbnail(size, Image.LANCZOS)
+                                # Preserve Rotational Data
+                                code = im.getexif().get(exif_orientation, 1)
+                                if code and code != 1:
+                                    im = ImageOps.exif_transpose(im)
+                                new_image_name = self.image_name.split(".")[0] + ".jpg"
+                                new_file_path = f"{creds.photo_path}/{new_image_name}"
+                                im.save(new_file_path, 'JPEG', quality=q)
+                                im.close()
+                                os.remove(self.file_path)
+                                self.file_path = new_file_path
+                                self.image_name = new_image_name
+                            except Exception as e:
+                                print(f"Error converting {self.image_name}: {e}")
+                                return False
+                            else:
+                                print("Conversion successful.")
+
+                        # check for description that is too long
+                        if len(self.description) >= 500:
+                            print(f"Description for {self.image_name} is too long. Validation failed.")
                             return False
-                        else:
-                            print("Conversion successful.")
 
-                    # replace .JPEG with .JPG
-                    if self.image_name.lower().endswith("jpeg"):
-                        print(f"Found file ending with .JPEG. Attempting to reformat.")
-                        try:
-                            print("Start")
-                            print(self.file_path)
-                            im = Image.open(self.file_path)
-                            im.thumbnail(size, Image.LANCZOS)
-                            # Preserve Rotational Data
-                            code = im.getexif().get(exif_orientation, 1)
-                            if code and code != 1:
-                                im = ImageOps.exif_transpose(im)
-                            print(f"Saving new file in JPG format.")
-                            new_image_name = self.image_name.split(".")[0] + ".jpg"
-                            new_file_path = f"{creds.photo_path}/{new_image_name}"
-                            im.save(new_file_path, 'JPEG', quality=q)
-                            im.close()
-                            print(f"Removing old JPEG file")
-                            os.remove(self.file_path)
-                            self.file_path = new_file_path
-                            self.image_name = new_image_name
-                            print("End", self.file_path)
-                        except Exception as e:
-                            print(f"Error converting {self.image_name}: {e}")
+                        # Check for images with words or trailing numbers in the name
+                        if "^" in self.image_name and not self.image_name.split(".")[0].split("^")[1].isdigit():
+                            print(f"Image {self.image_name} is not valid.")
                             return False
-                        else:
-                            print("Conversion successful.")
-                    if len(self.description) >= 500:
-                        print(f"Description for {self.image_name} is too long. Validation failed.")
-                        return False
 
-                    # Check for images with words or trailing numbers in the name
-                    if "^" in self.image_name and not self.image_name.split(".")[0].split("^")[1].isdigit():
-                        print(f"Image {self.image_name} is not valid.")
-                        return False
-
-                    # Valid Image
-                    # print(f"Image {self.image_name} is valid.")
-                    return True
+                        # Valid Image
+                        # print(f"Image {self.image_name} is valid.")
+                        return True
 
                 def set_image_details(self):
                     def get_item_no_from_image_name(image_name):
@@ -3322,10 +3369,10 @@ class Integrator:
                 self.state = cust_result[8]
                 self.zip = cust_result[9]
                 self.country = cust_result[10]
-            
+
             def has_phone(self):
                 return self.phone is not None or self.phone != ""
-            
+
             def has_address(self):
                 return self.address is not None and self.city is not None and self.country is not None
 
@@ -3368,7 +3415,7 @@ class Integrator:
                     payload = {}
                     if bc_cust_id is not None:
                         payload["id"] = bc_cust_id
-                    
+
                     payload["first_name"] = self.fst_nam
                     payload["last_name"] = self.lst_nam
                     payload["email"] = self.email
@@ -3376,7 +3423,7 @@ class Integrator:
 
                     if self.has_phone():
                         payload["phone"] = self.phone
-                    
+
                     if self.has_address():
                         def state_code_to_full_name(state_code):
                             states = {
@@ -3439,17 +3486,18 @@ class Integrator:
                             "last_name": self.lst_nam,
                             "address1": self.address,
                             "city": self.city,
-                            "country_code": country_to_country_code(self.country if self.country is not None else "United States")
+                            "country_code": country_to_country_code(
+                                self.country if self.country is not None else "United States")
                         }
 
                         if self.state is not None:
                             address["state_or_province"] = state_code_to_full_name(self.state)
-                        
+
                         if self.zip is not None:
                             address["postal_code"] = self.zip
 
                         payload["addresses"] = [address]
-                    
+
                     print(payload)
                     return [payload]
 
@@ -3459,14 +3507,13 @@ class Integrator:
                     payload = write_customer_payload()
 
                     response = requests.post(url=url, headers=creds.test_bc_api_headers, json=payload)
-                
+
                     if response.status_code == 200:
                         print(f"Customer {self.cust_no} created successfully.")
                         self.sync().insert(response.json()["data"]["id"])
                     else:
                         print(f"Error creating customer {self.cust_no}.")
                         print(response.json())
-
 
                 def get_bc_id():
                     query = f"""
@@ -3489,7 +3536,7 @@ class Integrator:
                         payload = write_customer_payload(bc_cust_id=id)
 
                         response = requests.put(url=url, headers=creds.test_bc_api_headers, json=payload)
-                    
+
                         if response.status_code == 200:
                             print(f"Customer {self.cust_no} updated successfully.")
                             self.sync().update(id)
@@ -3504,7 +3551,7 @@ class Integrator:
                         print(f"Deleting customer {self.cust_no}")
                         url = f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/customers?id:in={id}"
                         response = requests.delete(url=url, headers=creds.test_bc_api_headers)
-                    
+
                         if response.status_code == 204:
                             print(f"Customer {self.cust_no} deleted successfully.")
                             self.sync().delete()
@@ -3530,7 +3577,7 @@ class Integrator:
                         return "update"
                     else:
                         return "create"
-                    
+
                 if get_processing_method() == "create":
                     create()
                 elif get_processing_method() == "update":
@@ -3551,6 +3598,7 @@ def country_to_country_code(country):
     }
 
     return country_codes[country] if country in country_codes else country
+
 
 def initialize_integration():
     """Clear Tables and Initialize Integration from Business Start Date"""
@@ -3585,10 +3633,9 @@ def run_integration(last_sync):
 
 # photo = Integrator.Catalog.Product.Image("202896.jpg", last_run_time=datetime(2021, 1, 1))
 
-# catalog = Integrator.Catalog(last_sync=date_presets.business_start_date)
-#
-# catalog.sync()
+catalog = Integrator.Catalog(last_sync=date_presets.five_minutes_ago)
 
+catalog.sync()
 
 # flag = Integrator.Catalog.Product("201213", last_sync=date_presets.business_start_date)
 # print(flag.process())

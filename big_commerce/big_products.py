@@ -29,7 +29,6 @@ def bc_get_custom_fields(product_id):
     print(pretty_print(response))
     return response.json()
 
-bc_get_custom_fields(5573)
 
 def bc_update_product(product_id, payload, log_file, pretty=False):
     url = f" https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/products/{product_id}"
