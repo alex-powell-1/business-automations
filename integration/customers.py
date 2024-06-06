@@ -1,7 +1,7 @@
 import requests
 
-import utilities
-from database import Database
+import integration.utilities as utilities
+from integration.database import Database
 from setup import creds
 
 
@@ -12,16 +12,14 @@ class Customers:
         self.customers = self.get_customers()
 
     def get_customers(self):
-        # query = f"""
-        # SELECT CUST_NO, FST_NAM, LST_NAM, EMAIL_ADRS_1, PHONE_1, LOY_PTS_BAL, ADRS_1, CITY, STATE, ZIP_COD, CNTRY
-        # FROM AR_CUST
-        # WHERE LST_MAINT_DT > '{self.last_sync}'
-        # """
-        query = """
+        query = f"""
         SELECT CUST_NO, FST_NAM, LST_NAM, EMAIL_ADRS_1, PHONE_1, LOY_PTS_BAL, ADRS_1, CITY, STATE, ZIP_COD, CNTRY
         FROM AR_CUST
-        WHERE CUST_NO = 'OL-100778'
+        WHERE
+        LST_MAINT_DT > '{self.last_sync}' and
+        CUST_NAM_TYP = 'P'
         """
+        
         response = self.db.query_db(query)
         if response is not None:
             result = []
@@ -43,7 +41,7 @@ class Customers:
             self.email = cust_result[3] if cust_result[3] else f"{self.cust_no}@store.com"
             self.phone = cust_result[4]
             self.loyalty_points = cust_result[5]
-            self.address = cust_result[6]
+            self.address: str = cust_result[6]
             self.city = cust_result[7]
             self.state = cust_result[8]
             self.zip = cust_result[9]
@@ -53,7 +51,20 @@ class Customers:
             return self.phone is not None or self.phone != ""
 
         def has_address(self):
-            return self.address is not None and self.city is not None and self.country is not None
+            if self.address is not None and self.state is not None and self.zip is not None:
+                if self.address.replace(" ", "").isalpha() or self.address.replace(" ", "").isnumeric():
+                    print(f"Customer {self.cust_no} has malformed address: {self.address}.")
+                    return False
+
+                if self.city is None or self.city == "":
+                    self.city = "CITY"
+
+                if self.country is None or self.country == "":
+                    self.country = "US"
+
+                return True
+            else:
+                return False
 
         def sync(self):
             class SQLSync:
@@ -165,19 +176,23 @@ class Customers:
                         "last_name": self.lst_nam,
                         "address1": self.address,
                         "city": self.city,
+                        "postal_code": self.zip,
+                        "state_or_province": state_code_to_full_name(self.state) if len(self.state) == 2 else self.state,
                         "country_code": utilities.country_to_country_code(
                             self.country if self.country is not None else "United States")
                     }
 
-                    if self.state is not None:
-                        address["state_or_province"] = state_code_to_full_name(self.state)
-
-                    if self.zip is not None:
-                        address["postal_code"] = self.zip
-
                     payload["addresses"] = [address]
 
+                print("")
+                print("")
+                print("")
+                print("")
                 print(payload)
+                print("")
+                print("")
+                print("")
+                print("")
                 return [payload]
 
             def create():
@@ -189,10 +204,10 @@ class Customers:
 
                 if response.status_code == 200:
                     print(f"Customer {self.cust_no} created successfully.")
-                    self.sync().insert(response.json()["data"]["id"])
+                    self.sync().insert(response.json()["data"][0]["id"])
                 else:
                     print(f"Error creating customer {self.cust_no}.")
-                    print(response.json())
+                    print(response.json()["errors"])
 
             def get_bc_id():
                 query = f"""
@@ -263,3 +278,10 @@ class Customers:
                 update()
             elif get_processing_method() == "delete":
                 delete()
+
+
+
+import setup.date_presets as date_presets
+if __name__ == "__main__":
+    customers = Customers(last_sync=date_presets.business_start_date)
+    customers.sync()
