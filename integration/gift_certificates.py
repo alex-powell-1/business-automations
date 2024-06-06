@@ -111,7 +111,8 @@ class GiftCertificates:
                     "to_name": self.user_info['name'],
                     "to_email": self.user_info['email'],
                     "from_name": self.user_info['name'],
-                    "from_email": self.user_info['email']
+                    "from_email": self.user_info['email'],
+                    "status": "active" if self.current_amount > 0 else "disabled"
                 }
 
 
@@ -126,6 +127,12 @@ class GiftCertificates:
                 FROM {creds.bc_gift_table}
                 WHERE GFC_NO = '{self.gift_card_no}'
                 """
+
+                response = Database.db.query_db(query)
+                if response is not None:
+                    return response[0][0]
+                else:
+                    return None
 
             def create():
                 print(f"Creating gift certificate {self.gift_card_no}")
