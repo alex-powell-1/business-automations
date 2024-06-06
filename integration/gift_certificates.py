@@ -11,12 +11,19 @@ class GiftCertificates:
         self.certificates = self.get_certificates()
 
     def get_certificates(self):
-        query = f"""
-        SELECT GFC_NO, ORIG_AMT, CURR_AMT
-        FROM SY_GFC
-        WHERE LST_MAINT_DT > '{self.last_sync}'
-        """
+        # query = f"""
+        # SELECT GFC_NO, ORIG_AMT, CURR_AMT, ORIG_DAT, ORIG_CUST_NO
+        # FROM {creds.sy_gfc_table}
+        # WHERE LST_MAINT_DT > '{self.last_sync}'
+        # """
         
+        query = f"""
+        SELECT TOP 20 GFC_NO, ORIG_AMT, CURR_AMT, ORIG_DAT, ORIG_CUST_NO
+        FROM {creds.sy_gfc_table}
+        WHERE LST_MAINT_DT > '{self.last_sync}'
+        ORDER BY NEWID()
+        """
+
         response = self.db.query_db(query)
         if response is not None:
             result = []
@@ -34,6 +41,39 @@ class GiftCertificates:
             self.gift_card_no = cert_result[0]
             self.original_amount = cert_result[1]
             self.current_amount = cert_result[2]
+            self.original_date = cert_result[3]
+            self.cust_no = cert_result[4]
+            self.user_info = self.get_user_info()
+
+        def get_user_info(self):
+            query = f"""
+            SELECT FST_NAM, LST_NAM, EMAIL_ADRS_1
+            FROM {creds.ar_cust_table}
+            WHERE CUST_NO = '{self.cust_no}'
+            """
+
+            response = Database.db.query_db(query)
+
+            blank_user = {
+                "name": f"{self.cust_no}",
+                "email": f"{self.cust_no}@store.com"
+            }
+
+            if response is not None:
+                result = []
+                for x in response:
+                    if x is not None:
+                        result.append({
+                            "name": f"{x[0]} {x[1]}",
+                            "email": x[2]
+                        })
+
+                if len(result) > 0:
+                    return result[0]
+                else:
+                    return blank_user
+            else:
+                return blank_user
 
         def sync(self):
             class SQLSync:
@@ -61,7 +101,18 @@ class GiftCertificates:
 
         def process(self):
             def write_payload(bc_id:int = None):
-                payload = {}
+                payload = {
+                    "code": self.gift_card_no,
+                    "amount": self.original_amount,
+                    "balance": self.current_amount,
+                    "purchase_date": utilities.convert_to_rfc2822(self.original_date),
+                    "to_name": self.user_info['name'],
+                    "to_email": self.user_info['email'],
+                    "from_name": self.user_info['name'],
+                    "from_email": self.user_info['email']
+                }
+
+
                 if bc_id is not None:
                     payload['id'] = bc_id
 
