@@ -6,7 +6,8 @@ from analysis import web_scraping
 from big_commerce import coupons
 from customer_tools import stock_notification
 from customer_tools import tiered_pricing
-from customer_tools.customers import set_contact_1
+
+# from customer_tools.customers import set_contact_1
 from product_tools import always_online
 from product_tools import brands
 from product_tools import featured
@@ -25,7 +26,13 @@ from setup import date_presets
 from setup import network
 from sms import sms_automations
 from sms import sms_queries
-from sms.sms_messages import birthdays, first_time_customers, returning_customers, wholesale_sms_messages
+from sms.sms_messages import (
+    birthdays,
+    first_time_customers,
+    returning_customers,
+    wholesale_sms_messages,
+)
+
 from utilities import backups
 
 # -----------------
@@ -49,7 +56,7 @@ print(f"Business Automations Starting at {now:%H:%M:%S}", file=log_file)
 print("-----------------------", file=log_file)
 
 try:
-    if minute == 0 or minute == 30:
+    if minute == 41 or minute == 30:
         # -----------------
         # TWICE PER HOUR TASKS
         # -----------------
@@ -94,10 +101,12 @@ try:
         # TIERED WHOLESALE PRICING LEVELS
         # Reassessing tiered pricing for all customers based on current year
         try:
-            tiered_pricing.reassess_tiered_pricing(start_date=date_presets.year_start,
-                                                   end_date=date_presets.today,
-                                                   log_file=log_file,
-                                                   demote=False)
+            tiered_pricing.reassess_tiered_pricing(
+                start_date=date_presets.year_start,
+                end_date=date_presets.today,
+                log_file=log_file,
+                demote=False,
+            )
         except Exception as err:
             errors += 1
             print("Error: Wholesale Tiered Pricing", file=log_file)
@@ -140,10 +149,15 @@ try:
 
         # ADMINISTRATIVE REPORT
         # Generate report in styled html/css and email to administrative team list
-        if creds.administrative_report['enabled'] and creds.administrative_report['hour'] == hour:
+        if (
+            creds.administrative_report["enabled"]
+            and creds.administrative_report["hour"] == hour
+        ):
             try:
-                product_reports.administrative_report(recipients=creds.administrative_report['recipients'],
-                                                      log_file=log_file)
+                product_reports.administrative_report(
+                    recipients=creds.administrative_report["recipients"],
+                    log_file=log_file,
+                )
             except Exception as err:
                 errors += 1
                 print("Error: Administrative Report", file=log_file)
@@ -152,10 +166,11 @@ try:
 
         # ITEMS REPORT EMAIL
         # For product management team
-        if creds.item_report['enabled'] and creds.item_report['hour'] == hour:
+        if creds.item_report["enabled"] and creds.item_report["hour"] == hour:
             try:
-                report_builder.item_report(recipients=creds.item_report['recipients'],
-                                           log_file=log_file)
+                report_builder.item_report(
+                    recipients=creds.item_report["recipients"], log_file=log_file
+                )
             except Exception as err:
                 errors += 1
                 print("Error: Administrative Report", file=log_file)
@@ -164,7 +179,7 @@ try:
 
         # LANDSCAPE DESIGN LEAD NOTIFICATION EMAIL
         # Customer Followup Email to Sales Team
-        if creds.lead_email['enabled'] and creds.lead_email['hour'] == hour:
+        if creds.lead_email["enabled"] and creds.lead_email["hour"] == hour:
             try:
                 lead_generator_notification.lead_notification_email(log_file)
             except Exception as err:
@@ -274,11 +289,14 @@ try:
             # ALWAYS ONLINE
             # Set Always Online status for top performing items
             try:
-                always_online.set_always_online(log_file=log_file,
-                                                item_list=always_online.get_top_items(
-                                                    start_date=date_presets.last_year_start,
-                                                    end_date=date_presets.today,
-                                                    number_of_items=200))
+                always_online.set_always_online(
+                    log_file=log_file,
+                    item_list=always_online.get_top_items(
+                        start_date=date_presets.last_year_start,
+                        end_date=date_presets.today,
+                        number_of_items=200,
+                    ),
+                )
             except Exception as err:
                 errors += 1
                 print("Error: Always Online Status", file=log_file)
@@ -309,16 +327,16 @@ try:
         # 5 AM TASKS
         # if hour == 5:
 
-            # # REVENUE REPORT
-            # # sent to accounting department
-            # if datetime.today().isoweekday() == 7:  # only on Sunday
-            #     try:
-            #         product_reports.revenue_report(recipients=creds.admin_report_recipients, log_file=log_file)
-            #     except Exception as err:
-            #         errors += 1
-            #         print("Error: Revenue Report", file=log_file)
-            #         print(err, file=log_file)
-            #         print("-----------------------\n", file=log_file)
+        # # REVENUE REPORT
+        # # sent to accounting department
+        # if datetime.today().isoweekday() == 7:  # only on Sunday
+        #     try:
+        #         product_reports.revenue_report(recipients=creds.admin_report_recipients, log_file=log_file)
+        #     except Exception as err:
+        #         errors += 1
+        #         print("Error: Revenue Report", file=log_file)
+        #         print(err, file=log_file)
+        #         print("-----------------------\n", file=log_file)
 
     # if hour == 7:
     # Daily revenue report for accounting
@@ -335,17 +353,22 @@ try:
         # BIRTHDAY MMS CUSTOMER COUPON ON FIRST DAY OF MONTH (MMS)
         if day == 1 and minute == 0:
             title = "Birthday Text"
-            print(f"SMS/MMS Automation: {title} - {datetime.now():%H:%M:%S}", file=log_file)
+            print(
+                f"SMS/MMS Automation: {title} - {datetime.now():%H:%M:%S}",
+                file=log_file,
+            )
             try:
-                sms_automations.create_customer_text(query=sms_queries.birthday,
-                                                     msg_descr=f"Birthday Text - {now.month} {now.year}",
-                                                     msg=birthdays.birthday_coupon_1,
-                                                     image_url=birthdays.BIRTHDAY_COUPON,
-                                                     send_rwd_bal=False,
-                                                     detail_log=creds.birthday_coupon_log,
-                                                     general_log=log_file,
-                                                     test_mode=sms_test_mode,
-                                                     test_customer=sms_test_customer)
+                sms_automations.create_customer_text(
+                    query=sms_queries.birthday,
+                    msg_descr=f"Birthday Text - {now.month} {now.year}",
+                    msg=birthdays.birthday_coupon_1,
+                    image_url=birthdays.BIRTHDAY_COUPON,
+                    send_rwd_bal=False,
+                    detail_log=creds.birthday_coupon_log,
+                    general_log=log_file,
+                    test_mode=sms_test_mode,
+                    test_customer=sms_test_customer,
+                )
             except Exception as err:
                 errors += 1
                 print(f"Error: {title}", file=log_file)
@@ -358,15 +381,17 @@ try:
         title = "Wholesale Text 1"
         print(f"SMS/MMS Automation: {title} - {datetime.now():%H:%M:%S}", file=log_file)
         try:
-            sms_automations.create_customer_text(query=sms_queries.wholesale_1,
-                                                 msg_descr=wholesale_sms_messages.message_1_descr,
-                                                 msg=wholesale_sms_messages.message_1,
-                                                 msg_prefix=True,
-                                                 send_rwd_bal=False,
-                                                 detail_log=creds.wholesale_log,
-                                                 general_log=log_file,
-                                                 test_mode=sms_test_mode,
-                                                 test_customer=sms_test_customer)
+            sms_automations.create_customer_text(
+                query=sms_queries.wholesale_1,
+                msg_descr=wholesale_sms_messages.message_1_descr,
+                msg=wholesale_sms_messages.message_1,
+                msg_prefix=True,
+                send_rwd_bal=False,
+                detail_log=creds.wholesale_log,
+                general_log=log_file,
+                test_mode=sms_test_mode,
+                test_customer=sms_test_customer,
+            )
         except Exception as err:
             errors += 1
             print(f"Error: {title}", file=log_file)
@@ -393,14 +418,16 @@ try:
         title = "First Time Cust Text 3"
         print(f"SMS/MMS Automation: {title} - {datetime.now():%H:%M:%S}", file=log_file)
         try:
-            sms_automations.create_customer_text(query=sms_queries.ftc_text_3,
-                                                 msg_descr=first_time_customers.ftc_3_descr,
-                                                 msg=first_time_customers.ftc_3_body,
-                                                 send_rwd_bal=True,
-                                                 detail_log=creds.first_time_customer_log,
-                                                 general_log=log_file,
-                                                 test_mode=sms_test_mode,
-                                                 test_customer=sms_test_customer)
+            sms_automations.create_customer_text(
+                query=sms_queries.ftc_text_3,
+                msg_descr=first_time_customers.ftc_3_descr,
+                msg=first_time_customers.ftc_3_body,
+                send_rwd_bal=True,
+                detail_log=creds.first_time_customer_log,
+                general_log=log_file,
+                test_mode=sms_test_mode,
+                test_customer=sms_test_customer,
+            )
         except Exception as err:
             errors += 1
             print(f"Error: {title}", file=log_file)
@@ -411,14 +438,16 @@ try:
         title = "Returning Cust Text 1"
         print(f"SMS/MMS Automation: {title} - {datetime.now():%H:%M:%S}", file=log_file)
         try:
-            sms_automations.create_customer_text(query=sms_queries.rc_1,
-                                                 msg_descr=returning_customers.rc_1_descr,
-                                                 msg=returning_customers.rc_1_body,
-                                                 send_rwd_bal=True,
-                                                 detail_log=creds.returning_customer_log,
-                                                 general_log=log_file,
-                                                 test_mode=sms_test_mode,
-                                                 test_customer=sms_test_customer)
+            sms_automations.create_customer_text(
+                query=sms_queries.rc_1,
+                msg_descr=returning_customers.rc_1_descr,
+                msg=returning_customers.rc_1_body,
+                send_rwd_bal=True,
+                detail_log=creds.returning_customer_log,
+                general_log=log_file,
+                test_mode=sms_test_mode,
+                test_customer=sms_test_customer,
+            )
         except Exception as err:
             errors += 1
             print(f"Error: {title}", file=log_file)
@@ -433,14 +462,16 @@ try:
         print(f"SMS/MMS Automation: {title} - {datetime.now():%H:%M:%S}", file=log_file)
 
         try:
-            sms_automations.create_customer_text(query=sms_queries.rc_3,
-                                                 msg_descr=returning_customers.rc_3_descr,
-                                                 msg=returning_customers.rc_3_body,
-                                                 send_rwd_bal=True,
-                                                 detail_log=creds.returning_customer_log,
-                                                 general_log=log_file,
-                                                 test_mode=sms_test_mode,
-                                                 test_customer=sms_test_customer)
+            sms_automations.create_customer_text(
+                query=sms_queries.rc_3,
+                msg_descr=returning_customers.rc_3_descr,
+                msg=returning_customers.rc_3_body,
+                send_rwd_bal=True,
+                detail_log=creds.returning_customer_log,
+                general_log=log_file,
+                test_mode=sms_test_mode,
+                test_customer=sms_test_customer,
+            )
         except Exception as err:
             errors += 1
             print(f"Error: {title}", file=log_file)
@@ -456,14 +487,16 @@ try:
         print(f"SMS/MMS Automation: {title} - {datetime.now():%H:%M:%S}", file=log_file)
 
         try:
-            sms_automations.create_customer_text(query=sms_queries.ftc_text_1,
-                                                 msg_descr=first_time_customers.ftc_1_descr,
-                                                 msg=first_time_customers.ftc_1_body,
-                                                 send_rwd_bal=True,
-                                                 detail_log=creds.first_time_customer_log,
-                                                 general_log=log_file,
-                                                 test_mode=sms_test_mode,
-                                                 test_customer=sms_test_customer)
+            sms_automations.create_customer_text(
+                query=sms_queries.ftc_text_1,
+                msg_descr=first_time_customers.ftc_1_descr,
+                msg=first_time_customers.ftc_1_body,
+                send_rwd_bal=True,
+                detail_log=creds.first_time_customer_log,
+                general_log=log_file,
+                test_mode=sms_test_mode,
+                test_customer=sms_test_customer,
+            )
         except Exception as err:
             errors += 1
             print(f"Error: {title}", file=log_file)
@@ -472,7 +505,6 @@ try:
 
     # 7:00 PM TASKS
     if hour == 19:
-
         # FIRST_TIME CUSTOMER TEXT 2 - 5 OFF COUPON (MMS)
 
         title = "First Time Cust Text 2"
@@ -480,15 +512,17 @@ try:
         print(f"SMS/MMS Automation: {title} - {datetime.now():%H:%M:%S}", file=log_file)
 
         try:
-            sms_automations.create_customer_text(query=sms_queries.ftc_text_2,
-                                                 msg_descr=first_time_customers.ftc_2_descr,
-                                                 msg=first_time_customers.ftc_2_body,
-                                                 image_url=creds.five_off_coupon,
-                                                 send_rwd_bal=True,
-                                                 detail_log=creds.first_time_customer_log,
-                                                 general_log=log_file,
-                                                 test_mode=sms_test_mode,
-                                                 test_customer=sms_test_customer)
+            sms_automations.create_customer_text(
+                query=sms_queries.ftc_text_2,
+                msg_descr=first_time_customers.ftc_2_descr,
+                msg=first_time_customers.ftc_2_body,
+                image_url=creds.five_off_coupon,
+                send_rwd_bal=True,
+                detail_log=creds.first_time_customer_log,
+                general_log=log_file,
+                test_mode=sms_test_mode,
+                test_customer=sms_test_customer,
+            )
         except Exception as err:
             errors += 1
             print(f"Error: {title}", file=log_file)
@@ -502,15 +536,17 @@ try:
         print(f"SMS/MMS Automation: {title} - {datetime.now():%H:%M:%S}", file=log_file)
 
         try:
-            sms_automations.create_customer_text(query=sms_queries.rc_2,
-                                                 msg_descr=returning_customers.rc_2_descr,
-                                                 msg=returning_customers.rc_2_body,
-                                                 image_url=creds.five_off_coupon,
-                                                 send_rwd_bal=True,
-                                                 detail_log=creds.returning_customer_log,
-                                                 general_log=log_file,
-                                                 test_mode=sms_test_mode,
-                                                 test_customer=sms_test_customer)
+            sms_automations.create_customer_text(
+                query=sms_queries.rc_2,
+                msg_descr=returning_customers.rc_2_descr,
+                msg=returning_customers.rc_2_body,
+                image_url=creds.five_off_coupon,
+                send_rwd_bal=True,
+                detail_log=creds.returning_customer_log,
+                general_log=log_file,
+                test_mode=sms_test_mode,
+                test_customer=sms_test_customer,
+            )
         except Exception as err:
             errors += 1
             print(f"Error: {title}", file=log_file)
@@ -584,7 +620,9 @@ else:
     total_seconds = (datetime.now() - now).total_seconds()
     minutes = total_seconds // 60
     seconds = round(total_seconds % 60, 2)
-    print(f"Total time of operation: {minutes} minutes {seconds} seconds", file=log_file)
+    print(
+        f"Total time of operation: {minutes} minutes {seconds} seconds", file=log_file
+    )
 finally:
     print(f"Total Errors: {errors}", file=log_file)
     print("-----------------------\n\n\n", file=log_file)
