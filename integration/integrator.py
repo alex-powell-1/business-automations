@@ -44,5 +44,5 @@ class Integrator:
         # self.customers.sync()
 
 
-integrator = Integrator(last_sync=date_presets.business_start_date)
+integrator = Integrator(last_sync=date_presets.five_minutes_ago)
 integrator.sync()

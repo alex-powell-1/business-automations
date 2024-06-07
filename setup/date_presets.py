@@ -5,15 +5,16 @@ from dateutil.relativedelta import relativedelta
 business_start_date = datetime(2020, 1, 1)
 thirty_minutes_ago = datetime.now() + relativedelta(minutes=-30)
 five_minutes_ago = datetime.now() + relativedelta(minutes=-5)
+thirty_seconds_ago = datetime.now() + relativedelta(seconds=-30)
 twenty_four_hours_ago = datetime.now() + relativedelta(hours=-24)
 day_start = datetime.combine(date.today(), datetime.min.time())
 
 today = date.today()
 yesterday = today + relativedelta(days=-1)
 two_weeks_ago = today + relativedelta(weeks=-2)
-two_day_ago = date.today()+relativedelta(days=-2)
-three_day_ago = date.today()+relativedelta(days=-3)
-one_week_ago = date.today()+relativedelta(weeks=-1)
+two_day_ago = date.today() + relativedelta(days=-2)
+three_day_ago = date.today() + relativedelta(days=-3)
+one_week_ago = date.today() + relativedelta(weeks=-1)
 
 
 # Month
@@ -77,12 +78,6 @@ birthday_coupon_expiration_day = month_start + relativedelta(months=+1, days=+9)
 
 # Reporting Periods
 reporting_periods = {
-    "yesterday": {
-        "start": yesterday,
-        "end": yesterday
-    },
-    "last_week": {
-        "start": last_week_start,
-        "end": last_week_end
-    },
+    "yesterday": {"start": yesterday, "end": yesterday},
+    "last_week": {"start": last_week_start, "end": last_week_end},
 }
