@@ -103,7 +103,7 @@ class Customers:
 
             return SQLSync(cust_no=self.cust_no)
 
-        def process(self, session):
+        def process(self, session: requests.Session):
             def write_customer_payload(bc_cust_id: int = None):
                 payload = {}
                 if bc_cust_id is not None:

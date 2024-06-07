@@ -103,7 +103,7 @@ class GiftCertificates:
 
             return SQLSync(self.gift_card_no)
 
-        def process(self, session):
+        def process(self, session: requests.Session):
             def write_payload(bc_id:int = None):
                 payload = {
                     "code": self.gift_card_no,
