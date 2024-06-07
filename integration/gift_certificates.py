@@ -3,12 +3,16 @@ import requests
 import integration.utilities as utilities
 from integration.database import Database
 from setup import creds
+import integration.object_processor as object_processor
+
+import time
 
 class GiftCertificates:
     def __init__(self, last_sync):
         self.last_sync = last_sync
         self.db = Database.db
         self.certificates = self.get_certificates()
+        self.processor = object_processor.ObjectProcessor(objects=self.certificates, speed=20)
 
     def get_certificates(self):
         # query = f"""
@@ -18,12 +22,11 @@ class GiftCertificates:
         # """
         
         query = f"""
-        SELECT TOP 20 GFC_NO, ORIG_AMT, CURR_AMT, ORIG_DAT, ORIG_CUST_NO
+        SELECT GFC_NO, ORIG_AMT, CURR_AMT, ORIG_DAT, ORIG_CUST_NO
         FROM {creds.sy_gfc_table}
         WHERE
         LST_MAINT_DT > '{self.last_sync}' and
-        ORIG_DAT > '2024-1-1'
-        ORDER BY NEWID()
+        ORIG_DAT > '2023-6-1'
         """
 
         response = self.db.query_db(query)
@@ -35,8 +38,7 @@ class GiftCertificates:
             return result
         
     def sync(self):
-        for cert in self.certificates:
-            cert.process()
+        self.processor.process()
         
     class Certificate:
         def __init__(self, cert_result):
@@ -101,7 +103,7 @@ class GiftCertificates:
 
             return SQLSync(self.gift_card_no)
 
-        def process(self):
+        def process(self, session):
             def write_payload(bc_id:int = None):
                 payload = {
                     "code": self.gift_card_no,
@@ -137,7 +139,15 @@ class GiftCertificates:
             def create():
                 print(f"Creating gift certificate {self.gift_card_no}")
                 payload = write_payload()
-                response = requests.post(f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v2/gift_certificates", json=payload, headers=creds.test_bc_api_headers)
+                response = session.post(f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v2/gift_certificates", json=payload, headers=creds.test_bc_api_headers)
+
+                if response.status_code == 429:
+                    ms_to_wait = int(response.headers['X-Rate-Limit-Time-Reset-Ms'])
+                    seconds_to_wait = (ms_to_wait / 1000) + 1
+                    print(f"Rate limit exceeded. Waiting {seconds_to_wait} seconds.")
+                    time.sleep(seconds_to_wait)
+
+                    response = session.post(f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v2/gift_certificates", json=payload, headers=creds.test_bc_api_headers)
 
                 if response.status_code == 201:
                     print(f"Gift certificate {self.gift_card_no} created successfully")
@@ -155,7 +165,15 @@ class GiftCertificates:
                     return
 
                 payload = write_payload()
-                response = requests.put(f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v2/gift_certificates/{bc_id}", json=payload, headers=creds.test_bc_api_headers)
+                response = session.put(f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v2/gift_certificates/{bc_id}", json=payload, headers=creds.test_bc_api_headers)
+
+                if response.status_code == 429:
+                    ms_to_wait = int(response.headers['X-Rate-Limit-Time-Reset-Ms'])
+                    seconds_to_wait = (ms_to_wait / 1000) + 1
+                    print(f"Rate limit exceeded. Waiting {seconds_to_wait} seconds.")
+                    time.sleep(seconds_to_wait)
+
+                    response = session.put(f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v2/gift_certificates/{bc_id}", json=payload, headers=creds.test_bc_api_headers)
 
                 if response.status_code == 200:
                     print(f"Gift certificate {self.gift_card_no} updated successfully")
@@ -167,11 +185,11 @@ class GiftCertificates:
             def get_processing_method():
                 bc_id = get_bc_id()
                 if bc_id is None:
-                    return create
+                    return create()
                 else:
-                    return update
+                    return update()
                 
-            get_processing_method()()
+            get_processing_method()
 
 import setup.date_presets as date_presets
 if __name__ == "__main__":
