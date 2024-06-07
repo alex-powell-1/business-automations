@@ -1,9 +1,22 @@
 import json
 from integration.database import query_engine
 import re
+import time
 
 from datetime import datetime
 from email.utils import formatdate
+
+
+def timer(func):
+    """Decorator function to time the execution of a function."""
+
+    def wrapper_function(*args, **kwargs):
+        start_time = time.time()
+        result = func(*args, **kwargs)
+        print(f"{time.time() - start_time} seconds.")
+        return result
+
+    return wrapper_function
 
 
 def convert_to_rfc2822(date: datetime):
@@ -26,6 +39,7 @@ def pretty_print(response):
     print(json.dumps(response, indent=4))
 
 
+@timer
 def get_all_binding_ids():
     db = query_engine.QueryEngine()
     """Returns a list of unique and validated binding IDs from the IM_ITEM table."""

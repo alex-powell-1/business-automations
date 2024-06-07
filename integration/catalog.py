@@ -2,14 +2,15 @@ import asyncio
 import os
 import re
 from datetime import datetime
+from setup import date_presets
 
+import time
 import aiohttp
 import requests
 from PIL import Image, ImageOps
 from requests.auth import HTTPDigestAuth
 
 from integration.database import Database
-import time
 
 from setup import creds
 from setup import query_engine
@@ -23,7 +24,7 @@ class Catalog:
         # self.log_file = log_file
         self.last_sync = last_sync
         self.db = Database.db
-        # self.update_image_timestamps(self.last_sync)
+        # self.update_image_timestamps()
         # self.process_deletes()
         # lists of products with updated timestamps
         self.products = self.get_products()
@@ -59,37 +60,29 @@ class Catalog:
         while len(self.products) > 0:
             target = self.products.pop()
             print(f"Starting Product: {target['sku']}, Binding: {target['sku']}")
-
+            start_time = time.time()
             prod = self.Product(target, last_sync=self.last_sync)
             print(
                 f"Processing Product: {prod.sku}, Binding: {prod.binding_id}, Title: {prod.web_title}"
             )
             if prod.validate_product_inputs():
-                try:
-                    prod.process()
-                except Exception as e:
-                    message = f"General Error with Product {prod.sku}: {e}"
-                    print(message)
-                    general_errors.append(message)
-                else:
-                    if prod.errors:
-                        self.product_errors.append(prod)
-            else:
-                print(
-                    f"Product sku:{prod.sku}, binding: {prod.binding_id}: "
-                    f"{prod.web_title} FAILED input validation."
-                )
+                prod.process()
 
-                self.product_errors.append(prod)
+            for error in prod.errors:
+                self.product_errors.append(prod.sku, error)
 
-            # Remove all variants from the queue
+            # Remove ALL associated variants from the queue, failed or not.
             products_to_remove = [y.sku for y in prod.variants]
             for x in products_to_remove:
                 for y in self.products:
                     if y["sku"] == x:
                         print(f"Removing {y}")
                         self.products.remove(y)  # remove all variants from the list
+            print(
+                f"Product {prod.sku} processed in {time.time() - start_time} seconds."
+            )
             print(f"Products Remaining: {len(self.products)}\n\n")
+
         print("-----------------------\n")
 
         if len(general_errors) > 0:
@@ -102,12 +95,9 @@ class Catalog:
         print(f"Sync Complete. {len(self.product_errors)} Product Errors.")
         # Print Errors
         if len(self.product_errors) > 0:
-            for product in self.product_errors:
-                print(f"Error Processing Product: {product.sku}")
-                if len(product.errors) > 0:
-                    print("Error Messages:")
-                    for message in product.errors:
-                        print(message)
+            print("Product Errors:")
+            for error in self.product_errors:
+                print(error)
                 print("\n\n")
 
     @staticmethod
@@ -145,8 +135,7 @@ class Catalog:
 
         print(f"Deleted {delete_count} brands.")
 
-    @staticmethod
-    def update_image_timestamps(last_sync):
+    def update_image_timestamps(self):
         """Takes in a list of SKUs and updates the last maintenance date in IM_ITEM and MW_IMAGES table for each
         product in the list. Updating IM_ITEM will trigger a sync of that item, and it will then look for photos
         during the sync process."""
@@ -175,20 +164,24 @@ class Catalog:
 
             return sku_result, file_result
 
-        sku_list, file_list = get_updated_photos(last_sync)
+        sku_list, file_list = get_updated_photos(self.last_sync)
+
+        print(file_list)
 
         if len(sku_list) > 0:
-            db = query_engine.QueryEngine()
             query = (
-                f"UPDATE IM_ITEM "
-                f"SET LST_MAINT_DT = GETDATE() "
+                "UPDATE IM_ITEM "
+                "SET LST_MAINT_DT = GETDATE() "
                 f"WHERE ITEM_NO in {sku_list} "
                 f"UPDATE {creds.bc_image_table} "
-                f"SET LST_MAINT_DT = GETDATE() "
+                f"SET IMAGE_LST_MOD_DT = GETDATE() "
                 f"WHERE IMAGE_NAME in {file_list} "
             )
+
+            print("UPDATE QUERY: ", query)
+
             try:
-                db.query_db(query, commit=True)
+                self.db.query_db(query, commit=True)
             except Exception as e:
                 print(f"Error updating product timestamps: {e}")
             else:
@@ -585,20 +578,14 @@ class Catalog:
 
     class Brands:
         def __init__(self, last_sync):
-            self.db = query_engine.QueryEngine()
+            self.db = Database.db
             self.last_sync = last_sync
             self.cp_brands = set()
             self.mw_brands = set()
             # self.brands will be a set of Brand objects only created if the last_maint_dt is > than last sync
-            self.brands: set = set()
-            # trip lst_maint_dt for all brands whose photos have been updated
-            self.update_brand_timestamps(last_run=self.last_sync)
+            self.brands = set()
             # get all brands from CP and MW
             self.get_brands()
-            # process deletes
-            self.process_deletes()
-            # create Brand objects for each brand that has been updated
-            self.construct_brands()
 
         def __str__(self):
             result = ""
@@ -671,6 +658,14 @@ class Catalog:
                         print("Brand: LST_MAINT_DT UPDATE sent.")
                     else:
                         print(response)
+
+        def sync(self):
+            # trip lst_maint_dt for all brands whose photos have been updated
+            self.update_brand_timestamps(last_run=self.last_sync)
+            # process deletes
+            self.process_deletes()
+            # create Brand objects for each brand that has been updated
+            self.construct_brands()
 
         def construct_brands(self):
             for cp_brand in self.cp_brands:
@@ -1070,7 +1065,7 @@ class Catalog:
             self.images: list = []
 
             # Product Information
-            self.product_id = ""
+            self.product_id = None
             self.web_title: str = ""
             self.default_price = 0.0
             self.cost = 0.0
@@ -1122,14 +1117,16 @@ class Catalog:
             self.custom_field_ids = ""
 
             self.lst_maint_dt = datetime(1970, 1, 1)
+
             # The dt of the most recently modified image
             self.lst_modified_image_dt = datetime(1970, 1, 1)
 
             # E-Commerce Categories
-            self.ecommerce_categories = []
+            self.cp_ecommerce_categories = []
+            self.bc_ecommerce_categories = []
 
             # Property Getter
-            self.get_product_details()
+            self.get_product_details(last_sync=self.last_sync)
 
             # Validate Product
             self.validation_retries = 10
@@ -1160,12 +1157,13 @@ class Catalog:
                     variant_index += 1
             return result
 
-        def get_product_details(self):
+        def get_product_details(self, last_sync):
             """Get product details from Counterpoint and Middleware"""
 
             def get_bound_product_details():
                 # clear children list
                 self.variants = []
+
                 query = f"""
                 SELECT ITEM_NO
                 FROM IM_ITEM
@@ -1178,7 +1176,7 @@ class Catalog:
                     # Create Product objects for each child and add object to bound parent list
                     for item in response:
                         self.variants.append(
-                            self.Variant(item[0], last_run_date=self.last_sync)
+                            self.Variant(item[0], last_run_date=last_sync)
                         )
 
                 # Set parent
@@ -1222,7 +1220,7 @@ class Catalog:
                         self.custom_soil_type = bound.custom_soil_type
                         self.custom_color = bound.custom_color
                         self.custom_size = bound.custom_size
-                        self.ecommerce_categories = bound.ecommerce_categories
+                        self.cp_ecommerce_categories = bound.cp_ecommerce_categories
                         self.custom_url = bound.custom_url
                         self.is_custom_url = bound.is_custom_url
                         self.custom_field_ids = bound.custom_field_ids
@@ -1235,14 +1233,18 @@ class Catalog:
                         for file in list_of_files:
                             if file.split(".")[0].split("^")[0] == self.binding_id:
                                 binding_images.append(file)
+
                     total_binding_images = len(binding_images)
+
                     if total_binding_images > 0:
                         # print(f"Found {total_binding_images} binding images for Binding ID: {self.binding_id}")
                         for image in binding_images:
-                            binding_img = self.Image(
-                                image, last_run_time=self.last_sync
-                            )
+                            binding_img = self.Image(image, last_run_time=last_sync)
+
                             if binding_img.validate():
+                                print(
+                                    f"Image {binding_img.image_name} is valid. Adding to self images list."
+                                )
                                 self.images.append(binding_img)
 
                     else:
@@ -1262,7 +1264,7 @@ class Catalog:
                     # While we are here, let's get all the last maintenance dates for the variants
                     lst_maint_dt_list.append(variant.lst_maint_dt)
                     for variant_image in variant.images:
-                        lst_modified_image_list.append(variant_image.lst_modified_dt)
+                        lst_modified_image_list.append(variant_image.last_modified_dt)
                         if variant_image_count == 0:
                             variant_image.is_variant_image = True
                         self.images.append(variant_image)
@@ -1274,7 +1276,7 @@ class Catalog:
                 self.lst_modified_image_dt = max(lst_modified_image_list)
 
             def get_single_product_details():
-                self.variants.append(self.Variant(self.sku, self.last_sync))
+                self.variants.append(self.Variant(self.sku, last_run_date=last_sync))
                 single = self.variants[0]
                 self.product_id = single.product_id
                 self.web_title = single.web_title
@@ -1313,7 +1315,7 @@ class Catalog:
                 self.custom_soil_type = single.custom_soil_type
                 self.custom_color = single.custom_color
                 self.custom_size = single.custom_size
-                self.ecommerce_categories = single.ecommerce_categories
+                self.cp_ecommerce_categories = single.cp_ecommerce_categories
                 self.images = single.images
                 self.custom_url = single.custom_url
                 self.is_custom_url = single.is_custom_url
@@ -1326,24 +1328,9 @@ class Catalog:
             else:
                 get_single_product_details()
 
-            def get_bc_categories():
-                result = []
-                if self.ecommerce_categories is not None:
-                    for category in self.ecommerce_categories:
-                        categ_query = f"""
-                        SELECT BC_CATEG_ID 
-                        FROM SN_CATEG
-                        WHERE CP_CATEG_ID = '{category}'
-                        """
-                        db = query_engine.QueryEngine()
-                        cat_response = db.query_db(categ_query)
-                        if cat_response is not None:
-                            result.append(cat_response[0][0])
-                    return result
-                else:
-                    return []
+            self.bc_ecommerce_categories = self.get_bc_ecomm_categories()
 
-            self.ecommerce_categories = get_bc_categories()
+            print("BC E-Commerce Categories: ", self.bc_ecommerce_categories)
 
             # Now all images are in self.images list and are in order by binding img first then variant img
 
@@ -1354,7 +1341,6 @@ class Catalog:
                 x.sort_order = sort_order
                 sort_order += 1
 
-        @timer("Product Validation")
         def validate_product_inputs(self):
             """Validate product inputs to check for errors in user input"""
             # If the product has been updated since the last sync, it will go through full validation.
@@ -1369,7 +1355,7 @@ class Catalog:
             check_html_description = False
             min_description_length = 20
             check_missing_images = True
-            check_for_missing_brand = True
+            check_for_invalid_brand = True
 
             def set_parent(status: bool = True) -> None:
                 """Target lowest price item in family to set as parent."""
@@ -1456,13 +1442,6 @@ class Catalog:
                             print(message)
                             return False
 
-                    # Test for missing E-Commerce Categories
-                    if len(self.ecommerce_categories) == 0:
-                        message = f"Product {self.binding_id} is missing E-Commerce Categories. Validation failed."
-                        self.errors.append(message)
-                        print(message)
-                        return False
-
                     # Test for missing variant names
                     for child in self.variants:
                         if child.variant_name == "":
@@ -1473,22 +1452,36 @@ class Catalog:
 
             # ALL PRODUCTS
 
+            # Test for missing E-Commerce Categories
             if check_for_missing_categories:
-                # Test for missing E-Commerce Categories
-                if len(self.ecommerce_categories) == 0:
-                    message = f"Product {self.sku} is missing E-Commerce Categories. Validation failed."
+                if not self.bc_ecommerce_categories:
+                    message = f"Product {self.binding_id} is missing E-Commerce Categories. Validation failed."
                     self.errors.append(message)
                     print(message)
                     return False
-            if check_for_missing_brand:
+
+            # Test for missing brand
+            if check_for_invalid_brand:
                 # Test for missing brand
-                if self.brand == "":
-                    message = (
-                        f"Product {self.sku} is missing a brand. Validation failed."
-                    )
-                    self.errors.append(message)
+                if self.brand:
+                    bc_brands = [
+                        x[0] for x in Catalog.Brands(last_sync=self.last_sync).mw_brands
+                    ]
+                    if self.brand not in bc_brands:
+                        message = f"Product {self.binding_id} has a brand, but it is not valid. Will delete invalid brand."
+                        print(message)
+                        if self.validation_retries > 0:
+                            self.delete_brand()
+                            self.validation_retries -= 1
+                            return self.validate_product_inputs()
+                        else:
+                            message = f"Product {self.binding_id} has an invalid brand. Validation failed."
+                            self.errors.append(message)
+                            print(message)
+                            return False
+                else:
+                    message = f"Product {self.binding_id} is missing a brand. Will set to default."
                     print(message)
-                    return False
 
             # Test for missing cost
             if self.cost == 0:
@@ -1534,7 +1527,6 @@ class Catalog:
             # Validation has Passed.
             return True
 
-        @timer("Construct Product Payload")
         def construct_product_payload(self, mode="create"):
             """Build the payload for creating a product in BigCommerce.
             This will include all variants, images, and custom fields."""
@@ -1667,8 +1659,6 @@ class Catalog:
                             # "bin_picking_number": "string",
                             # "mpn": "string",
                             # "gtin": "012345678905",
-                            "product_id": child.product_id,
-                            "id": child.variant_id,
                             "sku": child.sku,
                             "option_values": [
                                 {
@@ -1679,6 +1669,13 @@ class Catalog:
                             "calculated_price": 0.1,
                             "calculated_weight": 0.1,
                         }
+
+                        if self.product_id:
+                            variant_payload["product_id"] = self.product_id
+
+                        if child.variant_id:
+                            variant_payload["id"] = child.variant_id
+
                         result.append(variant_payload)
 
                 return result
@@ -1699,7 +1696,7 @@ class Catalog:
                 "map_price": 0,
                 "tax_class_id": 0,
                 # "product_tax_code": "string",
-                "categories": self.ecommerce_categories,
+                "categories": self.bc_ecommerce_categories,
                 "brand_id": get_brand_id(),
                 "brand_name": self.brand,
                 "inventory_level": self.buffered_quantity,
@@ -1723,19 +1720,22 @@ class Catalog:
                 "custom_fields": construct_custom_fields(),
                 "videos": construct_video_payload(),
             }
+            # If the product has a product_id, it is an update
+            if self.product_id:
+                payload["id"] = self.product_id
 
+            # Add child products
             if len(self.variants) >= 1:
                 payload["variants"] = construct_variant_payload()
 
+            # Add images
             if len(self.images) >= 1 and self.lst_modified_image_dt > self.last_sync:
                 print(
                     "At least one image has been modified since last sync. Will update images."
                 )
                 payload["images"] = construct_image_payload()
 
-            if mode == "update_product":
-                payload["id"] = self.product_id
-
+            # Add custom URL
             if self.custom_url != "":
                 print("adding custom url")
                 payload["custom_url"] = {
@@ -1750,16 +1750,20 @@ class Catalog:
             """Process Product Creation/Delete/Update in BigCommerce and Middleware."""
 
             def create():
+                """Create new product in BigCommerce and Middleware."""
+                print("Entering Create Product Function")
+                print(f"\nAt this point we have {len(self.errors)} errors.\n")
                 try:
                     self.bc_post_product()
                 except Exception as e:
                     message = f"BigCommerce: Error posting product {self.sku}."
-                    print(message)
-                    self.errors.append(message)
-                    print(e)
-                    return
+                    print(message, e)
+                    self.errors.append(message, e)
+                    self.rollback_product()
                 else:
                     if self.is_uploaded:
+                        print("self.is_uploaded is True")
+                        print(f" At this point we have {len(self.errors)} errors.\n")
                         try:
                             self.insert_product()
                         except Exception as e:
@@ -1770,6 +1774,9 @@ class Catalog:
                             return
                         else:
                             try:
+                                print(
+                                    f" At this point we have {len(self.errors)} errors.\n"
+                                )
                                 self.insert_images()
                             except Exception as e:
                                 message = f"Middleware: Uncaught Error inserting images for product {self.sku}. Will Delete Images from BigCommerce and Middleware: {e}"
@@ -1799,10 +1806,12 @@ class Catalog:
                 # OR we could simply FAIL and return an error in log
 
                 # Step 3: Create an updated Payload
+                print("Constructing Product Payload")
                 update_payload = self.construct_product_payload(mode="update_product")
 
                 # Step 4: Delete all Custom Fields
-                self.bc_delete_custom_fields(asynchronous=False)
+                print("Deleting Custom Fields")
+                self.bc_delete_custom_fields(asynchronous=True)
 
                 if self.second_stage_validation():
                     try:
@@ -1909,18 +1918,51 @@ class Catalog:
                 print(error_message)
                 return False
 
+        def get_bc_ecomm_categories(self):
+            """Get BigCommerce Category IDs from Middleware Category IDs"""
+            result = []
+
+            if self.cp_ecommerce_categories:
+                for category in self.cp_ecommerce_categories:
+                    categ_query = f"""
+                        SELECT BC_CATEG_ID 
+                        FROM SN_CATEG
+                        WHERE CP_CATEG_ID = '{category}'
+                        """
+                    db = query_engine.QueryEngine()
+                    cat_response = db.query_db(categ_query)
+                    if cat_response is not None:
+                        result.append(cat_response[0][0])
+
+            return result
+
         # BigCommerce Methods
+
         def bc_post_product(self):
             """Create product in BigCommerce. For this implementation, this is a single product with no
             variants"""
-            url = f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/catalog/products"
+            print("Entering bc_post_product function of product class")
+            url = f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/catalog/products?include=custom_fields,variants,images"
             payload = self.construct_product_payload()
 
             retries = 1
+
             while True:
+                print("-----" * 10)
+                print("BigCommerce POST Request")
+                print("---" * 10)
+
                 bc_response = requests.post(
                     url=url, headers=creds.test_bc_api_headers, json=payload
                 )
+
+                # print("-----" * 10 + "\n" * 2)
+
+                # print("BigCommerce POST Response")
+
+                # pretty_print(bc_response.json())
+                # print("POST Response")
+                # print("-----" * 10 + "\n" * 2)
 
                 if bc_response.status_code in [200, 207]:
                     print(
@@ -1929,16 +1971,14 @@ class Catalog:
 
                     self.is_uploaded = True
 
-                    # from utilities import handy_tools
-                    # print(handy_tools.pretty_print(bc_response))
-
-                    # assign PRODUCT_ID, VARIANT_ID, and CATEG_ID to product and insert into middleware
+                    # Assign PRODUCT_ID, VARIANT_ID, and CATEG_ID to product and insert into middleware
                     self.product_id = bc_response.json()["data"]["id"]
                     custom_field_response = bc_response.json()["data"]["custom_fields"]
 
                     if custom_field_response:
                         custom_field_list = []
                         for x in self.custom_field_response:
+                            print("HERE 1")
                             custom_field_list.append(x["id"])
                         # Set custom field ids to string
                         self.custom_field_ids = ",".join(
@@ -1957,6 +1997,7 @@ class Catalog:
                         image.product_id = self.product_id
                         image.image_id = bc_response.json()["data"]["images"][x]["id"]
 
+                    print("DONE! Returning True")
                     return True
 
                 elif bc_response.status_code == 409:
@@ -1964,9 +2005,12 @@ class Catalog:
                         message = f"Product {self.sku} already exists in BigCommerce. Will delete and retry"
                         print(message)
                         self.rollback_product()
+                        time.sleep(
+                            4
+                        )  # Wait for deletion to before recreation for BigCommerce to catch up
                         retries -= 1
                     else:
-                        message = f"Product {self.sku} already exists in BigCommerce. Delete and Retry Failed."
+                        message = f"Product {self.sku} already exists in BigCommerce. Retry Failed."
                         self.errors.append(message)
                         self.errors.append(bc_response.content)
                         return False
@@ -1976,6 +2020,8 @@ class Catalog:
                     self.errors.append(message)
                     self.errors.append(bc_response.content)
                     print(message)
+                    for x in payload:
+                        print(x, payload[x])
                     return False
 
                 else:
@@ -1989,18 +2035,30 @@ class Catalog:
                     return False
 
         def bc_update_product(self, payload):
+            print("Entering bc_update_product function of product class")
             url = (
                 f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/"
                 f"catalog/products/{self.product_id}?include=custom_fields,variants,images"
             )
+            print("-----" * 10)
+            print("BigCommerce PUT Request")
+            print("---" * 10)
+
             update_response = requests.put(
                 url=url,
                 headers=creds.test_bc_api_headers,
                 json=payload,
                 timeout=10,
             )
+            # print("-----" * 10 + "\n" * 2)
+            # pretty_print(update_response.json())
+            # print("-----" * 10 + "\n" * 2)
+
             if update_response.status_code in [200, 201, 207]:
                 # pretty_print(update_response.json())
+                print(
+                    f"BigCommerce PUT {self.sku}: SUCCESS. Code: {update_response.status_code}"
+                )
                 self.is_uploaded = True
                 self.product_id = update_response.json()["data"]["id"]
                 custom_field_response = update_response.json()["data"]["custom_fields"]
@@ -2018,26 +2076,25 @@ class Catalog:
                     variant.variant_id = update_response.json()["data"]["variants"][i][
                         "id"
                     ]
-                print("Variants Updated")
-                for variant in self.variants:
-                    print(variant.variant_id)
-                    print(variant.sku)
-                    print(variant.product_id)
-                    print(variant.binding_id)
-                    print("-----")
 
-                for i, Image in enumerate(self.images):
-                    Image.binding_id = self.binding_id
-                    Image.product_id = self.product_id
-                    Image.image_id = update_response.json()["data"]["images"][i]["id"]
-                    print(Image.image_name, Image.image_id)
+                for i, image in enumerate(self.images):
+                    image.product_id = self.product_id
+
+                # Update Image IDs
+                print("Updating Image IDs")
+                image_response = update_response.json()["data"]["images"]
+                if image_response and self.images:
+                    for bc_image in image_response:
+                        for image in self.images:
+                            if bc_image["sort_order"] == image.sort_order:
+                                image.image_id = bc_image["id"]
 
             # Errors
             else:
                 if update_response.status_code == 404:
-                    message = f"Product {self.sku} failed to update in BigCommerce. Product not found."
+                    message = f"Product {self.sku} failed to update in BigCommerce. Product not found. Code 404"
                 elif update_response.status_code == 409:
-                    message = f"Product {self.sku} failed to update in BigCommerce. Product already exists."
+                    message = f"Product {self.sku} failed to update in BigCommerce. Product already exists. Code 409"
                 elif update_response.status_code == 422:
                     message = f"Product {self.sku} failed to update in BigCommerce. Invalid Fields: Code 422"
                 else:
@@ -2046,38 +2103,47 @@ class Catalog:
                 self.errors.append(update_response.content)
                 print(message)
 
-        @timer("Delete Custom Fields")
+        def bc_get_custom_fields(self):
+            print("Entering bc_get_custom_fields function of product class")
+            custom_fields = []
+            cf_url = (
+                f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/"
+                f"catalog/products/{self.product_id}/custom-fields"
+            )
+            cf_response = requests.get(url=cf_url, headers=creds.test_bc_api_headers)
+            if cf_response.status_code == 200:
+                custom_field_data = cf_response.json()["data"]
+                for field in custom_field_data:
+                    custom_fields.append(field["id"])
+            return custom_fields
+
         def bc_delete_custom_fields(self, asynchronous=False):
-            # def get_custom_fields_from_bc():
-            # custom_fields = []
-            # cf_url = (f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/"
-            #           f"catalog/products/{self.product_id}/custom-fields")
-            # cf_response = requests.get(url=cf_url, headers=creds.test_bc_api_headers)
-            # if cf_response.status_code == 200:
-            #     custom_field_data = cf_response.json()["data"]
-            #     for field in custom_field_data:
-            #         custom_fields.append(field["id"])
-            # return custom_fields
-
-            id_list = self.custom_field_ids.split(",")
-
-            if not id_list:
-                return
+            print("Entering bc_delete_custom_fields function of product class")
+            if self.custom_field_ids:
+                id_list = self.custom_field_ids.split(",")
+            else:
+                # If there are no custom fields in the middleware, get them from BigCommerce
+                id_list = self.bc_get_custom_fields()
+                # If there are no custom fields in BigCommerce, return
+                if not id_list:
+                    return
 
             if asynchronous:
 
                 async def bc_delete_custom_fields_async():
                     async with aiohttp.ClientSession() as session:
                         for field_id in id_list:
-                            async_url = f"""https://api.bigcommerce.com/stores/{creds.test_big_store_hash}
-                            /v3/catalog/products/{self.product_id}/custom-fields/{field_id}"""
-                            async with session.get(
-                                url=async_url, headers=creds.test_header
+                            async_url = f"""https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/catalog/products/{self.product_id}/custom-fields/{field_id}"""
+
+                            async with session.delete(
+                                url=async_url, headers=creds.test_bc_api_headers
                             ) as resp:
                                 text_response = await resp.text()
-                                print(text_response)
+                                if text_response:
+                                    print(text_response)
 
                 asyncio.run(bc_delete_custom_fields_async())
+
             else:
                 # Synchronous Version
                 success = True
@@ -2143,8 +2209,8 @@ class Catalog:
                         # don't update the CUSTOM_FIELDS in middleware
                         pass
 
-        @timer("Second-State Validation")
-        def second_stage_validation():
+        def second_stage_validation(self):
+            print("Entering Second Stage Validation Function of Product Class")
             """Second-State Validation will check for changes in the product being updated that would require a full reset"""
             valid = True
             # Check for bound product trying to update a single product
@@ -2153,6 +2219,7 @@ class Catalog:
 
         # Middleware Methods
         def middleware_sync_product(self):
+            print("Entering Middleware Sync Product Function of Product Class")
             success = True
             for variant in self.variants:
                 if variant.db_id is None:
@@ -2168,10 +2235,9 @@ class Catalog:
         def middleware_sync_images(self):
             """Sync images to middleware. Will check for success and rollback by deleting image
             references from BigCommerce and the middleware if needed."""
+            print("Entering Middleware Sync Images Function of Product Class")
             rollback = False
             for image in self.images:
-                print("Syncing Image")
-                print(image.image_name, image.image_id)
                 if image.id is None:
                     print("Inserting Image")
                     if not self.insert_image(image=image):
@@ -2184,7 +2250,6 @@ class Catalog:
                     else:
                         print("Updating Image")
                         status = self.update_image(image)
-                        print(status)
                         if status is False:
                             rollback = True
 
@@ -2195,6 +2260,7 @@ class Catalog:
 
         def insert_product(self):
             """Insert product into middleware"""
+            print("Entering Insert Product Function of Product Class")
             success = True
             for variant in self.variants:
                 self.insert_variant(variant)
@@ -2207,6 +2273,7 @@ class Catalog:
             return success
 
         def insert_variant(self, variant):
+            print("Entering Insert Variant Function of Product Class")
             custom_field_string = self.custom_field_ids
 
             if not variant.is_parent:
@@ -2216,13 +2283,17 @@ class Catalog:
                 f"INSERT INTO {creds.bc_product_table} (ITEM_NO, BINDING_ID, IS_PARENT, "
                 f"PRODUCT_ID, VARIANT_ID, CATEG_ID, CUSTOM_FIELDS) VALUES ('{variant.sku}', "
                 f"{f"'{self.binding_id}'" if self.binding_id != '' else 'NULL'}, "
-                f"{1 if variant.is_parent else 0}, {self.product_id}, "
-                f"{variant.variant_id if variant.variant_id != '' else "NULL"}, "
-                f"'{self.ecommerce_categories}', "
+                f"{1 if variant.is_parent else 0}, {self.product_id if self.product_id else "NULL"}, "
+                f"{variant.variant_id if variant.variant_id else "NULL"}, "
+                f"'{self.bc_ecommerce_categories}', "
                 f"{f"'{custom_field_string}'" if custom_field_string else "NULL"})"
             )
+            print("insert_variant query")
+            print(insert_query)
 
             insert_product_response = self.db.query_db(insert_query, commit=True)
+            print("insert_product_response")
+            print(insert_product_response)
             if insert_product_response["code"] != 200:
                 message = (
                     f"Middleware INSERT product {self.sku}: "
@@ -2233,6 +2304,7 @@ class Catalog:
                 self.errors.append(insert_product_response)
 
         def update_product(self, variant):
+            print("Entering Update Product Function of Product Class")
             custom_field_string = self.custom_field_ids
 
             if not variant.is_parent:
@@ -2244,14 +2316,17 @@ class Catalog:
                 f"BINDING_ID = "
                 f"{f"'{self.binding_id}'" if self.binding_id != '' else 'NULL'}, "
                 f"IS_PARENT = {1 if variant.is_parent else 0}, "
-                f"PRODUCT_ID = {self.product_id}, "
+                f"PRODUCT_ID = {self.product_id if self.product_id else 'NULL'}, "
                 f"VARIANT_ID = "
-                f"{variant.variant_id if variant.variant_id != '' else 'NULL'}, "
-                f"CATEG_ID = '{self.ecommerce_categories}', "
+                f"{variant.variant_id if variant.variant_id else 'NULL'}, "
+                f"CATEG_ID = '{self.bc_ecommerce_categories}', "
                 f"CUSTOM_FIELDS = '{custom_field_string}', "
                 f"LST_MAINT_DT = GETDATE() "
                 f"WHERE ID = {variant.db_id}"
             )
+
+            print("update_product query")
+            print(update_query)
 
             update_product_response = self.db.query_db(update_query, commit=True)
             if update_product_response["code"] != 200:
@@ -2263,6 +2338,23 @@ class Catalog:
                 self.errors.append(message)
                 self.errors.append(update_product_response)
 
+        def delete_brand(self):
+            """Delete brand from item in counterpoint. Used as a corrective measure when an item has a prof_cod_1 that doesn't exist in
+            ITEM_PROF_COD"""
+            if self.is_bound:
+                delete_brand_query = f"""
+                UPDATE IM_ITEM
+                SET PROF_COD_1 = NULL, LST_MOD_DT = GETDATE()
+                WHERE USR_PROF_ALPHA_16 = '{self.binding_id}' AND IS_ADM_TKT = 'Y'
+                """
+            else:
+                delete_brand_query = f"""
+                UPDATE IM_ITEM
+                SET PROF_COD_1 = NULL, LST_MOD_DT = GETDATE()
+                WHERE ITEM_NO = '{self.sku}'
+                """
+            self.db.query_db(delete_brand_query, commit=True)
+
         def get_image_id(self, target):
             """Get image ID from SQL using filename. If not found, return None."""
             image_query = f"SELECT IMAGE_ID FROM {creds.bc_image_table} WHERE IMAGE_NAME = '{target}'"
@@ -2270,8 +2362,8 @@ class Catalog:
             if img_id_res is not None:
                 return img_id_res[0][0]
 
-        @timer("Process Image Deletes")
         def process_image_deletes(self):
+            print("Entering Process Image Deletes Function of Product Class")
             # Find Images to Delete
             mw_img = f"SELECT IMAGE_NAME FROM {creds.bc_image_table} WHERE PRODUCT_ID = {self.product_id}"
             mw_img_res = self.db.query_db(mw_img)
@@ -2290,7 +2382,7 @@ class Catalog:
 
         def delete_image(self, image_name) -> bool:
             """Takes in an image name and looks for matching image file in middleware. If found, deletes from BC and SQL."""
-
+            print("Entering Delete Image Function of Product Class")
             print(f"Deleting {image_name}")
 
             image_id = self.get_image_id(image_name)
@@ -2326,49 +2418,38 @@ class Catalog:
             else:
                 print(img_del_res.status_code, img_del_res.content)
 
-        def delete_product_from_sql(self):
-            create_rollback_query = (
-                f"DELETE FROM {creds.bc_product_table} "
-                f"WHERE PRODUCT_ID = '{self.product_id}'"
-            )
-            self.db.query_db(create_rollback_query, commit=True)
-
         def delete_product_images_from_sql(self):
-            delete_images_query = (
-                f"DELETE FROM {creds.bc_image_table} "
-                f"WHERE PRODUCT_ID = '{self.product_id}'"
-            )
-            self.db.query_db(delete_images_query, commit=True)
-
-        def delete_product_from_bc(self):
-            # Delete product from BigCommerce
-            url = (
-                f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/"
-                f"catalog/products/{self.product_id}"
-            )
-            delete_response = requests.delete(
-                url=url, headers=creds.test_bc_api_headers, timeout=10
-            )
-            if delete_response.status_code == 204:
-                self.is_uploaded = False
-                message = f"Product {self.sku} deleted from BigCommerce."
-                print(message)
-                self.errors.append(message)
+            """Delete all images associated with a product from SQL."""
+            print("Entering Delete Product Images Function of Product Class")
+            if self.product_id:
+                delete_images_query = (
+                    f"DELETE FROM {creds.bc_image_table} "
+                    f"WHERE PRODUCT_ID = '{self.product_id}'"
+                )
             else:
-                message = f"Error deleting product {self.sku} from BigCommerce."
-                print(message)
-                self.errors.append(message)
-                self.errors.append(delete_response.content)
+                if self.is_bound:
+                    delete_images_query = (
+                        f"DELETE FROM {creds.bc_image_table} "
+                        f"WHERE ITEM_NO = '{self.binding_id}'"
+                    )
+                else:
+                    delete_images_query = (
+                        f"DELETE FROM {creds.bc_image_table} "
+                        f"WHERE ITEM_NO = '{self.sku}'"
+                    )
+                self.db.query_db(delete_images_query, commit=True)
 
         def insert_images(self):
-            success = True
+            """Insert images into SQL."""
+            print("Entering Insert Images Function of Product Class")
             for image in self.images:
-                if not self.insert_image(image):
-                    self.rollback_image(image)
-            return success
+                self.insert_image(image)
+            print(f"Images Inserted: At this point we have {len(self.errors)} errors.")
 
         def insert_image(self, image) -> bool:
             """Insert image into SQL."""
+            print("Entering Insert Image Function of Product Class")
+
             img_insert = f"""
             INSERT INTO {creds.bc_image_table} (IMAGE_NAME, ITEM_NO, FILE_PATH,
             IMAGE_URL, PRODUCT_ID, IMAGE_ID, THUMBNAIL, IMAGE_NUMBER, SORT_ORDER,
@@ -2387,20 +2468,22 @@ class Catalog:
             '{image.is_variant_image}',
             {f"'{image.description.replace("'", "''")}'" if image.description != '' else 'NULL'},
             '{image.last_modified_dt:%Y-%m-%d %H:%M:%S}')"""
+
             try:
-                print("Inserting Image Into SQL")
+                print(f"Inserting Image {image.image_name} into SQL")
                 insert_img_response = query_engine.QueryEngine().query_db(
                     img_insert, commit=True
                 )
+                print("Response: ", insert_img_response)
+
             except Exception as e:
+                print("Insert image function uncaught error")
                 message = f"Middleware INSERT image {image.image_name}: FAILED {e}"
                 print(message)
                 self.errors.append(message)
                 return False
 
             else:
-                print("Image Inserted Into SQL")
-                print(insert_img_response)
                 if insert_img_response["code"] != 200:
                     message = (
                         f"Middleware INSERT image {image.image_name}: "
@@ -2415,6 +2498,7 @@ class Catalog:
 
         def update_image(self, image) -> bool:
             """Update image in SQL."""
+            print("Entering Update Image Function of Product Class")
             img_update = f"""
                 UPDATE {creds.bc_image_table}
                 SET IMAGE_NAME = '{image.image_name}',
@@ -2435,9 +2519,7 @@ class Catalog:
                 WHERE ID = {image.id}"""
 
             try:
-                print("Updating Image In SQL")
                 update_img_response = self.db.query_db(img_update, commit=True)
-                print(update_img_response)
             except Exception as e:
                 message = f"Middleware UPDATE image {image.image_name}: FAILED {e}"
                 print(message)
@@ -2458,11 +2540,79 @@ class Catalog:
 
         def rollback_product(self):
             """Delete product from BigCommerce and Middleware."""
+            print("Entering Rollback Product Function of Product Class")
+            print(f"Rolling back product SKU: {self.sku}, Binding: {self.binding_id}")
+            self.hard_reset_product()
+            self.get_product_details(last_sync=date_presets.business_start_date)
+            self.process()
+
+        def delete_product(self):
+            """Delete product from BigCommerce and Middleware."""
+            print("Entering Delete Product Function of Product Class")
             self.delete_product_from_bc()
             self.delete_product_from_sql()
+
+        def hard_reset_product(self):
+            """Hard reset product from BigCommerce and Middleware AND deletes associated images."""
+            print("Entering Hard Reset Product Function of Product Class")
+            self.delete_product()
             self.delete_product_images_from_sql()
 
+        def delete_product_from_bc(self):
+            # Delete product from BigCommerce
+            print("Entering Delete Product from BC Function of Product Class")
+            print(
+                f"Deleting Product Product ID: {self.product_id}, Sku:{self.sku}, Binding ID: {self.binding_id} from BigCommerce"
+            )
+            if self.product_id is not None:
+                url = f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/catalog/products?id={self.product_id}"
+            else:
+                if self.is_bound:
+                    url = f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/catalog/products?sku={self.binding_id}"
+                else:
+                    url = f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/catalog/products?sku={self.sku}"
+
+            print(url)
+
+            delete_response = requests.delete(
+                url=url, headers=creds.test_bc_api_headers, timeout=10
+            )
+
+            if delete_response.status_code == 204:
+                self.is_uploaded = False
+                message = f"Product {self.sku} deleted from BigCommerce."
+                print(message)
+            else:
+                message = f"Error deleting product {self.sku} from BigCommerce."
+                print(message)
+                print(url)
+                self.errors.append(message, delete_response.content)
+
+        def delete_product_from_sql(self):
+            print("Entering Delete Product from SQL Function of Product Class")
+            if self.product_id:
+                delete_product_query = (
+                    f"DELETE FROM {creds.bc_product_table} "
+                    f"WHERE PRODUCT_ID = '{self.product_id}'"
+                )
+
+            # items with no product ID
+            else:
+                if self.is_bound:
+                    delete_product_query = (
+                        f"DELETE FROM {creds.bc_product_table} "
+                        f"WHERE BINDING_ID = '{self.binding_id}'"
+                    )
+                else:
+                    delete_product_query = (
+                        f"DELETE FROM {creds.bc_product_table} "
+                        f"WHERE ITEM_NO = '{self.sku}'"
+                    )
+
+            self.db.query_db(delete_product_query, commit=True)
+
         def rollback_image(self, image):
+            print("Entering Rollback Image Function of Product Class")
             """Delete associated image from BigCommerce and Middleware"""
             print(f"Rolling back image {image.image_name}")
             url = (
@@ -2491,6 +2641,7 @@ class Catalog:
                 self.errors.append(delete_response.content)
 
         def remove_parent(self):
+            print("Entering Remove Parent Function of Product Class")
             """Remove parent status from all children"""
             query = f"""
                     UPDATE IM_ITEM 
@@ -2528,8 +2679,12 @@ class Catalog:
                 self.db_id = product_data["db_id"]
                 self.binding_id = product_data["binding_id"]
                 self.is_parent = True if product_data["is_parent"] == "Y" else False
-                self.product_id: int = product_data["product_id"]
-                self.variant_id: int = product_data["variant_id"]
+                self.product_id: int = (
+                    product_data["product_id"] if product_data["product_id"] else None
+                )
+                self.variant_id: int = (
+                    product_data["variant_id"] if product_data["variant_id"] else None
+                )
                 self.web_title: str = product_data["web_title"]
                 self.variant_name = product_data["variant_name"]
                 self.status = product_data["status"]
@@ -2603,9 +2758,7 @@ class Catalog:
 
                 # E-Commerce Categories
 
-                self.ecommerce_categories = ",".join(
-                    [str(category) for category in product_data["categories"]]
-                )
+                self.cp_ecommerce_categories = product_data["cp_ecommerce_categories"]
 
                 # Product Schema (i.e. Bound, Single, Variant.)
                 self.item_schema = ""
@@ -2634,8 +2787,8 @@ class Catalog:
                 Will check IM_ITEM. IM_PRC, IM_INV, EC_ITEM_DESCR, EC_CATEG_ITEM, and Image tables
                 have an after update Trigger implemented for updating IM_ITEM.LST_MAINT_DT."""
                 query = f""" select ISNULL(ITEM.USR_PROF_ALPHA_16, '') as 'Binding ID(0)', ITEM.IS_ECOMM_ITEM as 'Web 
-                Enabled(1)', ISNULL(ITEM.IS_ADM_TKT, 'N') as 'Is Parent(2)', ISNULL(BC_PROD.PRODUCT_ID, 
-                '') as 'Product ID (3)', ISNULL(BC_PROD.VARIANT_ID, '') as 'Variant ID(4)', ITEM.USR_CPC_IS_ENABLED 
+                Enabled(1)', ISNULL(ITEM.IS_ADM_TKT, 'N') as 'Is Parent(2)', BC_PROD.PRODUCT_ID as 'Product ID (3)', 
+                BC_PROD.VARIANT_ID as 'Variant ID(4)', ITEM.USR_CPC_IS_ENABLED 
                 as 'Web Visible(5)', ITEM.USR_ALWAYS_ONLINE as 'ALWAYS ONLINE(6)', ITEM.IS_FOOD_STMP_ITEM as 
                 'GIFT_WRAP(7)', ITEM.PROF_COD_1 as 'BRAND_CP_COD(8)', ITEM.ECOMM_NEW as 'IS_FEATURED(9)', 
                 ITEM.USR_IN_STORE_ONLY as 'IN_STORE_ONLY(10)', ITEM.USR_PROF_ALPHA_27 as 'SORT ORDER(11)', 
@@ -2731,7 +2884,7 @@ class Catalog:
                         "custom_size": item[0][45],
                         "lst_maint_dt": item[0][46],
                         "cost": item[0][47],
-                        "categories": str(item[0][49]).split(",")
+                        "cp_ecommerce_categories": str(item[0][49]).split(",")
                         if item[0][49]
                         else [],
                         "custom_url": "",
@@ -2865,11 +3018,15 @@ class Catalog:
                 self.binding_id = is_binding_id
                 self.is_variant_image = is_variant_image
                 self.description = description
+
                 self.last_modified_dt = datetime.fromtimestamp(
                     os.path.getmtime(self.file_path)
                 )
+
                 self.last_maintained_dt = None
                 self.get_image_details()
+                # print(self)
+                # print("-----------------")
 
             def __str__(self):
                 result = ""
@@ -2878,10 +3035,19 @@ class Catalog:
                 return result
 
             def get_image_details(self):
+                print("Entering Get Image Details Function of Image Class")
+                """Get image details from SQL"""
+                print("Getting Image Details for ", self.image_name)
+                print("-----------------")
+
                 query = (
                     f"SELECT * FROM SN_IMAGES WHERE IMAGE_NAME = '{self.image_name}'"
                 )
+                print("Query: ", query)
+                print()
                 response = self.db.query_db(query)
+                print("Response: ", response)
+                print()
                 if response is not None:
                     self.id = response[0][0]
                     self.image_name = response[0][1]
@@ -2897,13 +3063,28 @@ class Catalog:
                     self.binding_id = response[0][11]
                     self.is_variant_image = True if response[0][12] == 1 else False
                     self.description = response[0][13] if response[0][13] else ""
-                    self.last_modified_dt = response[0][14]
+                    # self.last_modified_dt = response[0][14]
                     self.last_maintained_dt = response[0][15]
+
+                    print("Last modified Date")
+                    print(self.last_modified_dt)
+
+                    print("Last run time")
+                    print(self.last_run_time)
+
+                    # Check THIS OUT
                     if self.last_modified_dt > self.last_run_time:
+                        print(f"\n\nUPLOADING NEW IMAGE FOR {self.image_name}\n\n")
                         self.upload_product_image()
+                    else:
+                        print(f"Image {self.image_name} has not been modified.")
                 else:
+                    self.last_modified_dt = datetime.fromtimestamp(
+                        os.path.getmtime(self.file_path)
+                    )
                     self.image_url = self.upload_product_image()
                     self.set_image_details()
+                print("-----------------")
 
             def validate(self):
                 """Images will be validated for size and format before being uploaded and written to middleware.
@@ -3010,7 +3191,7 @@ class Catalog:
                         return False
 
                     # Valid Image
-                    # print(f"Image {self.image_name} is valid.")
+                    print(f"Image {self.image_name} is valid.")
                     return True
 
             def set_image_details(self):

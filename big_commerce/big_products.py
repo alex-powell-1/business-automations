@@ -5,50 +5,46 @@ import requests
 
 from product_tools import products
 from setup import creds
-from utilities.handy_tools import pretty_print
-
+from integration.utilities import pretty_print
 
 
 def bc_create_product(name, product_type, sku, weight, price):
     url = f" https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/products"
     payload = {
-        'name': name,
-        'type': product_type,
-        'sku': sku,
-        'weight': weight,
-        'price': price
+        "name": name,
+        "type": product_type,
+        "sku": sku,
+        "weight": weight,
+        "price": price,
     }
     response = requests.post(url, headers=creds.bc_api_headers, json=payload)
-    print(pretty_print(response))
     return response.json()
 
 
 def bc_get_custom_fields(product_id):
     url = f" https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/products/{product_id}/custom-fields"
     response = requests.get(url, headers=creds.bc_api_headers)
-    print(pretty_print(response))
     return response.json()
 
 
 def bc_update_product(product_id, payload, log_file, pretty=False):
     url = f" https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/products/{product_id}"
-    response = (requests.put(url, headers=creds.bc_api_headers, json=payload))
+    response = requests.put(url, headers=creds.bc_api_headers, json=payload)
     if response.status_code == 200:
-            print(pretty_print(response))
-            return response.json()
+        return response.json()
     else:
         print(f"Error: {response.content}")
         return response.content
 
 
 def bc_create_image(product_id):
-    url = f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/products/{product_id}/images'
+    url = f"https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/products/{product_id}/images"
     payload = {
         "product_id": product_id,
         "is_thumbnail": True,
         "sort_order": -2147483648,
         "description": "Testing out the description field",
-        "image_url": 'https://settlemyrenursery.com/product_images/import/sample_images/birthdaycoupon.jpg'
+        "image_url": "https://settlemyrenursery.com/product_images/import/sample_images/birthdaycoupon.jpg",
     }
 
     response = requests.post(url=url, headers=creds.bc_api_headers, json=payload)
@@ -62,8 +58,7 @@ def bc_get_product(product_id, pretty=False):
         response = requests.get(url, headers=creds.bc_api_headers)
         if response.status_code == 200:
             json_response = response.json()
-            if pretty:
-                return pretty_print(response)
+
             return json_response
         if response.status_code == 404:
             print(f"Product ID: {product_id} not found on BigCommerce!")
@@ -75,9 +70,9 @@ def bc_get_product_images(product_id):
         url = f" https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/products/{product_id}/images"
 
         headers = {
-            'X-Auth-Token': creds.big_access_token,
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
+            "X-Auth-Token": creds.big_access_token,
+            "Content-Type": "application/json",
+            "Accept": "application/json",
         }
 
         response = requests.get(url, headers=headers)
@@ -85,17 +80,19 @@ def bc_get_product_images(product_id):
         if response.status_code == 404:
             return
         else:
-            json_response = response.json()['data']
+            json_response = response.json()["data"]
             return json_response
 
 
 def bc_update_product_image(product_id, image_id, payload):
-    url = (f" https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/products/"
-           f"{product_id}/images/{image_id}")
+    url = (
+        f" https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/products/"
+        f"{product_id}/images/{image_id}"
+    )
     headers = {
-        'X-Auth-Token': creds.big_access_token,
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
+        "X-Auth-Token": creds.big_access_token,
+        "Content-Type": "application/json",
+        "Accept": "application/json",
     }
 
     response = requests.put(headers=headers, url=url, json=payload)
@@ -112,10 +109,10 @@ def bc_has_product_thumbnail(product_id) -> bool:
         if response.status_code == 404:
             return False
         else:
-            json_response = response.json()['data']
+            json_response = response.json()["data"]
             has_thumbnail = False
             for x in json_response:
-                if x['is_thumbnail']:
+                if x["is_thumbnail"]:
                     has_thumbnail = True
             return has_thumbnail
 
@@ -126,13 +123,14 @@ def get_modifier(product_id, pretty=False):
         response = requests.get(url, headers=creds.bc_api_headers)
         if response.status_code == 200:
             if pretty:
-                print(pretty_print(response))
-            return response.json()['data']
+                return response.json()["data"]
 
 
 def delete_product_modifier(product_id, modifier_id):
-    url = (f" https://api.bigcommerce.com/stores/{creds.big_store_hash}"
-               f"/v3/catalog/products/{product_id}/modifiers/{modifier_id}")
+    url = (
+        f" https://api.bigcommerce.com/stores/{creds.big_store_hash}"
+        f"/v3/catalog/products/{product_id}/modifiers/{modifier_id}"
+    )
     response = requests.delete(url, headers=creds.bc_api_headers)
     if response.status_code == 204:
         print(f"Deleted modifier {modifier_id} from product {product_id}")
@@ -145,9 +143,9 @@ def add_container_workshop_to_item(product_id):
         url = f" https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/products/{product_id}/modifiers"
 
         headers = {
-            'X-Auth-Token': creds.big_access_token,
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
+            "X-Auth-Token": creds.big_access_token,
+            "Content-Type": "application/json",
+            "Accept": "application/json",
         }
 
         payload = {
@@ -158,94 +156,69 @@ def add_container_workshop_to_item(product_id):
             "config": {
                 "product_list_adjusts_inventory": True,
                 "product_list_adjusts_pricing": True,
-                "product_list_shipping_calc": "none"
+                "product_list_shipping_calc": "none",
             },
             "option_values": [
                 {
                     "label": "Container Workshop April 27 2024 (+$30)",
                     "sort_order": 0,
-                    "value_data": {
-                        "product_id": 5274
-                    },
+                    "value_data": {"product_id": 5274},
                     "is_default": False,
                     "adjusters": {
                         "price": None,
                         "weight": None,
                         "image_url": "",
-                        "purchasing_disabled": {
-                            "status": False,
-                            "message": ""
-                        }
-                    }
+                        "purchasing_disabled": {"status": False, "message": ""},
+                    },
                 },
                 {
                     "label": "Container Workshop May 4 2024 (+$30)",
                     "sort_order": 1,
-                    "value_data": {
-                        "product_id": 5275
-                    },
+                    "value_data": {"product_id": 5275},
                     "is_default": False,
                     "adjusters": {
                         "price": None,
                         "weight": None,
                         "image_url": "",
-                        "purchasing_disabled": {
-                            "status": False,
-                            "message": ""
-                        }
-                    }
+                        "purchasing_disabled": {"status": False, "message": ""},
+                    },
                 },
                 {
                     "label": "Container Workshop May 11 2024 (+$30)",
                     "sort_order": 2,
-                    "value_data": {
-                        "product_id": 5276
-                    },
+                    "value_data": {"product_id": 5276},
                     "is_default": False,
                     "adjusters": {
                         "price": None,
                         "weight": None,
                         "image_url": "",
-                        "purchasing_disabled": {
-                            "status": False,
-                            "message": ""
-                        }
-                    }
+                        "purchasing_disabled": {"status": False, "message": ""},
+                    },
                 },
                 {
                     "label": "Container Workshop May 18 2024 (+$30)",
                     "sort_order": 3,
-                    "value_data": {
-                        "product_id": 5277
-                    },
+                    "value_data": {"product_id": 5277},
                     "is_default": False,
                     "adjusters": {
                         "price": None,
                         "weight": None,
                         "image_url": "",
-                        "purchasing_disabled": {
-                            "status": False,
-                            "message": ""
-                        }
-                    }
+                        "purchasing_disabled": {"status": False, "message": ""},
+                    },
                 },
                 {
                     "label": "Container Workshop May 25 2024 (+$30)",
                     "sort_order": 4,
-                    "value_data": {
-                        "product_id": 5278
-                    },
+                    "value_data": {"product_id": 5278},
                     "is_default": False,
                     "adjusters": {
                         "price": None,
                         "weight": None,
                         "image_url": "",
-                        "purchasing_disabled": {
-                            "status": False,
-                            "message": ""
-                        }
-                    }
-                }
+                        "purchasing_disabled": {"status": False, "message": ""},
+                    },
+                },
             ],
         }
 
@@ -256,16 +229,18 @@ def add_container_workshop_to_item(product_id):
 
 
 def bc_get_variant(product_id, variant_id, pretty=False):
-    url = (f"https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/"
-           f"products/{product_id}/variants/{variant_id}")
+    url = (
+        f"https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/"
+        f"products/{product_id}/variants/{variant_id}"
+    )
 
     headers = {
-        'X-Auth-Token': creds.big_access_token,
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
+        "X-Auth-Token": creds.big_access_token,
+        "Content-Type": "application/json",
+        "Accept": "application/json",
     }
 
-    response = (requests.get(url, headers=headers))
+    response = requests.get(url, headers=headers)
     json_response = response.json()
     if pretty:
         pretty = response.content
@@ -285,7 +260,10 @@ def get_category_trees():
 def fix_missing_thumbnails(log_file):
     """In response to a bug with CPIce Data Integration, this function will correct products with missing
     thumbnail flags on the e-commerce site"""
-    print(f"Set Fixing Missing Thumbnails: Starting at {datetime.now():%H:%M:%S}", file=log_file)
+    print(
+        f"Set Fixing Missing Thumbnails: Starting at {datetime.now():%H:%M:%S}",
+        file=log_file,
+    )
     # Step 1: Get a list of all binding ids
     binding_ids = products.get_binding_ids()
     updated = 0
@@ -298,7 +276,10 @@ def fix_missing_thumbnails(log_file):
             if product_id is not None:
                 # Step 3: Check if product has a thumbnail image
                 if not bc_has_product_thumbnail(product_id):
-                    print(f"Missing Thumbnail Found for Binding Key: {key} / Product ID: {product_id}!", file=log_file)
+                    print(
+                        f"Missing Thumbnail Found for Binding Key: {key} / Product ID: {product_id}!",
+                        file=log_file,
+                    )
                     # Step 4: Assign photo to thumbnail status
                     # # 4a. Get Top Child SKU from revenue data
                     top_child = products.get_top_child_product(key)
@@ -308,33 +289,57 @@ def fix_missing_thumbnails(log_file):
                         for image in product_images:
                             # print(str(image['image_file']).split("/")[2].split("__")[0])
                             # 4c. Find the image that is associated with binding key (base image, no carrot)
-                            if key == str(image['image_file']).split("/")[2].split("__")[0]:
+                            if (
+                                key
+                                == str(image["image_file"]).split("/")[2].split("__")[0]
+                            ):
                                 # 4d. Set this image to thumbnail flag: True
-                                bc_update_product_image(product_id, image['id'], {"is_thumbnail": True})
-                                print(f"Assigning thumbnail flag to base image for binding ID:"
-                                      f"Image ID: {image['id']} Filename: {image['image_file']}\n\n", file=log_file)
+                                bc_update_product_image(
+                                    product_id, image["id"], {"is_thumbnail": True}
+                                )
+                                print(
+                                    f"Assigning thumbnail flag to base image for binding ID:"
+                                    f"Image ID: {image['id']} Filename: {image['image_file']}\n\n",
+                                    file=log_file,
+                                )
                                 updated += 1
                                 break
                             # 4d. If this doesn't exist set it to the top child
-                            elif top_child == str(image['image_file']).split("/")[2].split("__")[0]:
-                                bc_update_product_image(product_id, image['id'], {"is_thumbnail": True})
-                                print(f"Binding Key Image Not Found on BigCommerce!\n"
-                                      f"Assigning thumbnail flag to base image for top-performing child:"
-                                      f"Image ID: {image['id']} Filename: {image['image_file']}\n\n", file=log_file)
+                            elif (
+                                top_child
+                                == str(image["image_file"]).split("/")[2].split("__")[0]
+                            ):
+                                bc_update_product_image(
+                                    product_id, image["id"], {"is_thumbnail": True}
+                                )
+                                print(
+                                    f"Binding Key Image Not Found on BigCommerce!\n"
+                                    f"Assigning thumbnail flag to base image for top-performing child:"
+                                    f"Image ID: {image['id']} Filename: {image['image_file']}\n\n",
+                                    file=log_file,
+                                )
                                 updated += 1
                                 break
                             # 4e. If neither exist, set the first image to the thumbnail
                             else:
-                                bc_update_product_image(product_id, image['id'], {"is_thumbnail": True})
-                                print(f"Binding Key Image Not Found on BigCommerce!\n"
-                                      f"Base Image for Top Performing Child Not Found on BigCommerce!\n"
-                                      f"Assigning thumbnail flag to base image for first image:"
-                                      f"Image ID: {image['id']} Filename: {image['image_file']}\n\n", file=log_file)
+                                bc_update_product_image(
+                                    product_id, image["id"], {"is_thumbnail": True}
+                                )
+                                print(
+                                    f"Binding Key Image Not Found on BigCommerce!\n"
+                                    f"Base Image for Top Performing Child Not Found on BigCommerce!\n"
+                                    f"Assigning thumbnail flag to base image for first image:"
+                                    f"Image ID: {image['id']} Filename: {image['image_file']}\n\n",
+                                    file=log_file,
+                                )
                                 updated += 1
                                 break
 
     print(f"Total products updated: {updated}", file=log_file)
-    print(f"Set Fixing Missing Thumbnails: Finished at {datetime.now():%H:%M:%S}", file=log_file)
+    print(
+        f"Set Fixing Missing Thumbnails: Finished at {datetime.now():%H:%M:%S}",
+        file=log_file,
+    )
     print("-----------------------", file=log_file)
 
 
@@ -356,7 +361,7 @@ def remove_workshop_from_pottery():
         if modifier_id is not None and len(modifier_id) > 0:
             try:
                 for y in modifier_id:
-                    delete_product_modifier(product_id, y['id'])
+                    delete_product_modifier(product_id, y["id"])
             except Exception as err:
                 print(err)
                 continue
