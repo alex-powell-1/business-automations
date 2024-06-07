@@ -13,7 +13,7 @@ import time
 
 from setup import creds
 from setup import query_engine
-from integration.utilities import pretty_print, get_all_binding_ids
+from integration.utilities import pretty_print, get_all_binding_ids, timer
 
 
 class Catalog:
@@ -65,16 +65,15 @@ class Catalog:
                 f"Processing Product: {prod.sku}, Binding: {prod.binding_id}, Title: {prod.web_title}"
             )
             if prod.validate_product_inputs():
-                prod.process()
-                # try:
-                #     prod.process()
-                # except Exception as e:
-                #     message = f"General Error with Product {prod.sku}: {e}"
-                #     print(message)
-                #     general_errors.append(message)
-                # else:
-                if prod.errors:
-                    self.product_errors.append(prod)
+                try:
+                    prod.process()
+                except Exception as e:
+                    message = f"General Error with Product {prod.sku}: {e}"
+                    print(message)
+                    general_errors.append(message)
+                else:
+                    if prod.errors:
+                        self.product_errors.append(prod)
             else:
                 print(
                     f"Product sku:{prod.sku}, binding: {prod.binding_id}: "
@@ -91,7 +90,6 @@ class Catalog:
                         print(f"Removing {y}")
                         self.products.remove(y)  # remove all variants from the list
             print(f"Products Remaining: {len(self.products)}\n\n")
-
         print("-----------------------\n")
 
         if len(general_errors) > 0:
@@ -1053,6 +1051,9 @@ class Catalog:
             self.sku = product_data["sku"]
             self.binding_id = product_data["binding_id"]
 
+            # Will be set to True if product gets a success response from BigCommerce API on POST or PUT
+            self.is_uploaded = False
+
             self.last_sync = last_sync
 
             # Determine if Bound
@@ -1121,6 +1122,8 @@ class Catalog:
             self.custom_field_ids = ""
 
             self.lst_maint_dt = datetime(1970, 1, 1)
+            # The dt of the most recently modified image
+            self.lst_modified_image_dt = datetime(1970, 1, 1)
 
             # E-Commerce Categories
             self.ecommerce_categories = []
@@ -1253,11 +1256,13 @@ class Catalog:
                 # Get last maintained date of all the variants and set product last maintained date to the latest
                 # Add Variant Images to image list and establish which image is the variant thumbnail
                 lst_maint_dt_list = []
+                lst_modified_image_list = []
                 for variant in self.variants:
                     variant_image_count = 0
                     # While we are here, let's get all the last maintenance dates for the variants
                     lst_maint_dt_list.append(variant.lst_maint_dt)
                     for variant_image in variant.images:
+                        lst_modified_image_list.append(variant_image.lst_modified_dt)
                         if variant_image_count == 0:
                             variant_image.is_variant_image = True
                         self.images.append(variant_image)
@@ -1266,6 +1271,7 @@ class Catalog:
                 # Set the product last maintained date to the latest of the variants. This will be used in the validation process.
                 # If the product has been updated since the last sync, it will go through full validation. Otherwise, it will be skipped.
                 self.lst_maint_dt = max(lst_maint_dt_list)
+                self.lst_modified_image_dt = max(lst_modified_image_list)
 
             def get_single_product_details():
                 self.variants.append(self.Variant(self.sku, self.last_sync))
@@ -1348,6 +1354,7 @@ class Catalog:
                 x.sort_order = sort_order
                 sort_order += 1
 
+        @timer("Product Validation")
         def validate_product_inputs(self):
             """Validate product inputs to check for errors in user input"""
             # If the product has been updated since the last sync, it will go through full validation.
@@ -1527,625 +1534,7 @@ class Catalog:
             # Validation has Passed.
             return True
 
-        def process(self):
-            """Process Product Creation/Delete/Update in BigCommerce and Middleware."""
-
-            def create():
-                def bc_create_product():
-                    """Create product in BigCommerce. For this implementation, this is a single product with no
-                    variants"""
-                    url = f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/catalog/products"
-                    payload = self.construct_product_payload()
-                    bc_response = requests.post(
-                        url=url, headers=creds.test_bc_api_headers, json=payload
-                    )
-
-                    if bc_response.status_code in [200, 207]:
-                        print(
-                            f"BigCommerce POST {self.sku}: SUCCESS. Code: {bc_response.status_code}"
-                        )
-
-                        # from utilities import handy_tools
-                        # print(handy_tools.pretty_print(bc_response))
-
-                        # assign PRODUCT_ID, VARIANT_ID, and CATEG_ID to product and insert into middleware
-                        self.product_id = bc_response.json()["data"]["id"]
-                        self.custom_field_response = bc_response.json()["data"][
-                            "custom_fields"
-                        ]
-
-                        for x, variant in enumerate(self.variants):
-                            variant.binding_id = self.binding_id
-                            variant.product_id = self.product_id
-                            variant.variant_id = bc_response.json()["data"]["variants"][
-                                x
-                            ]["id"]
-
-                        for x, image in enumerate(self.images):
-                            image.binding_id = self.binding_id
-                            image.product_id = self.product_id
-                            image.image_id = bc_response.json()["data"]["images"][x][
-                                "id"
-                            ]
-
-                        return True
-
-                    elif bc_response.status_code == 409:
-                        message = f"Product {self.sku} already exists in BigCommerce."
-                        self.errors.append(message)
-                        self.errors.append(bc_response.content)
-                        print(message)
-                        return False
-
-                    elif bc_response.status_code == 422:
-                        message = f"Product {self.sku} failed to create in BigCommerce. Invalid Fields: Code 422"
-                        self.errors.append(message)
-                        self.errors.append(bc_response.content)
-                        print(message)
-                        return False
-
-                    else:
-                        error_message = (
-                            f"BigCommerce POST {self.sku}: "
-                            f"FAILED! Status Code: {bc_response.status_code}"
-                        )
-                        self.errors.append(error_message)
-                        self.errors.append(bc_response.content)
-                        print(error_message)
-                        return False
-
-                def middleware_insert_product():
-                    def stringify_categories():
-                        return ",".join(
-                            str(category) for category in self.ecommerce_categories
-                        )
-
-                    db = query_engine.QueryEngine()
-
-                    custom_field_ids = []
-                    custom_field_string = None
-
-                    if self.custom_field_response:
-                        for entry in self.custom_field_response:
-                            custom_field_ids.append(entry["id"])
-                        custom_field_string = ",".join(
-                            str(cust_field) for cust_field in custom_field_ids
-                        )
-
-                    success = True
-
-                    for variant in self.variants:
-                        if not variant.is_parent:
-                            custom_field_string = None
-                        insert_query = (
-                            f"INSERT INTO {creds.bc_product_table} (ITEM_NO, BINDING_ID, IS_PARENT, "
-                            f"PRODUCT_ID, VARIANT_ID, CATEG_ID, CUSTOM_FIELDS) VALUES ('{variant.sku}', "
-                            f"{f"'{self.binding_id}'" if self.binding_id != '' else 'NULL'}, "
-                            f"{1 if variant.is_parent else 0}, {self.product_id}, "
-                            f"{variant.variant_id if variant.variant_id != '' else "NULL"}, "
-                            f"'{stringify_categories()}', "
-                            f"{f"'{custom_field_string}'" if custom_field_string else "NULL"})"
-                        )
-
-                        # INSERT INTO SQL
-                        try:
-                            insert_product_response = db.query_db(
-                                insert_query, commit=True
-                            )
-                        except Exception as e:
-                            insert_prod_message = (
-                                f"Middleware INSERT product {self.sku}: FAILED {e}"
-                            )
-                            print(insert_prod_message)
-                            self.errors.append(insert_prod_message)
-                            success = False
-                        else:
-                            if insert_product_response["code"] == 200:
-                                # print(f"SKU: {variant.sku} Binding: {self.binding_id} "
-                                #       f"Product : inserted into middleware.")
-                                pass
-
-                            else:
-                                message = (
-                                    f"Middleware INSERT product {self.sku}: "
-                                    f"Non 200 response: {insert_product_response}"
-                                )
-                                print(message)
-                                self.errors.append(message)
-                                self.errors.append(insert_product_response)
-                                success = False
-
-                    if success:
-                        print(
-                            f"Product {self.sku} Binding: {self.binding_id} inserted into middleware."
-                        )
-
-                    else:
-                        # Rollback
-                        # If any of the variants failed to write to the middleware, delete associated skus from
-                        # middleware and BigCommerce
-                        create_rollback_query = (
-                            f"DELETE FROM {creds.bc_product_table} "
-                            f"WHERE PRODUCT_ID = '{self.product_id}'"
-                        )
-                        db.query_db(create_rollback_query, commit=True)
-                        # Delete product from BigCommerce
-                        url = (
-                            f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/"
-                            f"catalog/products/{self.product_id}"
-                        )
-                        delete_response = requests.delete(
-                            url=url, headers=creds.test_bc_api_headers
-                        )
-                        if delete_response.status_code == 204:
-                            message = f"Product {self.sku} deleted from BigCommerce."
-                            print(message)
-                            self.errors.append(message)
-                        else:
-                            message = (
-                                f"Error deleting product {self.sku} from BigCommerce."
-                            )
-                            print(message)
-                            self.errors.append(message)
-                            self.errors.append(delete_response.content)
-
-                    return success
-
-                def middleware_insert_images():
-                    success = True
-                    for image in self.images:
-                        if not self.insert_image(image):
-                            success = False
-                    if success:
-                        print(
-                            f"Product {self.sku} Binding: {self.binding_id} Images: inserted into middleware."
-                        )
-                    if not success:
-                        # Rollback
-                        # If any of the images failed to write to the middleware, delete associated images from
-                        # middleware and BigCommerce
-                        query = f"DELETE FROM {creds.bc_image_table} WHERE PRODUCT_ID = '{self.product_id}'"
-                        query_engine.QueryEngine().query_db(query, commit=True)
-                        # Delete product from BigCommerce
-                        url = (
-                            f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/"
-                            f"catalog/products/{self.product_id}"
-                        )
-                        delete_response = requests.delete(
-                            url=url, headers=creds.test_bc_api_headers
-                        )
-                        if delete_response.status_code == 204:
-                            message = f"Product {self.sku} deleted from BigCommerce."
-                            print(message)
-                            self.errors.append(message)
-                        else:
-                            message = (
-                                f"Error deleting product {self.sku} from BigCommerce."
-                            )
-                            print(message)
-                            self.errors.append(message)
-                            self.errors.append(delete_response.content)
-
-                    return success
-
-                if bc_create_product():
-                    if middleware_insert_product():
-                        middleware_insert_images()
-                        return
-
-            def update():
-                """Will update existing product. Will clear out custom field data and reinsert."""
-                print("Entering Update Product Function")
-
-                # Step 1: Process Deleting Variants
-                # Get a list of variants in DB. Compare to list of variants in self.variants.
-                # If a variant exists in DB but not in self.variants, delete it from DB and BC.
-                # Step 2: Delete Images
-                def delete_images():
-                    # Find Images to Delete
-
-                    mw_img = f"SELECT IMAGE_NAME FROM {creds.bc_image_table} WHERE PRODUCT_ID = {self.product_id}"
-                    mw_img_res = self.db.query_db(mw_img)
-                    mw_img_list = [img[0] for img in mw_img_res if mw_img_res]
-                    payload_img_list = [img.image_name for img in self.images]
-
-                    delete_targets = Catalog.get_deletion_target(
-                        counterpoint_list=payload_img_list, middleware_list=mw_img_list
-                    )
-                    if delete_targets:
-                        print(f"Images to Delete: {delete_targets}")
-                        for delete_target in delete_targets:
-                            self.delete_image(delete_target)
-                    else:
-                        print("No images to delete.")
-
-                start_time = time.time()
-                delete_images()
-                print(f"Time to delete images: {time.time() - start_time}")
-
-                # Step 2: Second-State Validation (validate_payload)
-                # Validate the product again after the variants have been deleted.
-                # Specifically, check for a bound product turning into a single product.
-                # check for single product becoming bound.
-                # Check for change of parent.
-                # If these product breaking things occur, delete the product from BC and Middleware.
-                # Add them both back into the product queue
-                # OR we could simply FAIL and return an error in log.
-
-                def validate_product():
-                    valid = True
-                    # Check for bound product trying to update a single product
-                    # Check for single item trying to update a bound product
-                    return valid
-
-                if not validate_product():
-                    message = f"Product {self.sku} failed second-state validation. Product will not be updated."
-                    self.errors.append(message)
-                    return
-
-                # Step 3: Create an updated Payload
-                start_time = time.time()
-                update_payload = self.construct_product_payload(mode="update_product")
-                print(f"Time to create payload: {time.time() - start_time}")
-
-                # Step 4: Delete all Custom Fields
-                def bc_delete_custom_fields(asynchronous=False):
-                    # def get_custom_fields_from_bc():
-                    # custom_fields = []
-                    # cf_url = (f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/"
-                    #           f"catalog/products/{self.product_id}/custom-fields")
-                    # cf_response = requests.get(url=cf_url, headers=creds.test_bc_api_headers)
-                    # if cf_response.status_code == 200:
-                    #     custom_field_data = cf_response.json()["data"]
-                    #     for field in custom_field_data:
-                    #         custom_fields.append(field["id"])
-                    # return custom_fields
-
-                    id_list = self.custom_field_ids.split(",")
-
-                    if not id_list:
-                        return
-
-                    if asynchronous:
-
-                        async def bc_delete_custom_fields_async():
-                            async with aiohttp.ClientSession() as session:
-                                for field_id in id_list:
-                                    async_url = f"""https://api.bigcommerce.com/stores/{creds.test_big_store_hash}
-                                    /v3/catalog/products/{self.product_id}/custom-fields/{field_id}"""
-                                    async with session.get(
-                                        url=async_url, headers=creds.test_header
-                                    ) as resp:
-                                        text_response = await resp.text()
-                                        print(text_response)
-
-                        asyncio.run(bc_delete_custom_fields_async())
-                    else:
-                        # Synchronous Version
-                        success = True
-                        success_list = []
-                        db = query_engine.QueryEngine()
-                        # Delete Each Custom Field
-                        for number in id_list:
-                            url = (
-                                f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/"
-                                f"catalog/products/{self.product_id}/custom-fields/{number}"
-                            )
-
-                            cf_remove_response = requests.delete(
-                                url=url, headers=creds.test_bc_api_headers, timeout=10
-                            )
-                            if cf_remove_response.status_code == 204:
-                                success_list.append(number)
-                            else:
-                                success = False
-                                message = f"BigCommerce: Error deleting custom fields for Product {self.sku}."
-                                print(message)
-                                self.errors.append(message)
-                                print(cf_remove_response.content)
-                        # If all custom fields were deleted successfully, remove CUSTOM_FIELDS from middleware
-                        if success:
-                            update_cf1_query = f"""UPDATE {creds.bc_product_table}
-                                    SET CUSTOM_FIELDS = NULL, LST_MAINT_DT = GETDATE()
-                                    WHERE PRODUCT_ID = '{self.product_id}' AND IS_PARENT = 1
-                                    """
-                            try:
-                                db.query_db(update_cf1_query, commit=True)
-                            except Exception as e:
-                                message = (
-                                    f"Middleware REMOVE CUSTOM_FIELDS: {self.sku}: FAILED ",
-                                    e,
-                                )
-                                print(message)
-                                self.errors.append(message)
-                        else:
-                            # Partial Success
-                            # If this wasn't totally successful, but some were deleted,
-                            # update the CUSTOM_FIELDS in middleware
-                            if success_list:
-                                success_list_string = ",".join(
-                                    str(cust_field) for cust_field in success_list
-                                )
-                                update_cf2_query = f"""
-                                UPDATE {creds.bc_product_table}
-                                SET CUSTOM_FIELDS = '{success_list_string}', LST_MAINT_DT = GETDATE()
-                                WHERE PRODUCT_ID = '{self.product_id}' AND IS_PARENT = 1
-                                """
-                                try:
-                                    db.query_db(update_cf2_query, commit=True)
-                                except Exception as e:
-                                    message = (
-                                        f"Middleware CUSTOM_FIELDS ROLLBACK: {self.sku}: FAILED ",
-                                        e,
-                                    )
-                                    print(message)
-                                    self.errors.append(message)
-                            else:
-                                # If no custom fields were deleted, but there was an error,
-                                # don't update the CUSTOM_FIELDS in middleware
-                                pass
-
-                start_time = time.time()
-                bc_delete_custom_fields()
-                print(f"Time to delete custom fields: {time.time() - start_time}")
-
-                # Step 5: Add any new variants if needed
-
-                # Step 6: Update Product on BC with new Payload, which will include new sort order, etc. for new
-                # images and variants
-                def bc_update_product(payload):
-                    url = (
-                        f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/"
-                        f"catalog/products/{self.product_id}?include=custom_fields,variants,images"
-                    )
-                    update_response = requests.put(
-                        url=url,
-                        headers=creds.test_bc_api_headers,
-                        json=payload,
-                        timeout=10,
-                    )
-                    if update_response.status_code in [200, 201, 207]:
-                        # pretty_print(update_response.json())
-                        self.product_id = update_response.json()["data"]["id"]
-                        self.custom_field_response = update_response.json()["data"][
-                            "custom_fields"
-                        ]
-                        for i, variant in enumerate(self.variants):
-                            variant.binding_id = self.binding_id
-                            variant.product_id = self.product_id
-                            variant.variant_id = update_response.json()["data"][
-                                "variants"
-                            ][i]["id"]
-                        print("Variants Updated")
-                        for variant in self.variants:
-                            print(variant.variant_id)
-                            print(variant.sku)
-                            print(variant.product_id)
-                            print(variant.binding_id)
-                            print("-----")
-
-                        for i, Image in enumerate(self.images):
-                            Image.binding_id = self.binding_id
-                            Image.product_id = self.product_id
-                            Image.image_id = update_response.json()["data"]["images"][
-                                i
-                            ]["id"]
-                            print(Image.image_name, Image.image_id)
-
-                        if self.custom_field_response:
-                            custom_field_list = []
-                            for x in self.custom_field_response:
-                                custom_field_list.append(x["id"])
-                            self.custom_field_ids = ",".join(
-                                str(x) for x in custom_field_list
-                            )
-                            return True
-                    # Errors
-                    else:
-                        if update_response.status_code == 404:
-                            message = f"Product {self.sku} failed to update in BigCommerce. Product not found."
-                        elif update_response.status_code == 409:
-                            message = f"Product {self.sku} failed to update in BigCommerce. Product already exists."
-                        elif update_response.status_code == 422:
-                            message = f"Product {self.sku} failed to update in BigCommerce. Invalid Fields: Code 422"
-                        else:
-                            message = f"Product {self.sku} failed to update in BigCommerce. Invalid Fields: Code 422"
-                        self.errors.append(message)
-                        self.errors.append(update_response.content)
-                        print(message)
-                        return False
-
-                def middleware_sync_product():
-                    def stringify_categories():
-                        return ",".join(
-                            str(category) for category in self.ecommerce_categories
-                        )
-
-                    success = True
-
-                    db = query_engine.QueryEngine()
-
-                    custom_field_ids = []
-                    custom_field_string = None
-                    if self.custom_field_response:
-                        for entry in self.custom_field_response:
-                            custom_field_ids.append(entry["id"])
-                        custom_field_string = ",".join(
-                            str(cust_field) for cust_field in custom_field_ids
-                        )
-
-                    for variant in self.variants:
-                        if not variant.is_parent:
-                            custom_field_string = None
-                        # ---------------------------- #
-                        # NEW PRODUCT INSERTS INTO SQL #
-                        # ---------------------------- #
-                        if variant.db_id is None:
-                            # If variant.db_id is None, this is a new product to be inserted into SQL
-                            insert_query = (
-                                f"INSERT INTO {creds.bc_product_table} (ITEM_NO, BINDING_ID, IS_PARENT, "
-                                f"PRODUCT_ID, VARIANT_ID, CATEG_ID) VALUES ('{variant.sku}', "
-                                f"{f"'{self.binding_id}'" if self.binding_id != '' else 'NULL'}, "
-                                f"{1 if variant.is_parent else 0}, {self.product_id}, "
-                                f"{variant.variant_id if variant.variant_id != '' else "NULL"}, "
-                                f"'{stringify_categories()}')"
-                            )
-
-                            # INSERT INTO SQL
-                            try:
-                                insert_product_response = db.query_db(
-                                    insert_query, commit=True
-                                )
-                            except Exception as e:
-                                insert_prod_message = (
-                                    f"Middleware INSERT product {self.sku}: FAILED {e}"
-                                )
-                                print(insert_prod_message)
-                                self.errors.append(insert_prod_message)
-                                success = False
-                            else:
-                                if insert_product_response["code"] == 200:
-                                    # print(f"SKU: {variant.sku} Binding: {self.binding_id} "
-                                    #       f"Product : inserted into middleware.")
-                                    pass
-
-                                else:
-                                    message = (
-                                        f"Middleware INSERT product {self.sku}: "
-                                        f"Non 200 response: {insert_product_response}"
-                                    )
-                                    print(message)
-                                    self.errors.append(message)
-                                    self.errors.append(insert_product_response)
-                                    success = False
-                        else:
-                            # ---------------------------- #
-                            # NEW PRODUCT INSERTS INTO SQL #
-                            # ---------------------------- #
-                            # If variant.db_id is not None, this is an existing product to be updated in SQL
-
-                            update_query = (
-                                f"UPDATE {creds.bc_product_table} "
-                                f"SET ITEM_NO = '{variant.sku}', "
-                                f"BINDING_ID = "
-                                f"{f"'{self.binding_id}'" if self.binding_id != '' else 'NULL'}, "
-                                f"IS_PARENT = {1 if variant.is_parent else 0}, "
-                                f"PRODUCT_ID = {self.product_id}, "
-                                f"VARIANT_ID = "
-                                f"{variant.variant_id if variant.variant_id != '' else 'NULL'}, "
-                                f"CATEG_ID = '{stringify_categories()}', "
-                                f"CUSTOM_FIELDS = '{custom_field_string}', "
-                                f"LST_MAINT_DT = GETDATE() "
-                                f"WHERE ID = {variant.db_id}"
-                            )
-
-                            # UPDATE VARIANT IN SQL
-                            try:
-                                update_product_response = db.query_db(
-                                    update_query, commit=True
-                                )
-                            except Exception as e:
-                                insert_prod_message = (
-                                    f"Middleware UPDATE product {self.sku}: FAILED {e}"
-                                )
-                                print(insert_prod_message)
-                                self.errors.append(insert_prod_message)
-                                success = False
-                            else:
-                                if update_product_response["code"] == 200:
-                                    # print(f"SKU: {variant.sku} Binding: {self.binding_id} "
-                                    #       f"Product : inserted into middleware.")
-                                    pass
-
-                                else:
-                                    message = (
-                                        f"Middleware UPDATE product {self.sku}: "
-                                        f"Non 200 response: {update_product_response}"
-                                    )
-                                    print(message)
-                                    self.errors.append(message)
-                                    self.errors.append(update_product_response)
-                                    success = False
-
-                    if not success:
-                        # Rollback
-                        # If any of the variants failed to write to the middleware, delete associated skus from
-                        # middleware and BigCommerce
-                        product_rollback_query = (
-                            f"DELETE FROM {creds.bc_product_table} "
-                            f"WHERE PRODUCT_ID = '{self.product_id}'"
-                        )
-                        db.query_db(product_rollback_query, commit=True)
-                        # Could improve this with a join or SQL trigger...
-                        images_rollback_query = (
-                            f"DELETE FROM {creds.bc_image_table} "
-                            f"WHERE PRODUCT_ID = '{self.product_id}'"
-                        )
-
-                        db.query_db(images_rollback_query, commit=True)
-
-                        # Delete product from BigCommerce
-                        url = (
-                            f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/"
-                            f"catalog/products/{self.product_id}"
-                        )
-                        delete_response = requests.delete(
-                            url=url, headers=creds.test_bc_api_headers, timeout=10
-                        )
-                        if delete_response.status_code == 204:
-                            message = f"Product {self.sku} deleted from BigCommerce."
-                            print(message)
-                            self.errors.append(message)
-                        else:
-                            message = (
-                                f"Error deleting product {self.sku} from BigCommerce."
-                            )
-                            print(message)
-                            self.errors.append(message)
-                            self.errors.append(delete_response.content)
-
-                    return success
-
-                def middleware_sync_images():
-                    """Sync images to middleware. Will check for success and rollback by deleting image
-                    references from BigCommerce and the middleware if needed."""
-                    rollback = False
-                    for image in self.images:
-                        print("Syncing Image")
-                        print(image.image_name, image.image_id)
-                        if image.id is None:
-                            print("Inserting Image")
-                            rollback = self.insert_image(image=image)
-                        else:
-                            if image.last_modified_dt > self.last_sync:
-                                print("Replacing Image")
-                                self.replace_image(image)
-                            else:
-                                print("Updating Image")
-                                rollback = self.update_image(image)
-
-                        # If rollback is True, delete image from BigCommerce and Middleware
-                        if rollback:
-                            print("Rolling Back Image")
-                            self.rollback_image(image)
-
-                # Driver Code
-                if bc_update_product(update_payload):
-                    if middleware_sync_product():
-                        middleware_sync_images()
-
-            query = f"""SELECT *
-                    FROM {creds.bc_product_table}
-                    WHERE ITEM_NO = '{self.sku}'"""
-            response = self.db.query_db(query)
-
-            if response is None:
-                # Product Not Found, Create New Product
-                create()
-            else:
-                # Product Found, Update Product
-                update()
-
+        @timer("Construct Product Payload")
         def construct_product_payload(self, mode="create"):
             """Build the payload for creating a product in BigCommerce.
             This will include all variants, images, and custom fields."""
@@ -2309,14 +1698,13 @@ class Catalog:
                 "sale_price": self.sale_price,
                 "map_price": 0,
                 "tax_class_id": 0,
-                "product_tax_code": "string",
+                # "product_tax_code": "string",
                 "categories": self.ecommerce_categories,
                 "brand_id": get_brand_id(),
                 "brand_name": self.brand,
                 "inventory_level": self.buffered_quantity,
                 "inventory_warning_level": 10,
                 "inventory_tracking": "variant" if self.is_bound else "product",
-                # "fixed_cost_shipping_price": 0.1,
                 "is_free_shipping": False,
                 "is_visible": self.visible,
                 "is_featured": self.featured,
@@ -2324,9 +1712,6 @@ class Catalog:
                 "search_keywords": self.search_keywords,
                 "availability": "available" if not self.in_store_only else "disabled",
                 "gift_wrapping_options_type": "none" if not self.gift_wrap else "any",
-                # "gift_wrapping_options_list": [
-                #     0
-                # ],
                 "condition": "New",
                 "is_condition_shown": True,
                 "page_title": self.meta_title,
@@ -2335,24 +1720,17 @@ class Catalog:
                 "preorder_message": self.preorder_message,
                 "is_preorder_only": self.is_preorder_only,
                 "is_price_hidden": self.is_price_hidden,
-                "price_hidden_label": "string",
-                # "date_last_imported": "string",
                 "custom_fields": construct_custom_fields(),
-                # "bulk_pricing_rules": [
-                #     {
-                #         "quantity_min": 10,
-                #         "quantity_max": 50,
-                #         "type": "price",
-                #         "amount": 10
-                #     }
-                # ],
                 "videos": construct_video_payload(),
             }
 
             if len(self.variants) >= 1:
                 payload["variants"] = construct_variant_payload()
 
-            if len(self.images) >= 1:
+            if len(self.images) >= 1 and self.lst_modified_image_dt > self.last_sync:
+                print(
+                    "At least one image has been modified since last sync. Will update images."
+                )
                 payload["images"] = construct_image_payload()
 
             if mode == "update_product":
@@ -2368,15 +1746,112 @@ class Catalog:
 
             return payload
 
-        def middleware_create_product(self):
-            pass
+        def process(self):
+            """Process Product Creation/Delete/Update in BigCommerce and Middleware."""
 
-        def get_image_id(self, target):
-            """Get image ID from SQL using filename. If not found, return None."""
-            image_query = f"SELECT IMAGE_ID FROM {creds.bc_image_table} WHERE IMAGE_NAME = '{target}'"
-            img_id_res = self.db.query_db(image_query)
-            if img_id_res is not None:
-                return img_id_res[0][0]
+            def create():
+                try:
+                    self.bc_post_product()
+                except Exception as e:
+                    message = f"BigCommerce: Error posting product {self.sku}."
+                    print(message)
+                    self.errors.append(message)
+                    print(e)
+                    return
+                else:
+                    if self.is_uploaded:
+                        try:
+                            self.insert_product()
+                        except Exception as e:
+                            message = f"Middleware: Uncaught Error inserting product {self.sku}. Will delete product from BigCommerce and Middleware: {e}"
+                            print(message)
+                            self.errors.append(message)
+                            self.rollback_product()
+                            return
+                        else:
+                            try:
+                                self.insert_images()
+                            except Exception as e:
+                                message = f"Middleware: Uncaught Error inserting images for product {self.sku}. Will Delete Images from BigCommerce and Middleware: {e}"
+                                print(message)
+                                self.errors.append(message)
+                                self.rollback_images()
+                                return
+                            else:
+                                print(
+                                    f"Product {self.sku} Binding: {self.binding_id} successfully created."
+                                )
+
+            def update():
+                """Will update existing product. Will clear out custom field data and reinsert."""
+                print("Entering Update Product Function")
+
+                # Step 1: Process Deleting Variants
+                self.process_image_deletes()
+
+                # Step 2: Second-State Validation (validate_payload)
+                # Validate the product again after the variants have been deleted.
+                # Specifically, check for a bound product turning into a single product.
+                # check for single product becoming bound.
+                # Check for change of parent.
+                # If these product breaking things occur, delete the product from BC and Middleware.
+                # Add them both back into the product queue
+                # OR we could simply FAIL and return an error in log
+
+                # Step 3: Create an updated Payload
+                update_payload = self.construct_product_payload(mode="update_product")
+
+                # Step 4: Delete all Custom Fields
+                self.bc_delete_custom_fields(asynchronous=False)
+
+                if self.second_stage_validation():
+                    try:
+                        self.bc_update_product(update_payload)
+                    except Exception as e:
+                        message = f"Uncaught Exception for {self.sku, self.binding_id} during update to BigCommerce. Error: {e}"
+                        self.errors.append(message)
+                        print(message)
+                        self.rollback_product()
+                        return
+                    else:
+                        # If the product has been updated in BigCommerce, update the product in the middleware
+                        # and update the image records in the middleware
+                        if self.is_uploaded:
+                            try:
+                                self.middleware_sync_product()
+                            except Exception as e:
+                                message = f"Uncaught Exception for: {self.sku, self.binding_id} during update in middleware. Error: {e}"
+                                self.errors.append(message)
+                                print(message)
+                                self.rollback_product()
+                                return
+                            else:
+                                try:
+                                    self.middleware_sync_images()
+                                except Exception as e:
+                                    message = f"Uncaught Exception for {self.sku} while updating images in middleware. Error: {e}"
+                                    self.errors.append(message)
+                                    self.rollback_images()
+                                    print(message)
+                                else:
+                                    print(
+                                        f"Product {self.sku} updated in BigCommerce and Middleware."
+                                    )
+
+            # This is problematic. If products change, they may exist in the database but still require a full reset...
+            # Perhaps this is where second stage product validation should occur.
+
+            query = f"""SELECT *
+                    FROM {creds.bc_product_table}
+                    WHERE ITEM_NO = '{self.sku}'"""
+            response = self.db.query_db(query)
+
+            if response is None:
+                # Product Not Found, Create New Product
+                create()
+            else:
+                # Product Found, Update Product
+                update()
 
         def replace_image(self, image) -> bool:
             """Replace image in BigCommerce and SQL."""
@@ -2398,9 +1873,6 @@ class Catalog:
             bc_response = requests.post(
                 url=url, headers=creds.test_bc_api_headers, json=new_photo_payload
             )
-
-            print("Replace Image Response")
-            print(bc_response.status_code, bc_response.content)
 
             if bc_response.status_code == 200:
                 print(
@@ -2436,6 +1908,385 @@ class Catalog:
                 self.errors.append(bc_response.content)
                 print(error_message)
                 return False
+
+        # BigCommerce Methods
+        def bc_post_product(self):
+            """Create product in BigCommerce. For this implementation, this is a single product with no
+            variants"""
+            url = f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/catalog/products"
+            payload = self.construct_product_payload()
+
+            retries = 1
+            while True:
+                bc_response = requests.post(
+                    url=url, headers=creds.test_bc_api_headers, json=payload
+                )
+
+                if bc_response.status_code in [200, 207]:
+                    print(
+                        f"BigCommerce POST {self.sku}: SUCCESS. Code: {bc_response.status_code}"
+                    )
+
+                    self.is_uploaded = True
+
+                    # from utilities import handy_tools
+                    # print(handy_tools.pretty_print(bc_response))
+
+                    # assign PRODUCT_ID, VARIANT_ID, and CATEG_ID to product and insert into middleware
+                    self.product_id = bc_response.json()["data"]["id"]
+                    custom_field_response = bc_response.json()["data"]["custom_fields"]
+
+                    if custom_field_response:
+                        custom_field_list = []
+                        for x in self.custom_field_response:
+                            custom_field_list.append(x["id"])
+                        # Set custom field ids to string
+                        self.custom_field_ids = ",".join(
+                            str(x) for x in custom_field_list
+                        )
+
+                    for x, variant in enumerate(self.variants):
+                        variant.binding_id = self.binding_id
+                        variant.product_id = self.product_id
+                        variant.variant_id = bc_response.json()["data"]["variants"][x][
+                            "id"
+                        ]
+
+                    for x, image in enumerate(self.images):
+                        image.binding_id = self.binding_id
+                        image.product_id = self.product_id
+                        image.image_id = bc_response.json()["data"]["images"][x]["id"]
+
+                    return True
+
+                elif bc_response.status_code == 409:
+                    if retries > 0:
+                        message = f"Product {self.sku} already exists in BigCommerce. Will delete and retry"
+                        print(message)
+                        self.rollback_product()
+                        retries -= 1
+                    else:
+                        message = f"Product {self.sku} already exists in BigCommerce. Delete and Retry Failed."
+                        self.errors.append(message)
+                        self.errors.append(bc_response.content)
+                        return False
+
+                elif bc_response.status_code == 422:
+                    message = f"Product {self.sku} failed to create in BigCommerce. Invalid Fields: Code 422"
+                    self.errors.append(message)
+                    self.errors.append(bc_response.content)
+                    print(message)
+                    return False
+
+                else:
+                    error_message = (
+                        f"BigCommerce POST {self.sku}: "
+                        f"FAILED! Status Code: {bc_response.status_code}"
+                    )
+                    self.errors.append(error_message)
+                    self.errors.append(bc_response.content)
+                    print(error_message)
+                    return False
+
+        def bc_update_product(self, payload):
+            url = (
+                f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/"
+                f"catalog/products/{self.product_id}?include=custom_fields,variants,images"
+            )
+            update_response = requests.put(
+                url=url,
+                headers=creds.test_bc_api_headers,
+                json=payload,
+                timeout=10,
+            )
+            if update_response.status_code in [200, 201, 207]:
+                # pretty_print(update_response.json())
+                self.is_uploaded = True
+                self.product_id = update_response.json()["data"]["id"]
+                custom_field_response = update_response.json()["data"]["custom_fields"]
+
+                if custom_field_response:
+                    custom_field_list = []
+                    for x in self.custom_field_response:
+                        custom_field_list.append(x["id"])
+                    # Set custom field ids to string
+                    self.custom_field_ids = ",".join(str(x) for x in custom_field_list)
+
+                for i, variant in enumerate(self.variants):
+                    variant.binding_id = self.binding_id
+                    variant.product_id = self.product_id
+                    variant.variant_id = update_response.json()["data"]["variants"][i][
+                        "id"
+                    ]
+                print("Variants Updated")
+                for variant in self.variants:
+                    print(variant.variant_id)
+                    print(variant.sku)
+                    print(variant.product_id)
+                    print(variant.binding_id)
+                    print("-----")
+
+                for i, Image in enumerate(self.images):
+                    Image.binding_id = self.binding_id
+                    Image.product_id = self.product_id
+                    Image.image_id = update_response.json()["data"]["images"][i]["id"]
+                    print(Image.image_name, Image.image_id)
+
+            # Errors
+            else:
+                if update_response.status_code == 404:
+                    message = f"Product {self.sku} failed to update in BigCommerce. Product not found."
+                elif update_response.status_code == 409:
+                    message = f"Product {self.sku} failed to update in BigCommerce. Product already exists."
+                elif update_response.status_code == 422:
+                    message = f"Product {self.sku} failed to update in BigCommerce. Invalid Fields: Code 422"
+                else:
+                    message = f"Product {self.sku} failed to update in BigCommerce. Invalid Fields: Code 422"
+                self.errors.append(message)
+                self.errors.append(update_response.content)
+                print(message)
+
+        @timer("Delete Custom Fields")
+        def bc_delete_custom_fields(self, asynchronous=False):
+            # def get_custom_fields_from_bc():
+            # custom_fields = []
+            # cf_url = (f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/"
+            #           f"catalog/products/{self.product_id}/custom-fields")
+            # cf_response = requests.get(url=cf_url, headers=creds.test_bc_api_headers)
+            # if cf_response.status_code == 200:
+            #     custom_field_data = cf_response.json()["data"]
+            #     for field in custom_field_data:
+            #         custom_fields.append(field["id"])
+            # return custom_fields
+
+            id_list = self.custom_field_ids.split(",")
+
+            if not id_list:
+                return
+
+            if asynchronous:
+
+                async def bc_delete_custom_fields_async():
+                    async with aiohttp.ClientSession() as session:
+                        for field_id in id_list:
+                            async_url = f"""https://api.bigcommerce.com/stores/{creds.test_big_store_hash}
+                            /v3/catalog/products/{self.product_id}/custom-fields/{field_id}"""
+                            async with session.get(
+                                url=async_url, headers=creds.test_header
+                            ) as resp:
+                                text_response = await resp.text()
+                                print(text_response)
+
+                asyncio.run(bc_delete_custom_fields_async())
+            else:
+                # Synchronous Version
+                success = True
+                success_list = []
+                db = query_engine.QueryEngine()
+                # Delete Each Custom Field
+                for number in id_list:
+                    url = (
+                        f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/"
+                        f"catalog/products/{self.product_id}/custom-fields/{number}"
+                    )
+
+                    cf_remove_response = requests.delete(
+                        url=url, headers=creds.test_bc_api_headers, timeout=10
+                    )
+                    if cf_remove_response.status_code == 204:
+                        success_list.append(number)
+                    else:
+                        success = False
+                        message = f"BigCommerce: Error deleting custom fields for Product {self.sku}."
+                        print(message)
+                        self.errors.append(message)
+                        print(cf_remove_response.content)
+                # If all custom fields were deleted successfully, remove CUSTOM_FIELDS from middleware
+                if success:
+                    update_cf1_query = f"""UPDATE {creds.bc_product_table}
+                            SET CUSTOM_FIELDS = NULL, LST_MAINT_DT = GETDATE()
+                            WHERE PRODUCT_ID = '{self.product_id}' AND IS_PARENT = 1
+                            """
+                    try:
+                        db.query_db(update_cf1_query, commit=True)
+                    except Exception as e:
+                        message = (
+                            f"Middleware REMOVE CUSTOM_FIELDS: {self.sku}: FAILED ",
+                            e,
+                        )
+                        print(message)
+                        self.errors.append(message)
+                else:
+                    # Partial Success
+                    # If this wasn't totally successful, but some were deleted,
+                    # update the CUSTOM_FIELDS in middleware
+                    if success_list:
+                        success_list_string = ",".join(
+                            str(cust_field) for cust_field in success_list
+                        )
+                        update_cf2_query = f"""
+                        UPDATE {creds.bc_product_table}
+                        SET CUSTOM_FIELDS = '{success_list_string}', LST_MAINT_DT = GETDATE()
+                        WHERE PRODUCT_ID = '{self.product_id}' AND IS_PARENT = 1
+                        """
+                        try:
+                            db.query_db(update_cf2_query, commit=True)
+                        except Exception as e:
+                            message = (
+                                f"Middleware CUSTOM_FIELDS ROLLBACK: {self.sku}: FAILED ",
+                                e,
+                            )
+                            print(message)
+                            self.errors.append(message)
+                    else:
+                        # If no custom fields were deleted, but there was an error,
+                        # don't update the CUSTOM_FIELDS in middleware
+                        pass
+
+        @timer("Second-State Validation")
+        def second_stage_validation():
+            """Second-State Validation will check for changes in the product being updated that would require a full reset"""
+            valid = True
+            # Check for bound product trying to update a single product
+            # Check for single item trying to update a bound product
+            return valid
+
+        # Middleware Methods
+        def middleware_sync_product(self):
+            success = True
+            for variant in self.variants:
+                if variant.db_id is None:
+                    # If variant.db_id is None, this is a new product to be inserted into SQL
+                    self.insert_product(variant)
+                else:
+                    self.update_product(variant)
+            if not success:
+                self.rollback_product()
+
+            return success
+
+        def middleware_sync_images(self):
+            """Sync images to middleware. Will check for success and rollback by deleting image
+            references from BigCommerce and the middleware if needed."""
+            rollback = False
+            for image in self.images:
+                print("Syncing Image")
+                print(image.image_name, image.image_id)
+                if image.id is None:
+                    print("Inserting Image")
+                    if not self.insert_image(image=image):
+                        rollback = True
+                else:
+                    if image.last_modified_dt > self.last_sync:
+                        print("Replacing Image")
+                        if not self.replace_image(image):
+                            rollback = True
+                    else:
+                        print("Updating Image")
+                        status = self.update_image(image)
+                        print(status)
+                        if status is False:
+                            rollback = True
+
+                # If rollback is True, delete image from BigCommerce and Middleware
+                if rollback:
+                    print("Rolling Back Image")
+                    self.rollback_image(image)
+
+        def insert_product(self):
+            """Insert product into middleware"""
+            success = True
+            for variant in self.variants:
+                self.insert_variant(variant)
+            if success:
+                print(
+                    f"Product {self.sku} Binding: {self.binding_id} inserted into middleware."
+                )
+            else:
+                self.rollback_product()
+            return success
+
+        def insert_variant(self, variant):
+            custom_field_string = self.custom_field_ids
+
+            if not variant.is_parent:
+                custom_field_string = None
+
+            insert_query = (
+                f"INSERT INTO {creds.bc_product_table} (ITEM_NO, BINDING_ID, IS_PARENT, "
+                f"PRODUCT_ID, VARIANT_ID, CATEG_ID, CUSTOM_FIELDS) VALUES ('{variant.sku}', "
+                f"{f"'{self.binding_id}'" if self.binding_id != '' else 'NULL'}, "
+                f"{1 if variant.is_parent else 0}, {self.product_id}, "
+                f"{variant.variant_id if variant.variant_id != '' else "NULL"}, "
+                f"'{self.ecommerce_categories}', "
+                f"{f"'{custom_field_string}'" if custom_field_string else "NULL"})"
+            )
+
+            insert_product_response = self.db.query_db(insert_query, commit=True)
+            if insert_product_response["code"] != 200:
+                message = (
+                    f"Middleware INSERT product {self.sku}: "
+                    f"Non 200 response: {insert_product_response}"
+                )
+                print(message)
+                self.errors.append(message)
+                self.errors.append(insert_product_response)
+
+        def update_product(self, variant):
+            custom_field_string = self.custom_field_ids
+
+            if not variant.is_parent:
+                custom_field_string = None
+
+            update_query = (
+                f"UPDATE {creds.bc_product_table} "
+                f"SET ITEM_NO = '{variant.sku}', "
+                f"BINDING_ID = "
+                f"{f"'{self.binding_id}'" if self.binding_id != '' else 'NULL'}, "
+                f"IS_PARENT = {1 if variant.is_parent else 0}, "
+                f"PRODUCT_ID = {self.product_id}, "
+                f"VARIANT_ID = "
+                f"{variant.variant_id if variant.variant_id != '' else 'NULL'}, "
+                f"CATEG_ID = '{self.ecommerce_categories}', "
+                f"CUSTOM_FIELDS = '{custom_field_string}', "
+                f"LST_MAINT_DT = GETDATE() "
+                f"WHERE ID = {variant.db_id}"
+            )
+
+            update_product_response = self.db.query_db(update_query, commit=True)
+            if update_product_response["code"] != 200:
+                message = (
+                    f"Middleware UPDATE product {self.sku}: "
+                    f"Non 200 response: {update_product_response}"
+                )
+                print(message)
+                self.errors.append(message)
+                self.errors.append(update_product_response)
+
+        def get_image_id(self, target):
+            """Get image ID from SQL using filename. If not found, return None."""
+            image_query = f"SELECT IMAGE_ID FROM {creds.bc_image_table} WHERE IMAGE_NAME = '{target}'"
+            img_id_res = self.db.query_db(image_query)
+            if img_id_res is not None:
+                return img_id_res[0][0]
+
+        @timer("Process Image Deletes")
+        def process_image_deletes(self):
+            # Find Images to Delete
+            mw_img = f"SELECT IMAGE_NAME FROM {creds.bc_image_table} WHERE PRODUCT_ID = {self.product_id}"
+            mw_img_res = self.db.query_db(mw_img)
+            mw_img_list = [img[0] for img in mw_img_res if mw_img_res]
+            payload_img_list = [img.image_name for img in self.images]
+
+            delete_targets = Catalog.get_deletion_target(
+                counterpoint_list=payload_img_list, middleware_list=mw_img_list
+            )
+            if delete_targets:
+                print(f"Images to Delete: {delete_targets}")
+                for delete_target in delete_targets:
+                    self.delete_image(delete_target)
+            else:
+                print("No images to delete.")
 
         def delete_image(self, image_name) -> bool:
             """Takes in an image name and looks for matching image file in middleware. If found, deletes from BC and SQL."""
@@ -2474,6 +2325,47 @@ class Catalog:
 
             else:
                 print(img_del_res.status_code, img_del_res.content)
+
+        def delete_product_from_sql(self):
+            create_rollback_query = (
+                f"DELETE FROM {creds.bc_product_table} "
+                f"WHERE PRODUCT_ID = '{self.product_id}'"
+            )
+            self.db.query_db(create_rollback_query, commit=True)
+
+        def delete_product_images_from_sql(self):
+            delete_images_query = (
+                f"DELETE FROM {creds.bc_image_table} "
+                f"WHERE PRODUCT_ID = '{self.product_id}'"
+            )
+            self.db.query_db(delete_images_query, commit=True)
+
+        def delete_product_from_bc(self):
+            # Delete product from BigCommerce
+            url = (
+                f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/"
+                f"catalog/products/{self.product_id}"
+            )
+            delete_response = requests.delete(
+                url=url, headers=creds.test_bc_api_headers, timeout=10
+            )
+            if delete_response.status_code == 204:
+                self.is_uploaded = False
+                message = f"Product {self.sku} deleted from BigCommerce."
+                print(message)
+                self.errors.append(message)
+            else:
+                message = f"Error deleting product {self.sku} from BigCommerce."
+                print(message)
+                self.errors.append(message)
+                self.errors.append(delete_response.content)
+
+        def insert_images(self):
+            success = True
+            for image in self.images:
+                if not self.insert_image(image):
+                    self.rollback_image(image)
+            return success
 
         def insert_image(self, image) -> bool:
             """Insert image into SQL."""
@@ -2543,7 +2435,9 @@ class Catalog:
                 WHERE ID = {image.id}"""
 
             try:
+                print("Updating Image In SQL")
                 update_img_response = self.db.query_db(img_update, commit=True)
+                print(update_img_response)
             except Exception as e:
                 message = f"Middleware UPDATE image {image.image_name}: FAILED {e}"
                 print(message)
@@ -2562,8 +2456,14 @@ class Catalog:
                 else:
                     return True
 
+        def rollback_product(self):
+            """Delete product from BigCommerce and Middleware."""
+            self.delete_product_from_bc()
+            self.delete_product_from_sql()
+            self.delete_product_images_from_sql()
+
         def rollback_image(self, image):
-            """Delete associated images from BigCommerce and Middleware"""
+            """Delete associated image from BigCommerce and Middleware"""
             print(f"Rolling back image {image.image_name}")
             url = (
                 f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/"
@@ -2619,7 +2519,6 @@ class Catalog:
             def __init__(self, sku, last_run_date):
                 self.sku = sku
                 print("INITIALIZING VARIANT CLASS FOR ITEM: ", sku)
-                # print("INITIALIZING VARIANT CLASS FOR ITEM: ", sku)
                 self.last_run_date = last_run_date
 
                 # Product ID Info
@@ -2701,8 +2600,13 @@ class Catalog:
 
                 # Dates
                 self.lst_maint_dt = product_data["lst_maint_dt"]
+
                 # E-Commerce Categories
-                self.ecommerce_categories = product_data["categories"]
+
+                self.ecommerce_categories = ",".join(
+                    [str(category) for category in product_data["categories"]]
+                )
+
                 # Product Schema (i.e. Bound, Single, Variant.)
                 self.item_schema = ""
                 # Processing Method
