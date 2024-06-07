@@ -91,7 +91,14 @@ class Customers:
                     WHERE CUST_NO = '{self.cust_no}'
                     """
 
+                    query2 = f"""
+                    UPDATE {creds.bc_customer_table}
+                    SET LST_MAINT_DT = GETDATE()
+                    WHERE CUST_NO = '{self.cust_no}'
+                    """
+
                     self.db.query_db(query, commit=True)
+                    self.db.query_db(query2, commit=True)
 
                 def delete(self):
                     query = f"""
