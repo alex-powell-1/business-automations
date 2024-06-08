@@ -4,16 +4,20 @@ import integration.utilities as utilities
 from integration.database import Database
 from setup import creds
 
+import integration.object_processor as object_processor
+
+import time
 
 class Customers:
     def __init__(self, last_sync):
         self.last_sync = last_sync
         self.db = Database.db
         self.customers = self.get_customers()
+        self.processor = object_processor.ObjectProcessor(objects=self.customers, speed=50)
 
     def get_customers(self):
         query = f"""
-        SELECT CUST_NO, FST_NAM, LST_NAM, EMAIL_ADRS_1, PHONE_1, LOY_PTS_BAL, ADRS_1, CITY, STATE, ZIP_COD, CNTRY
+        SELECT TOP  CUST_NO, FST_NAM, LST_NAM, EMAIL_ADRS_1, PHONE_1, LOY_PTS_BAL, ADRS_1, CITY, STATE, ZIP_COD, CNTRY
         FROM {creds.ar_cust_table}
         WHERE
         LST_MAINT_DT > '{self.last_sync}' and
@@ -29,8 +33,7 @@ class Customers:
             return result
 
     def sync(self):
-        for customer in self.customers:
-            customer.process()
+        self.processor.process()
 
     class Customer:
         def __init__(self, cust_result):
@@ -88,7 +91,14 @@ class Customers:
                     WHERE CUST_NO = '{self.cust_no}'
                     """
 
+                    query2 = f"""
+                    UPDATE {creds.bc_customer_table}
+                    SET LST_MAINT_DT = GETDATE()
+                    WHERE CUST_NO = '{self.cust_no}'
+                    """
+
                     self.db.query_db(query, commit=True)
+                    self.db.query_db(query2, commit=True)
 
                 def delete(self):
                     query = f"""
@@ -100,7 +110,7 @@ class Customers:
 
             return SQLSync(cust_no=self.cust_no)
 
-        def process(self):
+        def process(self, session: requests.Session):
             def write_customer_payload(bc_cust_id: int = None):
                 payload = {}
                 if bc_cust_id is not None:
@@ -184,15 +194,6 @@ class Customers:
 
                     payload["addresses"] = [address]
 
-                print("")
-                print("")
-                print("")
-                print("")
-                print(payload)
-                print("")
-                print("")
-                print("")
-                print("")
                 return [payload]
 
             def create():
@@ -200,7 +201,15 @@ class Customers:
                 url = f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/customers"
                 payload = write_customer_payload()
 
-                response = requests.post(url=url, headers=creds.test_bc_api_headers, json=payload)
+                response = session.post(url=url, headers=creds.test_bc_api_headers, json=payload)
+
+                if response.status_code == 429:
+                    ms_to_wait = int(response.headers['X-Rate-Limit-Time-Reset-Ms'])
+                    seconds_to_wait = (ms_to_wait / 1000) + 1
+                    print(f"Rate limit exceeded. Waiting {seconds_to_wait} seconds.")
+                    time.sleep(seconds_to_wait)
+
+                    response = session.post(url=url, headers=creds.test_bc_api_headers, json=payload)
 
                 if response.status_code == 200:
                     print(f"Customer {self.cust_no} created successfully.")
@@ -229,7 +238,15 @@ class Customers:
                     url = f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/customers"
                     payload = write_customer_payload(bc_cust_id=id)
 
-                    response = requests.put(url=url, headers=creds.test_bc_api_headers, json=payload)
+                    response = session.put(url=url, headers=creds.test_bc_api_headers, json=payload)
+
+                    if response.status_code == 429:
+                        ms_to_wait = int(response.headers['X-Rate-Limit-Time-Reset-Ms'])
+                        seconds_to_wait = (ms_to_wait / 1000) + 1
+                        print(f"Rate limit exceeded. Waiting {seconds_to_wait} seconds.")
+                        time.sleep(seconds_to_wait)
+
+                    response = session.put(url=url, headers=creds.test_bc_api_headers, json=payload)
 
                     if response.status_code == 200:
                         print(f"Customer {self.cust_no} updated successfully.")
@@ -244,7 +261,15 @@ class Customers:
                 else:
                     print(f"Deleting customer {self.cust_no}")
                     url = f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/customers?id:in={id}"
-                    response = requests.delete(url=url, headers=creds.test_bc_api_headers)
+                    response = session.delete(url=url, headers=creds.test_bc_api_headers)
+
+                    if response.status_code == 429:
+                        ms_to_wait = int(response.headers['X-Rate-Limit-Time-Reset-Ms'])
+                        seconds_to_wait = (ms_to_wait / 1000) + 1
+                        print(f"Rate limit exceeded. Waiting {seconds_to_wait} seconds.")
+                        time.sleep(seconds_to_wait)
+
+                    response = session.delete(url=url, headers=creds.test_bc_api_headers)
 
                     if response.status_code == 204:
                         print(f"Customer {self.cust_no} deleted successfully.")
