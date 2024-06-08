@@ -25,12 +25,8 @@ class Catalog:
         # self.log_file = log_file
         self.last_sync = last_sync
         self.db = Database.db
-        self.image_file_list = []
-        self.mw_image_list = self.get_middleware_images()
-        self.update_image_timestamps()
-        # print("file list: ", self.image_file_list)
-        # print("mw_image_list ", self.mw_image_list)
-        self.process_deletes()
+        self.process_item_deletes()
+        self.process_image_deletes_and_adds()
         # lists of products with updated timestamps
         self.products = self.get_products()
         self.binding_ids = set(x["binding_id"] for x in self.products)
@@ -43,71 +39,161 @@ class Catalog:
             f"Binding IDs with Updates: {len(self.binding_ids)}\n"
         )
 
-    def get_middleware_images(self):
-        query = f"SELECT IMAGE_NAME FROM {creds.bc_image_table}"
-        response = self.db.query_db(query)
-        return [x[0] for x in response] if response else []
+    def process_item_deletes(self):
+        """Assesses CP and MW for products that have been deleted. Deletes from BC and MW if found."""
 
-    def process_deletes(self):
-        """Process deletes for products that have been removed from CP but still exist in MW.
-        Processes image and variant deletes as well."""
-        print("Length of Image List: ", len(self.image_file_list))
-        print("Length of MW Image List: ", len(self.mw_image_list))
+        cp_items = self.db.query_db(
+            "SELECT ITEM_NO FROM IM_ITEM WHERE IS_ECOMM_ITEM = 'Y'"
+        )
+
+        all_cp_products = [x[0] for x in cp_items] if cp_items else []
+        print("all cp products: ", all_cp_products[0:5], "\n\n")
+        mw_items = self.db.query_db(f"SELECT ITEM_NO FROM {creds.bc_product_table}")
+        all_mw_products = [x[0] for x in mw_items] if cp_items else []
+        print("all mw products: ", all_cp_products[0:5], "\n\n")
+
+        delete_count = 0
         delete_targets = Catalog.get_deletion_target(
-            counterpoint_list=self.image_file_list, middleware_list=self.mw_image_list
+            middleware_list=all_mw_products, counterpoint_list=all_cp_products
         )
-        print("Delete Targets", delete_targets)
+        print(f"Delete Targets: {delete_targets}")
+
+        def delete_from_bigcommerce(target):
+            item_query = f"SELECT PRODUCT_ID FROM {creds.bc_product_table} WHERE ITEM_NO = '{target}'"
+            response = self.db.query_db(item_query)
+            if response is not None:
+                product_id = response[0][0]
+
+            if product_id:
+                delete_url = f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/catalog/products?id={product_id}"
+
+                response = requests.delete(
+                    url=delete_url, headers=creds.test_bc_api_headers
+                )
+                if response.status_code == 204:
+                    print(f"Product {target} deleted from BigCommerce.")
+                    delete_query = f"DELETE FROM {creds.bc_product_table} WHERE PRODUCT_ID = '{product_id}'"
+                    self.db.query_db(delete_query, commit=True)
+                else:
+                    print(f"Error deleting product {target} from BigCommerce.")
+                    print(response.json())
+
         for x in delete_targets:
-            print(f"Deleting Image {x}.\n")
-            self.delete_image(x)
+            print(f"Deleting Product {x}.")
+            delete_from_bigcommerce(x)
+            delete_count += 1
 
-    def get_product_id(self, target):
-        """Get image ID from SQL using filename. If not found, return None."""
-        image_query = f"SELECT PRODUCT_ID, IMAGE_ID FROM {creds.bc_image_table} WHERE IMAGE_NAME = '{target}'"
-        img_id_res = self.db.query_db(image_query)
-        if img_id_res is not None:
-            return img_id_res[0][0], img_id_res[0][1]
+        print(f"Deleted {delete_count} products.")
 
-    def delete_image(self, image_name) -> bool:
-        """Takes in an image name and looks for matching image file in middleware. If found, deletes from BC and SQL."""
-        print("Entering Delete Image Function of Image Class")
-        print(f"Deleting {image_name}")
+    def process_image_deletes_and_adds(self):
+        """Assesses Image folder. Deletes images from MW and BC. Updates LST_MAINT_DT in CP if new images have been added."""
 
-        product_id, image_id = self.get_product_id(image_name)
+        def get_local_images():
+            """Get a tuple of two sets:
+            1. all SKUs that have had their photo modified since the input date.
+            2. all file names that have been modified since the input date."""
 
-        delete_img_url = f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/catalog/products/{product_id}/images/{image_id}"
+            all_files = []
+            # Iterate over all files in the directory
+            for filename in os.listdir(creds.photo_path):
+                if filename not in ["Thumbs.db", "desktop.ini", ".DS_Store"]:
+                    all_files.append(
+                        [filename, os.path.getsize(f"{creds.photo_path}/{filename}")]
+                    )
 
-        img_del_res = requests.delete(
-            url=delete_img_url, headers=creds.test_bc_api_headers, timeout=10
+            return all_files
+
+        def get_middleware_images():
+            query = f"SELECT IMAGE_NAME, SIZE FROM {creds.bc_image_table}"
+            response = self.db.query_db(query)
+            return [[x[0], x[1]] for x in response] if response else []
+
+        def delete_image(image_name) -> bool:
+            """Takes in an image name and looks for matching image file in middleware. If found, deletes from BC and SQL."""
+            print("Entering Delete Image Function of Image Class")
+            print(f"Deleting {image_name}")
+            image_query = f"SELECT PRODUCT_ID, IMAGE_ID FROM {creds.bc_image_table} WHERE IMAGE_NAME = '{image_name}'"
+            img_id_res = self.db.query_db(image_query)
+            if img_id_res is not None:
+                product_id, image_id = img_id_res[0][0], img_id_res[0][1]
+
+            delete_img_url = f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/catalog/products/{product_id}/images/{image_id}"
+
+            img_del_res = requests.delete(
+                url=delete_img_url, headers=creds.test_bc_api_headers, timeout=10
+            )
+
+            if img_del_res.status_code == 204:
+                print(f"Image {image_name} deleted from BigCommerce.")
+
+                print("Deleting from SQL")
+                delete_images_query = (
+                    f"DELETE FROM {creds.bc_image_table} "
+                    f"WHERE IMAGE_ID = '{image_id}'"
+                )
+                self.db.query_db(delete_images_query, commit=True)
+            else:
+                print(f"Error deleting image {image_name} from BigCommerce.")
+                print(img_del_res.json())
+
+        local_images = get_local_images()
+        mw_image_list = get_middleware_images()
+
+        # print("Length of Image List: ", len(local_images))
+        # print("Length of MW Image List: ", len(mw_image_list))
+
+        delete_targets = Catalog.get_deletion_target(
+            counterpoint_list=local_images, middleware_list=mw_image_list
         )
 
-        if img_del_res.status_code == 204:
-            print(f"Image {image_name} deleted from BigCommerce.")
-
-            print("Deleting from SQL")
-            delete_images_query = (
-                f"DELETE FROM {creds.bc_image_table} " f"WHERE IMAGE_ID = '{image_id}'"
-            )
-            self.db.query_db(delete_images_query, commit=True)
+        if delete_targets:
+            print("Delete Targets", delete_targets)
+            for x in delete_targets:
+                print(f"Deleting Image {x[0]}.\n")
+                delete_image(x[0])
         else:
-            print(f"Error deleting image {image_name} from BigCommerce.")
-            print(img_del_res.json())
+            print("No image deletions found.")
+
+        update_list = delete_targets
+
+        addition_targets = Catalog.get_deletion_target(
+            counterpoint_list=mw_image_list, middleware_list=local_images
+        )
+
+        if addition_targets:
+            for x in addition_targets:
+                update_list.append(x)
+
+            sku_list = tuple([x[0].split(".")[0] for x in update_list])
+
+            query = (
+                "UPDATE IM_ITEM "
+                "SET LST_MAINT_DT = GETDATE() "
+                f"WHERE ITEM_NO in {sku_list} and IS_ECOMM_ITEM = 'Y'"
+            )
+
+            self.db.query_db(query, commit=True)
+            print(
+                f"Image Update: LST_MAINT_DT UPDATE sent for {len(sku_list)} products."
+            )
+        else:
+            print("No image additions found.")
 
     def get_products(self):
-        return [{"sku": "10337", "binding_id": "B0006"}]
-        # db = query_engine.QueryEngine()
-        # query = f"""
-        # SELECT ITEM_NO, ISNULL(ITEM.USR_PROF_ALPHA_16, '') as 'Binding ID'
-        # FROM IM_ITEM ITEM
-        # WHERE ITEM.LST_MAINT_DT > '{self.last_sync: %Y-%m-%d %H:%M:%S}' and
-        # ITEM.IS_ECOMM_ITEM = 'Y'
-        # """
-        # response = db.query_db(query)
-        # if response is not None:
-        #     result = []
-        #     for item in response:
-        #         result.append({"sku": item[0], "binding_id": item[1]})
-        #     return result
+        return [{"sku": "202003", "binding_id": ""}]
+        db = query_engine.QueryEngine()
+        query = f"""
+        SELECT ITEM_NO, ISNULL(ITEM.USR_PROF_ALPHA_16, '') as 'Binding ID'
+        FROM IM_ITEM ITEM
+        WHERE ITEM.LST_MAINT_DT > '{self.last_sync: %Y-%m-%d %H:%M:%S}' and
+        ITEM.IS_ECOMM_ITEM = 'Y'
+        """
+        response = db.query_db(query)
+        if response is not None:
+            result = []
+            for item in response:
+                result.append({"sku": item[0], "binding_id": item[1]})
+            return result
 
     def sync(self):
         general_errors = []
@@ -154,95 +240,6 @@ class Catalog:
             for error in self.product_errors:
                 print(error)
                 print("\n\n")
-
-    # @staticmethod
-    # def process_deletes():
-    #     db = query_engine.QueryEngine()
-    #     all_cp_products = [
-    #         x[0]
-    #         for x in db.query_db(
-    #             "SELECT ITEM_NO FROM IM_ITEM WHERE IS_ECOMM_ITEM = 'Y'"
-    #         )
-    #         if x
-    #     ]
-    #     all_mw_products = [
-    #         x[0]
-    #         for x in db.query_db(f"SELECT ITEM_NO FROM {creds.bc_product_table}")
-    #         if x
-    #     ]
-    #     delete_count = 0
-    #     delete_targets = Catalog.get_deletion_target(
-    #         middleware_list=all_mw_products, counterpoint_list=all_cp_products
-    #     )
-    #     print(f"Delete Targets: {delete_targets}")
-
-    #     def delete_from_bigcommerce(target):
-    #         print(f"Deleting Product from bigcommerce: {target}. TEST MODE")
-
-    #     def delete_from_middleware(target):
-    #         print(f"Deleting Product from middleware: {target}. TEST MODE")
-
-    #     for x in delete_targets:
-    #         print(f"Deleting Product {x}.")
-    #         delete_from_bigcommerce(x)
-    #         delete_from_middleware(x)
-    #         delete_count += 1
-
-    #     print(f"Deleted {delete_count} brands.")
-
-    def update_image_timestamps(self):
-        """Takes in a list of SKUs and updates the last maintenance date in IM_ITEM and LST_MOD_DT in Middleware table for each
-        product in the list. Updating IM_ITEM will trigger a sync of that item, and it will then look for photos
-        during the sync process."""
-        print("Image Update: Updating product timestamps.")
-
-        def get_updated_photos(date):
-            """Get a tuple of two sets:
-            1. all SKUs that have had their photo modified since the input date.
-            2. all file names that have been modified since the input date."""
-            sku_result = set()
-            file_result = set()
-            all_files = []
-            # Iterate over all files in the directory
-            for filename in os.listdir(creds.photo_path):
-                if filename not in ["Thumbs.db", "desktop.ini", ".DS_Store"]:
-                    all_files.append(filename)
-                    # Get the full path of the file
-                    file_path = os.path.join(creds.photo_path, filename)
-
-                    # Get the last modified date of the file
-                    modified_date = datetime.fromtimestamp(os.path.getmtime(file_path))
-
-                    # If the file has been modified since the input date, print its name
-                    if modified_date > date:
-                        sku = filename.split(".")[0].split("^")[0]
-                        sku_result.add(sku)
-                        file_result.add(filename)
-
-            return sku_result, file_result, all_files
-
-        sku_list, file_list, self.image_file_list = get_updated_photos(self.last_sync)
-
-        if len(sku_list) > 0:
-            query = (
-                "UPDATE IM_ITEM "
-                "SET LST_MAINT_DT = GETDATE() "
-                f"WHERE ITEM_NO in {sku_list} "
-                f"UPDATE {creds.bc_image_table} "
-                f"SET IMAGE_LST_MOD_DT = GETDATE() "
-                f"WHERE IMAGE_NAME in {file_list} "
-            )
-
-            print("UPDATE QUERY: ", query)
-
-            try:
-                self.db.query_db(query, commit=True)
-            except Exception as e:
-                print(f"Error updating product timestamps: {e}")
-            else:
-                print("Product timestamps updated: ", sku_list)
-        else:
-            print("No new images")
 
     @staticmethod
     def get_binding_id_from_sku(sku):
@@ -1173,9 +1170,6 @@ class Catalog:
 
             self.lst_maint_dt = datetime(1970, 1, 1)
 
-            # The dt of the most recently modified image
-            self.lst_modified_image_dt = datetime(1970, 1, 1)
-
             # E-Commerce Categories
             self.cp_ecommerce_categories = []
             self.bc_ecommerce_categories = []
@@ -1313,13 +1307,12 @@ class Catalog:
                 # Get last maintained date of all the variants and set product last maintained date to the latest
                 # Add Variant Images to image list and establish which image is the variant thumbnail
                 lst_maint_dt_list = []
-                lst_modified_image_list = []
+
                 for variant in self.variants:
                     variant_image_count = 0
                     # While we are here, let's get all the last maintenance dates for the variants
                     lst_maint_dt_list.append(variant.lst_maint_dt)
                     for variant_image in variant.images:
-                        lst_modified_image_list.append(variant_image.last_modified_dt)
                         if variant_image_count == 0:
                             variant_image.is_variant_image = True
                         self.images.append(variant_image)
@@ -1328,7 +1321,6 @@ class Catalog:
                 # Set the product last maintained date to the latest of the variants. This will be used in the validation process.
                 # If the product has been updated since the last sync, it will go through full validation. Otherwise, it will be skipped.
                 self.lst_maint_dt = max(lst_maint_dt_list)
-                self.lst_modified_image_dt = max(lst_modified_image_list)
 
             def get_single_product_details():
                 self.variants.append(self.Variant(self.sku, last_run_date=last_sync))
@@ -1411,6 +1403,7 @@ class Catalog:
             min_description_length = 20
             check_missing_images = True
             check_for_invalid_brand = True
+            check_for_item_cost = False
 
             def set_parent(status: bool = True) -> None:
                 """Target lowest price item in family to set as parent."""
@@ -1431,24 +1424,9 @@ class Catalog:
             # Bound Product Validation
             if self.is_bound:
                 # print(f"Product {self.binding_id} is a bound product. Validation starting...")
+
+                # Corrective Checks
                 if self.validation_retries > 0:
-                    # Test for missing binding ID. Potentially add corrective action
-                    # (i.e. generate binding ID or remove product
-                    # and rebuild as a new single product)
-                    if self.binding_id == "":
-                        message = f"Product {self.binding_id} has no binding ID. Validation failed."
-                        self.errors.append(message)
-                        print(message)
-                        return False
-
-                    # Test for valid Binding ID Schema (ex. B0001)
-                    pattern = r"B\d{4}"
-                    if not bool(re.fullmatch(pattern, self.binding_id)):
-                        message = f"Product {self.binding_id} has an invalid binding ID. Validation failed."
-                        self.errors.append(message)
-                        print(message)
-                        return False
-
                     # Test for parent product problems
                     if len(self.parent) != 2:
                         # Test for missing parent
@@ -1481,21 +1459,22 @@ class Catalog:
                                 print(message)
                                 return False
 
-                    if check_web_title:
-                        # Test for missing web title
-                        if self.web_title == "":
-                            message = f"Product {self.binding_id} is missing a web title. Validation failed."
-                            self.errors.append(message)
-                            print(message)
-                            return False
+                    # Test for missing binding ID. Potentially add corrective action
+                    # (i.e. generate binding ID or remove product
+                    # and rebuild as a new single product)
+                    if self.binding_id == "":
+                        message = f"Product {self.binding_id} has no binding ID. Validation failed."
+                        self.errors.append(message)
+                        print(message)
+                        return False
 
-                    # Test for missing html description
-                    if check_html_description:
-                        if len(self.html_description) < min_description_length:
-                            message = f"Product {self.binding_id} is missing an html description. Validation failed."
-                            self.errors.append(message)
-                            print(message)
-                            return False
+                    # Test for valid Binding ID Schema (ex. B0001)
+                    pattern = r"B\d{4}"
+                    if not bool(re.fullmatch(pattern, self.binding_id)):
+                        message = f"Product {self.binding_id} has an invalid binding ID. Validation failed."
+                        self.errors.append(message)
+                        print(message)
+                        return False
 
                     # Test for missing variant names
                     for child in self.variants:
@@ -1506,6 +1485,57 @@ class Catalog:
                             return False
 
             # ALL PRODUCTS
+
+            if check_web_title:
+                # Test for missing web title
+                if self.web_title == "":
+                    message = f"Product {self.binding_id} is missing a web title. Validation failed."
+                    self.errors.append(message)
+                    print(message)
+                    return False
+
+                # Test for dupicate web title
+                query = f"""
+                SELECT COUNT(ITEM_NO)
+                FROM IM_ITEM
+                WHERE ADDL_DESCR_1 = '{self.web_title}'"""
+                response = self.db.query_db(query)
+                if response:
+                    if response[0][0] > 1:
+                        message = f"Product {self.binding_id} has a duplicate web title. Will Append Sku to Web Title."
+                        self.errors.append(message)
+
+                        print(message)
+                        if self.is_bound:
+                            new_web_title = f"{self.web_title} - {self.binding_id}"
+                        else:
+                            new_web_title = f"{self.web_title} - {self.sku}"
+
+                        self.web_title = new_web_title
+
+                        print(f"New Web Title: {self.web_title}")
+                        if self.is_bound:
+                            # Update Parent Variant
+                            query = f"""
+                            UPDATE IM_ITEM
+                            SET ADDL_DESCR_1 = '{self.web_title}'
+                            WHERE USR_PROF_ALPHA_16 = '{self.binding_id}' and IS_ADM_TKT = 'Y'"""
+                        else:
+                            # Update Single Product
+                            query = f"""
+                            UPDATE IM_ITEM
+                            SET ADDL_DESCR_1 = '{self.web_title}'
+                            WHERE ITEM_NO = '{self.sku}'"""
+
+                        self.db.query_db(query, commit=True)
+
+            # Test for missing html description
+            if check_html_description:
+                if len(self.html_description) < min_description_length:
+                    message = f"Product {self.binding_id} is missing an html description. Validation failed."
+                    self.errors.append(message)
+                    print(message)
+                    return False
 
             # Test for missing E-Commerce Categories
             if check_for_missing_categories:
@@ -1526,7 +1556,7 @@ class Catalog:
                         message = f"Product {self.binding_id} has a brand, but it is not valid. Will delete invalid brand."
                         print(message)
                         if self.validation_retries > 0:
-                            self.delete_brand()
+                            self.reset_brand()
                             self.validation_retries -= 1
                             return self.validate_product_inputs()
                         else:
@@ -1536,13 +1566,18 @@ class Catalog:
                             return False
                 else:
                     message = f"Product {self.binding_id} is missing a brand. Will set to default."
+                    if self.validation_retries > 0:
+                        self.reset_brand()
+                        self.validation_retries -= 1
+                        self.brand = creds.default_brand
                     print(message)
 
             # Test for missing cost
-            if self.cost == 0:
-                message = f"Product {self.sku} is missing a cost. Validation passed for now :)."
-                self.errors.append(message)
-                print(message)
+            if check_for_item_cost:
+                if self.cost == 0:
+                    message = f"Product {self.sku} is missing a cost. Validation passed for now :)."
+                    self.errors.append(message)
+                    print(message)
 
             # Test for missing price 1
             if self.default_price == 0:
@@ -1784,10 +1819,7 @@ class Catalog:
                 payload["variants"] = construct_variant_payload()
 
             # Add images
-            if len(self.images) >= 1 and self.lst_modified_image_dt > self.last_sync:
-                print(
-                    "At least one image has been modified since last sync. Will update images."
-                )
+            if self.images:
                 payload["images"] = construct_image_payload()
 
             # Add custom URL
@@ -2005,14 +2037,10 @@ class Catalog:
                     custom_field_response = bc_response.json()["data"]["custom_fields"]
 
                     if custom_field_response:
-                        custom_field_list = []
-                        for x in self.custom_field_response:
-                            print("HERE 1")
-                            custom_field_list.append(x["id"])
-                        # Set custom field ids to string
                         self.custom_field_ids = ",".join(
-                            str(x) for x in custom_field_list
+                            [str(x["id"]) for x in custom_field_response]
                         )
+                        print("Custom Field IDs: ", self.custom_field_ids)
 
                     for x, variant in enumerate(self.variants):
                         variant.binding_id = self.binding_id
@@ -2029,6 +2057,9 @@ class Catalog:
                             for image in self.images:
                                 if bc_image["sort_order"] == image.sort_order:
                                     image.image_id = bc_image["id"]
+
+                    for image in self.images:
+                        image.product_id = self.product_id
 
                     print("DONE! Returning True")
                     return True
@@ -2049,9 +2080,8 @@ class Catalog:
                         return False
 
                 elif bc_response.status_code == 422:
-                    message = f"Product {self.sku} failed to create in BigCommerce. Invalid Fields: Code 422"
+                    message = f"Product {self.sku} failed to POST to BigCommerce. Invalid Fields: Code 422. \nReponse: {bc_response.content} \nPayload: {payload}"
                     self.errors.append(message)
-                    self.errors.append(bc_response.content)
                     print(message)
                     for x in payload:
                         print(x, payload[x])
@@ -2158,11 +2188,9 @@ class Catalog:
                 custom_field_response = update_response.json()["data"]["custom_fields"]
 
                 if custom_field_response:
-                    custom_field_list = []
-                    for x in self.custom_field_response:
-                        custom_field_list.append(x["id"])
-                    # Set custom field ids to string
-                    self.custom_field_ids = ",".join(str(x) for x in custom_field_list)
+                    self.custom_field_ids = ",".join(
+                        [str(x["id"]) for x in custom_field_response]
+                    )
 
                 for i, variant in enumerate(self.variants):
                     variant.binding_id = self.binding_id
@@ -2363,6 +2391,7 @@ class Catalog:
 
         def insert_variant(self, variant):
             print("Entering Insert Variant Function of Product Class")
+
             custom_field_string = self.custom_field_ids
 
             if not variant.is_parent:
@@ -2427,22 +2456,22 @@ class Catalog:
                 self.errors.append(message)
                 self.errors.append(update_product_response)
 
-        def delete_brand(self):
+        def reset_brand(self):
             """Delete brand from item in counterpoint. Used as a corrective measure when an item has a prof_cod_1 that doesn't exist in
             ITEM_PROF_COD"""
             if self.is_bound:
-                delete_brand_query = f"""
+                reset_brand_query = f"""
                 UPDATE IM_ITEM
-                SET PROF_COD_1 = NULL, LST_MOD_DT = GETDATE()
+                SET PROF_COD_1 = "SETTLEMYRE", LST_MOD_DT = GETDATE()
                 WHERE USR_PROF_ALPHA_16 = '{self.binding_id}' AND IS_ADM_TKT = 'Y'
                 """
             else:
-                delete_brand_query = f"""
+                reset_brand_query = f"""
                 UPDATE IM_ITEM
                 SET PROF_COD_1 = NULL, LST_MOD_DT = GETDATE()
                 WHERE ITEM_NO = '{self.sku}'
                 """
-            self.db.query_db(delete_brand_query, commit=True)
+            self.db.query_db(reset_brand_query, commit=True)
 
         def get_image_id(self, target):
             """Get image ID from SQL using filename. If not found, return None."""
@@ -2537,7 +2566,7 @@ class Catalog:
             img_insert = f"""
             INSERT INTO {creds.bc_image_table} (IMAGE_NAME, ITEM_NO, FILE_PATH,
             IMAGE_URL, PRODUCT_ID, IMAGE_ID, THUMBNAIL, IMAGE_NUMBER, SORT_ORDER,
-            IS_BINDING_IMAGE, BINDING_ID, IS_VARIANT_IMAGE, DESCR, LST_MOD_DT)
+            IS_BINDING_IMAGE, BINDING_ID, IS_VARIANT_IMAGE, DESCR, SIZE)
             VALUES (
             '{image.image_name}',
             {f"'{image.sku}'" if image.sku != '' else 'NULL'},
@@ -2551,7 +2580,7 @@ class Catalog:
             {f"'{image.binding_id}'" if image.binding_id != '' else 'NULL'},
             '{image.is_variant_image}',
             {f"'{image.description.replace("'", "''")}'" if image.description != '' else 'NULL'},
-            '{image.last_modified_dt:%Y-%m-%d %H:%M:%S}')"""
+            {image.size})"""
 
             try:
                 print(f"Inserting Image {image.image_name} into SQL")
@@ -2599,7 +2628,7 @@ class Catalog:
                 IS_VARIANT_IMAGE = '{image.is_variant_image}',
                 DESCR = {f"'{image.description.replace("'", "''")}'" if
                             image.description != '' else 'NULL'},
-                LST_MOD_DT = '{image.last_modified_dt:%Y-%m-%d %H:%M:%S}'
+                SIZE = '{image.size}'
                 WHERE ID = {image.id}"""
 
             try:
@@ -3084,6 +3113,7 @@ class Catalog:
                 is_binding_id=None,
                 is_variant_image=False,
                 description="",
+                size=0,
             ):
                 self.db = Database.db
                 self.should_replace_image = False
@@ -3103,11 +3133,7 @@ class Catalog:
                 self.binding_id = is_binding_id
                 self.is_variant_image = is_variant_image
                 self.description = description
-
-                self.last_modified_dt = datetime.fromtimestamp(
-                    os.path.getmtime(self.file_path)
-                )
-
+                self.size = size
                 self.last_maintained_dt = None
                 self.get_image_details()
                 # print(self)
@@ -3148,41 +3174,23 @@ class Catalog:
                     self.binding_id = response[0][11]
                     self.is_variant_image = True if response[0][12] == 1 else False
                     self.description = response[0][13] if response[0][13] else ""
-                    self.last_modified_dt = response[0][14]
+                    self.size = response[0][14]
                     self.last_maintained_dt = response[0][15]
 
-                    new_self_modified_dt = datetime.fromtimestamp(
-                        os.path.getmtime(self.file_path)
-                    )
+                    # size_check = os.path.getsize(self.file_path)
 
-                    if new_self_modified_dt > self.last_modified_dt:
-                        # Update last modified date to most recent last_modified_dt
-                        self.last_modified_dt = new_self_modified_dt
-
-                        print(f"Last modified date updated for {self.image_name}.")
-
-                        if self.last_modified_dt > self.last_run_time:
-                            print(
-                                f"Image {self.image_name} has been modified since last sync."
-                            )
-                            print("Will replace image in middleware and BigCommerce.")
-                            self.should_replace_image = True
-
-                    # Check THIS OUT
-                    if self.last_modified_dt > self.last_run_time:
-                        print(f"\n\nUPLOADING NEW IMAGE FOR {self.image_name}\n\n")
-                        self.image_url = self.upload_product_image()
-                        print(f"new image url: {self.image_url}")
-                        self.delete_image(self.image_name)
-                        self.set_image_details()
-                    else:
-                        print(f"Image {self.image_name} has not been modified.")
+                    # if self.size != size_check:
+                    #     print(f"\n\nUPLOADING NEW IMAGE FOR {self.image_name}\n\n")
+                    #     self.image_url = self.upload_product_image()
+                    #     print(f"new image url: {self.image_url}")
+                    #     self.delete_image(self.image_name)
+                    #     self.set_image_details()
+                    # else:
+                    #     print(f"Image {self.image_name} has not been modified.")
                 else:
-                    self.last_modified_dt = datetime.fromtimestamp(
-                        os.path.getmtime(self.file_path)
-                    )
                     self.image_url = self.upload_product_image()
                     self.set_image_details()
+
                 print("-----------------")
 
             def validate(self):
@@ -3192,18 +3200,13 @@ class Catalog:
                     # These items have already been through check before.
                     return True
                 else:
-                    try:
-                        file_size = os.path.getsize(self.file_path)
-                    except FileNotFoundError:
-                        print(f"File {self.file_path} not found.")
-                        return False
                     # Check for valid file size/format
                     size = (1280, 1280)
                     q = 90
                     exif_orientation = 0x0112
                     if self.image_name.lower().endswith("jpg"):
                         # Resize files larger than 1.8 MB
-                        if file_size > 1800000:
+                        if self.size > 1800000:
                             print(
                                 f"Found large file {self.image_name}. Attempting to resize."
                             )
@@ -3214,6 +3217,8 @@ class Catalog:
                                 if code and code != 1:
                                     im = ImageOps.exif_transpose(im)
                                 im.save(self.file_path, "JPEG", quality=q)
+                                im.close()
+                                self.size = os.path.getsize(self.file_path)
                                 print(f"{self.image_name} resized.")
                             except Exception as e:
                                 print(f"Error resizing {self.image_name}: {e}")
@@ -3333,6 +3338,8 @@ class Catalog:
 
                 self.sku, self.binding_id = get_item_no_from_image_name(self.image_name)
                 self.image_number = get_image_number()
+
+                self.size = os.path.getsize(self.file_path)
 
                 # Image Description Only non-binding images have descriptions at this time. Though,
                 # this could be handled with JSON reference in the future for binding images.
