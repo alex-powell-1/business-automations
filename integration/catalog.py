@@ -9,6 +9,7 @@ import aiohttp
 import requests
 from PIL import Image, ImageOps
 from requests.auth import HTTPDigestAuth
+import random
 
 from integration.database import Database
 
@@ -24,8 +25,12 @@ class Catalog:
         # self.log_file = log_file
         self.last_sync = last_sync
         self.db = Database.db
-        # self.update_image_timestamps()
-        # self.process_deletes()
+        self.image_file_list = []
+        self.mw_image_list = self.get_middleware_images()
+        self.update_image_timestamps()
+        # print("file list: ", self.image_file_list)
+        # print("mw_image_list ", self.mw_image_list)
+        self.process_deletes()
         # lists of products with updated timestamps
         self.products = self.get_products()
         self.binding_ids = set(x["binding_id"] for x in self.products)
@@ -37,6 +42,56 @@ class Catalog:
             f"Items to Process: {len(self.products)}\n"
             f"Binding IDs with Updates: {len(self.binding_ids)}\n"
         )
+
+    def get_middleware_images(self):
+        query = f"SELECT IMAGE_NAME FROM {creds.bc_image_table}"
+        response = self.db.query_db(query)
+        return [x[0] for x in response] if response else []
+
+    def process_deletes(self):
+        """Process deletes for products that have been removed from CP but still exist in MW.
+        Processes image and variant deletes as well."""
+        print("Length of Image List: ", len(self.image_file_list))
+        print("Length of MW Image List: ", len(self.mw_image_list))
+        delete_targets = Catalog.get_deletion_target(
+            counterpoint_list=self.image_file_list, middleware_list=self.mw_image_list
+        )
+        print("Delete Targets", delete_targets)
+        for x in delete_targets:
+            print(f"Deleting Image {x}.\n")
+            self.delete_image(x)
+
+    def get_product_id(self, target):
+        """Get image ID from SQL using filename. If not found, return None."""
+        image_query = f"SELECT PRODUCT_ID, IMAGE_ID FROM {creds.bc_image_table} WHERE IMAGE_NAME = '{target}'"
+        img_id_res = self.db.query_db(image_query)
+        if img_id_res is not None:
+            return img_id_res[0][0], img_id_res[0][1]
+
+    def delete_image(self, image_name) -> bool:
+        """Takes in an image name and looks for matching image file in middleware. If found, deletes from BC and SQL."""
+        print("Entering Delete Image Function of Image Class")
+        print(f"Deleting {image_name}")
+
+        product_id, image_id = self.get_product_id(image_name)
+
+        delete_img_url = f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/catalog/products/{product_id}/images/{image_id}"
+
+        img_del_res = requests.delete(
+            url=delete_img_url, headers=creds.test_bc_api_headers, timeout=10
+        )
+
+        if img_del_res.status_code == 204:
+            print(f"Image {image_name} deleted from BigCommerce.")
+
+            print("Deleting from SQL")
+            delete_images_query = (
+                f"DELETE FROM {creds.bc_image_table} " f"WHERE IMAGE_ID = '{image_id}'"
+            )
+            self.db.query_db(delete_images_query, commit=True)
+        else:
+            print(f"Error deleting image {image_name} from BigCommerce.")
+            print(img_del_res.json())
 
     def get_products(self):
         return [{"sku": "10337", "binding_id": "B0006"}]
@@ -69,7 +124,7 @@ class Catalog:
                 prod.process()
 
             for error in prod.errors:
-                self.product_errors.append(prod.sku, error)
+                self.product_errors.append((prod.sku, error))
 
             # Remove ALL associated variants from the queue, failed or not.
             products_to_remove = [y.sku for y in prod.variants]
@@ -100,43 +155,43 @@ class Catalog:
                 print(error)
                 print("\n\n")
 
-    @staticmethod
-    def process_deletes():
-        db = query_engine.QueryEngine()
-        all_cp_products = [
-            x[0]
-            for x in db.query_db(
-                "SELECT ITEM_NO FROM IM_ITEM WHERE IS_ECOMM_ITEM = 'Y'"
-            )
-            if x
-        ]
-        all_mw_products = [
-            x[0]
-            for x in db.query_db(f"SELECT ITEM_NO FROM {creds.bc_product_table}")
-            if x
-        ]
-        delete_count = 0
-        delete_targets = Catalog.get_deletion_target(
-            middleware_list=all_mw_products, counterpoint_list=all_cp_products
-        )
-        print(f"Delete Targets: {delete_targets}")
+    # @staticmethod
+    # def process_deletes():
+    #     db = query_engine.QueryEngine()
+    #     all_cp_products = [
+    #         x[0]
+    #         for x in db.query_db(
+    #             "SELECT ITEM_NO FROM IM_ITEM WHERE IS_ECOMM_ITEM = 'Y'"
+    #         )
+    #         if x
+    #     ]
+    #     all_mw_products = [
+    #         x[0]
+    #         for x in db.query_db(f"SELECT ITEM_NO FROM {creds.bc_product_table}")
+    #         if x
+    #     ]
+    #     delete_count = 0
+    #     delete_targets = Catalog.get_deletion_target(
+    #         middleware_list=all_mw_products, counterpoint_list=all_cp_products
+    #     )
+    #     print(f"Delete Targets: {delete_targets}")
 
-        def delete_from_bigcommerce(target):
-            print(f"Deleting Product from bigcommerce: {target}. TEST MODE")
+    #     def delete_from_bigcommerce(target):
+    #         print(f"Deleting Product from bigcommerce: {target}. TEST MODE")
 
-        def delete_from_middleware(target):
-            print(f"Deleting Product from middleware: {target}. TEST MODE")
+    #     def delete_from_middleware(target):
+    #         print(f"Deleting Product from middleware: {target}. TEST MODE")
 
-        for x in delete_targets:
-            print(f"Deleting Product {x}.")
-            delete_from_bigcommerce(x)
-            delete_from_middleware(x)
-            delete_count += 1
+    #     for x in delete_targets:
+    #         print(f"Deleting Product {x}.")
+    #         delete_from_bigcommerce(x)
+    #         delete_from_middleware(x)
+    #         delete_count += 1
 
-        print(f"Deleted {delete_count} brands.")
+    #     print(f"Deleted {delete_count} brands.")
 
     def update_image_timestamps(self):
-        """Takes in a list of SKUs and updates the last maintenance date in IM_ITEM and MW_IMAGES table for each
+        """Takes in a list of SKUs and updates the last maintenance date in IM_ITEM and LST_MOD_DT in Middleware table for each
         product in the list. Updating IM_ITEM will trigger a sync of that item, and it will then look for photos
         during the sync process."""
         print("Image Update: Updating product timestamps.")
@@ -147,9 +202,11 @@ class Catalog:
             2. all file names that have been modified since the input date."""
             sku_result = set()
             file_result = set()
+            all_files = []
             # Iterate over all files in the directory
             for filename in os.listdir(creds.photo_path):
                 if filename not in ["Thumbs.db", "desktop.ini", ".DS_Store"]:
+                    all_files.append(filename)
                     # Get the full path of the file
                     file_path = os.path.join(creds.photo_path, filename)
 
@@ -162,11 +219,9 @@ class Catalog:
                         sku_result.add(sku)
                         file_result.add(filename)
 
-            return sku_result, file_result
+            return sku_result, file_result, all_files
 
-        sku_list, file_list = get_updated_photos(self.last_sync)
-
-        print(file_list)
+        sku_list, file_list, self.image_file_list = get_updated_photos(self.last_sync)
 
         if len(sku_list) > 0:
             query = (
@@ -1796,6 +1851,14 @@ class Catalog:
                 # Step 1: Process Deleting Variants
                 self.process_image_deletes()
 
+                # def process_image_replacements():
+                #     for image in self.images:
+                #         if image.should_replace_image:
+                #             print(f"Replacing Image: {image.image_name}")
+                #             self.replace_image(image)
+
+                # process_image_replacements()
+
                 # Step 2: Second-State Validation (validate_payload)
                 # Validate the product again after the variants have been deleted.
                 # Specifically, check for a bound product turning into a single product.
@@ -1862,60 +1925,26 @@ class Catalog:
                 # Product Found, Update Product
                 update()
 
+        ### DELETES WILL HAVE TO HAPPEN BEFORE IMAGES ARE APPENDED TO SELF.IMAGES***
         def replace_image(self, image) -> bool:
             """Replace image in BigCommerce and SQL."""
-
-            # Delete Image from BigCommerce and SQL
-            self.delete_image(image.image_name)
-
-            # Post New Image to Big Commerce
-            new_photo_payload = {
-                "is_thumbnail": image.is_thumbnail,
-                "sort_order": image.sort_order,
-                "description": image.description,
-                "image_url": image.image_url,
-                "product_id": self.product_id,
-            }
-
-            url = f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/catalog/products/{self.product_id}/images"
-
-            bc_response = requests.post(
-                url=url, headers=creds.test_bc_api_headers, json=new_photo_payload
-            )
-
-            if bc_response.status_code == 200:
-                print(
-                    f"BigCommerce POST {self.sku}: SUCCESS. Code: {bc_response.status_code}"
-                )
-
-                # assign PRODUCT_ID, VARIANT_ID, and CATEG_ID to product and insert into middleware
-                image.image_id = bc_response.json()["data"]["id"]
-
-                if self.insert_image(image):
-                    return True
-
-            elif bc_response.status_code == 409:
-                message = f"Product {self.sku} already exists in BigCommerce."
-                self.errors.append(message)
-                self.errors.append(bc_response.content)
-                print(message)
-                return False
-
-            elif bc_response.status_code == 422:
-                message = f"Product {self.sku} failed to create in BigCommerce. Invalid Fields: Code 422"
-                self.errors.append(message)
-                self.errors.append(bc_response.content)
-                print(message)
-                return False
-
+            print("Entering replace_image function")
+            delete_response = self.delete_image(image.image_name)
+            if delete_response.status_code == 204:
+                self.delete_product_image_from_sql
+                post_response = self.bc_post_image(image)
+                if post_response.status_code == 200:
+                    insert_response = self.insert_image(image)
+                    print(insert_response)
+                else:
+                    print(
+                        f"Replace Image: Error posting {image.image_name} to BigCommerce"
+                    )
+                    print(post_response.status_code, post_response.content)
+                    return False
             else:
-                error_message = (
-                    f"BigCommerce POST {self.sku}: "
-                    f"FAILED! Status Code: {bc_response.status_code}"
-                )
-                self.errors.append(error_message)
-                self.errors.append(bc_response.content)
-                print(error_message)
+                print(f"Error deleting {image.image_name} from BigCommerce")
+                print(delete_response.status_code, delete_response.content)
                 return False
 
         def get_bc_ecomm_categories(self):
@@ -1992,10 +2021,14 @@ class Catalog:
                             "id"
                         ]
 
-                    for x, image in enumerate(self.images):
-                        image.binding_id = self.binding_id
-                        image.product_id = self.product_id
-                        image.image_id = bc_response.json()["data"]["images"][x]["id"]
+                    # Update Image IDs
+                    print("Updating Image IDs")
+                    image_response = bc_response.json()["data"]["images"]
+                    if image_response and self.images:
+                        for bc_image in image_response:
+                            for image in self.images:
+                                if bc_image["sort_order"] == image.sort_order:
+                                    image.image_id = bc_image["id"]
 
                     print("DONE! Returning True")
                     return True
@@ -2033,6 +2066,67 @@ class Catalog:
                     self.errors.append(bc_response.content)
                     print(error_message)
                     return False
+
+        def bc_post_image(self, image):
+            # Post New Image to Big Commerce
+
+            image_payload = {
+                "is_thumbnail": image.is_thumbnail,
+                "sort_order": image.sort_order,
+                "description": image.description,
+                "image_url": image.image_url,
+            }
+
+            if self.product_id:
+                image_payload["product_id"] = self.product_id
+
+            url = f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/catalog/products/{self.product_id}/images"
+
+            bc_response = requests.post(
+                url=url, headers=creds.test_bc_api_headers, json=image_payload
+            )
+            if bc_response.status_code == 200:
+                image.image_id = bc_response.json()["data"]["id"]
+                image.product_id = self.product_id
+
+            print(bc_response.status_code)
+            print(bc_response.content)
+            return bc_response
+
+            # if bc_response.status_code == 200:
+            #     print(
+            #         f"BigCommerce POST {self.sku}: SUCCESS. Code: {bc_response.status_code}"
+            #     )
+
+            #     # assign PRODUCT_ID, VARIANT_ID, and CATEG_ID to product and insert into middleware
+            #     image.image_id = bc_response.json()["data"]["id"]
+
+            #     if self.insert_image(image):
+            #         return True
+
+            # elif bc_response.status_code == 409:
+            #     message = f"Product {self.sku} already exists in BigCommerce."
+            #     self.errors.append(message)
+            #     self.errors.append(bc_response.content)
+            #     print(message)
+            #     return False
+
+            # elif bc_response.status_code == 422:
+            #     message = f"Product {self.sku} failed to create in BigCommerce. Invalid Fields: Code 422"
+            #     self.errors.append(message)
+            #     self.errors.append(bc_response.content)
+            #     print(message)
+            #     return False
+
+            # else:
+            #     error_message = (
+            #         f"BigCommerce POST {self.sku}: "
+            #         f"FAILED! Status Code: {bc_response.status_code}"
+            #     )
+            #     self.errors.append(error_message)
+            #     self.errors.append(bc_response.content)
+            #     print(error_message)
+            #     return False
 
         def bc_update_product(self, payload):
             print("Entering bc_update_product function of product class")
@@ -2243,15 +2337,10 @@ class Catalog:
                     if not self.insert_image(image=image):
                         rollback = True
                 else:
-                    if image.last_modified_dt > self.last_sync:
-                        print("Replacing Image")
-                        if not self.replace_image(image):
-                            rollback = True
-                    else:
-                        print("Updating Image")
-                        status = self.update_image(image)
-                        if status is False:
-                            rollback = True
+                    print("Updating Image")
+                    status = self.update_image(image)
+                    if status is False:
+                        rollback = True
 
                 # If rollback is True, delete image from BigCommerce and Middleware
                 if rollback:
@@ -2367,7 +2456,11 @@ class Catalog:
             # Find Images to Delete
             mw_img = f"SELECT IMAGE_NAME FROM {creds.bc_image_table} WHERE PRODUCT_ID = {self.product_id}"
             mw_img_res = self.db.query_db(mw_img)
-            mw_img_list = [img[0] for img in mw_img_res if mw_img_res]
+            if mw_img_res:
+                mw_img_list = [img[0] for img in mw_img_res]
+            else:
+                return
+
             payload_img_list = [img.image_name for img in self.images]
 
             delete_targets = Catalog.get_deletion_target(
@@ -2377,6 +2470,7 @@ class Catalog:
                 print(f"Images to Delete: {delete_targets}")
                 for delete_target in delete_targets:
                     self.delete_image(delete_target)
+
             else:
                 print("No images to delete.")
 
@@ -2387,36 +2481,26 @@ class Catalog:
 
             image_id = self.get_image_id(image_name)
 
-            delete_img_url = (
-                f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/"
-                f"catalog/products/{self.product_id}/images/{image_id}"
-            )
+            delete_img_url = f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/catalog/products/{self.product_id}/images/{image_id}"
 
             img_del_res = requests.delete(
                 url=delete_img_url, headers=creds.test_bc_api_headers, timeout=10
             )
-            print(img_del_res.status_code, img_del_res.content)
-            if img_del_res.status_code == 204:
-                print(f"{image_name} deleted from BigCommerce")
-                sql_del_image = f"""
-                DELETE FROM {creds.bc_image_table}
-                WHERE IMAGE_NAME = '{image_name}'"""
-                try:
-                    self.db.query_db(sql_del_image, commit=True)
-                except Exception as e:
-                    message = (
-                        f"Image: {image_name} Failed to Delete from SQL ",
-                        e,
-                    )
-                    print(message)
-                    self.errors.append(message)
-                    return False
-                else:
-                    print(f"{image_name} deleted from SQL")
-                    return True
 
-            else:
-                print(img_del_res.status_code, img_del_res.content)
+            delete_images_query = (
+                f"DELETE FROM {creds.bc_image_table} " f"WHERE IMAGE_ID = '{image_id}'"
+            )
+            self.db.query_db(delete_images_query, commit=True)
+
+            return img_del_res
+
+        def delete_product_image_from_sql(self, image):
+            """Delete product images from SQL."""
+            print("Entering Delete Product Image Function of Product Class")
+            delete_images_query = (
+                f"DELETE FROM {creds.bc_image_table} " f"WHERE ID = '{image.id}'"
+            )
+            self.db.query_db(delete_images_query, commit=True)
 
         def delete_product_images_from_sql(self):
             """Delete all images associated with a product from SQL."""
@@ -3002,6 +3086,7 @@ class Catalog:
                 description="",
             ):
                 self.db = Database.db
+                self.should_replace_image = False
                 self.last_run_time = last_run_time
                 self.id = None
                 self.image_name = image_name  # This is the file name
@@ -3035,9 +3120,9 @@ class Catalog:
                 return result
 
             def get_image_details(self):
-                print("Entering Get Image Details Function of Image Class")
+                print("\nEntering Get Image Details Function of Image Class")
                 """Get image details from SQL"""
-                print("Getting Image Details for ", self.image_name)
+                print("\nGetting Image Details for ", self.image_name)
                 print("-----------------")
 
                 query = (
@@ -3063,19 +3148,33 @@ class Catalog:
                     self.binding_id = response[0][11]
                     self.is_variant_image = True if response[0][12] == 1 else False
                     self.description = response[0][13] if response[0][13] else ""
-                    # self.last_modified_dt = response[0][14]
+                    self.last_modified_dt = response[0][14]
                     self.last_maintained_dt = response[0][15]
 
-                    print("Last modified Date")
-                    print(self.last_modified_dt)
+                    new_self_modified_dt = datetime.fromtimestamp(
+                        os.path.getmtime(self.file_path)
+                    )
 
-                    print("Last run time")
-                    print(self.last_run_time)
+                    if new_self_modified_dt > self.last_modified_dt:
+                        # Update last modified date to most recent last_modified_dt
+                        self.last_modified_dt = new_self_modified_dt
+
+                        print(f"Last modified date updated for {self.image_name}.")
+
+                        if self.last_modified_dt > self.last_run_time:
+                            print(
+                                f"Image {self.image_name} has been modified since last sync."
+                            )
+                            print("Will replace image in middleware and BigCommerce.")
+                            self.should_replace_image = True
 
                     # Check THIS OUT
                     if self.last_modified_dt > self.last_run_time:
                         print(f"\n\nUPLOADING NEW IMAGE FOR {self.image_name}\n\n")
-                        self.upload_product_image()
+                        self.image_url = self.upload_product_image()
+                        print(f"new image url: {self.image_url}")
+                        self.delete_image(self.image_name)
+                        self.set_image_details()
                     else:
                         print(f"Image {self.image_name} has not been modified.")
                 else:
@@ -3262,7 +3361,9 @@ class Catalog:
             def upload_product_image(self) -> str:
                 """Upload file to import folder on webDAV server and turn public url"""
                 data = open(self.file_path, "rb")
-                new_name = self.image_name.replace("^", "-")
+                random_int = random.randint(1000, 9999)
+                new_name = f"{self.image_name.split(".")[0].replace("^", "-")}-{random_int}.jpg"
+
                 url = f"{creds.web_dav_product_photos}/{new_name}"
                 try:
                     requests.put(
