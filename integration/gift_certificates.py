@@ -5,6 +5,8 @@ from integration.database import Database
 from setup import creds
 import integration.object_processor as object_processor
 
+from integration.error_handler import ErrorHandler, Logger
+
 import time
 
 class GiftCertificates:
@@ -16,6 +18,9 @@ class GiftCertificates:
 
         self.big_certificates = self.get_certificates_from_big()
         self.big_processor = object_processor.ObjectProcessor(objects=self.big_certificates)
+
+        self.logger = Logger("logs/gift_certificates.log")
+        self.error_handler = ErrorHandler(logger=self.logger)
 
     def get_certificates(self):
         # query = f"""
@@ -69,6 +74,8 @@ class GiftCertificates:
     def sync(self):
         self.big_processor.process()
         self.processor.process()
+
+        self.error_handler.print_errors()
         
     class Certificate:
         def __init__(self, cert_result):
@@ -190,7 +197,8 @@ class GiftCertificates:
                     self.sync().insert(response.json()['id'])
                 else:
                     print(f"Error creating gift certificate {self.gift_card_no}")
-                    print(response.text)
+                    
+                    self.error_handler.add_error(f"Error creating gift certificate {self.gift_card_no}")
 
             def update():
                 print(f"Updating gift certificate {self.gift_card_no}")
@@ -216,7 +224,8 @@ class GiftCertificates:
                     self.sync().update(bc_id)
                 else:
                     print(f"Error updating gift certificate {self.gift_card_no}")
-                    print(response.text)
+                    
+                    self.error_handler.add_error(f"Error updating gift certificate {self.gift_card_no}")
             
             def get_processing_method():
                 bc_id = get_bc_id()

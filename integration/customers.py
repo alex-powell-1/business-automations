@@ -6,6 +6,8 @@ from setup import creds
 
 import integration.object_processor as object_processor
 
+from integration.error_handler import ErrorHandler, Logger
+
 import time
 
 class Customers:
@@ -14,6 +16,9 @@ class Customers:
         self.db = Database.db
         self.customers = self.get_customers()
         self.processor = object_processor.ObjectProcessor(objects=self.customers, speed=50)
+
+        self.logger = Logger(log_file="logs/customers.log")
+        self.error_handler = ErrorHandler(logger=self.logger)
 
     def get_customers(self):
         query = f"""
@@ -34,6 +39,8 @@ class Customers:
 
     def sync(self):
         self.processor.process()
+
+        self.error_handler.print_errors()
 
     class Customer:
         def __init__(self, cust_result):
@@ -57,6 +64,7 @@ class Customers:
             if self.address is not None and self.state is not None and self.zip is not None:
                 if self.address.replace(" ", "").isalpha() or self.address.replace(" ", "").isnumeric():
                     print(f"Customer {self.cust_no} has malformed address: {self.address}.")
+                    self.error_handler.add_error(f"Customer {self.cust_no} has malformed address: {self.address}.")
                     return False
 
                 if self.city is None or self.city == "":
@@ -216,7 +224,13 @@ class Customers:
                     self.sync().insert(response.json()["data"][0]["id"])
                 else:
                     print(f"Error creating customer {self.cust_no}.")
-                    print(response.json()["errors"])
+                    self.error_handler.add_error(f"Error creating customer {self.cust_no}.")
+
+                    errors = response.json()["errors"]
+
+                    for error in errors:
+                        error_msg = errors[error]
+                        self.error_handler.add_error(error_msg, origin=f"Customer {self.cust_no}", type="BigCommerce API")
 
             def get_bc_id():
                 query = f"""
@@ -253,6 +267,13 @@ class Customers:
                         self.sync().update(id)
                     else:
                         print(f"Error updating customer {self.cust_no}.")
+                        self.error_handler.add_error(f"Error updating customer {self.cust_no}.")
+
+                        errors = response.json()["errors"]
+
+                        for error in errors:
+                            error_msg = errors[error]
+                            self.error_handler.add_error(error_msg, origin=f"Customer {self.cust_no}", type="BigCommerce API")
 
             def delete():
                 id = get_bc_id()
@@ -276,6 +297,14 @@ class Customers:
                         self.sync().delete()
                     else:
                         print(f"Error deleting customer {self.cust_no}.")
+
+                        self.error_handler.add_error(f"Error deleting customer {self.cust_no}.")
+
+                        errors = response.json()["errors"]
+
+                        for error in errors:
+                            error_msg = errors[error]
+                            self.error_handler.add_error(error_msg, origin=f"Customer {self.cust_no}", type="BigCommerce API")
 
             def get_processing_method():
                 del_query = f"""
