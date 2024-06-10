@@ -6,6 +6,7 @@ import time
 from datetime import datetime
 from email.utils import formatdate
 
+from integration.error_handler import ErrorHandler, Logger, GlobalErrorHandler
 
 def timer(func):
     """Decorator function to time the execution of a function."""
@@ -61,11 +62,16 @@ def get_all_binding_ids():
 class VirtualRateLimiter:
     is_rate_limited = False
     limited_until = None
+    request_quota = 5
+    request_time = 1
+
+    requests = []
 
     @staticmethod
-    def pause_requests(seconds_to_wait: float = 4):
+    def pause_requests(seconds_to_wait: float = 0):
         VirtualRateLimiter.is_rate_limited = True
         VirtualRateLimiter.limited_until = time.time() + seconds_to_wait
+        GlobalErrorHandler.logger.warn(f"Rate limit reached. Pausing requests for {seconds_to_wait} seconds.")
 
     @staticmethod
     def is_paused():
@@ -77,3 +83,36 @@ class VirtualRateLimiter:
                 return True
         else:
             return False
+        
+    @staticmethod
+    def limit():
+        time.sleep(1)
+        VirtualRateLimiter.requests.append(time.time())
+
+        sleep0 = (VirtualRateLimiter.request_time / VirtualRateLimiter.request_quota) * 5
+        sleep1 = (VirtualRateLimiter.request_time / VirtualRateLimiter.request_quota) * 1.25
+        sleep2 = sleep1 / 2
+        sleep3 = sleep2 / 2
+
+        if len(VirtualRateLimiter.requests) > VirtualRateLimiter.request_quota:
+            time_passed = time.time() - VirtualRateLimiter.requests.pop(0)
+            if time_passed < VirtualRateLimiter.request_time:
+                VirtualRateLimiter.pause_requests(VirtualRateLimiter.request_time * 1.2)
+
+                VirtualRateLimiter.requests = []
+
+                return True
+            else:
+                return False
+        elif len(VirtualRateLimiter.requests) > VirtualRateLimiter.request_quota * 0.85:
+            time.sleep(sleep0)
+        elif len(VirtualRateLimiter.requests) > VirtualRateLimiter.request_quota * 0.75:
+            time.sleep(sleep1)
+        elif len(VirtualRateLimiter.requests) > VirtualRateLimiter.request_quota * 0.5:
+            time.sleep(sleep2)
+        elif len(VirtualRateLimiter.requests) > VirtualRateLimiter.request_quota * 0.25:
+            time.sleep(sleep3)
+
+        while (time.time() - VirtualRateLimiter.requests[0]) > VirtualRateLimiter.request_time:
+            VirtualRateLimiter.requests.pop(0)
+         

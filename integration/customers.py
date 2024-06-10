@@ -259,13 +259,10 @@ class Customers:
                     url = f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/customers"
                     payload = write_customer_payload(bc_cust_id=id)
 
-                    while VirtualRateLimiter.is_paused():
-                        time.sleep(1)
-
                     response = session.put(url=url, headers=creds.test_bc_api_headers, json=payload)
 
-                    if response.status_code == 429 or random.randint(0, 150) == 12:
-                        ms_to_wait = int(response.headers['X-Rate-Limit-Time-Reset-Ms']) if response.status_code == 429 else 10000
+                    if response.status_code == 429:
+                        ms_to_wait = int(response.headers['X-Rate-Limit-Time-Reset-Ms'])
                         seconds_to_wait = (ms_to_wait / 1000) + 1
                         VirtualRateLimiter.pause_requests(seconds_to_wait)
                         self.logger.warn(f"Rate limit exceeded. Waiting {seconds_to_wait} seconds.")
