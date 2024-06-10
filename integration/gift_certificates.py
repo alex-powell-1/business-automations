@@ -22,8 +22,8 @@ class GiftCertificates:
         self.certificates = self.get_certificates()
         self.processor = object_processor.ObjectProcessor(objects=self.certificates)
 
-        # self.big_certificates = self.get_certificates_from_big()
-        # self.big_processor = object_processor.ObjectProcessor(objects=self.big_certificates)
+        self.big_certificates = self.get_certificates_from_big()
+        self.big_processor = object_processor.ObjectProcessor(objects=self.big_certificates)
 
     def get_certificates(self):
         # query = f"""
@@ -49,6 +49,7 @@ class GiftCertificates:
     def get_certificates_from_big(self):
         def get_page(page: int):
             response = requests.get(f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v2/gift_certificates?page={page}&limit=250", headers=creds.test_bc_api_headers)
+            print(response.text)
             return response.json()  
 
         def get_all_pages():
