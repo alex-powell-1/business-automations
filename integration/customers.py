@@ -6,7 +6,7 @@ from setup import creds
 
 import integration.object_processor as object_processor
 
-from integration.error_handler import ErrorHandler, Logger
+from integration.error_handler import ErrorHandler, Logger, GlobalErrorHandler
 
 import time
 
@@ -17,8 +17,8 @@ class Customers:
         self.customers = self.get_customers()
         self.processor = object_processor.ObjectProcessor(objects=self.customers, speed=50)
 
-        self.logger = Logger(log_file="logs/customers.log")
-        self.error_handler = ErrorHandler(logger=self.logger)
+        self.logger = GlobalErrorHandler.logger
+        self.error_handler = GlobalErrorHandler.error_handler
 
     def get_customers(self):
         query = f"""
@@ -34,7 +34,7 @@ class Customers:
             result = []
             for x in response:
                 if x is not None:
-                    result.append(self.Customer(x))
+                    result.append(self.Customer(x, self.error_handler))
             return result
 
     def sync(self):
@@ -43,7 +43,7 @@ class Customers:
         self.error_handler.print_errors()
 
     class Customer:
-        def __init__(self, cust_result):
+        def __init__(self, cust_result, error_handler: ErrorHandler):
             self.cust_no = cust_result[0]
             self.db = Database.db
             self.fst_nam = cust_result[1]
@@ -57,14 +57,16 @@ class Customers:
             self.zip = cust_result[9]
             self.country = cust_result[10]
 
+            self.error_handler: ErrorHandler = error_handler
+            self.logger: Logger = error_handler.logger
+
         def has_phone(self):
             return self.phone is not None or self.phone != ""
 
         def has_address(self):
             if self.address is not None and self.state is not None and self.zip is not None:
                 if self.address.replace(" ", "").isalpha() or self.address.replace(" ", "").isnumeric():
-                    print(f"Customer {self.cust_no} has malformed address: {self.address}.")
-                    self.error_handler.add_error(f"Customer {self.cust_no} has malformed address: {self.address}.")
+                    self.error_handler.add_error_v(f"Customer {self.cust_no} has malformed address: {self.address}.")
                     return False
 
                 if self.city is None or self.city == "":
@@ -205,7 +207,7 @@ class Customers:
                 return [payload]
 
             def create():
-                print(f"Creating customer {self.cust_no}")
+                self.logger.info(f"Creating customer {self.cust_no}")
                 url = f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/customers"
                 payload = write_customer_payload()
 
@@ -214,23 +216,20 @@ class Customers:
                 if response.status_code == 429:
                     ms_to_wait = int(response.headers['X-Rate-Limit-Time-Reset-Ms'])
                     seconds_to_wait = (ms_to_wait / 1000) + 1
-                    print(f"Rate limit exceeded. Waiting {seconds_to_wait} seconds.")
+                    self.logger.warn(f"Rate limit exceeded. Waiting {seconds_to_wait} seconds.")
                     time.sleep(seconds_to_wait)
 
                     response = session.post(url=url, headers=creds.test_bc_api_headers, json=payload)
 
                 if response.status_code == 200:
-                    print(f"Customer {self.cust_no} created successfully.")
+                    self.logger.success(f"Customer {self.cust_no} created successfully.")
                     self.sync().insert(response.json()["data"][0]["id"])
                 else:
-                    print(f"Error creating customer {self.cust_no}.")
-                    self.error_handler.add_error(f"Error creating customer {self.cust_no}.")
-
                     errors = response.json()["errors"]
 
                     for error in errors:
                         error_msg = errors[error]
-                        self.error_handler.add_error(error_msg, origin=f"Customer {self.cust_no}", type="BigCommerce API")
+                        self.error_handler.add_error_v(error_msg, origin=f"Customer {self.cust_no}")
 
             def get_bc_id():
                 query = f"""
@@ -244,11 +243,11 @@ class Customers:
                     return None
 
             def update():
+                self.logger.info(f"Updating customer {self.cust_no}")
                 id = get_bc_id()
                 if id is None:
-                    print(f"Customer {self.cust_no} not found in database.")
+                    self.error_handler.add_error_v(f"Customer {self.cust_no} not found in {creds.bc_customer_table}.")
                 else:
-                    print(f"Updating customer {self.cust_no}")
                     url = f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/customers"
                     payload = write_customer_payload(bc_cust_id=id)
 
@@ -257,54 +256,51 @@ class Customers:
                     if response.status_code == 429:
                         ms_to_wait = int(response.headers['X-Rate-Limit-Time-Reset-Ms'])
                         seconds_to_wait = (ms_to_wait / 1000) + 1
-                        print(f"Rate limit exceeded. Waiting {seconds_to_wait} seconds.")
+                        self.logger.warn(f"Rate limit exceeded. Waiting {seconds_to_wait} seconds.")
                         time.sleep(seconds_to_wait)
 
                     response = session.put(url=url, headers=creds.test_bc_api_headers, json=payload)
 
                     if response.status_code == 200:
-                        print(f"Customer {self.cust_no} updated successfully.")
+                        self.logger.success(f"Customer {self.cust_no} updated successfully.")
                         self.sync().update(id)
                     else:
-                        print(f"Error updating customer {self.cust_no}.")
-                        self.error_handler.add_error(f"Error updating customer {self.cust_no}.")
+                        self.error_handler.add_error_v(f"Error updating customer {self.cust_no}.")
 
                         errors = response.json()["errors"]
 
                         for error in errors:
                             error_msg = errors[error]
-                            self.error_handler.add_error(error_msg, origin=f"Customer {self.cust_no}", type="BigCommerce API")
+                            self.error_handler.add_error_v(error_msg, origin=f"Customer {self.cust_no}")
 
             def delete():
+                self.logger.info(f"Deleting customer {self.cust_no}")
                 id = get_bc_id()
                 if id is None:
-                    print(f"Customer {self.cust_no} not found in database.")
+                    self.error_handler.add_error_v(f"Customer {self.cust_no} not found in database.")
                 else:
-                    print(f"Deleting customer {self.cust_no}")
                     url = f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/customers?id:in={id}"
                     response = session.delete(url=url, headers=creds.test_bc_api_headers)
 
                     if response.status_code == 429:
                         ms_to_wait = int(response.headers['X-Rate-Limit-Time-Reset-Ms'])
                         seconds_to_wait = (ms_to_wait / 1000) + 1
-                        print(f"Rate limit exceeded. Waiting {seconds_to_wait} seconds.")
+                        self.logger.warn(f"Rate limit exceeded. Waiting {seconds_to_wait} seconds.")
                         time.sleep(seconds_to_wait)
 
                     response = session.delete(url=url, headers=creds.test_bc_api_headers)
 
                     if response.status_code == 204:
-                        print(f"Customer {self.cust_no} deleted successfully.")
+                        self.logger.success(f"Customer {self.cust_no} deleted successfully.")
                         self.sync().delete()
                     else:
-                        print(f"Error deleting customer {self.cust_no}.")
-
-                        self.error_handler.add_error(f"Error deleting customer {self.cust_no}.")
+                        self.error_handler.add_error_v(f"Error deleting customer {self.cust_no}.")
 
                         errors = response.json()["errors"]
 
                         for error in errors:
                             error_msg = errors[error]
-                            self.error_handler.add_error(error_msg, origin=f"Customer {self.cust_no}", type="BigCommerce API")
+                            self.error_handler.add_error_v(error_msg, origin=f"Customer {self.cust_no}")
 
             def get_processing_method():
                 del_query = f"""

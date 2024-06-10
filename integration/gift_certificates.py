@@ -5,7 +5,7 @@ from integration.database import Database
 from setup import creds
 import integration.object_processor as object_processor
 
-from integration.error_handler import ErrorHandler, Logger
+from integration.error_handler import ErrorHandler, Logger, GlobalErrorHandler
 
 import time
 
@@ -19,8 +19,8 @@ class GiftCertificates:
         self.big_certificates = self.get_certificates_from_big()
         self.big_processor = object_processor.ObjectProcessor(objects=self.big_certificates)
 
-        self.logger = Logger("logs/gift_certificates.log")
-        self.error_handler = ErrorHandler(logger=self.logger)
+        self.logger = GlobalErrorHandler.logger
+        self.error_handler = GlobalErrorHandler.error_handler
 
     def get_certificates(self):
         # query = f"""
@@ -42,7 +42,7 @@ class GiftCertificates:
             result = []
             for x in response:
                 if x is not None:
-                    result.append(self.Certificate(x))
+                    result.append(self.Certificate(x, error_handler=self.error_handler))
             return result
 
     def get_certificates_from_big(self):
@@ -65,7 +65,7 @@ class GiftCertificates:
             result = []
             for page in pages:
                 for cert in page:
-                    result.append(self.BigCommerceCertificate(cert))
+                    result.append(self.BigCommerceCertificate(cert, error_handler=self.error_handler))
 
             return result
         
@@ -78,13 +78,16 @@ class GiftCertificates:
         self.error_handler.print_errors()
         
     class Certificate:
-        def __init__(self, cert_result):
+        def __init__(self, cert_result, error_handler: ErrorHandler = None):
             self.gift_card_no = cert_result[0]
             self.original_amount = cert_result[1]
             self.current_amount = cert_result[2]
             self.original_date = cert_result[3]
             self.cust_no = cert_result[4]
             self.user_info = self.get_user_info()
+
+            self.error_handler: ErrorHandler = error_handler
+            self.logger: Logger = self.error_handler.logger
 
         def get_user_info(self):
             if not self.cust_no:
@@ -180,32 +183,30 @@ class GiftCertificates:
                     return None
 
             def create():
-                print(f"Creating gift certificate {self.gift_card_no}")
+                self.logger.info(f"Creating gift certificate {self.gift_card_no}")
                 payload = write_payload()
                 response = session.post(f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v2/gift_certificates", json=payload, headers=creds.test_bc_api_headers)
 
                 if response.status_code == 429:
                     ms_to_wait = int(response.headers['X-Rate-Limit-Time-Reset-Ms'])
                     seconds_to_wait = (ms_to_wait / 1000) + 1
-                    print(f"Rate limit exceeded. Waiting {seconds_to_wait} seconds.")
+                    self.logger.warn(f"Rate limit exceeded. Waiting {seconds_to_wait} seconds.")
                     time.sleep(seconds_to_wait)
 
                     response = session.post(f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v2/gift_certificates", json=payload, headers=creds.test_bc_api_headers)
 
                 if response.status_code == 201:
-                    print(f"Gift certificate {self.gift_card_no} created successfully")
+                    self.logger.success(f"Gift certificate {self.gift_card_no} created successfully")
                     self.sync().insert(response.json()['id'])
                 else:
-                    print(f"Error creating gift certificate {self.gift_card_no}")
-                    
-                    self.error_handler.add_error(f"Error creating gift certificate {self.gift_card_no}")
+                    self.error_handler.add_error_v(f"Error creating gift certificate {self.gift_card_no}")
 
             def update():
-                print(f"Updating gift certificate {self.gift_card_no}")
+                self.logger.info(f"Updating gift certificate {self.gift_card_no}")
 
                 bc_id = get_bc_id()
                 if bc_id is None:
-                    print(f"Gift certificate {self.gift_card_no} not found.")
+                    self.error_handler.add_error_v(f"Gift certificate {self.gift_card_no} not found.")
                     return
 
                 payload = write_payload()
@@ -214,18 +215,16 @@ class GiftCertificates:
                 if response.status_code == 429:
                     ms_to_wait = int(response.headers['X-Rate-Limit-Time-Reset-Ms'])
                     seconds_to_wait = (ms_to_wait / 1000) + 1
-                    print(f"Rate limit exceeded. Waiting {seconds_to_wait} seconds.")
+                    self.logger.warn(f"Rate limit exceeded. Waiting {seconds_to_wait} seconds.")
                     time.sleep(seconds_to_wait)
 
                     response = session.put(f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v2/gift_certificates/{bc_id}", json=payload, headers=creds.test_bc_api_headers)
 
                 if response.status_code == 200:
-                    print(f"Gift certificate {self.gift_card_no} updated successfully")
+                    self.logger.success(f"Gift certificate {self.gift_card_no} updated successfully")
                     self.sync().update(bc_id)
                 else:
-                    print(f"Error updating gift certificate {self.gift_card_no}")
-                    
-                    self.error_handler.add_error(f"Error updating gift certificate {self.gift_card_no}")
+                    self.error_handler.add_error_v(f"Error updating gift certificate {self.gift_card_no}")
             
             def get_processing_method():
                 bc_id = get_bc_id()
@@ -237,7 +236,7 @@ class GiftCertificates:
             get_processing_method()
 
     class BigCommerceCertificate:
-        def __init__(self, cert_result):
+        def __init__(self, cert_result, error_handler: ErrorHandler = None):
             self.gift_card_no = cert_result['code']
             self.original_amount = cert_result['amount']
             self.current_amount = cert_result['balance']
@@ -249,6 +248,9 @@ class GiftCertificates:
             self.bc_id = cert_result['id']
             self.customer = self.get_customer_from_info(self.user_info)
             self.cust_no = self.customer.cust_no if self.customer is not None else None
+
+            self.error_handler: ErrorHandler = error_handler
+            self.logger: Logger = self.error_handler.logger
 
         class Customer:
             def __init__(self, cust_result):
@@ -284,7 +286,7 @@ class GiftCertificates:
                 response = Database.db.query_db(query)
                 if response is not None:
                     if len(response) > 1:
-                        print(f"Multiple customers found for {user_info['name']} {user_info['email']}")
+                        self.logger.warn(f"Multiple customers found for {user_info['name']} {user_info['email']}")
                     elif len(response) == 1:
                         return self.Customer(response[0])
                 
