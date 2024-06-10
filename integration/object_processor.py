@@ -4,7 +4,7 @@ import threading
 import time
 
 class ObjectProcessor:
-    def __init__(self, objects: list = [], speed: int = 20):
+    def __init__(self, objects: list = [], speed: int = 16):
         self.objects = objects
         self.thread_local = threading.local()
         self.speed = speed

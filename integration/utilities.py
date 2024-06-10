@@ -54,3 +54,26 @@ def get_all_binding_ids():
         return re.match(r"B\d{4}", binding_id)
 
     return [binding[0] for binding in response if valid(binding[0])]
+
+
+
+
+class VirtualRateLimiter:
+    is_rate_limited = False
+    limited_until = None
+
+    @staticmethod
+    def pause_requests(seconds_to_wait: float = 4):
+        VirtualRateLimiter.is_rate_limited = True
+        VirtualRateLimiter.limited_until = time.time() + seconds_to_wait
+
+    @staticmethod
+    def is_paused():
+        if VirtualRateLimiter.is_rate_limited:
+            if time.time() >= VirtualRateLimiter.limited_until:
+                VirtualRateLimiter.is_rate_limited = False
+                return False
+            else:
+                return True
+        else:
+            return False

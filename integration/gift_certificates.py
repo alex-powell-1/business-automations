@@ -13,14 +13,15 @@ class GiftCertificates:
     def __init__(self, last_sync):
         self.last_sync = last_sync
         self.db = Database.db
-        self.certificates = self.get_certificates()
-        self.processor = object_processor.ObjectProcessor(objects=self.certificates)
-
-        self.big_certificates = self.get_certificates_from_big()
-        self.big_processor = object_processor.ObjectProcessor(objects=self.big_certificates)
 
         self.logger = GlobalErrorHandler.logger
         self.error_handler = GlobalErrorHandler.error_handler
+
+        self.certificates = self.get_certificates()
+        self.processor = object_processor.ObjectProcessor(objects=self.certificates)
+
+        # self.big_certificates = self.get_certificates_from_big()
+        # self.big_processor = object_processor.ObjectProcessor(objects=self.big_certificates)
 
     def get_certificates(self):
         # query = f"""
@@ -28,13 +29,11 @@ class GiftCertificates:
         # FROM {creds.sy_gfc_table}
         # WHERE LST_MAINT_DT > '{self.last_sync}'
         # """
-        
+
         query = f"""
-        SELECT GFC_NO, ORIG_AMT, CURR_AMT, ORIG_DAT, ORIG_CUST_NO
+        SELECT TOP 200 GFC_NO, ORIG_AMT, CURR_AMT, ORIG_DAT, ORIG_CUST_NO
         FROM {creds.sy_gfc_table}
-        WHERE
-        LST_MAINT_DT > '{self.last_sync}' and
-        ORIG_DAT > '2023-6-1'
+        WHERE LST_MAINT_DT > '{self.last_sync}'
         """
 
         response = self.db.query_db(query)
@@ -72,7 +71,7 @@ class GiftCertificates:
         return get_certificates()
 
     def sync(self):
-        self.big_processor.process()
+        # self.big_processor.process()
         self.processor.process()
 
         self.error_handler.print_errors()

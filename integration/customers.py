@@ -10,19 +10,27 @@ from integration.error_handler import ErrorHandler, Logger, GlobalErrorHandler
 
 import time
 
+import random
+
+from integration.utilities import VirtualRateLimiter
+
+
+
+
 class Customers:
     def __init__(self, last_sync):
         self.last_sync = last_sync
         self.db = Database.db
-        self.customers = self.get_customers()
-        self.processor = object_processor.ObjectProcessor(objects=self.customers, speed=50)
 
         self.logger = GlobalErrorHandler.logger
         self.error_handler = GlobalErrorHandler.error_handler
 
+        self.customers = self.get_customers()
+        self.processor = object_processor.ObjectProcessor(objects=self.customers)
+
     def get_customers(self):
         query = f"""
-        SELECT TOP  CUST_NO, FST_NAM, LST_NAM, EMAIL_ADRS_1, PHONE_1, LOY_PTS_BAL, ADRS_1, CITY, STATE, ZIP_COD, CNTRY
+        SELECT CUST_NO, FST_NAM, LST_NAM, EMAIL_ADRS_1, PHONE_1, LOY_PTS_BAL, ADRS_1, CITY, STATE, ZIP_COD, CNTRY
         FROM {creds.ar_cust_table}
         WHERE
         LST_MAINT_DT > '{self.last_sync}' and
@@ -251,15 +259,19 @@ class Customers:
                     url = f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/customers"
                     payload = write_customer_payload(bc_cust_id=id)
 
+                    while VirtualRateLimiter.is_paused():
+                        time.sleep(1)
+
                     response = session.put(url=url, headers=creds.test_bc_api_headers, json=payload)
 
-                    if response.status_code == 429:
-                        ms_to_wait = int(response.headers['X-Rate-Limit-Time-Reset-Ms'])
+                    if response.status_code == 429 or random.randint(0, 150) == 12:
+                        ms_to_wait = int(response.headers['X-Rate-Limit-Time-Reset-Ms']) if response.status_code == 429 else 10000
                         seconds_to_wait = (ms_to_wait / 1000) + 1
+                        VirtualRateLimiter.pause_requests(seconds_to_wait)
                         self.logger.warn(f"Rate limit exceeded. Waiting {seconds_to_wait} seconds.")
                         time.sleep(seconds_to_wait)
 
-                    response = session.put(url=url, headers=creds.test_bc_api_headers, json=payload)
+                        response = session.put(url=url, headers=creds.test_bc_api_headers, json=payload)
 
                     if response.status_code == 200:
                         self.logger.success(f"Customer {self.cust_no} updated successfully.")
@@ -288,7 +300,7 @@ class Customers:
                         self.logger.warn(f"Rate limit exceeded. Waiting {seconds_to_wait} seconds.")
                         time.sleep(seconds_to_wait)
 
-                    response = session.delete(url=url, headers=creds.test_bc_api_headers)
+                        response = session.delete(url=url, headers=creds.test_bc_api_headers)
 
                     if response.status_code == 204:
                         self.logger.success(f"Customer {self.cust_no} deleted successfully.")

@@ -37,13 +37,13 @@ class ErrorHandler:
         self.errors = []
         self.logger = logger
 
-    def add_error(self, error: str, origin: str = None, type: str = None):
-        err = self.Error(error, origin, type)
+    def add_error(self, error: str, origin: str = None, type: str = "ERROR"):
+        err = self.Error(message=error, origin=origin, type=type)
         self.errors.append(err)
         return err
 
-    def add_error_v(self, error: str, origin: str = None, type: str = None):
-        err = self.add_error(error, origin, type)
+    def add_error_v(self, error: str, origin: str = None, type: str = "ERROR"):
+        err = self.add_error(error, origin=origin, type=type)
         print(err)
 
     def print_errors(self):
@@ -56,6 +56,11 @@ class ErrorHandler:
             print(error)
             if self.logger:
                 self.logger.log(str(error))
+
+        if self.logger:
+            self.logger.log("------------------")
+            self.logger.log("")
+            self.logger.log("")
     
     class Error:
         def __init__(self, message: str, origin: str = None, type: str = "ERROR"):
@@ -73,7 +78,8 @@ class ErrorHandler:
             return f"{prefix} {self.message}"
         
 class GlobalErrorHandler:
-    logger = Logger("//mainserver/CPSQL.1/business_automations/integration.log")
+    # logger = Logger("//mainserver/CPSQL.1/business_automations/integration.log")
+    logger = Logger("logs/integration.log")
     error_handler = ErrorHandler(logger)
 
 
