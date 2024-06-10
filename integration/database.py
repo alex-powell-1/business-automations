@@ -47,6 +47,8 @@ class Database:
                                         IS_PARENT BIT,
                                         PRODUCT_ID int NOT NULL,
                                         VARIANT_ID int,
+                                        OPTION_ID int,
+                                        OPTION_VALUE_ID int,
                                         CATEG_ID varchar(100),
                                         CUSTOM_FIELDS varchar(255),
                                         LST_MAINT_DT datetime NOT NULL DEFAULT(current_timestamp)

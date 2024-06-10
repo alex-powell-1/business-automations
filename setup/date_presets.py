@@ -3,6 +3,7 @@ from dateutil.relativedelta import relativedelta
 
 # Date Presets
 business_start_date = datetime(2020, 1, 1)
+business_start_today = datetime.today().replace(hour=8)
 thirty_minutes_ago = datetime.now() + relativedelta(minutes=-30)
 five_minutes_ago = datetime.now() + relativedelta(minutes=-5)
 thirty_seconds_ago = datetime.now() + relativedelta(seconds=-30)
