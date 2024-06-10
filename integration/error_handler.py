@@ -81,8 +81,8 @@ if __name__ == "__main__":
     logger = GlobalErrorHandler.logger
     error_handler = GlobalErrorHandler.error_handler
 
-    error_handler.add_error_v("This is an error message", origin="main", type="ERROR")
-    error_handler.add_error_v("This is a warning message", origin="main", type="WARNING")
+    error_handler.add_error_v("This is an error message")
+    error_handler.add_error_v("This is a warning message", type="WARNING")
 
     logger.success("This is a success message")
     logger.warn("This is a warning message")
