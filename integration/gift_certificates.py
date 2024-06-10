@@ -255,17 +255,40 @@ class GiftCertificates:
                 self.cust_no = cust_result[0]
 
         def get_customer_from_info(self, user_info):
-            query = f"""
-            SELECT CUST_NO FROM {creds.ar_cust_table} WHERE
+            columns = "CUST_NO"
+
+            queries = [f"""
+            SELECT {columns} FROM {creds.ar_cust_table} WHERE
             NAM like '{user_info['name']}' and
             EMAIL_ADRS_1 like '{user_info['email']}'
+            """]
+
+            if user_info['email'].endswith("@store.com"):
+                cust_no = user_info['email'].split("@")[0]
+
+                query = f"""
+                SELECT {columns} FROM {creds.ar_cust_table} WHERE
+                CUST_NO like '{cust_no}'
+                """
+
+                queries.append(query)
+
+            query = f"""
+            SELECT {columns} FROM {creds.ar_cust_table} WHERE
+            CUST_NO like '{user_info['name']}'
             """
 
-            response = Database.db.query_db(query)
-            if response is not None:
-                return self.Customer(response[0])
-            else:
-                return None
+            queries.append(query)
+
+            for query in queries:
+                response = Database.db.query_db(query)
+                if response is not None:
+                    if len(response) > 1:
+                        print(f"Multiple customers found for {user_info['name']} {user_info['email']}")
+                    elif len(response) == 1:
+                        return self.Customer(response[0])
+                
+            return None
 
         def sync(self):
             class SQLSync:

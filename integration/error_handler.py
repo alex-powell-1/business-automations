@@ -4,6 +4,9 @@ class Logger:
     def __init__(self, log_file: str):
         self.log_file = log_file
 
+        if not self.log_file.endswith(".log"):
+            self.log_file += ".log"
+
     def log(self, message: str):
         with open(self.log_file, "a") as file:
             file.write(f"{message}\n")
