@@ -123,11 +123,11 @@ class VirtualRateLimiter:
         sleep2 = sleep1 / 2
         sleep3 = sleep2 / 2
 
-        if len(VirtualRateLimiter.requests) > VirtualRateLimiter.request_quota * 0.85:
+        if len(VirtualRateLimiter.requests) > VirtualRateLimiter.request_quota * 0.75:
             time.sleep(sleep0)
-        elif len(VirtualRateLimiter.requests) > VirtualRateLimiter.request_quota * 0.75:
+        elif len(VirtualRateLimiter.requests) > VirtualRateLimiter.request_quota * 0.65:
             time.sleep(sleep1)
-        elif len(VirtualRateLimiter.requests) > VirtualRateLimiter.request_quota * 0.5:
+        elif len(VirtualRateLimiter.requests) > VirtualRateLimiter.request_quota * 0.45:
             time.sleep(sleep2)
-        elif len(VirtualRateLimiter.requests) > VirtualRateLimiter.request_quota * 0.25:
+        elif len(VirtualRateLimiter.requests) > VirtualRateLimiter.request_quota * 0.15:
             time.sleep(sleep3)
