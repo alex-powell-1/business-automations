@@ -13,8 +13,8 @@ class Integrator:
         self.db = Database()
         self.log_file = open("test.txt", "a")
 
-        self.category_tree = None
-        self.brands = None
+        self.category_tree = Catalog.CategoryTree(last_sync=last_sync)
+        self.brands = Catalog.Brands(last_sync=last_sync)
         self.catalog = Catalog(last_sync=last_sync)
         self.customers = None
         self.gift_certificates = None
@@ -39,10 +39,15 @@ class Integrator:
         print(f"Initialization Complete. " f"Total time: {time.time() - start_time}")
 
     def sync(self):
+        self.category_tree.sync()
+        self.brands.sync()
         self.catalog.sync()
-        # self.category_tree.build_bc_category_tree()
         # self.customers.sync()
+        # self.gift_certificates.sync()
+        # self.orders.sync()
 
 
-integrator = Integrator(last_sync=date_presets.five_minutes_ago)
+start_sync_time = time.time()
+integrator = Integrator(last_sync=date_presets.thirty_seconds_ago)
 integrator.sync()
+print(f"Sync Complete. Total time: {time.time() - start_sync_time}")

@@ -6,7 +6,6 @@ class Database:
     db = query_engine.QueryEngine()
 
     def rebuild_tables(self):
-
         def create_tables():
             tables = {
                 "categories": f"""
@@ -21,7 +20,6 @@ class Database:
                                         LST_MAINT_DT datetime NOT NULL DEFAULT(current_timestamp)
                                         );
                                         """,
-
                 "brands": f"""
                                         CREATE TABLE {creds.bc_brands_table} (
                                         ID int IDENTITY(1,1) PRIMARY KEY,
@@ -41,7 +39,6 @@ class Database:
                                         LST_MAINT_DT datetime NOT NULL DEFAULT(current_timestamp)
                                         );
                                         """,
-
                 "products": f"""
                                         CREATE TABLE {creds.bc_product_table} (
                                         ID int IDENTITY(1,1) PRIMARY KEY,
@@ -55,7 +52,6 @@ class Database:
                                         LST_MAINT_DT datetime NOT NULL DEFAULT(current_timestamp)
                                         );
                                         """,
-
                 "images": f"""
                                         CREATE TABLE {creds.bc_image_table} (
                                         ID int IDENTITY(1,1) PRIMARY KEY,
@@ -72,11 +68,10 @@ class Database:
                                         BINDING_ID varchar(50),
                                         IS_VARIANT_IMAGE BIT DEFAULT(0),
                                         DESCR nvarchar(255),
-                                        LST_MOD_DT datetime NOT NULL DEFAULT(current_timestamp),
+                                        SIZE int,
                                         LST_MAINT_DT datetime NOT NULL DEFAULT(current_timestamp)
                                         );
                                         """,
-
                 "custom_fields": f"""
                                             CREATE TABLE SN_CUSTOM_FIELDS (
                                             ID int IDENTITY(1,1) PRIMARY KEY,
@@ -144,7 +139,6 @@ class Database:
                                             FIELD_15_DT datetime DEFAULT(current_timestamp),
                                             LST_MAINT_DT datetime DEFAULT(current_timestamp),
                                             );""",
-
                 "customers": f"""
                                             CREATE TABLE {creds.bc_customer_table} (
                                             ID int IDENTITY(1,1) PRIMARY KEY,
@@ -152,22 +146,23 @@ class Database:
                                             BC_CUST_ID int,
                                             LST_MAINT_DT datetime NOT NULL DEFAULT(current_timestamp)
                                             );
-                                            """
-
+                                            """,
             }
             for table in tables:
                 self.db.query_db(tables[table], commit=True)
 
         # Drop Tables
         def drop_tables():
-            tables = [creds.bc_customer_table,
-                      creds.bc_custom_fields,
-                      creds.bc_custom_fields,
-                      creds.bc_image_table,
-                      creds.bc_product_table,
-                      creds.bc_brands_table,
-                      creds.bc_category_item_table,
-                      creds.bc_category_table]
+            tables = [
+                creds.bc_customer_table,
+                creds.bc_custom_fields,
+                creds.bc_custom_fields,
+                creds.bc_image_table,
+                creds.bc_product_table,
+                creds.bc_brands_table,
+                creds.bc_category_item_table,
+                creds.bc_category_table,
+            ]
 
             def drop_table(table_name):
                 self.db.query_db(f"DROP TABLE {table_name}", commit=True)

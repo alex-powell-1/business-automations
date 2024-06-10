@@ -1,6 +1,7 @@
-from setup.creds import *
+from setup.creds import SERVER, DATABASE, USERNAME, PASSWORD
 import pyodbc
-from pyodbc import ProgrammingError
+from pyodbc import ProgrammingError, Error
+import time
 
 
 class QueryEngine:
@@ -13,10 +14,11 @@ class QueryEngine:
     def query_db(self, query, commit=False):
         """Runs Query Against SQL Database. Use Commit Kwarg for updating database"""
         connection = pyodbc.connect(
-            f'DRIVER={{ODBC Driver 18 for SQL Server}};SERVER={self.__SERVER};PORT=1433;DATABASE={self.__DATABASE};'
-            f'UID={self.__USERNAME};PWD={self.__PASSWORD};TrustServerCertificate=yes;timeout=3')
-        connection.setdecoding(pyodbc.SQL_CHAR, encoding='latin1')
-        connection.setencoding('latin1')
+            f"DRIVER={{ODBC Driver 18 for SQL Server}};SERVER={self.__SERVER};PORT=1433;DATABASE={self.__DATABASE};"
+            f"UID={self.__USERNAME};PWD={self.__PASSWORD};TrustServerCertificate=yes;timeout=3"
+        )
+        connection.setdecoding(pyodbc.SQL_CHAR, encoding="latin1")
+        connection.setencoding("latin1")
 
         cursor = connection.cursor()
         if commit:
@@ -25,6 +27,14 @@ class QueryEngine:
                 connection.commit()
             except ProgrammingError as e:
                 sql_data = {"code": f"{e.args[0]}", "message": f"{e.args[1]}"}
+            except Error as e:
+                if e.args[0] == "40001":
+                    print("Deadlock Detected. Retrying Query")
+                    time.sleep(1)
+                    cursor.execute(query)
+                    connection.commit()
+                else:
+                    sql_data = {"code": f"{e.args[0]}", "message": f"{e.args[1]}"}
             else:
                 sql_data = {"code": 200, "message": "Query Successful"}
         else:
