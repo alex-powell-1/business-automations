@@ -30,7 +30,7 @@ class Customers:
 
     def get_customers(self):
         query = f"""
-        SELECT CUST_NO, FST_NAM, LST_NAM, EMAIL_ADRS_1, PHONE_1, LOY_PTS_BAL, ADRS_1, CITY, STATE, ZIP_COD, CNTRY
+        SELECT TOP 300 CUST_NO, FST_NAM, LST_NAM, EMAIL_ADRS_1, PHONE_1, LOY_PTS_BAL, ADRS_1, CITY, STATE, ZIP_COD, CNTRY
         FROM {creds.ar_cust_table}
         WHERE
         LST_MAINT_DT > '{self.last_sync}' and
@@ -224,7 +224,7 @@ class Customers:
                 if response.status_code == 429:
                     ms_to_wait = int(response.headers['X-Rate-Limit-Time-Reset-Ms'])
                     seconds_to_wait = (ms_to_wait / 1000) + 1
-                    self.logger.warn(f"Rate limit exceeded. Waiting {seconds_to_wait} seconds.")
+                    VirtualRateLimiter.pause_requests(seconds_to_wait)
                     time.sleep(seconds_to_wait)
 
                     response = session.post(url=url, headers=creds.test_bc_api_headers, json=payload)
@@ -265,7 +265,6 @@ class Customers:
                         ms_to_wait = int(response.headers['X-Rate-Limit-Time-Reset-Ms'])
                         seconds_to_wait = (ms_to_wait / 1000) + 1
                         VirtualRateLimiter.pause_requests(seconds_to_wait)
-                        self.logger.warn(f"Rate limit exceeded. Waiting {seconds_to_wait} seconds.")
                         time.sleep(seconds_to_wait)
 
                         response = session.put(url=url, headers=creds.test_bc_api_headers, json=payload)
@@ -294,7 +293,7 @@ class Customers:
                     if response.status_code == 429:
                         ms_to_wait = int(response.headers['X-Rate-Limit-Time-Reset-Ms'])
                         seconds_to_wait = (ms_to_wait / 1000) + 1
-                        self.logger.warn(f"Rate limit exceeded. Waiting {seconds_to_wait} seconds.")
+                        VirtualRateLimiter.pause_requests(seconds_to_wait)
                         time.sleep(seconds_to_wait)
 
                         response = session.delete(url=url, headers=creds.test_bc_api_headers)

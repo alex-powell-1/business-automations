@@ -3,6 +3,8 @@ import requests
 import threading
 import time
 
+import copy
+
 from integration.utilities import VirtualRateLimiter
 
 class ObjectProcessor:
@@ -16,9 +18,9 @@ class ObjectProcessor:
         with concurrent.futures.ThreadPoolExecutor(max_workers=self.speed) as executor:
             for obj in self.objects:
                 time.sleep(0.1)
-                # VirtualRateLimiter().limit()
-                # while VirtualRateLimiter.is_paused():
-                #     time.sleep(0.1)
+                VirtualRateLimiter().wait()
+                while VirtualRateLimiter.is_paused():
+                    time.sleep(0.1)
                 executor.submit(self.process_object, obj)
         
         print(f"Processed {len(self.objects)} objects in {time.time() - start_time} seconds.")
@@ -30,7 +32,7 @@ class ObjectProcessor:
         return self.thread_local.session
 
     def process_object(self, obj):
-        session = requests.Session()
+        session = copy.deepcopy(self.get_session())
 
         def post(*args, **kwargs):
             VirtualRateLimiter().limit()

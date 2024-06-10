@@ -9,6 +9,8 @@ from integration.error_handler import ErrorHandler, Logger, GlobalErrorHandler
 
 import time
 
+from integration.utilities import VirtualRateLimiter
+
 class GiftCertificates:
     def __init__(self, last_sync):
         self.last_sync = last_sync
@@ -189,7 +191,7 @@ class GiftCertificates:
                 if response.status_code == 429:
                     ms_to_wait = int(response.headers['X-Rate-Limit-Time-Reset-Ms'])
                     seconds_to_wait = (ms_to_wait / 1000) + 1
-                    self.logger.warn(f"Rate limit exceeded. Waiting {seconds_to_wait} seconds.")
+                    VirtualRateLimiter.pause_requests(seconds_to_wait)
                     time.sleep(seconds_to_wait)
 
                     response = session.post(f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v2/gift_certificates", json=payload, headers=creds.test_bc_api_headers)
@@ -214,7 +216,7 @@ class GiftCertificates:
                 if response.status_code == 429:
                     ms_to_wait = int(response.headers['X-Rate-Limit-Time-Reset-Ms'])
                     seconds_to_wait = (ms_to_wait / 1000) + 1
-                    self.logger.warn(f"Rate limit exceeded. Waiting {seconds_to_wait} seconds.")
+                    VirtualRateLimiter.pause_requests(seconds_to_wait)
                     time.sleep(seconds_to_wait)
 
                     response = session.put(f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v2/gift_certificates/{bc_id}", json=payload, headers=creds.test_bc_api_headers)
