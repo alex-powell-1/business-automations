@@ -2,7 +2,8 @@ from integration.catalog import Catalog
 from integration.customers import Customers
 from integration.database import Database
 
-from setup import date_presets
+from setup import date_presets, creds
+from datetime import datetime
 
 import time
 
@@ -16,6 +17,7 @@ class Integrator:
         self.category_tree = Catalog.CategoryTree(last_sync=last_sync)
         self.brands = Catalog.Brands(last_sync=last_sync)
         self.catalog = Catalog(last_sync=last_sync)
+
         self.customers = None
         self.gift_certificates = None
         self.orders = None

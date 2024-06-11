@@ -8,6 +8,7 @@ from email.utils import formatdate
 
 from integration.error_handler import ErrorHandler, Logger, GlobalErrorHandler
 
+
 def timer(func):
     """Decorator function to time the execution of a function."""
 
@@ -40,7 +41,6 @@ def pretty_print(response):
     print(json.dumps(response, indent=4))
 
 
-@timer
 def get_all_binding_ids():
     db = query_engine.QueryEngine()
     """Returns a list of unique and validated binding IDs from the IM_ITEM table."""
@@ -57,8 +57,6 @@ def get_all_binding_ids():
     return [binding[0] for binding in response if valid(binding[0])]
 
 
-
-
 class VirtualRateLimiter:
     is_rate_limited = False
     limited_until = None
@@ -72,7 +70,9 @@ class VirtualRateLimiter:
         VirtualRateLimiter.is_rate_limited = True
         VirtualRateLimiter.limited_until = time.time() + seconds_to_wait
         if not silent:
-            GlobalErrorHandler.logger.warn(f"Rate limit reached. Pausing requests for {seconds_to_wait} seconds.")
+            GlobalErrorHandler.logger.warn(
+                f"Rate limit reached. Pausing requests for {seconds_to_wait} seconds."
+            )
 
     @staticmethod
     def is_paused():
@@ -84,13 +84,17 @@ class VirtualRateLimiter:
                 return True
         else:
             return False
-        
+
     @staticmethod
     def limit():
         VirtualRateLimiter.requests.append(time.time())
 
-        sleep0 = (VirtualRateLimiter.request_time / VirtualRateLimiter.request_quota) * 5
-        sleep1 = (VirtualRateLimiter.request_time / VirtualRateLimiter.request_quota) * 3
+        sleep0 = (
+            VirtualRateLimiter.request_time / VirtualRateLimiter.request_quota
+        ) * 5
+        sleep1 = (
+            VirtualRateLimiter.request_time / VirtualRateLimiter.request_quota
+        ) * 3
         sleep2 = sleep1 / 2
         sleep3 = sleep2 / 2
 
@@ -113,13 +117,19 @@ class VirtualRateLimiter:
         elif len(VirtualRateLimiter.requests) > VirtualRateLimiter.request_quota * 0.15:
             time.sleep(sleep3)
 
-        while (time.time() - VirtualRateLimiter.requests[0]) > VirtualRateLimiter.request_time:
+        while (
+            time.time() - VirtualRateLimiter.requests[0]
+        ) > VirtualRateLimiter.request_time:
             VirtualRateLimiter.requests.pop(0)
-        
+
     @staticmethod
     def wait():
-        sleep0 = (VirtualRateLimiter.request_time / VirtualRateLimiter.request_quota) * 5
-        sleep1 = (VirtualRateLimiter.request_time / VirtualRateLimiter.request_quota) * 3
+        sleep0 = (
+            VirtualRateLimiter.request_time / VirtualRateLimiter.request_quota
+        ) * 5
+        sleep1 = (
+            VirtualRateLimiter.request_time / VirtualRateLimiter.request_quota
+        ) * 3
         sleep2 = sleep1 / 2
         sleep3 = sleep2 / 2
 
