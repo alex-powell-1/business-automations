@@ -9,7 +9,8 @@ import time
 
 
 class Integrator:
-    def __init__(self, last_sync):
+    def __init__(self):
+        last_sync = self.get_last_sync()
         self.last_sync = last_sync
         self.db = Database()
         self.log_file = open("test.txt", "a")
@@ -30,6 +31,16 @@ class Integrator:
             f"{self.category_tree}\n"
         )
 
+    def get_last_sync(self):
+        with open("last_sync.txt", "r+") as file:
+            last_sync = datetime.strptime(file.read(), "%Y-%m-%d %H:%M:%S")
+            print(f"Last Sync: {last_sync}")
+            return last_sync
+
+    def set_last_sync(self):
+        with open("last_sync.txt", "w") as file:
+            file.write(datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+
     def initialize(self):
         business_start = date_presets.business_start_date
         start_time = time.time()
@@ -47,9 +58,10 @@ class Integrator:
         # self.customers.sync()
         # self.gift_certificates.sync()
         # self.orders.sync()
+        self.set_last_sync()
 
 
 start_sync_time = time.time()
-integrator = Integrator(last_sync=date_presets.thirty_seconds_ago)
+integrator = Integrator()
 integrator.sync()
 print(f"Sync Complete. Total time: {time.time() - start_sync_time}")
