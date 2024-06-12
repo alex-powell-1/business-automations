@@ -58,30 +58,38 @@ def post_document():
             "USR_ID": "POS",
             "TAX_COD": "EXEMPT",
             "NORM_TAX_COD": "EXEMPT",
-            "SHIP_VIA_COD": "T",
-            "HAS_ENTD_LINS": "Y",
-            "TO_REL_LINS": 1,
-            "PS_DOC_NOTE": [{"NOTE_ID": "NOTE1", "NOTE": "eCommerce order test #2"}],
+            "SHIP_VIA_COD": "C",
+            "PS_DOC_NOTE": [{"NOTE_ID": "NOTE1", "NOTE": "eCommerce order test"}],
             "PS_DOC_LIN": [
                 {
                     "LIN_TYP": "S",
                     "ITEM_NO": "BTSP4MP",
-                    "QTY_SOLD": "2",
+                    "QTY_SOLD": "1",
+                    "PRC": 11.99,
+                    "EXT_PRC": 11.99 * 1,
+
                 }
             ],
-            "PS_DOC_HDR_MISC_CHRG": [
-                {"TOT_TYP": "S", "MISC_CHRG_NO": "1", "MISC_TYP": "A", "MISC_AMT": "50"}
-            ],
+            # "PS_DOC_HDR_MISC_CHRG": [
+            #     {"TOT_TYP": "S", "MISC_CHRG_NO": "1", "MISC_TYP": "A", "MISC_AMT": "50"}
+            # ],
+            # "PS_DOC_GFC": [
+            #     {
+            #         "GFC_COD": "GC",
+            #         "GFC_NO": "TEST-GFC-LUKE-3",
+            #         "AMT": 25,
+            #         "LIN_SEQ_NO": 1,
+            #     }
+            # ],
             "PS_DOC_PMT": [
-                {"AMT": 63.98, "PAY_COD": "BIG", "FINAL_PMT": "N"},
-                {"AMT": 10, "PAY_COD": "LOYALTY", "FINAL_PMT": "N"},
+
+                # {"AMT": 25, "PAY_COD": "BIG", "FINAL_PMT": "N"},
                 {
+                    "AMT": 11.99,
                     "PAY_COD": "GC",
-                    "AMT": 10,
                     "FINAL_PMT": "N",
-                    "PMT_LIN_TYP": "T",
-                    "CARD_NO": "1234567890",
-                },
+                    "CARD_NO": "TEST-GFC-LUKE-3",
+                }
             ],
             "PS_DOC_TAX": [
                 {
@@ -131,6 +139,7 @@ def post_document():
                     "MISC_AMT": -50.00,
                 }
             ],
+        }
             "PS_DOC_PMT": [
                 {
                     "AMT": 73.98,
@@ -166,3 +175,60 @@ def post_document():
 
 
 post_document()
+
+
+# EXAMPLE GIFT CARD PAYMENT PAYLOAD
+# payload = {
+#     "PS_DOC_HDR": {
+#         "STR_ID": "WEB",
+#         "STA_ID": "WEB",
+#         "DRW_ID": "1",
+#         "CUST_NO": "105786",
+#         "LOY_PGM_COD": "BASIC",
+#         "TKT_TYP": "T",
+#         "DOC_TYP": "T",
+#         "USR_ID": "POS",
+#         "TAX_COD": "EXEMPT",
+#         "NORM_TAX_COD": "EXEMPT",
+#         "SHIP_VIA_COD": "C",
+#         "PS_DOC_NOTE": [{"NOTE_ID": "NOTE1", "NOTE": "eCommerce order test"}],
+#         "PS_DOC_LIN": [
+#             {
+#                 "LIN_TYP": "S",
+#                 "ITEM_NO": "BTSP4MP",
+#                 "QTY_SOLD": "1",
+#                 "PRC": 11.99,
+#                 "EXT_PRC": 11.99 * 1,
+#             }
+#         ],
+#         # "PS_DOC_HDR_MISC_CHRG": [
+#         #     {"TOT_TYP": "S", "MISC_CHRG_NO": "1", "MISC_TYP": "A", "MISC_AMT": "50"}
+#         # ],
+#         # "PS_DOC_GFC": [
+#         #     {
+#         #         "GFC_COD": "GC",
+#         #         "GFC_NO": "TEST-GFC-LUKE-3",
+#         #         "AMT": 25,
+#         #         "LIN_SEQ_NO": 1,
+#         #     }
+#         # ],
+#         "PS_DOC_PMT": [
+#             # {"AMT": 25, "PAY_COD": "BIG", "FINAL_PMT": "N"},
+#             {
+#                 "AMT": 11.99,
+#                 "PAY_COD": "GC",
+#                 "FINAL_PMT": "N",
+#                 "CARD_NO": "TEST-GFC-LUKE-3",
+#             }
+#         ],
+#         "PS_DOC_TAX": [
+#             {
+#                 "AUTH_COD": "EXEMPT",
+#                 "RUL_COD": "TAX",
+#                 "TAX_DOC_PART": "S",
+#                 "TAX_AMT": "0",
+#                 "TOT_TXBL_AMT": 11.99,  # not shipping
+#             }
+#         ],
+#     }
+# }

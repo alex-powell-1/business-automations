@@ -242,6 +242,9 @@ class GiftCertificates:
             self.gift_card_no = cert_result['code']
             self.original_amount = cert_result['amount']
             self.current_amount = cert_result['balance']
+
+            self.amount_used = self.original_amount - self.current_amount
+
             self.original_date = cert_result['purchase_date']
             self.user_info = {
                 "name": cert_result['from_name'],
@@ -261,11 +264,12 @@ class GiftCertificates:
         def get_customer_from_info(self, user_info):
             columns = "CUST_NO"
 
-            queries = [f"""
-            SELECT {columns} FROM {creds.ar_cust_table} WHERE
-            NAM like '{user_info['name']}' and
-            EMAIL_ADRS_1 like '{user_info['email']}'
-            """]
+            queries = [
+                f"""
+                SELECT {columns} FROM {creds.ar_cust_table} WHERE
+                NAM like '{user_info['name']}'
+                """
+            ]
 
             if user_info['email'].endswith("@store.com"):
                 cust_no = user_info['email'].split("@")[0]
@@ -273,6 +277,13 @@ class GiftCertificates:
                 query = f"""
                 SELECT {columns} FROM {creds.ar_cust_table} WHERE
                 CUST_NO like '{cust_no}'
+                """
+
+                queries.append(query)
+            else:
+                query = f"""
+                SELECT {columns} FROM {creds.ar_cust_table} WHERE
+                EMAIL_ADRS_1 like '{user_info['email']}'
                 """
 
                 queries.append(query)
@@ -319,7 +330,7 @@ class GiftCertificates:
             return SQLSync(self.gift_card_no)
 
         def process(self, session: requests.Session):
-            pass
+            
 
 
 import setup.date_presets as date_presets
