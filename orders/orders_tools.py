@@ -67,7 +67,6 @@ def post_document():
                     "QTY_SOLD": "1",
                     "PRC": 11.99,
                     "EXT_PRC": 11.99 * 1,
-
                 }
             ],
             # "PS_DOC_HDR_MISC_CHRG": [
@@ -82,7 +81,6 @@ def post_document():
             #     }
             # ],
             "PS_DOC_PMT": [
-
                 # {"AMT": 25, "PAY_COD": "BIG", "FINAL_PMT": "N"},
                 {
                     "AMT": 11.99,
@@ -139,7 +137,6 @@ def post_document():
                     "MISC_AMT": -50.00,
                 }
             ],
-        }
             "PS_DOC_PMT": [
                 {
                     "AMT": 73.98,
@@ -167,7 +164,7 @@ def post_document():
         },
     }
 
-    response = requests.post(url, headers=headers, json=refund_payload, verify=False)
+    response = requests.post(url, headers=headers, json=payload, verify=False)
     pretty = response.content
     pretty = json.loads(pretty)
     pretty = json.dumps(pretty, indent=4)
