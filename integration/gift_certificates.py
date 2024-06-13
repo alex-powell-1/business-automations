@@ -130,9 +130,11 @@ class GiftCertificates:
                         result.append(
                             {
                                 "name": f"{x[0]} {x[1]}",
-                                "email": x[2]
-                                if (x[2] is not None and x[2] != "")
-                                else f"{self.cust_no}@store.com",
+                                "email": (
+                                    x[2]
+                                    if (x[2] is not None and x[2] != "")
+                                    else f"{self.cust_no}@store.com"
+                                ),
                             }
                         )
 
@@ -374,8 +376,17 @@ class GiftCertificates:
             return SQLSync(self.gift_card_no)
 
         def process(self, session: requests.Session):
-            pass
+            def create():
+                pass
 
+            def update():
+                pass
+
+            def get_processing_method():
+                pass
+
+
+import setup.date_presets as date_presets
 
 if __name__ == "__main__":
     certs = GiftCertificates(last_sync=date_presets.business_start_date)
