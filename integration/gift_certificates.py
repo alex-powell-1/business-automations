@@ -3,6 +3,8 @@ import requests
 import integration.utilities as utilities
 from integration.database import Database
 from setup import creds
+import setup.date_presets as date_presets
+
 import integration.object_processor as object_processor
 
 from integration.error_handler import ErrorHandler, Logger, GlobalErrorHandler
@@ -234,6 +236,7 @@ class GiftCertificates:
                 self.logger.info(f"Updating gift certificate {self.gift_card_no}")
 
                 bc_id = get_bc_id()
+
                 if bc_id is None:
                     self.error_handler.add_error_v(
                         f"Gift certificate {self.gift_card_no} not found."

@@ -51,8 +51,7 @@ def post_document():
             "STR_ID": "WEB",
             "STA_ID": "WEB",
             "DRW_ID": "1",
-            "CUST_NO": "105786",
-            "LOY_PGM_COD": "BASIC",
+            "CUST_NO": "OL-100778",
             "TKT_TYP": "T",
             "DOC_TYP": "T",
             "USR_ID": "POS",
@@ -98,11 +97,7 @@ def post_document():
                     "TOT_TXBL_AMT": 11.99,  # not shipping
                 },
             ],
-            "PS_DOC_DISC": [
-                {"LIN_SEQ_NO": 1, "DISC_ID": "100000000000101", "DISC_AMT": 5}
-            ],
         },
-        "PS_TAX": {"ORD_NORM_TAX_AMT": 0, "ORD_TAX_AMT": 0},
     }
 
     refund_payload = {

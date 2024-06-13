@@ -6,8 +6,8 @@ from analysis import web_scraping
 from big_commerce import coupons
 from customer_tools import stock_notification
 from customer_tools import tiered_pricing
-
-# from customer_tools.customers import set_contact_1
+from customer_tools import customers
+from customer_tools.customers import set_contact_1
 from product_tools import always_online
 from product_tools import brands
 from product_tools import featured
@@ -34,6 +34,10 @@ from sms.sms_messages import (
 )
 
 from utilities import backups
+# from integration import integrator
+
+# integrator = integrator.Integrator()
+# integrator.sync()
 
 # -----------------
 # Driver for Business Automations
@@ -55,12 +59,57 @@ print("-----------------------", file=log_file)
 print(f"Business Automations Starting at {now:%H:%M:%S}", file=log_file)
 print("-----------------------", file=log_file)
 
+
+# ADMINISTRATIVE REPORT
+# Generate report in styled html/css and email to administrative team list
+if (
+    creds.administrative_report["enabled"]
+    and creds.administrative_report["hour"] == hour
+):
+    try:
+        product_reports.administrative_report(
+            recipients=creds.administrative_report["recipients"],
+            log_file=log_file,
+        )
+    except Exception as err:
+        errors += 1
+        print("Error: Administrative Report", file=log_file)
+        print(err, file=log_file)
+        print("-----------------------\n", file=log_file)
+
+# ITEMS REPORT EMAIL
+# For product management team
+if creds.item_report["enabled"] and creds.item_report["hour"] == hour:
+    try:
+        report_builder.item_report(
+            recipients=creds.item_report["recipients"], log_file=log_file
+        )
+    except Exception as err:
+        errors += 1
+        print("Error: Administrative Report", file=log_file)
+        print(err, file=log_file)
+        print("-----------------------\n", file=log_file)
+
+# LANDSCAPE DESIGN LEAD NOTIFICATION EMAIL
+# Customer Followup Email to Sales Team
+if creds.lead_email["enabled"] and creds.lead_email["hour"] == hour:
+    try:
+        lead_generator_notification.lead_notification_email(
+            recipients=creds.lead_email["recipients"], log_file=log_file
+        )
+    except Exception as err:
+        errors += 1
+        print("Error: Lead Notification Email", file=log_file)
+        print(err, file=log_file)
+        print("-----------------------\n", file=log_file)
+
+
 try:
-    if minute == 41 or minute == 30:
-        # -----------------
-        # TWICE PER HOUR TASKS
-        # -----------------
-        # Checks health of Web App API. Notifies system administrator if not running via SMS text.
+    if minute == 0 or minute == 30:
+        # # -----------------
+        # # TWICE PER HOUR TASKS
+        # # -----------------
+        # # Checks health of Web App API. Notifies system administrator if not running via SMS text.
         try:
             network.health_check(log_file)
         except Exception as err:
@@ -90,13 +139,13 @@ try:
             print("-----------------------\n", file=log_file)
 
         # FIX MISSING THUMBNAILS ON BIG COMMERCE
-        try:
-            big_commerce.big_products.fix_missing_thumbnails(log_file)
-        except Exception as err:
-            errors += 1
-            print("Error: Fix Missing Thumbnails", file=log_file)
-            print(err, file=log_file)
-            print("-----------------------\n", file=log_file)
+        # try:
+        #     big_commerce.big_products.fix_missing_thumbnails(log_file)
+        # except Exception as err:
+        #     errors += 1
+        #     print("Error: Fix Missing Thumbnails", file=log_file)
+        #     print(err, file=log_file)
+        #     print("-----------------------\n", file=log_file)
 
         # TIERED WHOLESALE PRICING LEVELS
         # Reassessing tiered pricing for all customers based on current year
@@ -147,47 +196,6 @@ try:
             print(err, file=log_file)
             print("-----------------------\n", file=log_file)
 
-        # ADMINISTRATIVE REPORT
-        # Generate report in styled html/css and email to administrative team list
-        if (
-            creds.administrative_report["enabled"]
-            and creds.administrative_report["hour"] == hour
-        ):
-            try:
-                product_reports.administrative_report(
-                    recipients=creds.administrative_report["recipients"],
-                    log_file=log_file,
-                )
-            except Exception as err:
-                errors += 1
-                print("Error: Administrative Report", file=log_file)
-                print(err, file=log_file)
-                print("-----------------------\n", file=log_file)
-
-        # ITEMS REPORT EMAIL
-        # For product management team
-        if creds.item_report["enabled"] and creds.item_report["hour"] == hour:
-            try:
-                report_builder.item_report(
-                    recipients=creds.item_report["recipients"], log_file=log_file
-                )
-            except Exception as err:
-                errors += 1
-                print("Error: Administrative Report", file=log_file)
-                print(err, file=log_file)
-                print("-----------------------\n", file=log_file)
-
-        # LANDSCAPE DESIGN LEAD NOTIFICATION EMAIL
-        # Customer Followup Email to Sales Team
-        if creds.lead_email["enabled"] and creds.lead_email["hour"] == hour:
-            try:
-                lead_generator_notification.lead_notification_email(log_file)
-            except Exception as err:
-                errors += 1
-                print("Error: Lead Notification Email", file=log_file)
-                print(err, file=log_file)
-                print("-----------------------\n", file=log_file)
-
         # ----------------------
         # EVERY OTHER HOUR TASKS
         # ----------------------
@@ -234,7 +242,7 @@ try:
 
             # Customer Export for Use in Constant Contact Campaigns
             try:
-                customer_tools.customers.export_customers_to_csv(log_file)
+                customers.export_customers_to_csv(log_file)
             except Exception as err:
                 errors += 1
                 print("Error: Customer Export To CSV", file=log_file)
@@ -247,19 +255,6 @@ try:
 
         # 2 AM TASKS
         if hour == 2:
-            if day == 29:
-                prices.remove_sale_price()
-                prices.remove_item_from_on_sale_section()
-
-            #     # Memorial Day Sale
-            #     # Set sale price for all items except roses and hanging baskets
-            #     try:
-            #         prices.memorial_day_sale()
-            #     except Exception as err:
-            #         errors += 1
-            #         print("Error: Memorial Day Sale", file=log_file)
-            #         print(err, file=log_file)
-            #         print("-----------------------\n", file=log_file)
             # TOTAL SOLD
             # Update Big Commerce with "total_sold" for all ecommerce items. This lets customer_tools
             # Sort search results by "Best Sellers" with accurate information
@@ -323,30 +318,6 @@ try:
                 print("Error: Featured Products", file=log_file)
                 print(err, file=log_file)
                 print("-----------------------\n", file=log_file)
-
-        # 5 AM TASKS
-        # if hour == 5:
-
-        # # REVENUE REPORT
-        # # sent to accounting department
-        # if datetime.today().isoweekday() == 7:  # only on Sunday
-        #     try:
-        #         product_reports.revenue_report(recipients=creds.admin_report_recipients, log_file=log_file)
-        #     except Exception as err:
-        #         errors += 1
-        #         print("Error: Revenue Report", file=log_file)
-        #         print(err, file=log_file)
-        #         print("-----------------------\n", file=log_file)
-
-    # if hour == 7:
-    # Daily revenue report for accounting
-    # try:
-    #     daily_revenue.daily_revenue_report(log_file)
-    # except Exception as err:
-    #     errors += 1
-    #     print("Error: Daily Revenue Report", file=log_file)
-    #     print(err, file=log_file)
-    #     print("-----------------------\n", file=log_file)
 
     # 9 AM TASKS
     if hour == 9:
@@ -592,7 +563,7 @@ try:
 
         # Set customer_tools with a negative point balance to 0
         try:
-            customer_tools.customers.set_negative_loyalty_points_to_zero(log_file)
+            customers.set_negative_loyalty_points_to_zero(log_file)
         except Exception as err:
             errors += 1
             print("Error: Negative Loyalty Set to Zero", file=log_file)
