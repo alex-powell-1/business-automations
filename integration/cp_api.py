@@ -80,13 +80,19 @@ class OrderAPI(DocumentAPI):
 
         for product in products:
             if product["type"] == "physical":
+                total_discount = 0
+                if len(product["applied_discounts"]) > 0:
+                    for discount in product["applied_discounts"]:
+                        total_discount += float(discount["amount"])
+
                 line_item = {
                     "LIN_TYP": "S",
                     "ITEM_NO": product["sku"],
                     "QTY_SOLD": float(product["quantity"]),
-                    "PRC": float(product["base_price"]),
-                    "EXT_PRC": float(product["base_price"])
-                    * float(product["quantity"]),
+                    "PRC": float(product["base_price"]) - total_discount,
+                    "EXT_PRC": float(product["base_price"]) * float(product["quantity"])
+                    - total_discount,
+                    "DSC_AMT": total_discount,
                 }
 
                 line_items.append(line_item)
@@ -132,10 +138,10 @@ class OrderAPI(DocumentAPI):
         return payments
 
     def get_is_shipping(self, bc_order: dict):
-        return float(bc_order["base_shipping_cost"] or 0) > 0
+        return float(bc_order["base_shipping_cost"]) > 0
 
     def get_shipping_cost(self, bc_order: dict):
-        return float(bc_order["base_shipping_cost"] or 0)
+        return float(bc_order["base_shipping_cost"])
 
     def get_notes(self, bc_order: dict):
         notes = []
@@ -147,17 +153,52 @@ class OrderAPI(DocumentAPI):
 
         return notes
 
+    def write_one_doc_disc(
+        self, doc_id, disc_seq_no: int, disc_amt: float, lin_seq_no: int = None
+    ):
+        apply_to = "L" if lin_seq_no else "H"
+        disc_type = "A"
+        disc_id = "100000000000331" if lin_seq_no else "100000000000330"
+        disc_pct = 0
+        disc_amt_shipped = 0
+
+        query = f"""
+        INSERT INTO PS_DOC_DISC
+        (DOC_ID, DISC_SEQ_NO, LIN_SEQ_NO, DISC_ID, APPLY_TO, DISC_TYP, DISC_AMT, DISC_PCT, DISC_AMT_SHIPPED)
+        VALUES
+        ('{doc_id}', {disc_seq_no}, {lin_seq_no or "NULL"}, {disc_id}, '{apply_to}', '{disc_type}', {disc_amt}, {disc_pct}, {disc_amt_shipped})
+        """
+
+        response = Database.db.query_db(query, commit=True)
+
+        print(response)
+
+        return
+
+    def write_doc_disc(self, doc_id, line_items: list[dict]):
+        for i, line_item in enumerate(line_items, start=1):
+            amt = float(line_item["DSC_AMT"])
+
+            if amt > 0:
+                self.write_one_doc_disc(
+                    doc_id, disc_seq_no=i, disc_amt=amt, lin_seq_no=i
+                )
+
+        return
+
     def write_one_lin_loy(self, doc_id, line_item: dict, lin_seq_no: int):
         points_earned = (float(line_item["EXT_PRC"] or 0) / 20) or 0
 
         query = f"""
         INSERT INTO PS_DOC_LIN_LOY 
-        (DOC_ID, LIN_SEQ_NO, LIN_LOY_PTS_EARND, LOY_PGM_RDM_ELIG, LOY_PGM_AMT_PD_WITH_PTS, LOY_PT_EARN_RUL_DESC, LOY_PT_EARN_RUL_SEQ_NO) 
+        (DOC_ID, LIN_SEQ_NO, LIN_LOY_PTS_EARND, LOY_PGM_RDM_ELIG, LOY_PGM_AMT_PD_WITH_PTS, LOY_PT_EARN_RUL_DESCR, LOY_PT_EARN_RUL_SEQ_NO) 
         VALUES 
         ('{doc_id}', {lin_seq_no}, {points_earned}, 'Y', 0, 'Basic', 5)
         """
 
-        Database.db.query_db(query, commit=True)
+        response = Database.db.query_db(query, commit=True)
+
+        print(response)
 
         return points_earned
 
@@ -185,7 +226,17 @@ class OrderAPI(DocumentAPI):
         ('{doc_id}', 0, 0, 0, 0, 0, {points_earned}, {points_redeemed}, {points_balance})
         """
 
-        Database.db.query_db(wquery, commit=True)
+        print(wquery)
+
+        # wquery = f"""
+        # INSERT INTO PS_DOC_HDR_LOY_PGM
+        # (DOC_ID, LIN_LOY_PTS_EARND, LOY_PTS_EARND_GROSS, LOY_PTS_ADJ_FOR_RDM, LOY_PTS_ADJ_FOR_INC_RND, LOY_PTS_ADJ_FOR_OVER_MAX, LOY_PTS_EARND_NET, LOY_PTS_RDM, LOY_PTS_BAL)
+        # VALUES
+        # ('107437365396751', 0, 0, 0, 0, 0, 24, 31, 24)
+        # """
+
+        response = Database.db.query_db(wquery, commit=True)
+        print(response)
 
     def get_loyalty_points_used(self, doc_id):
         query = f"""
@@ -196,11 +247,21 @@ class OrderAPI(DocumentAPI):
         response = Database.db.query_db(query)
         points_used = math.floor(float(response[0][0] or 0))
 
+        return points_used
+
     def write_loyalty(self, doc_id, cust_no, line_items: list[dict]):
         points_earned = math.floor(self.write_lin_loy(doc_id, line_items))
         points_redeemed = self.get_loyalty_points_used(doc_id)
 
         self.write_ps_doc_hdr_loy_pgm(doc_id, cust_no, points_earned, points_redeemed)
+
+    def get_total_lin_disc(self, line_items: list[dict]):
+        total = 0
+
+        for line_item in line_items:
+            total += float(line_item["DSC_AMT"])
+
+        return total
 
     def get_post_order_payload(self, cust_no: str, bc_order: dict = {}):
         bc_products = bc_order["products"]["url"]
@@ -238,7 +299,7 @@ class OrderAPI(DocumentAPI):
         }
 
         if is_shipping:
-            payload["PS_DOC_HDR_MISC_CHRG"] = [
+            payload["PS_DOC_HDR"]["PS_DOC_HDR_MISC_CHRG"] = [
                 {
                     "TOT_TYP": "S",
                     "MISC_CHRG_NO": "1",
@@ -247,10 +308,20 @@ class OrderAPI(DocumentAPI):
                 }
             ]
 
+            payload["PS_DOC_HDR"]["PS_DOC_HDR_TOT"] = [
+                {
+                    "TOT_LIN_DISC": self.get_total_lin_disc(
+                        payload["PS_DOC_HDR"]["PS_DOC_LIN"]
+                    )
+                }
+            ]
+
         return payload
 
     def post_order(self, cust_no: str, bc_order: dict):
         payload = self.get_post_order_payload(cust_no, bc_order)
+
+        print(payload)
 
         cust_no = payload["PS_DOC_HDR"]["CUST_NO"]
 
@@ -259,6 +330,7 @@ class OrderAPI(DocumentAPI):
             doc_id = response.json()["Documents"][0]["DOC_ID"]
 
             self.write_loyalty(doc_id, cust_no, payload["PS_DOC_HDR"]["PS_DOC_LIN"])
+            self.write_doc_disc(doc_id, payload["PS_DOC_HDR"]["PS_DOC_LIN"])
 
             print(f"Order {doc_id} created")
         except:
