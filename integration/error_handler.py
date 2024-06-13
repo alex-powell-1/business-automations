@@ -8,6 +8,14 @@ class Logger:
         if not self.log_file.endswith(".log"):
             self.log_file += ".log"
 
+    def header(self, message: str):
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        template = f"[{timestamp}] {message}"
+        self.log("------------------")
+        self.log(template)
+        self.log("------------------")
+        print(template)
+
     def log(self, message: str):
         with open(self.log_file, "a") as file:
             file.write(f"{message}\n")

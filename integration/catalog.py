@@ -79,8 +79,7 @@ class Catalog:
                 sku = item[0]
                 binding_id = item[1]
                 if binding_id != "":
-                    # Get Parent to Process. This would be a great place to fix multiple
-                    # parents...
+                    # Get Parent to Process.
                     query = f"""
                     SELECT ITEM_NO
                     FROM IM_ITEM
@@ -91,26 +90,36 @@ class Catalog:
                     if get_parent_response is not None:
                         # This will add the parent product to the queue
                         parent_sku = get_parent_response[0][0]
-                        result.append({"sku": parent_sku, "binding_id": binding_id})
                     else:
-                        print(f"Parent SKU not found for {binding_id}.")
+                        # Missing Parent! Will choose the lowest price web enabled variant as the parent.
+                        Catalog.logger.warn(f"Parent SKU not found for {binding_id}.")
                         # Family Members
                         family_members = Catalog.get_family_members(
                             binding_id=binding_id, price=True
                         )
-                        print("Family Members: ")
-                        print(family_members)
-                        target_item = min(family_members, key=lambda x: x["price_1"])
-                        print(f"The target item is {target_item}")
+                        parent_sku = min(family_members, key=lambda x: x["price_1"])[
+                            "sku"
+                        ]
+                        Catalog.logger.info(
+                            f"Family Members: {family_members}, Target new parent item: {parent_sku}"
+                        )
 
-                        # query = f"""
-                        # UPDATE IM_ITEM
-                        # SET IS_ADM_TKT = '{flag}', LST_MAINT_DT = GETDATE()
-                        # WHERE ITEM_NO = '{target_item}'
-                        # """
-                        # self.db.query_db(query, commit=True)
-                        # print(f"Parent status set to {flag} for {target_item}")
-                        continue
+                        query = f"""
+                        UPDATE IM_ITEM
+                        SET IS_ADM_TKT = 'Y', LST_MAINT_DT = GETDATE()
+                        WHERE ITEM_NO = '{parent_sku}'
+                        """
+                        set_parent_response = self.db.query_db(query, commit=True)
+
+                        if set_parent_response["code"] == 200:
+                            Catalog.logger.success(
+                                f"Parent status set for {parent_sku}"
+                            )
+                        else:
+                            Catalog.error_handler.add_error_v(
+                                error=f"Error setting parent status for {parent_sku}. Response {set_parent_response}"
+                            )
+                    result.append({"sku": parent_sku, "binding_id": binding_id})
                 else:
                     # This will add single products to the queue
                     result.append({"sku": sku, "binding_id": binding_id})
@@ -3072,7 +3081,8 @@ class Catalog:
             update_img_response = self.db.query_db(img_update, commit=True)
 
             if update_img_response["code"] == 200:
-                Catalog.logger.success(f"SQL UPDATE Image {image.image_name}: Success")
+                # Catalog.logger.success(f"SQL UPDATE Image {image.image_name}: Success")
+                pass
             else:
                 Catalog.error_handler.add_error_v(
                     error=f"{update_img_response}",
