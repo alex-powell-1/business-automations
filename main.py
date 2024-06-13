@@ -34,6 +34,10 @@ from sms.sms_messages import (
 )
 
 from utilities import backups
+# from integration import integrator
+
+# integrator = integrator.Integrator()
+# integrator.sync()
 
 # -----------------
 # Driver for Business Automations
@@ -90,7 +94,9 @@ if creds.item_report["enabled"] and creds.item_report["hour"] == hour:
 # Customer Followup Email to Sales Team
 if creds.lead_email["enabled"] and creds.lead_email["hour"] == hour:
     try:
-        lead_generator_notification.lead_notification_email(log_file)
+        lead_generator_notification.lead_notification_email(
+            recipients=creds.lead_email["recipients"], log_file=log_file
+        )
     except Exception as err:
         errors += 1
         print("Error: Lead Notification Email", file=log_file)

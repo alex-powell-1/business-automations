@@ -1,5 +1,6 @@
 import datetime
 
+
 class Logger:
     def __init__(self, log_file: str):
         self.log_file = log_file
@@ -32,6 +33,7 @@ class Logger:
         self.log(template)
         print(template)
 
+
 class ErrorHandler:
     def __init__(self, logger: Logger = None):
         self.errors = []
@@ -52,16 +54,19 @@ class ErrorHandler:
             self.logger.log("ERRORS:")
             self.logger.log("------------------")
 
-        for error in self.errors:
-            print(error)
-            if self.logger:
-                self.logger.log(str(error))
+        if self.errors:
+            for error in self.errors:
+                print(error)
+                if self.logger:
+                    self.logger.log(str(error))
+        else:
+            self.logger.log("No Sync Errors Found.")
 
         if self.logger:
             self.logger.log("------------------")
             self.logger.log("")
             self.logger.log("")
-    
+
     class Error:
         def __init__(self, message: str, origin: str = None, type: str = "ERROR"):
             self.message = message
@@ -76,10 +81,12 @@ class ErrorHandler:
             prefix = f"[{self.type}]{origin_str}[{timestamp_str}]"
 
             return f"{prefix} {self.message}"
-        
+
+
 class GlobalErrorHandler:
-    # logger = Logger("//mainserver/CPSQL.1/business_automations/integration.log")
-    logger = Logger("logs/integration.log")
+    logger = Logger(
+        f"//MAINSERVER/Share/logs/integration/log_{datetime.datetime.now().strftime("%m_%d_%y")}.log"
+    )
     error_handler = ErrorHandler(logger)
 
 
