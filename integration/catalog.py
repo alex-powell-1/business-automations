@@ -281,7 +281,7 @@ class Catalog:
         )
 
         if delete_targets:
-            Catalog.logger.info("Delete Targets", delete_targets)
+            Catalog.logger.info(message=f"Delete Targets: {delete_targets}")
             for x in delete_targets:
                 print(f"Deleting Image {x[0]}.\n")
                 delete_image(x[0])
@@ -483,7 +483,9 @@ class Catalog:
                         self.delete_category(x[6])
                         continue
                     lst_maint_dt = x[5]
+
                     sn_cp_categ_id = x[6]
+
                     if sn_cp_categ_id is None:
                         # Insert new records
                         cp_parent_id = x[1]
@@ -506,13 +508,21 @@ class Catalog:
                             description = x[4]
                             lst_maint_dt = x[5]
                             query = f"""
-                            UPDATE SN_CATEG
+                            UPDATE {creds.bc_category_table}
                             SET CP_PARENT_ID = {cp_parent_id}, CATEG_NAME = '{category_name}',
                             SORT_ORDER = {sort_order}, DESCRIPTION = '{description}', 
                             LST_MAINT_DT = '{lst_maint_dt:%Y-%m-%d %H:%M:%S}'
                             WHERE CP_CATEG_ID = {sn_cp_categ_id}
                             """
-                            self.db.query_db(query, commit=True)
+                            update_res = self.db.query_db(query, commit=True)
+                            if update_res["code"] == 200:
+                                Catalog.logger.success(
+                                    f"Category {category_name} updated in Middleware."
+                                )
+                            else:
+                                Catalog.error_handler.add_error_v(
+                                    error=f"Error updating category {category_name} in Middleware. \n Query: {query}"
+                                )
 
         def create_tree_in_memory(self):
             def get_categories():
@@ -602,6 +612,20 @@ class Catalog:
                             f"Error deleting category {bc_category_id} from BigCommerce."
                         )
                         print(response.json())
+                else:
+                    Catalog.logger.warn(
+                        f"BC Category {cp_categ_id} not found in Middleware."
+                    )
+                    query = f"DELETE FROM {creds.bc_category_table} WHERE CP_CATEG_ID = {cp_categ_id}"
+                    del_res = self.db.query_db(query, commit=True)
+                    if del_res["code"] == 200:
+                        Catalog.logger.success(
+                            f"Category {cp_categ_id} deleted from Middleware."
+                        )
+                    else:
+                        Catalog.error_handler.add_error_v(
+                            error=f"Error deleting category {cp_categ_id} from Middleware."
+                        )
 
         class Category:
             def __init__(
@@ -676,7 +700,11 @@ class Catalog:
                     {
                         "name": self.category_name,
                         "url": {
-                            "path": f"/{self.category_name}/",
+                            "path": "-".join(
+                                str(
+                                    re.sub("[^A-Za-z0-9 ]+", "", self.category_name)
+                                ).split(" ")
+                            ),
                             "is_customized": False,
                         },
                         "parent_id": self.bc_parent_id,
@@ -1846,10 +1874,7 @@ class Catalog:
                             self.delete_variant(
                                 sku=variant.sku, binding_id=variant.mw_binding_id
                             )
-                            variant.db_id = None
-                            for image in variant.images:
-                                image.id = None
-                                image.image_id = None
+                            self.reset_variant_properties(variant)
 
                             new_product = Catalog.Product(
                                 {"sku": variant.sku, "binding_id": ""},
@@ -1873,11 +1898,7 @@ class Catalog:
                             )
                             # Step 1: Delete Product
                             self.delete_product(variant.sku)
-                            variant.db_id = None
-                            variant.variant_id = None
-                            for image in variant.images:
-                                image.id = None
-                                image.image_id = None
+                            self.reset_variant_properties(variant)
 
                             # Step 2: Check to see if other items are associated with the incoming binding ID.
                             # If they are, you are going to add this product as a new variant. If not, add this
@@ -1933,11 +1954,8 @@ class Catalog:
                                 self.delete_variant(
                                     variant.sku, binding_id=variant.mw_binding_id
                                 )
-                                variant.db_id = None
-                                variant.variant_id = None
-                                for image in variant.images:
-                                    image.id = None
-                                    image.image_id = None
+                                self.reset_variant_properties(variant)
+
                                 # Check if the input binding ID is associated with other products.
                                 # if it is, add this product as a variant. If not, add as a new product.
                                 family_count = Catalog.get_family_members(
@@ -1986,7 +2004,7 @@ class Catalog:
 
             if len(self.variants) == 0:
                 Catalog.logger.warn("No Variants to Process")
-                return False
+                return True
 
             Catalog.logger.success(
                 f"Output Validation Passed. Ready to Process Variants: {[x.sku for x in self.variants]}"
@@ -2704,8 +2722,19 @@ class Catalog:
                 print(response.content)
                 return None
 
+        def reset_variant_properties(self, variant):
+            variant.db_id = None
+            variant.product_id = None
+            variant.variant_id = None
+            variant.custom_field_ids = None
+            for image in variant.images:
+                image.id = None
+                image.image_id = None
+
         def delete_product(self, sku, bind_id=None):
             """Delete Product from BigCommerce and Middleware."""
+
+            # CHECK THIS OUT.
             self.db_id = None
             if bind_id:
                 product_id = self.get_product_id(binding_id=bind_id)
