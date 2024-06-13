@@ -151,10 +151,10 @@ class OrderAPI(DocumentAPI):
         points_earned = (float(line_item["EXT_PRC"] or 0) / 20) or 0
 
         query = f"""
-        INSERT INTO PS_DOC_LIN_LOY
-        (DOC_ID,   LIN_SEQ_NO,   LIN_LOY_PTS_EARND, LOY_PGM_RDM_ELIG, LOY_PGM_AMT_PD_WITH_PTS, LOY_PT_EARN_RUL_DESC, LOY_PT_EARN_RUL_SEQ_NO)
-        VALUES
-        ({doc_id}, {lin_seq_no}, {points_earned},   'Y',              0,                       'Basic',              5)
+        INSERT INTO PS_DOC_LIN_LOY 
+        (DOC_ID, LIN_SEQ_NO, LIN_LOY_PTS_EARND, LOY_PGM_RDM_ELIG, LOY_PGM_AMT_PD_WITH_PTS, LOY_PT_EARN_RUL_DESC, LOY_PT_EARN_RUL_SEQ_NO) 
+        VALUES 
+        ('{doc_id}', {lin_seq_no}, {points_earned}, 'Y', 0, 'Basic', 5)
         """
 
         Database.db.query_db(query, commit=True)
@@ -180,9 +180,9 @@ class OrderAPI(DocumentAPI):
 
         wquery = f"""
         INSERT INTO PS_DOC_HDR_LOY_PGM
-        (DOC_ID,   LIN_LOY_PTS_EARND, LOY_PTS_EARND_GROSS, LOY_PTS_ADJ_FOR_RDM, LOY_PTS_ADJ_FOR_INC_RND, LOY_PTS_ADJ_FOR_OVER_MAX, LOY_PTS_EARND_NET, LOY_PTS_RDM,       LOY_PTS_BAL)
+        (DOC_ID, LIN_LOY_PTS_EARND, LOY_PTS_EARND_GROSS, LOY_PTS_ADJ_FOR_RDM, LOY_PTS_ADJ_FOR_INC_RND, LOY_PTS_ADJ_FOR_OVER_MAX, LOY_PTS_EARND_NET, LOY_PTS_RDM, LOY_PTS_BAL)
         VALUES
-        ({doc_id}, 0,                 0,                   0,                   0,                       0,                        {points_earned},   {points_redeemed}, {points_balance})
+        ('{doc_id}', 0, 0, 0, 0, 0, {points_earned}, {points_redeemed}, {points_balance})
         """
 
         Database.db.query_db(wquery, commit=True)
