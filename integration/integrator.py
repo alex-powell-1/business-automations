@@ -64,7 +64,7 @@ class Integrator:
 
     def sync(self):
         start_sync_time = datetime.now()
-        Integrator.logger.info(f"Sync Started: {start_sync_time}: %Y-%m-%d %H:%M:%S")
+        self.logger.header("Sync Starting")
         self.catalog.sync()
         self.set_last_sync(start_sync_time)
         Integrator.logger.info(
@@ -75,7 +75,4 @@ class Integrator:
 
 if __name__ == "__main__":
     integrator = Integrator()
-
-    while True:
-        integrator.sync()
-        time.sleep(600)
+    integrator.sync()

@@ -47,6 +47,7 @@ class Database:
                                         IS_PARENT BIT,
                                         PRODUCT_ID int NOT NULL,
                                         VARIANT_ID int,
+                                        VARIANT_NAME nvarchar(255),
                                         OPTION_ID int,
                                         OPTION_VALUE_ID int,
                                         CATEG_ID varchar(100),
