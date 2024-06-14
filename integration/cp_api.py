@@ -74,6 +74,7 @@ class DocumentAPI(CounterPointAPI):
 class OrderAPI(DocumentAPI):
     def __init__(self, session: requests.Session = requests.Session()):
         super().__init__(session=session)
+        self.discount_seq_no = 1
 
     def get_line_items_from_bc_products(self, products: list):
         line_items = []
@@ -83,7 +84,8 @@ class OrderAPI(DocumentAPI):
                 total_discount = 0
                 if len(product["applied_discounts"]) > 0:
                     for discount in product["applied_discounts"]:
-                        total_discount += float(discount["amount"])
+                        if discount["target"] == "product":
+                            total_discount += float(discount["amount"])
 
                 line_item = {
                     "LIN_TYP": "S",
@@ -181,10 +183,34 @@ class OrderAPI(DocumentAPI):
 
             if amt > 0:
                 self.write_one_doc_disc(
-                    doc_id, disc_seq_no=i, disc_amt=amt, lin_seq_no=i
+                    doc_id, disc_seq_no=self.discount_seq_no, disc_amt=amt, lin_seq_no=i
                 )
 
+                self.discount_seq_no += 1
+
         return
+
+    def write_h_doc_disc(self, doc_id, disc_amt: float):
+        if disc_amt > 0:
+            self.write_one_doc_disc(
+                doc_id, disc_seq_no=self.discount_seq_no, disc_amt=disc_amt
+            )
+
+            self.discount_seq_no += 1
+
+    def write_doc_discounts(self, doc_id, bc_order: dict):
+        coupons = bc_order["coupons"]["url"]
+
+        total = 0
+
+        for coupon in coupons:
+            total += float(coupon["amount"])
+
+        if total > 0:
+            self.write_one_doc_disc(
+                doc_id, disc_seq_no=self.discount_seq_no, disc_amt=total
+            )
+            self.discount_seq_no += 1
 
     def write_one_lin_loy(self, doc_id, line_item: dict, lin_seq_no: int):
         points_earned = (float(line_item["EXT_PRC"] or 0) / 20) or 0
@@ -330,6 +356,7 @@ class OrderAPI(DocumentAPI):
             doc_id = response.json()["Documents"][0]["DOC_ID"]
 
             self.write_loyalty(doc_id, cust_no, payload["PS_DOC_HDR"]["PS_DOC_LIN"])
+            self.write_doc_discounts(doc_id, bc_order)
             self.write_doc_disc(doc_id, payload["PS_DOC_HDR"]["PS_DOC_LIN"])
 
             print(f"Order {doc_id} created")
@@ -337,3 +364,40 @@ class OrderAPI(DocumentAPI):
             print(response.content)
 
         return response
+
+
+class JsonTools:
+    @staticmethod
+    def get_json(url: str):
+        response = requests.get(url, headers=creds.bc_api_headers)
+        return response.json()
+
+    @staticmethod
+    def unpack_list(lst: list):
+        for i, item in enumerate(lst):
+            if isinstance(item, dict):
+                lst[i] = JsonTools.unpack(item)
+
+        return lst
+
+    @staticmethod
+    def unpack(obj: dict):
+        for key, value in obj.items():
+            if isinstance(value, dict):
+                obj[key] = JsonTools.unpack(value)
+            elif isinstance(value, list):
+                obj[key] = JsonTools.unpack_list(value)
+            elif isinstance(value, str) and value.startswith("http"):
+                try:
+                    myjson = JsonTools.get_json(value)
+                    if isinstance(myjson, list):
+                        JsonTools.unpack_list(myjson)
+                    if isinstance(myjson, dict):
+                        JsonTools.unpack(myjson)
+                    obj[key] = myjson
+                except:
+                    if value.endswith("coupons"):
+                        obj[key] = []
+                    pass
+
+        return obj
