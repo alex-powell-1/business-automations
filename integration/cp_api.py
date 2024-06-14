@@ -89,7 +89,7 @@ class OrderAPI(DocumentAPI):
                     "LIN_TYP": "S",
                     "ITEM_NO": product["sku"],
                     "QTY_SOLD": float(product["quantity"]),
-                    "PRC": float(product["base_price"]) - total_discount,
+                    "PRC": float(product["base_price"]),
                     "EXT_PRC": float(product["base_price"]) * float(product["quantity"])
                     - total_discount,
                     "DSC_AMT": total_discount,
