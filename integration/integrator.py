@@ -19,8 +19,6 @@ class Integrator:
         last_sync = self.get_last_sync()
         self.last_sync = last_sync
         self.db = Database()
-        # self.logger = GlobalErrorHandler.logger
-        # self.error_handler = GlobalErrorHandler.error_handler
         self.category_tree = Catalog.CategoryTree(last_sync=last_sync)
         self.brands = Catalog.Brands(last_sync=last_sync)
         self.catalog = Catalog(
