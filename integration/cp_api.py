@@ -5,11 +5,15 @@ import math
 
 from integration.database import Database
 
+from integration.utilities import GlobalErrorHandler
+
 
 class CounterPointAPI:
     def __init__(self, session: requests.Session = requests.Session()):
         self.base_url = creds.cp_api_server
         self.session = session
+        self.logger = GlobalErrorHandler.logger
+        self.error_handler = GlobalErrorHandler.error_handler
 
         self.get_headers = {
             "Authorization": f"Basic {creds.cp_api_user}",
@@ -173,8 +177,6 @@ class OrderAPI(DocumentAPI):
 
         response = Database.db.query_db(query, commit=True)
 
-        print(response)
-
         return
 
     def write_doc_disc(self, doc_id, line_items: list[dict]):
@@ -224,8 +226,6 @@ class OrderAPI(DocumentAPI):
 
         response = Database.db.query_db(query, commit=True)
 
-        print(response)
-
         return points_earned
 
     def write_lin_loy(self, doc_id, line_items: list[dict]):
@@ -252,8 +252,6 @@ class OrderAPI(DocumentAPI):
         ('{doc_id}', 0, 0, 0, 0, 0, {points_earned}, {points_redeemed}, {points_balance})
         """
 
-        print(wquery)
-
         # wquery = f"""
         # INSERT INTO PS_DOC_HDR_LOY_PGM
         # (DOC_ID, LIN_LOY_PTS_EARND, LOY_PTS_EARND_GROSS, LOY_PTS_ADJ_FOR_RDM, LOY_PTS_ADJ_FOR_INC_RND, LOY_PTS_ADJ_FOR_OVER_MAX, LOY_PTS_EARND_NET, LOY_PTS_RDM, LOY_PTS_BAL)
@@ -262,7 +260,6 @@ class OrderAPI(DocumentAPI):
         # """
 
         response = Database.db.query_db(wquery, commit=True)
-        print(response)
 
     def get_loyalty_points_used(self, doc_id):
         query = f"""
@@ -347,8 +344,6 @@ class OrderAPI(DocumentAPI):
     def post_order(self, cust_no: str, bc_order: dict):
         payload = self.get_post_order_payload(cust_no, bc_order)
 
-        print(payload)
-
         cust_no = payload["PS_DOC_HDR"]["CUST_NO"]
 
         response = self.post_document(payload)
@@ -359,9 +354,15 @@ class OrderAPI(DocumentAPI):
             self.write_doc_discounts(doc_id, bc_order)
             self.write_doc_disc(doc_id, payload["PS_DOC_HDR"]["PS_DOC_LIN"])
 
-            print(f"Order {doc_id} created")
+            self.logger.success(f"Order {doc_id} created")
         except:
-            print(response.content)
+            self.error_handler.add_error_v(
+                "Order could not be created", origin="cp_api.py::post_order()"
+            )
+            if response.content is not None:
+                self.error_handler.add_error_v(
+                    response.content, origin="cp_api.py::post_order()"
+                )
 
         return response
 
