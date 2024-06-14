@@ -12,6 +12,12 @@ class QueryEngine:
         self.__PASSWORD = PASSWORD
 
     def query_db(self, query, commit=False):
+        # if commit:
+        #     print("Querying Database")
+        #     print(query)
+        #     print(f"Commit: {commit}")
+        #     return
+
         """Runs Query Against SQL Database. Use Commit Kwarg for updating database"""
         connection = pyodbc.connect(
             f"DRIVER={{ODBC Driver 18 for SQL Server}};SERVER={self.__SERVER};PORT=1433;DATABASE={self.__DATABASE};"
