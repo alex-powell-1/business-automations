@@ -5,7 +5,7 @@ import math
 
 from integration.database import Database
 
-from integration.utilities import GlobalErrorHandler
+from integration.error_handler import GlobalErrorHandler
 
 
 class CounterPointAPI:
