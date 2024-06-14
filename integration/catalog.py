@@ -15,7 +15,7 @@ from integration.database import Database
 
 from setup import creds
 from setup import query_engine
-from integration.utilities import get_all_binding_ids
+from integration.utilities import get_all_binding_ids, convert_to_utc
 
 from integration.error_handler import GlobalErrorHandler
 
@@ -79,47 +79,59 @@ class Catalog:
                 sku = item[0]
                 binding_id = item[1]
                 if binding_id != "":
-                    # Get Parent to Process.
-                    query = f"""
-                    SELECT ITEM_NO
-                    FROM IM_ITEM
-                    WHERE {creds.cp_field_binding_id} = '{binding_id}' AND IS_ECOMM_ITEM = 'Y' AND IS_ADM_TKT = 'Y'"""
-
-                    get_parent_response = self.db.query_db(query)
-
-                    if get_parent_response is not None:
-                        # This will add the parent product to the queue
-                        parent_sku = get_parent_response[0][0]
+                    # Check if the binding ID matches the correct format. (e.g. B0001)
+                    pattern = r"B\d{4}"
+                    if not bool(re.fullmatch(pattern, binding_id)):
+                        message = f"Product {binding_id} has an invalid binding ID."
+                        Catalog.error_handler.add_error_v(
+                            error=message, origin="get_products()"
+                        )
+                        # Skip this product
+                        continue
                     else:
-                        # Missing Parent! Will choose the lowest price web enabled variant as the parent.
-                        Catalog.logger.warn(f"Parent SKU not found for {binding_id}.")
-                        # Family Members
-                        family_members = Catalog.get_family_members(
-                            binding_id=binding_id, price=True
-                        )
-                        parent_sku = min(family_members, key=lambda x: x["price_1"])[
-                            "sku"
-                        ]
-                        Catalog.logger.info(
-                            f"Family Members: {family_members}, Target new parent item: {parent_sku}"
-                        )
-
+                        # Get Parent to Process.
                         query = f"""
-                        UPDATE IM_ITEM
-                        SET IS_ADM_TKT = 'Y', LST_MAINT_DT = GETDATE()
-                        WHERE ITEM_NO = '{parent_sku}'
-                        """
-                        set_parent_response = self.db.query_db(query, commit=True)
+                        SELECT ITEM_NO
+                        FROM IM_ITEM
+                        WHERE {creds.cp_field_binding_id} = '{binding_id}' AND IS_ECOMM_ITEM = 'Y' AND IS_ADM_TKT = 'Y'"""
 
-                        if set_parent_response["code"] == 200:
-                            Catalog.logger.success(
-                                f"Parent status set for {parent_sku}"
-                            )
+                        get_parent_response = self.db.query_db(query)
+
+                        if get_parent_response is not None:
+                            # This will add the parent product to the queue
+                            parent_sku = get_parent_response[0][0]
                         else:
-                            Catalog.error_handler.add_error_v(
-                                error=f"Error setting parent status for {parent_sku}. Response {set_parent_response}"
+                            # Missing Parent! Will choose the lowest price web enabled variant as the parent.
+                            Catalog.logger.warn(
+                                f"Parent SKU not found for {binding_id}."
                             )
-                    result.append({"sku": parent_sku, "binding_id": binding_id})
+                            # Family Members
+                            family_members = Catalog.get_family_members(
+                                binding_id=binding_id, price=True
+                            )
+                            parent_sku = min(
+                                family_members, key=lambda x: x["price_1"]
+                            )["sku"]
+                            Catalog.logger.info(
+                                f"Family Members: {family_members}, Target new parent item: {parent_sku}"
+                            )
+
+                            query = f"""
+                            UPDATE IM_ITEM
+                            SET IS_ADM_TKT = 'Y', LST_MAINT_DT = GETDATE()
+                            WHERE ITEM_NO = '{parent_sku}'
+                            """
+                            set_parent_response = self.db.query_db(query, commit=True)
+
+                            if set_parent_response["code"] == 200:
+                                Catalog.logger.success(
+                                    f"Parent status set for {parent_sku}"
+                                )
+                            else:
+                                Catalog.error_handler.add_error_v(
+                                    error=f"Error setting parent status for {parent_sku}. Response {set_parent_response}"
+                                )
+                        result.append({"sku": parent_sku, "binding_id": binding_id})
                 else:
                     # This will add single products to the queue
                     result.append({"sku": sku, "binding_id": binding_id})
@@ -364,6 +376,8 @@ class Catalog:
                             error=f"Product SKU: {prod.sku} Binding ID: {prod.binding_id}, Title: {prod.web_title} failed to process."
                         )
                         fail_count += 1
+                else:
+                    fail_count += 1
 
                 Catalog.logger.info(
                     f"Product {prod.sku} processed in {time.time() - start_time} seconds."
@@ -1333,10 +1347,11 @@ class Catalog:
             self.sort_order = 0
             self.gift_wrap: bool = False
             self.in_store_only: bool = False
+            self.is_preorder = False
             self.is_preorder_only = False
-            self.is_free_shipping = False
-            self.preorder_release_date = f"{datetime(1970, 1, 1):%Y-%m-%d}"
             self.preorder_message = ""
+            self.preorder_release_date = None
+            self.is_free_shipping = False
             self.alt_text_1 = ""
             self.alt_text_2 = ""
             self.alt_text_3 = ""
@@ -1467,6 +1482,9 @@ class Catalog:
                         self.is_custom_url = bound.is_custom_url
                         self.custom_field_ids = bound.custom_field_ids
                         self.long_descr = bound.long_descr
+                        self.is_preorder = bound.is_preorder
+                        self.preorder_release_date = bound.preorder_release_date
+                        self.preorder_message = bound.preorder_message
 
                 def get_binding_id_images():
                     binding_images = []
@@ -1568,6 +1586,9 @@ class Catalog:
                 # Set the product last maintained date to the single product's last maintained date
                 self.lst_maint_dt = single.lst_maint_dt
                 self.long_descr = single.long_descr
+                self.is_preorder = single.is_preorder
+                self.preorder_release_date = single.preorder_release_date
+                self.preorder_message = single.preorder_message
 
             if self.is_bound:
                 get_bound_product_details()
@@ -1622,14 +1643,14 @@ class Catalog:
                     )
                     return False
 
-                # Test for valid Binding ID Schema (ex. B0001)
-                pattern = r"B\d{4}"
-                if not bool(re.fullmatch(pattern, self.binding_id)):
-                    message = f"Product {self.binding_id} has an invalid binding ID. Validation failed."
-                    Catalog.error_handler.add_error_v(
-                        error=message, origin="Input Validation"
-                    )
-                    return False
+                # # Test for valid Binding ID Schema (ex. B0001)
+                # pattern = r"B\d{4}"
+                # if not bool(re.fullmatch(pattern, self.binding_id)):
+                #     message = f"Product {self.binding_id} has an invalid binding ID. Validation failed."
+                #     Catalog.error_handler.add_error_v(
+                #         error=message, origin="Input Validation"
+                #     )
+                #     return False
 
                 # Test for missing variant names
                 for child in self.variants:
@@ -1639,6 +1660,15 @@ class Catalog:
                             error=message, origin="Input Validation"
                         )
                         return False
+
+                # Check for duplicate variant names
+                variant_names = [x.variant_name for x in self.variants]
+                if len(variant_names) != len(set(variant_names)):
+                    message = f"Product {self.binding_id} has duplicate variant names. Validation failed."
+                    Catalog.error_handler.add_error_v(
+                        error=message, origin="Input Validation"
+                    )
+                    return False
 
                 # Test for parent product problems
                 if self.validation_retries > 0:
@@ -1931,6 +1961,7 @@ class Catalog:
                                 new_product.get_product_details(
                                     last_sync=self.last_sync
                                 )
+
                                 if new_product.validate_inputs():
                                     new_product.process()
                                 # Remove this variant from the list to be updated.
@@ -2012,7 +2043,7 @@ class Catalog:
 
             return True
 
-        def construct_product_payload(self, mode="create"):
+        def construct_product_payload(self):
             """Build the payload for creating a product in BigCommerce.
             This will include all variants, images, and custom fields."""
 
@@ -2162,6 +2193,14 @@ class Catalog:
 
                 return result
 
+            def get_availability():
+                if self.in_store_only:
+                    return "disabled"
+                elif self.is_preorder:
+                    return "preorder"
+                else:
+                    return "available"
+
             payload = {
                 "name": self.web_title,
                 "type": "physical",
@@ -2177,7 +2216,6 @@ class Catalog:
                 "sale_price": self.sale_price,
                 "map_price": 0,
                 "tax_class_id": 0,
-                # "product_tax_code": "string",
                 "brand_id": get_brand_id(),
                 "brand_name": self.brand,
                 "inventory_level": self.buffered_quantity,
@@ -2188,19 +2226,30 @@ class Catalog:
                 "is_featured": self.featured,
                 "sort_order": self.sort_order,
                 "search_keywords": self.search_keywords,
-                "availability": "available" if not self.in_store_only else "disabled",
                 "gift_wrapping_options_type": "none" if not self.gift_wrap else "any",
                 "condition": "New",
                 "is_condition_shown": True,
                 "page_title": self.meta_title,
                 "meta_description": self.meta_description,
-                # "preorder_release_date": self.preorder_release_date,
-                "preorder_message": self.preorder_message,
-                "is_preorder_only": self.is_preorder_only,
                 "is_price_hidden": self.is_price_hidden,
                 "custom_fields": construct_custom_fields(),
                 "videos": construct_video_payload(),
             }
+
+            if self.is_preorder and not self.in_store_only:
+                payload["availability"] = "preorder"
+                payload["preorder_release_date"] = self.preorder_release_date
+                payload["preorder_message"] = self.preorder_message
+                payload["is_preorder_only"] = True
+
+            elif self.in_store_only:
+                payload["availability"] = "disabled"
+                payload["purchasing_disabled_message"] = (
+                    "This product is only available in-store."
+                )
+            else:
+                payload["availability"] = "available"
+
             # If the product has a product_id, it is an update
             if self.product_id:
                 payload["id"] = self.product_id
@@ -2262,7 +2311,7 @@ class Catalog:
 
             def update():
                 """Will update existing product. Will clear out custom field data dand reinsert."""
-                update_payload = self.construct_product_payload(mode="update_product")
+                update_payload = self.construct_product_payload()
                 self.bc_delete_custom_fields(asynchronous=True)
                 update_response = self.bc_update_product(update_payload)
 
@@ -2296,6 +2345,14 @@ class Catalog:
                         self.delete_product(sku=self.sku)
 
                     Catalog.logger.info("Trying to create product again.")
+                    # Reset property IDs for a successful POST
+                    self.product_id = None
+                    self.custom_field_ids = None
+                    for image in self.images:
+                        image.image_id = None
+                    for variant in self.variants:
+                        self.reset_variant_properties(variant)
+
                     return create()
 
                 else:
@@ -2316,7 +2373,11 @@ class Catalog:
             else:
                 # Product Found, Update Product
                 if self.validate_outputs():
-                    return update()
+                    # Check to see if all children have been removed as a result of output validation
+                    if len(self.variants) > 0:
+                        return update()
+                    else:
+                        return True
 
         def replace_image(self, image) -> bool:
             """Replace image in BigCommerce and SQL."""
@@ -2727,9 +2788,13 @@ class Catalog:
             variant.product_id = None
             variant.variant_id = None
             variant.custom_field_ids = None
+
             for image in variant.images:
                 image.id = None
                 image.image_id = None
+
+            variant.variant_id = None
+            variant.option_value_id = None
 
         def delete_product(self, sku, bind_id=None):
             """Delete Product from BigCommerce and Middleware."""
@@ -3051,8 +3116,12 @@ class Catalog:
 
         def insert_images(self):
             """Insert images into SQL."""
+            success = True
             for image in self.images:
-                self.insert_image(image)
+                insert_image_response = self.insert_image(image)
+                if insert_image_response["code"] != 200:
+                    success = False
+            return success
 
         def insert_image(self, image) -> bool:
             """Insert image into SQL."""
@@ -3247,8 +3316,8 @@ class Catalog:
                 self.featured: bool = product_data["is_featured"]
                 self.gift_wrap: bool = product_data["gift_wrap"]
                 self.is_free_shipping = False
-                self.is_preorder = False
-                self.preorder_release_date = datetime(1970, 1, 1)
+                self.is_preorder = product_data["is_preorder"]
+                self.preorder_release_date = product_data["preorder_release_date"]
                 self.preorder_message = product_data["preorder_message"]
                 self.alt_text_1 = product_data["alt_text_1"]
                 self.alt_text_2 = product_data["alt_text_2"]
@@ -3344,7 +3413,8 @@ class Catalog:
                 EC_CATEG_ITEM.ITEM_NO =ITEM.ITEM_NO for xml path('')),1,1,'') as 'categories(49)',
 
                 BC_PROD.ID as 'db_id(50)', BC_PROD.CUSTOM_FIELDS as 'custom_field_ids(51)', ITEM.LONG_DESCR as 'long_descr(52)',
-                BC_PROD.BINDING_ID as 'mw_binding_id(53)'
+                BC_PROD.BINDING_ID as 'mw_binding_id(53)', ITEM.USR_IS_PREORDER as 'is_preorder(54)', 
+                ITEM.USR_PREORDER_REL_DT as 'preorder_release_date(55)' 
 
                 FROM IM_ITEM ITEM
                 LEFT OUTER JOIN IM_PRC PRC ON ITEM.ITEM_NO=PRC.ITEM_NO
@@ -3421,9 +3491,11 @@ class Catalog:
                         "custom_field_ids": item[0][51],
                         "long_descr": item[0][52],
                         "mw_binding_id": item[0][53],
+                        "is_preorder": item[0][54],
+                        "preorder_release_date": convert_to_utc(item[0][55])
+                        if item[0][55]
+                        else None,
                     }
-                    # for x in details:
-                    #     print(f"{x}: {details[x]}")
                     return details
 
             def validate_product(self):

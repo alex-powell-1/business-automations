@@ -76,6 +76,16 @@ if (
         print("Error: Administrative Report", file=log_file)
         print(err, file=log_file)
         print("-----------------------\n", file=log_file)
+else:
+    print("Administrative Report Disabled", file=log_file)
+    print(
+        f"creds.administrative_report['enabled']: {creds.administrative_report['enabled']}",
+        file=log_file,
+    )
+    print(
+        f"creds.administrative_report['hour']: {creds.administrative_report['hour']}",
+        file=log_file,
+    )
 
 # ITEMS REPORT EMAIL
 # For product management team

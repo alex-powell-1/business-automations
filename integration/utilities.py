@@ -25,6 +25,18 @@ def convert_to_rfc2822(date: datetime):
     return formatdate(int(date.timestamp()))
 
 
+def convert_to_iso8601(date: datetime, add_tz=True):
+    return date.isoformat()
+
+
+def convert_to_utc(date: datetime):
+    return date.astimezone().isoformat()
+
+
+def make_datetime(date_string):
+    return datetime.strptime(date_string, "%Y-%m-%d %H:%M:%S")
+
+
 def country_to_country_code(country):
     country_codes = {
         "United States": "US",
