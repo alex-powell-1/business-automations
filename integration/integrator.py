@@ -65,9 +65,8 @@ class Integrator:
         self.logger.header("Sync Starting")
         self.catalog.sync()
         self.set_last_sync(start_sync_time)
-        Integrator.logger.info(
-            f"Sync Complete. Total time: {datetime.now() - start_sync_time}"
-        )
+        completion_time = (datetime.now() - start_sync_time).seconds
+        Integrator.logger.info(f"Sync completion time: {completion_time} seconds")
         Integrator.error_handler.print_errors()
 
 

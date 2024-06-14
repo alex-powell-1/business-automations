@@ -38,11 +38,11 @@ class Catalog:
         self.mw_items = []
         self.sync_queue = []
         self.get_products()
-        self.process_product_deletes()
-        self.process_images()
 
         if self.sync_queue:
-            self.binding_ids = set(x["binding_id"] for x in self.sync_queue)
+            self.binding_ids = set(
+                x["binding_id"] for x in self.sync_queue if "binding_id" in x
+            )
 
         self.product_errors = []
         # Still need to get ALL list from mw and cp
@@ -66,7 +66,7 @@ class Catalog:
         # Create the Sync Queue
 
         query = f"""
-        SELECT ITEM_NO, ISNULL(ITEM.{creds.cp_field_binding_id}, '') as 'Binding ID'
+        SELECT ITEM_NO, ITEM.{creds.cp_field_binding_id} as 'Binding ID'
         FROM IM_ITEM ITEM
         WHERE ITEM.LST_MAINT_DT > '{self.last_sync: %Y-%m-%d %H:%M:%S}' and
         ITEM.IS_ECOMM_ITEM = 'Y'
@@ -78,7 +78,8 @@ class Catalog:
             for item in response:
                 sku = item[0]
                 binding_id = item[1]
-                if binding_id != "":
+                queue_payload = {}
+                if binding_id is not None:
                     # Check if the binding ID matches the correct format. (e.g. B0001)
                     pattern = r"B\d{4}"
                     if not bool(re.fullmatch(pattern, binding_id)):
@@ -131,14 +132,15 @@ class Catalog:
                                 Catalog.error_handler.add_error_v(
                                     error=f"Error setting parent status for {parent_sku}. Response {set_parent_response}"
                                 )
-                        result.append({"sku": parent_sku, "binding_id": binding_id})
+                        queue_payload = {"sku": parent_sku, "binding_id": binding_id}
                 else:
                     # This will add single products to the queue
-                    result.append({"sku": sku, "binding_id": binding_id})
+                    # result.append({"sku": sku, "binding_id": binding_id})
+                    queue_payload = {"sku": sku}
 
-                Catalog.logger.info(
-                    message=f"Adding Product to Queue: {item[0]} Binding ID: {item[1]}"
-                )
+                result.append(queue_payload)
+
+                Catalog.logger.info(message=f"Adding Product to Queue: {queue_payload}")
 
             res = []
             [res.append(x) for x in result if x not in res]
@@ -154,22 +156,26 @@ class Catalog:
         if delete_targets:
             Catalog.logger.info(f"Product Delete Targets: {delete_targets}")
             for x in delete_targets:
-                query = f"SELECT PRODUCT_ID, BINDING_ID, VARIANT_ID FROM {creds.bc_product_table} WHERE ITEM_NO = '{x}'"
+                query = f"SELECT BINDING_ID FROM {creds.bc_product_table} WHERE ITEM_NO = '{x}'"
                 response = self.db.query_db(query)
                 if response is not None:
-                    binding_id = response[0][1]
-                    variant_id = response[0][2]
+                    binding_id = response[0][0]
                 else:
-                    print(f"Product ID not found for {x}. Response: {response}")
+                    self.logger.warn(
+                        f"Binding ID not found for {x}. Response: {response}"
+                    )
 
                 if variant_id:
                     product = Catalog.Product(
                         product_data={"sku": {x}, "binding_id": binding_id},
                         last_sync=self.last_sync,
                     )
-                    product.delete_variant(x)
+
                 else:
-                    product.delete_product(x)
+                    if binding_id:
+                        product.delete_product(x, bind_id=binding_id)
+                    else:
+                        product.delete_product(x)
 
     def process_images(self):
         """Assesses Image folder. Deletes images from MW and BC. Updates LST_MAINT_DT in CP if new images have been added."""
@@ -314,8 +320,6 @@ class Catalog:
             sku_list = [x[0].split(".")[0].split("^")[0] for x in update_list]
             binding_list = [x for x in sku_list if x in Catalog.all_binding_ids]
 
-            print("Binding List: ", binding_list)
-
             sku_list = tuple(sku_list)
             if binding_list:
                 if len(binding_list) > 1:
@@ -341,6 +345,9 @@ class Catalog:
         )
 
     def sync(self):
+        # Process Product Deletions and Images
+        self.process_product_deletes()
+        self.process_images()
         # Sync Category Tree
         self.category_tree.sync()
         # Sync Product Brands
@@ -379,13 +386,10 @@ class Catalog:
                 else:
                     fail_count += 1
 
-                Catalog.logger.info(
-                    f"Product {prod.sku} processed in {time.time() - start_time} seconds."
-                )
-
                 queue_length -= 1
-
-                Catalog.logger.info(f"Products Remaining: {queue_length}\n\n")
+                Catalog.logger.info(
+                    f"Product {prod.sku} processed in {time.time() - start_time} seconds.Products Remaining: {queue_length}\n\n"
+                )
 
             Catalog.logger.info(
                 "-----------------------\n"
@@ -974,7 +978,7 @@ class Catalog:
                 middleware_list=mw_brand_ids, counterpoint_list=cp_brand_ids
             )
 
-            def bc_delete(target):
+            def bc_delete_brand(target):
                 url = (
                     f"https://api.bigcommerce.com/stores/{Catalog.store_hash}/v3/"
                     f"catalog/brands/{target}"
@@ -992,17 +996,17 @@ class Catalog:
                     )
                     print(response.json())
 
-            def delete_from_middleware(target):
+            def middleware_delete_brand(target):
                 query = f"""
                 DELETE FROM {creds.bc_brands_table}
                 WHERE CP_BRAND_ID = '{target}'
                 """
-                try:
-                    self.db.query_db(query, commit=True)
-                except Exception as e:
-                    print(f"Error deleting brand {target} from middleware: {e}")
-                else:
-                    print(f"Brand {target} deleted from middleware.")
+                mw_brand_del_res = self.db.query_db(query, commit=True)
+                if mw_brand_del_res["code"] != 200:
+                    Catalog.error_handler.add_error_v(
+                        error=f"Brand {target} deleted from middleware.",
+                        origin="process_deletes() -> delete_from_middleware()",
+                    )
 
             def get_bc_brand_id(cp_brand_id):
                 query = f"""
@@ -1019,14 +1023,12 @@ class Catalog:
             for x in delete_targets:
                 bc_brand_id = get_bc_brand_id(x)
                 if bc_brand_id is not None:
-                    print(f"Deleting Brand {x}.")
-                    bc_delete(bc_brand_id)
-                    delete_from_middleware(x)
+                    Catalog.logger.log(f"Deleting Brand {x}.")
+                    bc_delete_brand(bc_brand_id)
+                    middleware_delete_brand(x)
                     delete_count += 1
                 else:
-                    print(f"Brand {x} not found in middleware.")
-
-            print(f"Deleted {delete_count} brands.")
+                    Catalog.logger.warn(f"Brand {x} not found in middleware.")
 
         class Brand:
             def __init__(self, cp_brand_id, description, last_maint_dt, last_sync):
@@ -1303,15 +1305,16 @@ class Catalog:
             # Catalog.logger: Logger = self.error_handler.logger
 
             self.sku = product_data["sku"]
-            self.binding_id = product_data["binding_id"]
-
+            self.binding_id = (
+                product_data["binding_id"] if "binding_id" in product_data else None
+            )
             # Will be set to True if product gets a success response from BigCommerce API on POST or PUT
             self.is_uploaded = False
 
             self.last_sync = last_sync
 
             # Determine if Bound
-            self.is_bound = True if self.binding_id != "" else False
+            self.is_bound = True if self.binding_id else False
 
             # For Bound Items
             self.total_variants: int = 0
@@ -1357,7 +1360,6 @@ class Catalog:
             self.alt_text_3 = ""
             self.alt_text_4 = ""
             self.custom_url = ""
-            self.is_custom_url = True
 
             # Custom Fields
             self.custom_botanical_name = ""
@@ -1479,7 +1481,6 @@ class Catalog:
                         self.custom_size = bound.custom_size
                         self.cp_ecommerce_categories = bound.cp_ecommerce_categories
                         self.custom_url = bound.custom_url
-                        self.is_custom_url = bound.is_custom_url
                         self.custom_field_ids = bound.custom_field_ids
                         self.long_descr = bound.long_descr
                         self.is_preorder = bound.is_preorder
@@ -1508,14 +1509,10 @@ class Catalog:
                             if binding_img.validate():
                                 self.images.append(binding_img)
                             else:
-                                print(
-                                    f"Image {binding_img.image_name} failed validation. Image will not be added to product."
+                                Catalog.error_handler.add_error_v(
+                                    error=f"Image {binding_img.image_name} failed validation. Image will not be added to product.",
+                                    origin="Image Validation",
                                 )
-
-                    else:
-                        print(
-                            f"No binding images found for Binding ID: {self.binding_id}"
-                        )
 
                 # Add Binding ID Images to image list
                 get_binding_id_images()
@@ -1581,7 +1578,6 @@ class Catalog:
                 self.cp_ecommerce_categories = single.cp_ecommerce_categories
                 self.images = single.images
                 self.custom_url = single.custom_url
-                self.is_custom_url = single.is_custom_url
                 self.custom_field_ids = single.custom_field_ids
                 # Set the product last maintained date to the single product's last maintained date
                 self.lst_maint_dt = single.lst_maint_dt
@@ -1636,7 +1632,7 @@ class Catalog:
                 # Test for missing binding ID. Potentially add corrective action
                 # (i.e. generate binding ID or remove product
                 # and rebuild as a new single product)
-                if self.binding_id == "":
+                if self.binding_id is None:
                     message = f"Product {self.binding_id} has no binding ID. Validation failed."
                     Catalog.error_handler.add_error_v(
                         error=message, origin="Input Validation"
@@ -1873,9 +1869,9 @@ class Catalog:
             # Need validations for character counts on all fields
             # print(f"Product {self.sku} has passed validation.")
             # Validation has Passed.
-            Catalog.logger.success(
-                f"Product SKU: {self.sku} Binding ID: {self.binding_id} has passed input validation."
-            )
+            # Catalog.logger.success(
+            #     f"Product SKU: {self.sku} Binding ID: {self.binding_id} has passed input validation."
+            # )
             return True
 
         def validate_outputs(self):
@@ -1886,7 +1882,6 @@ class Catalog:
             for variant in self.variants:
                 # Check to see if the variant has an identity in the middlware
                 if variant.db_id:
-                    print("DB ID Exists")
                     # --------------------------
                     # NO BINDING ID ON THE INPUT
                     # --------------------------
@@ -1896,6 +1891,7 @@ class Catalog:
                         if variant.mw_binding_id is None:
                             continue
                         else:
+                            print(f"mw binding id: {variant.mw_binding_id}")
                             # You have a previously bound product trying to turn into a single product.
                             # Delete the variant and add back as a single product.
                             Catalog.logger.warn(
@@ -1907,7 +1903,7 @@ class Catalog:
                             self.reset_variant_properties(variant)
 
                             new_product = Catalog.Product(
-                                {"sku": variant.sku, "binding_id": ""},
+                                product_data={"sku": variant.sku},
                                 last_sync=self.last_sync,
                             )
                             new_product.get_product_details(last_sync=self.last_sync)
@@ -1952,7 +1948,7 @@ class Catalog:
                                     f"Adding {variant.sku} as a new product with binding_id {variant.binding_id}"
                                 )
                                 new_product = Catalog.Product(
-                                    {
+                                    product_data={
                                         "sku": variant.sku,
                                         "binding_id": variant.binding_id,
                                     },
@@ -2007,7 +2003,7 @@ class Catalog:
                                     )
 
                                     new_product = Catalog.Product(
-                                        {
+                                        product_data={
                                             "sku": variant.sku,
                                             "binding_id": variant.binding_id,
                                         },
@@ -2037,9 +2033,9 @@ class Catalog:
                 Catalog.logger.warn("No Variants to Process")
                 return True
 
-            Catalog.logger.success(
-                f"Output Validation Passed. Ready to Process Variants: {[x.sku for x in self.variants]}"
-            )
+            # Catalog.logger.success(
+            #     f"Output Validation Passed. Ready to Process Variants: {[x.sku for x in self.variants]}"
+            # )
 
             return True
 
@@ -2204,7 +2200,7 @@ class Catalog:
             payload = {
                 "name": self.web_title,
                 "type": "physical",
-                "sku": self.binding_id if self.binding_id != "" else self.sku,
+                "sku": self.binding_id if self.binding_id else self.sku,
                 "description": f"""{self.html_description}""",
                 "weight": self.weight,
                 "width": self.width,
@@ -2264,17 +2260,15 @@ class Catalog:
 
             # Add custom URL
             if self.custom_url != "":
-                print("adding custom url")
                 payload["custom_url"] = {
                     "url": f"/{self.custom_url}/",
-                    "is_customized": self.is_custom_url,
+                    "is_customized": True if self.custom_url else False,
                     "create_redirect": True,
                 }
 
             # Add E-Commerce Categories
             if self.bc_ecommerce_categories:
                 payload["categories"] = self.bc_ecommerce_categories
-
             return payload
 
         def process(self, retries=3):
@@ -2283,7 +2277,7 @@ class Catalog:
             def create():
                 """Create new product in BigCommerce and Middleware."""
                 create_response = self.bc_post_product()
-                if create_response.status_code == 200:
+                if create_response.status_code in [200, 207]:
                     self.get_product_data_from_bc(bc_response=create_response)
                     if self.insert_product():
                         if self.insert_images():
@@ -2307,6 +2301,9 @@ class Catalog:
                     return create()
 
                 else:
+                    Catalog.logger.warn(
+                        f"Product {self.sku} failed to create in BigCommerce. Response: {create_response}"
+                    )
                     return False
 
             def update():
@@ -2475,7 +2472,8 @@ class Catalog:
                     message = f"POST Code: {bc_response.status_code}. Product: {self.sku} Binding ID: {self.binding_id} Success"
                 else:
                     message = f"POST Code: {bc_response.status_code}. POST Product: {self.sku} Success"
-                Catalog.logger.success(message)
+                # Catalog.logger.success(message)
+                pass
 
             else:
                 Catalog.error_handler.add_error_v(
@@ -2541,9 +2539,9 @@ class Catalog:
                 option_data = bc_response.json()["data"]["option_values"]
                 variant.option_id = option_data[0]["option_id"]
                 variant.option_value_id = option_data[0]["id"]
-                Catalog.logger.success(
-                    f"Variant: {variant.sku} Posted to BigCommerce. Variant ID: {variant.variant_id}"
-                )
+                # Catalog.logger.success(
+                #     f"Variant: {variant.sku} Posted to BigCommerce. Variant ID: {variant.variant_id}"
+                # )
                 return True
 
             else:
@@ -2579,9 +2577,10 @@ class Catalog:
             )
 
             if bc_response.status_code == 200:
-                Catalog.logger.success(
-                    f"Image: {image.image_name} Posted to BigCommerce"
-                )
+                # Catalog.logger.success(
+                #     f"Image: {image.image_name} Posted to BigCommerce"
+                # )
+                pass
             else:
                 Catalog.error_handler.add_error_v(
                     error=f"POST Image: {image.image_name} to BigCommerce. Response Code: {bc_response.status_code}"
@@ -2609,12 +2608,13 @@ class Catalog:
             )
 
             if bc_response.status_code in [200, 201, 207]:
-                if self.is_bound:
-                    message = f"POST Code: {bc_response.status_code}. Product: {self.sku} Binding ID: {self.binding_id} Success"
-                else:
-                    message = f"POST Code: {bc_response.status_code}. POST Product: {self.sku} Success"
+                pass
+                # if self.is_bound:
+                #     message = f"POST Code: {bc_response.status_code}. Product: {self.sku} Binding ID: {self.binding_id} Success"
+                # else:
+                #     message = f"POST Code: {bc_response.status_code}. POST Product: {self.sku} Success"
 
-                Catalog.logger.success(message)
+                # Catalog.logger.success(message)
 
             else:
                 Catalog.error_handler.add_error_v(
@@ -3011,7 +3011,7 @@ class Catalog:
             insert_query = (
                 f"INSERT INTO {creds.bc_product_table} (ITEM_NO, BINDING_ID, IS_PARENT, "
                 f"PRODUCT_ID, VARIANT_ID, VARIANT_NAME, OPTION_ID, OPTION_VALUE_ID, CATEG_ID, CUSTOM_FIELDS) VALUES ('{variant.sku}', "
-                f"{f"'{self.binding_id}'" if self.binding_id != '' else 'NULL'}, "
+                f"{f"'{self.binding_id}'" if self.binding_id else 'NULL'}, "
                 f"{1 if variant.is_parent else 0}, {self.product_id if self.product_id else "NULL"}, "
                 f"{variant.variant_id if variant.variant_id else "NULL"}, "
                 f"{f"'{variant.variant_name}'" if variant.variant_id else "NULL"}, "
@@ -3023,9 +3023,10 @@ class Catalog:
 
             insert_product_response = self.db.query_db(insert_query, commit=True)
             if insert_product_response["code"] == 200:
-                Catalog.logger.success(
-                    f"SKU: {variant.sku}, Binding ID: {variant.binding_id} - INSERT Variant {self.sku}: Success"
-                )
+                # Catalog.logger.success(
+                #     f"SKU: {variant.sku}, Binding ID: {variant.binding_id} - INSERT Variant {self.sku}: Success"
+                # )
+                pass
             else:
                 Catalog.error_handler.add_error_v(
                     error=f"INSERT{insert_product_response}",
@@ -3049,7 +3050,7 @@ class Catalog:
                 f"UPDATE {creds.bc_product_table} "
                 f"SET ITEM_NO = '{variant.sku}', "
                 f"BINDING_ID = "
-                f"{f"'{self.binding_id}'" if self.binding_id != '' else 'NULL'}, "
+                f"{f"'{self.binding_id}'" if self.binding_id else 'NULL'}, "
                 f"IS_PARENT = {1 if variant.is_parent else 0}, "
                 f"PRODUCT_ID = {self.product_id if self.product_id else 'NULL'}, "
                 f"VARIANT_ID = {variant.variant_id if variant.variant_id else 'NULL'}, "
@@ -3064,9 +3065,10 @@ class Catalog:
 
             update_product_response = self.db.query_db(update_query, commit=True)
             if update_product_response["code"] == 200:
-                Catalog.logger.success(
-                    f"SKU: {variant.sku}, Binding ID: {variant.binding_id} - UPDATE Variant {self.sku}: Success"
-                )
+                # Catalog.logger.success(
+                #     f"SKU: {variant.sku}, Binding ID: {variant.binding_id} - UPDATE Variant {self.sku}: Success"
+                # )
+                pass
             else:
                 Catalog.error_handler.add_error_v(
                     error=f"UPDATE{update_product_response}",
@@ -3140,14 +3142,15 @@ class Catalog:
             '{1 if image.is_thumbnail else 0}', '{image.image_number}',
             '{image.sort_order}',
             '{image.is_binding_image}',
-            {f"'{image.binding_id}'" if image.binding_id != '' else 'NULL'},
+            {f"'{image.binding_id}'" if image.binding_id else 'NULL'},
             '{image.is_variant_image}',
             {f"'{image.description.replace("'", "''")}'" if image.description != '' else 'NULL'},
             {image.size})"""
 
             insert_img_response = self.db.query_db(img_insert, commit=True)
             if insert_img_response["code"] == 200:
-                Catalog.logger.success(f"SQL INSERT Image {image.image_name}: Success")
+                # Catalog.logger.success(f"SQL INSERT Image {image.image_name}: Success")
+                pass
             else:
                 Catalog.error_handler.add_error_v(
                     error=f"{insert_img_response}",
@@ -3169,7 +3172,7 @@ class Catalog:
                 IMAGE_NUMBER = '{image.image_number}',
                 SORT_ORDER = '{image.sort_order}',
                 IS_BINDING_IMAGE = '{image.is_binding_image}',
-                BINDING_ID = {f"'{image.binding_id}'" if image.binding_id != '' else 'NULL'},
+                BINDING_ID = {f"'{image.binding_id}'" if image.binding_id else 'NULL'},
                 IS_VARIANT_IMAGE = '{image.is_variant_image}',
                 DESCR = {f"'{image.description.replace("'", "''")}'" if
                             image.description != '' else 'NULL'},
@@ -3343,11 +3346,15 @@ class Catalog:
                 self.custom_color = product_data["custom_color"]
                 self.custom_size = product_data["custom_size"]
                 self.custom_field_ids = product_data["custom_field_ids"]
-                self.custom_url = product_data["custom_url"]
-                self.custom_url = "-".join(
-                    str(re.sub("[^A-Za-z0-9 ]+", "", self.custom_url)).split(" ")
-                )
-                self.is_custom_url = product_data["is_custom_url"]
+
+                # Custom URL
+                custom_url = product_data["custom_url"]
+                if custom_url:
+                    self.custom_url = "-".join(
+                        str(re.sub("[^A-Za-z0-9 ]+", "", custom_url)).split(" ")
+                    )
+                else:
+                    self.custom_url = None
 
                 # Product Images
                 self.images = []
@@ -3414,7 +3421,7 @@ class Catalog:
 
                 BC_PROD.ID as 'db_id(50)', BC_PROD.CUSTOM_FIELDS as 'custom_field_ids(51)', ITEM.LONG_DESCR as 'long_descr(52)',
                 BC_PROD.BINDING_ID as 'mw_binding_id(53)', ITEM.USR_IS_PREORDER as 'is_preorder(54)', 
-                ITEM.USR_PREORDER_REL_DT as 'preorder_release_date(55)' 
+                ITEM.USR_PREORDER_REL_DT as 'preorder_release_date(55)', ITEM.USR_PROF_ALPHA_18 as 'CUSTOM_URL(56)'
 
                 FROM IM_ITEM ITEM
                 LEFT OUTER JOIN IM_PRC PRC ON ITEM.ITEM_NO=PRC.ITEM_NO
@@ -3486,12 +3493,11 @@ class Catalog:
                         "cp_ecommerce_categories": str(item[0][49]).split(",")
                         if item[0][49]
                         else [],
-                        "custom_url": "",
-                        "is_custom_url": False,
+                        "custom_url": item[0][56],
                         "custom_field_ids": item[0][51],
                         "long_descr": item[0][52],
                         "mw_binding_id": item[0][53],
-                        "is_preorder": item[0][54],
+                        "is_preorder": True if item[0][54] == "Y" else False,
                         "preorder_release_date": convert_to_utc(item[0][55])
                         if item[0][55]
                         else None,
