@@ -149,9 +149,39 @@ class Catalog:
             # self.sync_queue = [{"sku": "10344", "binding_id": "B0001"}]
 
     def process_product_deletes(self):
+        # This compares the CP and MW product lists and deletes any products that are not in both lists.
         delete_targets = Catalog.get_deletion_target(
             middleware_list=self.mw_items, counterpoint_list=self.cp_items
         )
+
+        for item in self.sync_queue:
+            # Also get incoming single products that are formerly bound variants.
+            mw_binding_id = self.get_binding_id_from_sku(item["sku"], middleware=True)
+            print(f"MW Binding ID: {mw_binding_id}")
+            if "binding_id" not in item:
+                print(f"No binding ID in Item: {item}")
+                # Check if the target product has a binding ID in the middleware database.
+                if mw_binding_id:
+                    print(f"MW Binding ID: {mw_binding_id}")
+                    delete_targets.append(item["sku"])
+                    print(f"Delete Targets: {delete_targets}")
+            else:
+                print(f"Binding ID in Item: {item['binding_id']}")
+                # Get all family members of the binding ID
+                if mw_binding_id:
+                    family_members = Catalog.get_family_members(
+                        binding_id=item["binding_id"], counterpoint=True
+                    )
+                    print(f"Family Members: {family_members}")
+                    for member in family_members:
+                        print(f"Family Member: {member}")
+                        member_mw_binding_id = self.get_binding_id_from_sku(
+                            member, middleware=True
+                        )
+                        if member_mw_binding_id != item["binding_id"]:
+                            print(f"Binding ID Mismatch: {member}")
+                            print(f"Delete Targets: {delete_targets}")
+                            delete_targets.append(member)
 
         if delete_targets:
             Catalog.logger.info(f"Product Delete Targets: {delete_targets}")
@@ -161,21 +191,24 @@ class Catalog:
                 if response is not None:
                     binding_id = response[0][0]
                 else:
+                    binding_id = None
                     self.logger.warn(
                         f"Binding ID not found for {x}. Response: {response}"
                     )
+                delete_payload = {"sku": x}
 
-                if variant_id:
-                    product = Catalog.Product(
-                        product_data={"sku": {x}, "binding_id": binding_id},
-                        last_sync=self.last_sync,
-                    )
+                if binding_id:
+                    delete_payload["binding_id"] = binding_id
 
+                product = Catalog.Product(
+                    product_data=delete_payload,
+                    last_sync=self.last_sync,
+                )
+
+                if binding_id:
+                    product.delete_variant(sku=x, binding_id=binding_id)
                 else:
-                    if binding_id:
-                        product.delete_product(x, bind_id=binding_id)
-                    else:
-                        product.delete_product(x)
+                    product.delete_product(sku=x)
 
     def process_images(self):
         """Assesses Image folder. Deletes images from MW and BC. Updates LST_MAINT_DT in CP if new images have been added."""
@@ -347,7 +380,7 @@ class Catalog:
     def sync(self):
         # Process Product Deletions and Images
         self.process_product_deletes()
-        self.process_images()
+        # self.process_images()
         # Sync Category Tree
         self.category_tree.sync()
         # Sync Product Brands
@@ -363,8 +396,8 @@ class Catalog:
             Catalog.logger.info(f"Syncing {queue_length} products.")
 
             while len(self.sync_queue) > 0:
-                target = self.sync_queue.pop()
                 start_time = time.time()
+                target = self.sync_queue.pop()
                 prod = self.Product(target, last_sync=self.last_sync)
                 prod.get_product_details(last_sync=self.last_sync)
 
@@ -399,7 +432,7 @@ class Catalog:
             )
 
     @staticmethod
-    def get_family_members(binding_id, count=False, price=False):
+    def get_family_members(binding_id, count=False, price=False, counterpoint=False):
         db = Database.db
         """Get all items associated with a binding_id. If count is True, return the count."""
         if count:
@@ -421,6 +454,17 @@ class Catalog:
                 response = db.query_db(query)
                 if response is not None:
                     return [{"sku": x[0], "price_1": float(x[1])} for x in response]
+
+            elif counterpoint:
+                query = f"""
+                SELECT ITEM_NO
+                FROM IM_ITEM
+                WHERE {creds.cp_field_binding_id} = '{binding_id}'
+                """
+                response = db.query_db(query)
+                if response is not None:
+                    return [x[0] for x in response]
+
             else:
                 query = f"""
                 SELECT ITEM_NO
@@ -429,17 +473,22 @@ class Catalog:
                 """
                 response = db.query_db(query)
                 if response is not None:
-                    return response[0][0]
+                    return [x[0] for x in response]
 
-    @staticmethod
-    def get_binding_id_from_sku(sku):
-        db = query_engine.QueryEngine()
-        query = f"""
-        SELECT {creds.cp_field_binding_id}
-        FROM IM_ITEM
-        WHERE ITEM_NO = '{sku}'
-        """
-        response = db.query_db(query)
+    def get_binding_id_from_sku(self, sku, middleware=False):
+        if middleware:
+            query = f"""
+            SELECT BINDING_ID
+            FROM {creds.bc_product_table}
+            WHERE ITEM_NO = '{sku}'
+            """
+        else:
+            query = f"""
+            SELECT {creds.cp_field_binding_id}
+            FROM IM_ITEM
+            WHERE ITEM_NO = '{sku}'
+            """
+        response = self.db.query_db(query)
         if response is not None:
             return response[0][0]
 
@@ -1359,7 +1408,7 @@ class Catalog:
             self.alt_text_2 = ""
             self.alt_text_3 = ""
             self.alt_text_4 = ""
-            self.custom_url = ""
+            self.custom_url = None
 
             # Custom Fields
             self.custom_botanical_name = ""
@@ -1437,6 +1486,9 @@ class Catalog:
                     for item in response:
                         variant = self.Variant(item[0], last_run_date=last_sync)
                         self.variants.append(variant)
+
+                # Sort self.variants by variant.is_parent so parent is processed first.
+                self.variants.sort(key=lambda x: x.is_parent, reverse=True)
 
                 # Set parent
                 self.parent = [item for item in self.variants if item.is_parent]
@@ -1878,166 +1930,234 @@ class Catalog:
             """Second stage validation for products queued for update. Will check for product additions
             and product transformations (bound to single and visa versa). mw_binding_id is the binding_id
             stored for an existing product and is what is checked against with the input data."""
-            # Check for product additions
+            # subqueue for bound products with no data in the middleware
+            no_data_subqueue = []
+            # subqueue for bound products with no binding ID in the middleware
+            no_bind_subqueue = []
+            # subqueue for bound products with a matching binding ID in the middleware
+            matching_bind_subqueue = []
+            # subqueue for bound products with a different binding ID in the middleware
+            different_bind_subqueue = []
+
             for variant in self.variants:
-                # Check to see if the variant has an identity in the middlware
-                if variant.db_id:
-                    # --------------------------
-                    # NO BINDING ID ON THE INPUT
-                    # --------------------------
-                    if variant.binding_id is None:
-                        # You are working with a single product.
-                        # Check if the variant is associated with a binding ID in the middleware.
-                        if variant.mw_binding_id is None:
-                            continue
-                        else:
-                            print(f"mw binding id: {variant.mw_binding_id}")
-                            # You have a previously bound product trying to turn into a single product.
-                            # Delete the variant and add back as a single product.
-                            Catalog.logger.warn(
-                                "Previously Bound Product is now a Single Product. Will delete and recreate"
-                            )
-                            self.delete_variant(
-                                sku=variant.sku, binding_id=variant.mw_binding_id
-                            )
-                            self.reset_variant_properties(variant)
-
-                            new_product = Catalog.Product(
-                                product_data={"sku": variant.sku},
-                                last_sync=self.last_sync,
-                            )
-                            new_product.get_product_details(last_sync=self.last_sync)
-                            if new_product.validate_inputs():
-                                time.sleep(5)
-                                new_product.process()
-                            # Remove this variant from the list to be updated.
-                            self.variants.remove(variant)
-
+                # --------------------------
+                # NO BINDING ID ON THE INPUT
+                # --------------------------
+                if variant.binding_id is None:
+                    # You are working with a single product.
+                    # Check if the variant is associated with a binding ID in the middleware.
+                    if variant.mw_binding_id is None:
+                        continue
                     else:
-                        # --------------------------
-                        # BINDING ID FOUND ON INPUT
-                        # --------------------------
-                        if variant.mw_binding_id is None:
-                            # You've found a Single Product that is changing to a variant and/or Bound Product.
-                            Catalog.logger.warn(
-                                "Single Product that is changing to a variant and/or Bound Product. Will delete and recreate."
-                            )
-                            # Step 1: Delete Product
-                            self.delete_product(variant.sku)
-                            self.reset_variant_properties(variant)
+                        print(f"mw binding id: {variant.mw_binding_id}")
+                        # You have a previously bound product trying to turn into a single product.
+                        # Delete the variant and add back as a single product.
+                        Catalog.logger.warn(
+                            "Previously Bound Product is now a Single Product. Will delete and recreate"
+                        )
+                        self.delete_variant(
+                            sku=variant.sku, binding_id=variant.mw_binding_id
+                        )
 
-                            # Step 2: Check to see if other items are associated with the incoming binding ID.
-                            # If they are, you are going to add this product as a new variant. If not, add this
-                            # product as a new product.
-                            family_count = Catalog.get_family_members(
-                                binding_id=variant.binding_id, count=True
-                            )
+                        self.reset_variant_properties(variant)
 
-                            if family_count > 0:
-                                Catalog.logger.info(
-                                    f"Adding {variant.sku} as a variant to {variant.binding_id}"
-                                )
-                                # Add as variant to an existing product
+                        new_product = Catalog.Product(
+                            product_data={"sku": variant.sku},
+                            last_sync=self.last_sync,
+                        )
+                        new_product.get_product_details(last_sync=self.last_sync)
+                        if new_product.validate_inputs():
+                            new_product.process()
+                        # Remove this variant from the list to be updated.
+                        self.variants.remove(variant)
 
-                                # Post the variant to BigCommerce and write to middleware
-                                if not self.bc_post_variant(variant):
-                                    return False
-
-                            else:
-                                Catalog.logger.warn(
-                                    f"Adding {variant.sku} as a new product with binding_id {variant.binding_id}"
-                                )
-                                new_product = Catalog.Product(
-                                    product_data={
-                                        "sku": variant.sku,
-                                        "binding_id": variant.binding_id,
-                                    },
-                                    last_sync=self.last_sync,
-                                )
-                                new_product.get_product_details(
-                                    last_sync=self.last_sync
-                                )
-
-                                if new_product.validate_inputs():
-                                    new_product.process()
-                                # Remove this variant from the list to be updated.
-                                Catalog.logger.info("Removing Variant from Update List")
-                                self.variants.remove(variant)
-
-                        else:
-                            # This variant is in the database and has a binding_id in BigCommerce.
-                            # Check to see if the binding id is the same as the input data on this sync.
-                            # If not, this variant belongs to another product and will need to be removed
-                            # and reconstituted into the new product family.
-                            if variant.binding_id != variant.mw_binding_id:
-                                # The binding ID is different from the middleware binding ID.
-                                # This variant is part of another product family.
-                                Catalog.logger.warn(
-                                    "Binding ID Mismatch. Variant Moving to Another Family"
-                                )
-
-                                # Delete the variant from the database and BigCommerce. If it is a product,
-                                # delete the product from the database and BigCommerce.
-                                self.delete_variant(
-                                    variant.sku, binding_id=variant.mw_binding_id
-                                )
-                                self.reset_variant_properties(variant)
-
-                                # Check if the input binding ID is associated with other products.
-                                # if it is, add this product as a variant. If not, add as a new product.
-                                family_count = Catalog.get_family_members(
-                                    binding_id=variant.binding_id, count=True
-                                )
-                                if family_count > 0:
-                                    Catalog.logger.warn(
-                                        f"Adding {variant.sku} as a variant. Family Count: {family_count}"
-                                    )
-                                    # If this returns true, proceed with analyzing other variants. It should not have the
-                                    # variant id and option id values.
-                                    post_variant_success = self.bc_post_variant(variant)
-                                    if not post_variant_success:
-                                        return False
-                                else:
-                                    Catalog.logger.warn(
-                                        f"Adding {variant.sku} as a new product. Family Count: {family_count}"
-                                    )
-
-                                    new_product = Catalog.Product(
-                                        product_data={
-                                            "sku": variant.sku,
-                                            "binding_id": variant.binding_id,
-                                        },
-                                        last_sync=self.last_sync,
-                                    )
-                                    new_product.get_product_details(
-                                        last_sync=self.last_sync
-                                    )
-                                    if new_product.validate_inputs():
-                                        new_product.process()
-                                    # Remove this variant from the list to be updated.
-                                    Catalog.logger.info(
-                                        "Removing Variant from Update List"
-                                    )
-                                    self.variants.remove(variant)
-                            else:
-                                # This variant is in the database. The binding ID is a match with the input data.
-                                continue
                 else:
-                    Catalog.logger.warn("No DB ID, will post variant")
-                    # If the variant does not have a db_id, then it is a new product
-                    # post the variant to BigCommerce and write to middleware
+                    # --------------------------
+                    # BINDING ID FOUND ON INPUT
+                    # --------------------------
+
+                    if not variant.db_id:
+                        # You've found a new product that is not in the middleware. It will be added as a new product
+                        # or variant.
+                        no_data_subqueue.append(variant)
+                    else:
+                        if variant.mw_binding_id is None:
+                            no_bind_subqueue.append(variant)
+                        elif variant.mw_binding_id == variant.binding_id:
+                            matching_bind_subqueue.append(variant)
+                        else:
+                            different_bind_subqueue.append(variant)
+
+                        # # You've found a Single Product that is changing to a variant and/or Bound Product.
+                        # Catalog.logger.warn(
+                        #     "Single Product that is changing to a variant and/or Bound Product. Will delete and recreate."
+                        # )
+
+                        # # Make subqueue for this product. This queue is for products that have no binding ID
+                        # # in the middleware. These products will be processed independently.
+                        # no_bind_subqueue = []
+                        # for child in self.variants:
+                        #     if child.mw_binding_id is None:
+                        #         no_bind_subqueue.append(child)
+                        #         # Remove this variant from the input list to be updated.
+                        #         self.variants.remove(child)
+
+                        # print(f"Binding ID Subqueue: {[x.sku for x in self.variants]}")
+                        # print(
+                        #     f"No MW Binding ID Subqueue: {[x.sku for x in no_bind_subqueue]}"
+                        # )
+
+                        # for item in no_bind_subqueue:
+                        #     self.delete_variant(item.sku)
+                        #     self.reset_variant_properties(item)
+
+                        # # You've found a Single Product that is changing to a variant and/or Bound Product.
+
+                        # # Step 1: Delete
+
+            if no_data_subqueue:
+                print(f"No Data Subqueue: {[x.sku for x in no_data_subqueue]}")
+                count = Catalog.get_family_members(
+                    binding_id=variant.binding_id, count=True
+                )
+                if count > 0:
+                    print(f"Adding {variant.sku} as a variant to {variant.binding_id}")
+                    # Add as variant to an existing product
+                    # Post the variant to BigCommerce and write to middleware
                     if not self.bc_post_variant(variant):
                         return False
+                    self.variants.remove(variant)
+                else:
+                    print(
+                        f"Adding {variant.sku} as a new product with binding_id {variant.binding_id}"
+                    )
+                    new_product = Catalog.Product(
+                        {
+                            "sku": variant.sku,
+                            "binding_id": variant.binding_id,
+                        },
+                        last_sync=self.last_sync,
+                    )
+                    new_product.get_product_details(last_sync=self.last_sync)
+
+                    if new_product.validate_inputs():
+                        new_product.process()
+                    # Remove this variant from the list to be updated.
+                    Catalog.logger.info(
+                        "Removing No Data Subqueue Variants from Update List"
+                    )
+                    for item in no_data_subqueue:
+                        self.variants.remove(item)
+                    # Empy the no_bind_subqueue
+                    no_data_subqueue.clear()
+
+            if no_bind_subqueue:
+                print(f"No Bind Subqueue: {[x.sku for x in no_bind_subqueue]}")
+                # You've found a Single Product that is changing to a variant and/or Bound Product.
+                # Delete the product and add back as a new product.
+                for item in no_bind_subqueue:
+                    self.delete_variant(item.sku)
+                    self.reset_variant_properties(item)
+
+                for item in no_bind_subqueue:
+                    count = Catalog.get_family_members(
+                        binding_id=variant.binding_id, count=True
+                    )
+                    if count > 0:
+                        print(
+                            f"Adding {variant.sku} as a variant to {variant.binding_id}"
+                        )
+                        # Add as variant to an existing product
+                        # Post the variant to BigCommerce and write to middleware
+                        if not self.bc_post_variant(variant):
+                            return False
+                        self.variants.remove(variant)
+                    else:
+                        print(
+                            f"Adding {variant.sku} as a new product with binding_id {variant.binding_id}"
+                        )
+                        new_product = Catalog.Product(
+                            {
+                                "sku": variant.sku,
+                                "binding_id": variant.binding_id,
+                            },
+                            last_sync=self.last_sync,
+                        )
+                        new_product.get_product_details(last_sync=self.last_sync)
+
+                        if new_product.validate_inputs():
+                            new_product.process()
+
+                        # Remove this variant from the list to be updated.
+                        Catalog.logger.info("Removing No Bind Items from Update List")
+                        for item in no_bind_subqueue:
+                            self.variants.remove(item)
+
+                        # Empy the no_bind_subqueue
+                        no_bind_subqueue.clear()
+
+            if matching_bind_subqueue:
+                print(
+                    f"Matching Bind Subqueue: {[x.sku for x in matching_bind_subqueue]}"
+                )
+
+            if different_bind_subqueue:
+                print(
+                    f"Different Bind Subqueue: {[x.sku for x in different_bind_subqueue]}"
+                )
+                # for item in different_bind_subqueue:
+                #     self.delete_variant(item.sku, item.mw_binding_id)
+                #     self.reset_variant_properties(item)
+
+                for item in different_bind_subqueue:
+                    count = Catalog.get_family_members(
+                        binding_id=variant.binding_id, count=True
+                    )
+                    if count > 0:
+                        print(
+                            f"Adding {variant.sku} as a variant to {variant.binding_id}"
+                        )
+                        # Add as variant to an existing product
+                        # Post the variant to BigCommerce and write to middleware
+                        if not self.bc_post_variant(variant):
+                            return False
+
+                        self.variants.remove(variant)
+                    else:
+                        print(
+                            f"Adding {variant.sku} as a new product with binding_id {variant.binding_id}"
+                        )
+                        new_product = Catalog.Product(
+                            {
+                                "sku": variant.sku,
+                                "binding_id": variant.binding_id,
+                            },
+                            last_sync=self.last_sync,
+                        )
+                        new_product.get_product_details(last_sync=self.last_sync)
+
+                        if new_product.validate_inputs():
+                            new_product.process()
+
+                        # Remove this variant from the list to be updated.
+                        Catalog.logger.info(
+                            "Removing Different Bind Variants from Update List"
+                        )
+                        for item in different_bind_subqueue:
+                            self.variants.remove(item)
+
+                        # Empy the different_bind_subqueue
+                        different_bind_subqueue.clear()
 
             if len(self.variants) == 0:
                 Catalog.logger.warn("No Variants to Process")
                 return True
+            else:
+                Catalog.logger.success(
+                    f"Output Validation Passed. Ready to Process Variants: {[x.sku for x in self.variants]}"
+                )
 
-            # Catalog.logger.success(
-            #     f"Output Validation Passed. Ready to Process Variants: {[x.sku for x in self.variants]}"
-            # )
-
-            return True
+                return True
 
         def construct_product_payload(self):
             """Build the payload for creating a product in BigCommerce.
@@ -2189,14 +2309,6 @@ class Catalog:
 
                 return result
 
-            def get_availability():
-                if self.in_store_only:
-                    return "disabled"
-                elif self.is_preorder:
-                    return "preorder"
-                else:
-                    return "available"
-
             payload = {
                 "name": self.web_title,
                 "type": "physical",
@@ -2259,10 +2371,21 @@ class Catalog:
                 payload["images"] = construct_image_payload()
 
             # Add custom URL
-            if self.custom_url != "":
+
+            if self.custom_url:
                 payload["custom_url"] = {
                     "url": f"/{self.custom_url}/",
-                    "is_customized": True if self.custom_url else False,
+                    "is_customized": True,
+                    "create_redirect": True,
+                }
+            else:
+                fall_back_url = "-".join(
+                    str(re.sub("[^A-Za-z0-9 ]+", "", self.web_title)).split(" ")
+                ).lower()
+
+                payload["custom_url"] = {
+                    "url": f"/{fall_back_url}/",
+                    "is_customized": False,
                     "create_redirect": True,
                 }
 
@@ -2279,7 +2402,9 @@ class Catalog:
                 create_response = self.bc_post_product()
                 if create_response.status_code in [200, 207]:
                     self.get_product_data_from_bc(bc_response=create_response)
+                    print("INSERTING PRODUCT")
                     if self.insert_product():
+                        print("INSERTING IMAGES")
                         if self.insert_images():
                             return True
                         else:
@@ -2292,7 +2417,7 @@ class Catalog:
                     if self.is_bound:
                         message = f"Deleting Bound Product, self.sku: {self.sku}, self.binding_id: {self.binding_id}"
                         Catalog.logger.info(message)
-                        self.delete_product(sku=self.sku, bind_id=self.binding_id)
+                        self.delete_product(sku=self.sku, binding_id=self.binding_id)
                     else:
                         message = f"Deleting Single Product, self.sku: {self.sku}"
                         Catalog.logger.info(message)
@@ -2335,7 +2460,7 @@ class Catalog:
                     if self.is_bound:
                         message = f"Deleting Bound Product, self.sku: {self.sku}, self.binding_id: {self.binding_id}"
                         Catalog.logger.info(message)
-                        self.delete_product(sku=self.sku, bind_id=self.binding_id)
+                        self.delete_product(sku=self.sku, binding_id=self.binding_id)
                     else:
                         message = f"Deleting Single Product, self.sku: {self.sku}"
                         Catalog.logger.info(message)
@@ -2472,8 +2597,7 @@ class Catalog:
                     message = f"POST Code: {bc_response.status_code}. Product: {self.sku} Binding ID: {self.binding_id} Success"
                 else:
                     message = f"POST Code: {bc_response.status_code}. POST Product: {self.sku} Success"
-                # Catalog.logger.success(message)
-                pass
+                Catalog.logger.success(message)
 
             else:
                 Catalog.error_handler.add_error_v(
@@ -2489,14 +2613,17 @@ class Catalog:
 
             return bc_response
 
-        def bc_post_variant(self, variant):
+        def bc_post_variant(self, variant, product_id=None):
             """Create variant in BigCommerce."""
-            option_id = self.bc_get_option_id()
+            if product_id is None:
+                product_id = self.product_id
 
-            variant_option_value_id = self.bc_create_product_variant_option_value(
+            variant.option_id = self.bc_get_option_id()
+
+            variant.option_value_id = self.bc_create_product_variant_option_value(
                 variant_name=variant.variant_name,
-                product_id=self.product_id,
-                option_id=option_id,
+                product_id=product_id,
+                option_id=variant.option_id,
             )
 
             variant_payload = {
@@ -2516,8 +2643,8 @@ class Catalog:
                 "sku": variant.sku,
                 "option_values": [
                     {
-                        "option_id": option_id,
-                        "id": variant_option_value_id,
+                        "option_id": variant.option_id,
+                        "id": variant.option_value_id,
                         "option_display_name": "Option",
                         "label": variant.variant_name,
                     }
@@ -2539,6 +2666,7 @@ class Catalog:
                 option_data = bc_response.json()["data"]["option_values"]
                 variant.option_id = option_data[0]["option_id"]
                 variant.option_value_id = option_data[0]["id"]
+                self.insert_variant(variant)
                 # Catalog.logger.success(
                 #     f"Variant: {variant.sku} Posted to BigCommerce. Variant ID: {variant.variant_id}"
                 # )
@@ -2760,13 +2888,14 @@ class Catalog:
                 f"https://api.bigcommerce.com/stores/{Catalog.store_hash}/v3/catalog/"
                 f"products/{product_id}/options/{option_id}/values"
             )
-
+            print(f"Option Value ID URL: {url}")
             value_payload = {
                 "is_default": False,
                 "label": variant_name,
                 "value_data": {},
                 "sort_order": 0,
             }
+            print(f"OPTION ID Value Payload: {value_payload}")
             response = requests.post(
                 url=url,
                 headers=Catalog.api_header,
@@ -2796,19 +2925,19 @@ class Catalog:
             variant.variant_id = None
             variant.option_value_id = None
 
-        def delete_product(self, sku, bind_id=None):
+        def delete_product(self, sku, binding_id=None):
             """Delete Product from BigCommerce and Middleware."""
 
             # CHECK THIS OUT.
             self.db_id = None
-            if bind_id:
-                product_id = self.get_product_id(binding_id=bind_id)
+            if binding_id:
+                product_id = self.get_product_id(binding_id=binding_id)
             else:
                 product_id = self.get_product_id(item_no=sku)
 
             if product_id is None:
-                if bind_id:
-                    delete_url = f"https://api.bigcommerce.com/stores/{Catalog.store_hash}/v3/catalog/products?sku={bind_id}"
+                if binding_id:
+                    delete_url = f"https://api.bigcommerce.com/stores/{Catalog.store_hash}/v3/catalog/products?sku={binding_id}"
                 else:
                     delete_url = f"https://api.bigcommerce.com/stores/{Catalog.store_hash}/v3/catalog/products?sku={sku}"
             else:
@@ -2828,9 +2957,9 @@ class Catalog:
                 #     product_id = self.get_product_id(item_no=sku)
 
                 if product_id is None:
-                    if bind_id:
-                        delete_query = f"""DELETE FROM {creds.bc_product_table} WHERE BINDING_ID = '{bind_id}' 
-                        DELETE FROM {creds.bc_image_table} WHERE BIND_ID = '{bind_id}'"""
+                    if binding_id:
+                        delete_query = f"""DELETE FROM {creds.bc_product_table} WHERE BINDING_ID = '{binding_id}' 
+                        DELETE FROM {creds.bc_image_table} WHERE BINDING_ID = '{binding_id}'"""
                     else:
                         delete_query = f"""DELETE FROM {creds.bc_product_table} WHERE ITEM_NO = '{sku}' 
                         DELETE FROM {creds.bc_image_table} WHERE ITEM_NO = '{sku}'"""
@@ -2852,7 +2981,10 @@ class Catalog:
 
             if self.is_last_variant(binding_id=binding_id):
                 print("Last Variant in Product. Will delete product.")
-                self.delete_product(sku=sku, bind_id=binding_id)
+                self.delete_product(sku=sku, binding_id=binding_id)
+            elif self.is_parent(sku):
+                print("Parent Product. Will delete product.")
+                self.delete_product(sku=sku, binding_id=binding_id)
             else:
                 self.db_id = None
                 # Get Variant Details Required for Deletion
@@ -3227,6 +3359,17 @@ class Catalog:
             #     if self.validate_product_inputs:
             #         self.process(retries)
 
+        def is_parent(self, sku):
+            """Check if this product is a parent product."""
+            query = f"""
+            SELECT IS_PARENT
+            FROM {creds.bc_product_table}
+            WHERE ITEM_NO = '{sku}'
+            """
+            response = self.db.query_db(query)
+            if response is not None:
+                return response[0][0] == 1
+
         def remove_parent(self):
             print("Entering Remove Parent Function of Product Class")
             """Remove parent status from all children"""
@@ -3560,17 +3703,21 @@ class Catalog:
             def construct_image_payload(self):
                 result = []
                 for image in self.images:
-                    result.append(
-                        {
-                            "is_thumbnail": image.is_thumbnail,
-                            "sort_order": image.sort_order,
-                            "description": image.alt_text_1,
-                            "image_url": f"{creds.public_web_dav_photos}/{image.image_name}",
-                            "id": 0,
-                            "product_id": self.product_id,
-                            "date_modified": image.modified_date,
-                        }
-                    )
+                    image_payload = {
+                        "is_thumbnail": image.is_thumbnail,
+                        "sort_order": image.sort_order,
+                        "description": image.alt_text_1,
+                        "image_url": f"{creds.public_web_dav_photos}/{image.image_name}",
+                        "date_modified": image.modified_date,
+                    }
+
+                    if self.product_id is not None:
+                        image_payload["product_id"] = self.product_id
+                    if image.image_id is not None:
+                        image_payload["id"] = image.image_id
+
+                    result.append(image_payload)
+
                 return result
 
             @staticmethod
@@ -3623,7 +3770,7 @@ class Catalog:
                 image_url="",
                 product_id=0,
                 variant_id=0,
-                image_id=0,
+                image_id=None,
                 is_thumbnail=False,
                 sort_order=0,
                 is_binding_image=False,
@@ -3652,8 +3799,6 @@ class Catalog:
                 self.size = size
                 self.last_maintained_dt = None
                 self.get_image_details()
-                # print(self)
-                # print("-----------------")
 
             def __str__(self):
                 result = ""
