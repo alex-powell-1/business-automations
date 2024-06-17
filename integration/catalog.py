@@ -99,8 +99,31 @@ class Catalog:
                         get_parent_response = self.db.query_db(query)
 
                         if get_parent_response is not None:
-                            # This will add the parent product to the queue
-                            parent_sku = get_parent_response[0][0]
+                            # Parent(s) found
+                            parent_list = [x[0] for x in get_parent_response]
+                            # If multiple parents are found, choose the lowest price parent.
+                            if len(parent_list) > 1:
+                                Catalog.logger.warn(
+                                    f"Multiple parents found for {binding_id}."
+                                )
+                                # Choose the lowest price parent.
+                                # Family Members
+                                family_members = Catalog.get_family_members(
+                                    binding_id=binding_id, price=True
+                                )
+                                print(family_members)
+                                parent_sku = min(
+                                    family_members, key=lambda x: x["price_1"]
+                                )["sku"]
+
+                                Catalog.logger.info(
+                                    f"Family Members: {family_members}, Target new parent item: {parent_sku}"
+                                )
+                                self.remove_parent(binding_id)
+                                self.set_parent(parent_sku=parent_sku)
+
+                            else:
+                                parent_sku = parent_list[0]
                         else:
                             # Missing Parent! Will choose the lowest price web enabled variant as the parent.
                             Catalog.logger.warn(
@@ -117,21 +140,8 @@ class Catalog:
                                 f"Family Members: {family_members}, Target new parent item: {parent_sku}"
                             )
 
-                            query = f"""
-                            UPDATE IM_ITEM
-                            SET IS_ADM_TKT = 'Y', LST_MAINT_DT = GETDATE()
-                            WHERE ITEM_NO = '{parent_sku}'
-                            """
-                            set_parent_response = self.db.query_db(query, commit=True)
+                            self.set_parent(parent_sku=parent_sku)
 
-                            if set_parent_response["code"] == 200:
-                                Catalog.logger.success(
-                                    f"Parent status set for {parent_sku}"
-                                )
-                            else:
-                                Catalog.error_handler.add_error_v(
-                                    error=f"Error setting parent status for {parent_sku}. Response {set_parent_response}"
-                                )
                         queue_payload = {"sku": parent_sku, "binding_id": binding_id}
                 else:
                     # This will add single products to the queue
@@ -146,7 +156,36 @@ class Catalog:
             [res.append(x) for x in result if x not in res]
 
             self.sync_queue = res
-            # self.sync_queue = [{"sku": "10344", "binding_id": "B0001"}]
+            # self.sync_queue = [
+            #     {"sku": "APTEST", "binding_id": "B0400"},
+            #     # {"sku": "APTEST-GRID2", "binding_id": "B0402"},
+            # ]
+
+    def set_parent(self, parent_sku):
+        query = f"""
+        UPDATE IM_ITEM
+        SET IS_ADM_TKT = 'Y'
+        WHERE ITEM_NO = '{parent_sku}'
+        """
+        set_parent_response = self.db.query_db(query, commit=True)
+
+        if set_parent_response["code"] == 200:
+            Catalog.logger.success(f"Parent status set for {parent_sku}")
+        else:
+            Catalog.error_handler.add_error_v(
+                error=f"Error setting parent status for {parent_sku}. Response {set_parent_response}"
+            )
+
+    def remove_parent(self, binding_id):
+        print("Entering Remove Parent Function of Product Class")
+        """Remove parent status from all children"""
+        query = f"""
+                UPDATE IM_ITEM 
+                SET IS_ADM_TKT = 'N', LST_MAINT_DT = GETDATE()
+                WHERE {creds.cp_field_binding_id} = '{binding_id}'
+                """
+        self.db.query_db(query, commit=True)
+        print(f"Parent status removed from all children of binding: {binding_id}.")
 
     def process_product_deletes(self):
         # This compares the CP and MW product lists and deletes any products that are not in both lists.
@@ -409,7 +448,7 @@ class Catalog:
     def sync(self):
         # Process Product Deletions and Images
         self.process_product_deletes()
-        self.process_images()
+        # self.process_images()
         # Sync Category Tree
         self.category_tree.sync()
         # Sync Product Brands
@@ -1612,6 +1651,10 @@ class Catalog:
                         self.images.append(variant_image)
                         variant_image_count += 1
 
+                print(f"Images for {self.binding_id}:")
+                for image in self.images:
+                    print(image.image_name, image.is_variant_image, image.is_thumbnail)
+
                 # Set the product last maintained date to the latest of the variants. This will be used in the validation process.
                 # If the product has been updated since the last sync, it will go through full validation. Otherwise, it will be skipped.
                 self.lst_maint_dt = max(lst_maint_dt_list)
@@ -1703,25 +1746,6 @@ class Catalog:
                 return self.get_product_details(last_sync=self.last_sync)
 
             if self.is_bound:
-                # Test for missing binding ID. Potentially add corrective action
-                # (i.e. generate binding ID or remove product
-                # and rebuild as a new single product)
-                if self.binding_id is None:
-                    message = f"Product {self.binding_id} has no binding ID. Validation failed."
-                    Catalog.error_handler.add_error_v(
-                        error=message, origin="Input Validation"
-                    )
-                    return False
-
-                # # Test for valid Binding ID Schema (ex. B0001)
-                # pattern = r"B\d{4}"
-                # if not bool(re.fullmatch(pattern, self.binding_id)):
-                #     message = f"Product {self.binding_id} has an invalid binding ID. Validation failed."
-                #     Catalog.error_handler.add_error_v(
-                #         error=message, origin="Input Validation"
-                #     )
-                #     return False
-
                 # Test for missing variant names
                 for child in self.variants:
                     if child.variant_name == "":
@@ -1740,109 +1764,84 @@ class Catalog:
                     )
                     return False
 
-                # Test for parent product problems
-                if self.validation_retries > 0:
-                    if len(self.parent) != 1:
-                        # Test for missing parent
-                        if len(self.parent) == 0:
-                            message = f"Product {self.binding_id} has no parent. Will reestablish parent."
-                            Catalog.logger.warn(message)
-                            set_parent()
-                            self.validation_retries -= 1
-                            if self.validation_retries > 1:
-                                return self.validate_inputs()
-                            else:
-                                message = f"Product {self.binding_id} has no parent. Validation failed."
-                                Catalog.error_handler.add_error_v(
-                                    error=message, origin="Input Validation"
-                                )
-                                return False
-
-                        # Test for multiple parents
-                        if len(self.parent) > 1:
-                            print(
-                                f"Product {self.binding_id} has multiple parents. Will reestablish parent."
-                            )
-                            self.remove_parent()
-                            set_parent()
-                            self.validation_retries -= 1
-                            if self.validation_retries > 1:
-                                return self.validate_inputs()
-                            else:
-                                message = f"Product {self.binding_id} has multiple parents. Validation failed."
-                                Catalog.error_handler.add_error_v(
-                                    error=message, origin="Input Validation"
-                                )
-                                return False
-
             # ALL PRODUCTS
             if check_web_title:
                 # Test for missing web title
                 if self.web_title is None or self.web_title == "":
-                    message = f"Product {self.binding_id} is missing a web title. Will set to long description."
-                    if self.is_bound:
-                        # Bound product: use binding key and parent variant
-                        query = f"""
-                        UPDATE IM_ITEM
-                        SET ADDL_DESCR_1 = '{self.web_title}'
-                        WHERE {creds.cp_field_binding_id} = '{self.binding_id}' and IS_ADM_TKT = 'Y'"""
-
-                    # Single Product use sku
+                    if self.long_descr is None or self.long_descr == "":
+                        message = f"Product {self.binding_id} is missing a web title and long description. Validation failed."
+                        Catalog.error_handler.add_error_v(
+                            error=message, origin="Input Validation"
+                        )
+                        return False
                     else:
-                        query = f"""
-                        UPDATE IM_ITEM
-                        SET ADDL_DESCR_1 = '{self.long_descr}'
-                        WHERE ITEM_NO = '{self.sku}'"""
+                        message = f"Product {self.binding_id} is missing a web title. Will set to long description."
+                        Catalog.logger.warn(message)
 
-                        self.db.query_db(query, commit=True)
-                        Catalog.logger.info(f"Web Title set to {self.web_title}")
-                        self.web_title = self.long_descr
+                        if self.is_bound:
+                            # Bound product: use binding key and parent variant
+                            query = f"""
+                            UPDATE IM_ITEM
+                            SET ADDL_DESCR_1 = '{self.long_descr}'
+                            WHERE {creds.cp_field_binding_id} = '{self.binding_id}' and IS_ADM_TKT = 'Y'"""
+
+                        # Single Product use sku
+                        else:
+                            query = f"""
+                            UPDATE IM_ITEM
+                            SET ADDL_DESCR_1 = '{self.long_descr}'
+                            WHERE ITEM_NO = '{self.sku}'"""
+
+                            self.db.query_db(query, commit=True)
+                            Catalog.logger.info(f"Web Title set to {self.web_title}")
+                            self.web_title = self.long_descr
 
                 # Test for dupicate web title
-                if self.is_bound:
-                    # For bound products, look for matching web titles OUTSIDE of the current binding id
-                    query = f"""
-                    SELECT COUNT(ITEM_NO)
-                    FROM IM_ITEM
-                    WHERE ADDL_DESCR_1 = '{self.web_title.replace("'", "''")}' AND {creds.cp_field_binding_id} != '{self.binding_id}' AND IS_ECOMM_ITEM = 'Y'"""
+                if self.web_title is not None:
+                    if self.is_bound:
+                        # For bound products, look for matching web titles OUTSIDE of the current binding id
+                        query = f"""
+                        SELECT COUNT(ITEM_NO)
+                        FROM IM_ITEM
+                        WHERE ADDL_DESCR_1 = '{self.web_title.replace("'", "''")}' AND {creds.cp_field_binding_id} != '{self.binding_id}' AND IS_ECOMM_ITEM = 'Y'"""
 
-                else:
-                    query = f"""
-                    SELECT COUNT(ITEM_NO)
-                    FROM IM_ITEM
-                    WHERE ADDL_DESCR_1 = '{self.web_title.replace("'", "''")}' AND IS_ECOMM_ITEM = 'Y'"""
+                    else:
+                        query = f"""
+                        SELECT COUNT(ITEM_NO)
+                        FROM IM_ITEM
+                        WHERE ADDL_DESCR_1 = '{self.web_title.replace("'", "''")}' AND IS_ECOMM_ITEM = 'Y'"""
 
-                response = self.db.query_db(query)
+                    response = self.db.query_db(query)
 
-                if response:
-                    if response[0][0] > 1:
-                        message = f"Product {self.binding_id} has a duplicate web title. Will Append Sku to Web Title."
-                        self.errors.append(message)
+                    if response:
+                        if response[0][0] > 1:
+                            message = f"Product {self.binding_id} has a duplicate web title. Will Append Sku to Web Title."
+                            self.errors.append(message)
 
-                        Catalog.logger.warn(message)
-                        if self.is_bound:
-                            new_web_title = f"{self.web_title} - {self.binding_id}"
-                        else:
-                            new_web_title = f"{self.web_title} - {self.sku}"
+                            Catalog.logger.warn(message)
+                            if self.is_bound:
+                                new_web_title = f"{self.web_title} - {self.binding_id}"
+                            else:
+                                new_web_title = f"{self.web_title} - {self.sku}"
 
-                        self.web_title = new_web_title
+                            self.web_title = new_web_title
 
-                        Catalog.logger.info(f"New Web Title: {self.web_title}")
-                        if self.is_bound:
-                            # Update Parent Variant
-                            query = f"""
-                            UPDATE IM_ITEM
-                            SET ADDL_DESCR_1 = '{self.web_title.replace("'", "''")}'
-                            WHERE {creds.cp_field_binding_id} = '{self.binding_id}' and IS_ADM_TKT = 'Y'
-                            
-                            """
-                        else:
-                            # Update Single Product
-                            query = f"""
-                            UPDATE IM_ITEM
-                            SET ADDL_DESCR_1 = '{self.web_title.replace("'", "''")}'
-                            WHERE ITEM_NO = '{self.sku}'"""
-                        self.db.query_db(query, commit=True)
+                            Catalog.logger.info(f"New Web Title: {self.web_title}")
+                            if self.is_bound:
+                                # Update Parent Variant
+                                query = f"""
+                                UPDATE IM_ITEM
+                                SET ADDL_DESCR_1 = '{self.web_title.replace("'", "''")}'
+                                WHERE {creds.cp_field_binding_id} = '{self.binding_id}' and IS_ADM_TKT = 'Y'
+                                
+                                """
+                            else:
+                                # Update Single Product
+                                query = f"""
+                                UPDATE IM_ITEM
+                                SET ADDL_DESCR_1 = '{self.web_title.replace("'", "''")}'
+                                WHERE ITEM_NO = '{self.sku}'"""
+                            self.db.query_db(query, commit=True)
 
             # Test for missing html description
             if check_html_description:
