@@ -98,7 +98,7 @@ class DocumentAPI(CounterPointAPI):
     def __init__(self, session: requests.Session = requests.Session()):
         super().__init__(session=session)
 
-        self.base_url = f"{self.base_url}/Document"
+        self.base_url = f"{self.base_url}Document"
 
     def get_document(self, doc_id):
         url = f"{self.base_url}/{doc_id}"
@@ -161,11 +161,11 @@ class DocumentAPI(CounterPointAPI):
         self.create_document("PS_DOC_HDR", ps_doc_hdr_props)
 
     def post_document(self, payload: dict):
-        # url = self.base_url
+        url = self.base_url
 
-        # response = self.post(url, payload=payload)
+        response = self.post(url, payload=payload)
 
-        # return response
+        return response
 
         doc_id = 8600000015099
         tkt_no = 9988
@@ -244,6 +244,9 @@ class OrderAPI(DocumentAPI):
         super().__init__(session=session)
         self.discount_seq_no = 1
         self.total_discount_amount = 0
+        self.total_gfc_amount = 0
+        self.total_hdr_disc = 0
+        self.total_lin_disc = 0
 
     def get_line_items_from_bc_products(self, products: list):
         line_items = []
@@ -261,7 +264,7 @@ class OrderAPI(DocumentAPI):
                     - total_discount
                 )
                 line_item = {
-                    "LIN_TYP": "S",
+                    "LIN_TYP": "O",
                     "ITEM_NO": product["sku"],
                     "QTY_SOLD": float(product["quantity"]),
                     "PRC": ext_prc / float(product["quantity"]),
@@ -288,6 +291,7 @@ class OrderAPI(DocumentAPI):
                 }
 
                 gift_cards.append(gift_card)
+                self.total_gfc_amount += float(product["base_price"])
 
         return gift_cards
 
@@ -329,6 +333,18 @@ class OrderAPI(DocumentAPI):
 
         return payments
 
+    def post_payment(self, doc_id, bc_order: dict):
+        url = f"{self.base_url}/{doc_id}/Payments"
+
+        payload = {"PS_DOC_PMT": self.get_payment_from_bc_order(bc_order)}
+
+        print(url)
+        print(payload)
+
+        response = self.post(url, payload=payload)
+
+        return response
+
     def get_is_shipping(self, bc_order: dict):
         return float(bc_order["base_shipping_cost"]) > 0
 
@@ -353,6 +369,11 @@ class OrderAPI(DocumentAPI):
         disc_id = "100000000000331" if lin_seq_no else "100000000000330"
         disc_pct = 0
         disc_amt_shipped = 0
+
+        if apply_to == "H":
+            self.total_hdr_disc += disc_amt
+        else:
+            self.total_lin_disc += disc_amt
 
         query = f"""
         INSERT INTO PS_DOC_DISC
@@ -462,7 +483,11 @@ class OrderAPI(DocumentAPI):
         """
 
         response = Database.db.query_db(query)
-        points_used = math.floor(float(response[0][0] or 0))
+        points_used = 0
+        try:
+            points_used = math.floor(float(response[0][0] or 0))
+        except:
+            pass
 
         return points_used
 
@@ -493,7 +518,7 @@ class OrderAPI(DocumentAPI):
                 "DRW_ID": "1",
                 "CUST_NO": cust_no,
                 "TKT_TYP": "T",
-                "DOC_TYP": "T",
+                "DOC_TYP": "O",
                 "USR_ID": "POS",
                 "TAX_COD": "EXEMPT",
                 "NORM_TAX_COD": "EXEMPT",
@@ -525,14 +550,12 @@ class OrderAPI(DocumentAPI):
                 }
             ]
 
-        payload["PS_DOC_HDR"]["PS_DOC_HDR_TOT"] = [
-            {
-                "TOT_LIN_DISC": self.get_total_lin_disc(
-                    payload["PS_DOC_HDR"]["PS_DOC_LIN"]
-                ),
-                "TOT_HDR_DISC": 10,
-            }
-        ]
+        self.sub_tot = sum(
+            [
+                float(line_item["EXT_PRC"])
+                for line_item in payload["PS_DOC_HDR"]["PS_DOC_LIN"]
+            ]
+        )
 
         return payload
 
@@ -542,24 +565,75 @@ class OrderAPI(DocumentAPI):
         cust_no = payload["PS_DOC_HDR"]["CUST_NO"]
 
         response = self.post_document(payload)
-        try:
-            doc_id = response.json()["Documents"][0]["DOC_ID"]
+        # try:
+        doc_id = response.json()["Documents"][0]["DOC_ID"]
 
-            self.write_loyalty(doc_id, cust_no, payload["PS_DOC_HDR"]["PS_DOC_LIN"])
-            self.write_doc_discounts(doc_id, bc_order)
-            self.write_doc_disc(doc_id, payload["PS_DOC_HDR"]["PS_DOC_LIN"])
+        self.write_loyalty(doc_id, cust_no, payload["PS_DOC_HDR"]["PS_DOC_LIN"])
+        self.write_doc_discounts(doc_id, bc_order)
+        self.write_doc_disc(doc_id, payload["PS_DOC_HDR"]["PS_DOC_LIN"])
 
-            self.logger.success(f"Order {doc_id} created")
-        except:
-            self.error_handler.add_error_v(
-                "Order could not be created", origin="cp_api.py::post_order()"
-            )
-            if response.content is not None:
-                self.error_handler.add_error_v(
-                    response.content, origin="cp_api.py::post_order()"
-                )
+        self.more_writes(doc_id, payload, bc_order)
+
+        self.logger.success(f"Order {doc_id} created")
+        # except Exception as e:
+        # self.error_handler.add_error_v(
+        #     "Order could not be created", origin="cp_api.py::post_order()"
+        # )
+        # if response.content is not None:
+        #     self.error_handler.add_error_v(
+        #         response.content, origin="cp_api.py::post_order()"
+        #     )
+
+        # print(e)
 
         return response
+
+    def more_writes(self, doc_id, payload, bc_order):
+        tot_tndr = float(bc_order["total_inc_tax"] or 0)
+
+        query = f"""
+        DELETE FROM PS_DOC_HDR_TOT
+        WHERE DOC_ID = '{doc_id}'
+        """
+
+        response = Database.db.query_db(query, commit=True)
+
+        print(response)
+
+        sub_tot = float(bc_order["subtotal_ex_tax"] or 0)
+        document_discount = float(self.total_discount_amount or 0)
+        gfc_amount = float(self.total_gfc_amount or 0)
+        shipping_amt = float(bc_order["base_shipping_cost"] or 0)
+
+        tot = sub_tot - document_discount - gfc_amount + shipping_amt
+
+        query = f"""
+        INSERT INTO PS_DOC_HDR_TOT
+        (DOC_ID, TOT_TYP, INITIAL_MIN_DUE, HAS_TAX_OVRD, TAX_AMT_SHIPPED, LINS, TOT_GFC_AMT, TOT_SVC_AMT, SUB_TOT, TAX_OVRD_LINS, TOT_EXT_COST, TOT_MISC, TAX_AMT, NORM_TAX_AMT, TOT_TND, TOT_CHNG, TOT_WEIGHT, TOT_CUBE, TOT, AMT_DUE, TOT_HDR_DISC, TOT_LIN_DISC, TOT_HDR_DISCNTBL_AMT, TOT_TIP_AMT)
+        VALUES
+        ('{doc_id}', 'S', 0, '!', 0, {len(payload["PS_DOC_HDR"]["PS_DOC_LIN"])}, {gfc_amount}, 0, {sub_tot}, 0, 0, {shipping_amt}, 0, 0, {tot_tndr}, 0, 0, 0, {tot}, 0, {self.total_hdr_disc}, {self.total_lin_disc}, {tot_tndr}, 0)
+        """
+
+        response = Database.db.query_db(query, commit=True)
+
+        query = f"""
+        UPDATE PS_DOC_LIN
+        SET LIN_TYP = 'S'
+        WHERE DOC_ID = '{doc_id}'
+        """
+
+        response = Database.db.query_db(query, commit=True)
+
+        query = f"""
+        UPDATE PS_DOC_PMT_APPLY
+        SET APPL_TYP = 'S'
+        WHERE DOC_ID = '{doc_id}'
+        """
+
+        response = Database.db.query_db(query, commit=True)
+
+        print(query)
+        print(response)
 
 
 class JsonTools:
