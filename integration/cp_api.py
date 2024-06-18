@@ -14,7 +14,6 @@ import uuid
 def generate_guid():
     return str(uuid.uuid4())
 
-
 class CounterPointAPI:
     def __init__(self, session: requests.Session = requests.Session()):
         self.base_url = creds.cp_api_server
@@ -46,53 +45,6 @@ class CounterPointAPI:
         )
 
         return response
-
-
-DOC_PRESETS = {
-    "PS_DOC_HDR": [
-        ("BO_LINS", 0),
-        ("SO_LINS", 0),
-        ("RET_LINS", 0),
-        ("RET_LIN_TOT", 0),
-        ("SLS_REP", "POS"),
-        ("STK_LOC_ID", 1),
-        ("PRC_LOC_ID", 1),
-        ("SVC_LINS", 0),
-        ("BILL_TO_CONTACT_ID", 1),
-        ("SHIP_TO_CONTACT_ID", 2),
-        ("REQ_REPRICE", "N"),
-        ("RS_UTC_DT", ["GETDATE()"]),
-        ("IS_DOC_COMMITTED", "N"),
-        ("FOOD_STMP_AMT", 0),
-        ("FOOD_STMP_LINS", 0),
-        ("FOOD_STMP_TAX_AMT", 0),
-        ("TKT_DT", ["GETDATE()"]),
-        ("IS_REL_TKT", "N"),
-        ("FOOD_STMP_NORM_TAX_AMT", 0),
-        ("HAS_ENTD_LINS", "N"),
-        ("HAS_PCKD_LINS", "N"),
-        ("HAS_PCKVRFD_LINS", "N"),
-        ("HAS_INVCD_LINS", "N"),
-        ("HAS_RLSD_LINS", "N"),
-        ("TO_LEAVE_LINS", 0),
-        ("LST_MAINT_DT", ["GETDATE()"]),
-        ("LST_MAINT_USR_ID", "POS"),
-        ("IS_OFFLINE", 0),
-        ("RS_STAT", 1),
-        ("DS_LINS", 0),
-    ],
-}
-
-
-# {
-#     "LIN_TYP": "S",
-#     "ITEM_NO": product["sku"],
-#     "QTY_SOLD": float(product["quantity"]),
-#     "PRC": ext_prc / float(product["quantity"]),
-#     "EXT_PRC": ext_prc,
-#     "DSC_AMT": total_discount,
-# }
-
 
 class DocumentAPI(CounterPointAPI):
     def __init__(self, session: requests.Session = requests.Session()):
@@ -515,6 +467,11 @@ class OrderAPI(DocumentAPI):
 
         bc_order = OrderAPI.get_order(order_id)
 
+        if bc_order["payment_status"] in ["declined", ""]:
+            oapi.error_handler.add_error_v("Order payment declined")
+            oapi.error_handler.add_error_v(f"Order status: '{bc_order["payment_status"]}'")
+            return
+
         cust_no = OrderAPI.get_cust_no(bc_order)
         if cust_no is None or cust_no == "" or not oapi.has_cust(cust_no):
             oapi.error_handler.add_error_v("Valid customer number is required")
@@ -908,59 +865,60 @@ class OrderAPI(DocumentAPI):
             self.error_handler.add_error_v(response["message"])
 
     @staticmethod
-    def get_cust_no(bc_order: dict):
-        def get_customer_from_info(user_info):
-            columns = "CUST_NO"
+    def get_customer_from_info(user_info):
+        columns = "CUST_NO"
 
-            queries = [
-                f"""
-                SELECT {columns} FROM {creds.ar_cust_table} WHERE
-                NAM like '{user_info['name']}'
-                """
-            ]
+        queries = [
+            f"""
+            SELECT {columns} FROM {creds.ar_cust_table} WHERE
+            NAM like '{user_info['name']}'
+            """
+        ]
 
-            if user_info["email"].endswith("@store.com"):
-                cust_no = user_info["email"].split("@")[0]
-
-                query = f"""
-                SELECT {columns} FROM {creds.ar_cust_table} WHERE
-                CUST_NO like '{cust_no}'
-                """
-
-                queries.append(query)
-            else:
-                query = f"""
-                SELECT {columns} FROM {creds.ar_cust_table} WHERE
-                EMAIL_ADRS_1 like '{user_info['email']}'
-                """
-
-                queries.append(query)
+        if user_info["email"].endswith("@store.com"):
+            cust_no = user_info["email"].split("@")[0]
 
             query = f"""
             SELECT {columns} FROM {creds.ar_cust_table} WHERE
-            CUST_NO like '{user_info['name']}'
+            CUST_NO like '{cust_no}'
+            """
+
+            queries.append(query)
+        else:
+            query = f"""
+            SELECT {columns} FROM {creds.ar_cust_table} WHERE
+            EMAIL_ADRS_1 like '{user_info['email']}'
             """
 
             queries.append(query)
 
-            for query in queries:
-                response = Database.db.query_db(query)
-                if response is not None:
-                    if len(response) > 1:
-                        print(
-                            f"Multiple customers found for {user_info['name']} {user_info['email']}"
-                        )
-                    elif len(response) == 1:
-                        return response[0][0]
+        query = f"""
+        SELECT {columns} FROM {creds.ar_cust_table} WHERE
+        CUST_NO like '{user_info['name']}'
+        """
 
-            return None
+        queries.append(query)
 
+        for query in queries:
+            response = Database.db.query_db(query)
+            if response is not None:
+                if len(response) > 1:
+                    print(
+                        f"Multiple customers found for {user_info['name']} {user_info['email']}"
+                    )
+                elif len(response) == 1:
+                    return response[0][0]
+
+        return None
+
+    @staticmethod
+    def get_cust_no(bc_order: dict):
         user_info = {
             "name": f"{bc_order["billing_address"]["first_name"]} {bc_order['billing_address']['last_name']}",
             "email": bc_order["billing_address"]["email"],
         }
 
-        cust_no = get_customer_from_info(user_info)
+        cust_no = OrderAPI.get_customer_from_info(user_info)
 
         return cust_no
     
