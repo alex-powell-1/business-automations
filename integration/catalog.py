@@ -28,7 +28,7 @@ class Catalog:
     store_hash = creds.test_big_store_hash
     api_header = creds.test_bc_api_headers
 
-    def __init__(self, last_sync):
+    def __init__(self, last_sync=datetime(1970, 1, 1)):
         self.last_sync = last_sync
         self.db = Database.db
         self.category_tree = self.CategoryTree(last_sync=last_sync)
@@ -156,10 +156,9 @@ class Catalog:
             [res.append(x) for x in result if x not in res]
 
             self.sync_queue = res
-            # self.sync_queue = [
-            #     {"sku": "APTEST", "binding_id": "B0400"},
-            #     # {"sku": "APTEST-GRID2", "binding_id": "B0402"},
-            # ]
+            self.sync_queue = [
+                {"sku": "202280"},
+            ]
 
     def set_parent(self, parent_sku):
         query = f"""
@@ -280,7 +279,6 @@ class Catalog:
 
     def process_images(self):
         """Assesses Image folder. Deletes images from MW and BC. Updates LST_MAINT_DT in CP if new images have been added."""
-        start_time = time.time()
 
         def get_local_images():
             """Get a tuple of two sets:
@@ -392,6 +390,16 @@ class Catalog:
                     f"Error deleting image {image_name} from SQL. {response}"
                 )
 
+            # Delete image from WebDav directory
+            web_dav_response = self.delete_image_from_webdav(image_name)
+            if web_dav_response.status_code == 204:
+                Catalog.logger.success(f"Image {image_name} deleted from WebDav.")
+            else:
+                Catalog.error_handler.add_error_v(
+                    error=f"Error deleting image {image_name} from WebDav. {web_dav_response.text}"
+                )
+
+        start_time = time.time()
         local_images = get_local_images()
         mw_image_list = get_middleware_images()
 
@@ -402,7 +410,7 @@ class Catalog:
         if delete_targets:
             Catalog.logger.info(message=f"Delete Targets: {delete_targets}")
             for x in delete_targets:
-                print(f"Deleting Image {x[0]}.\n")
+                Catalog.logger.info(f"Deleting Image {x[0]}.\n")
                 delete_image(x[0])
 
         update_list = delete_targets
@@ -560,11 +568,66 @@ class Catalog:
         if response is not None:
             return response[0][0]
 
+    def delete_image_from_webdav(self, image_name):
+        url = f"{creds.web_dav_product_photos}/{image_name}.jpg"
+        response = requests.delete(
+            url,
+            auth=HTTPDigestAuth(creds.web_dav_user, creds.web_dav_pw),
+        )
+        return response
+
     @staticmethod
     def get_deletion_target(counterpoint_list, middleware_list):
         return [
             element for element in middleware_list if element not in counterpoint_list
         ]
+
+    @staticmethod
+    def reset_products():
+        """Deletes all products from BigCommerce and Middleware."""
+        query = f"SELECT DISTINCT PRODUCT_ID FROM {creds.bc_product_table}"
+        response = Database.db.query_db(query)
+        if response is not None:
+            product_id_list = [x[0] for x in response]
+
+            while product_id_list:
+                batch = []
+                while len(batch) < 250:
+                    if not product_id_list:
+                        break
+                    batch.append(str(product_id_list.pop()))
+
+                batch_string = ",".join(batch)
+
+                url = f"https://api.bigcommerce.com/stores/{Catalog.store_hash}/v3/catalog/products?id:in={batch_string}"
+
+                bc_response = requests.delete(url=url, headers=Catalog.api_header)
+
+                if bc_response.status_code == 204:
+                    Catalog.logger.success(
+                        f"Products {batch_string} deleted from BigCommerce."
+                    )
+                    query = f"""
+                    DELETE FROM {creds.bc_product_table} WHERE PRODUCT_ID in ({batch_string})
+                    DELETE FROM {creds.bc_image_table} WHERE PRODUCT_ID in ({batch_string})
+                    """
+                    sql_response = Database.db.query_db(query, commit=True)
+                    if sql_response["code"] == 200:
+                        Catalog.logger.success(
+                            f"Products {batch_string} deleted from Middleware."
+                        )
+                    else:
+                        Catalog.error_handler.add_error_v(
+                            error=f"Error deleting products {batch_string} from Middleware."
+                        )
+                else:
+                    Catalog.error_handler.add_error_v(
+                        error=f"Error deleting product {batch_string} from BigCommerce."
+                    )
+                    Catalog.logger.log(f"Url: {url}")
+                    Catalog.logger.log(bc_response)
+        else:
+            Catalog.logger.warn("No products found in Middleware.")
 
     class CategoryTree:
         def __init__(self, last_sync):
@@ -2213,33 +2276,36 @@ class Catalog:
         def process(self, retries=3):
             """Process Product Creation/Delete/Update in BigCommerce and Middleware."""
 
-            def create():
+            def create(retry=1):
                 """Create new product in BigCommerce and Middleware."""
-                create_response = self.bc_post_product()
-                if create_response.status_code in [200, 207]:
-                    self.get_product_data_from_bc(bc_response=create_response)
-                    print("INSERTING PRODUCT")
-                    if self.insert_product():
-                        print("INSERTING IMAGES")
-                        if self.insert_images():
-                            return True
+                if retry >= 0:
+                    create_response = self.bc_post_product()
+                    if create_response.status_code in [200, 207]:
+                        self.get_product_data_from_bc(bc_response=create_response)
+                        print("INSERTING PRODUCT")
+                        if self.insert_product():
+                            print("INSERTING IMAGES")
+                            if self.insert_images():
+                                return True
+                            else:
+                                return False
                         else:
                             return False
-                    else:
-                        return False
 
-                elif create_response.status_code == 409:
-                    # Product already exists in BigCommerce. This is a conflict. Delete from BigCommerce and try again.
-                    if self.is_bound:
-                        message = f"Deleting Bound Product, self.sku: {self.sku}, self.binding_id: {self.binding_id}"
-                        Catalog.logger.info(message)
-                        self.delete_product(sku=self.sku, binding_id=self.binding_id)
-                    else:
-                        message = f"Deleting Single Product, self.sku: {self.sku}"
-                        Catalog.logger.info(message)
-                        self.delete_product(sku=self.sku)
+                    elif create_response.status_code == 409:
+                        # Product already exists in BigCommerce. This is a conflict. Delete from BigCommerce and try again.
+                        if self.is_bound:
+                            message = f"Deleting Bound Product, self.sku: {self.sku}, self.binding_id: {self.binding_id}"
+                            Catalog.logger.info(message)
+                            self.delete_product(
+                                sku=self.sku, binding_id=self.binding_id
+                            )
+                        else:
+                            message = f"Deleting Single Product, self.sku: {self.sku}"
+                            Catalog.logger.info(message)
+                            self.delete_product(sku=self.sku)
 
-                    return create()
+                        return create(retry=retry - 1)
 
                 else:
                     Catalog.logger.warn(
@@ -2250,8 +2316,8 @@ class Catalog:
             def update():
                 """Will update existing product. Will clear out custom field data dand reinsert."""
                 update_payload = self.construct_product_payload()
-                print("Update Payload")
-                print(json.dumps(update_payload, indent=4))
+                # print("Update Payload")
+                # print(json.dumps(update_payload, indent=4))
                 self.bc_delete_custom_fields(asynchronous=True)
                 update_response = self.bc_update_product(update_payload)
 
@@ -2321,7 +2387,6 @@ class Catalog:
 
         def replace_image(self, image) -> bool:
             """Replace image in BigCommerce and SQL."""
-            print("Entering replace_image function")
             delete_response = self.delete_image(image.image_name)
             if delete_response.status_code == 204:
                 post_response = self.bc_post_image(image)

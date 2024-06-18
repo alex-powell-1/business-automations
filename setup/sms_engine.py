@@ -1,5 +1,5 @@
 from setup import creds
-from setup.create_log import *
+from setup.create_log import create_sms_log, format_phone
 from setup.query_engine import QueryEngine
 from twilio.rest import Client
 from twilio.base.exceptions import TwilioRestException
@@ -13,28 +13,36 @@ class SMSEngine:
         self.sid = creds.twilio_account_sid
         self.token = creds.twilio_auth_token
 
-    def send_text(self, cust_no, to_phone, message, log_location, url=None, create_log=True, test_mode=False):
+    def send_text(
+        self,
+        cust_no,
+        to_phone,
+        message,
+        log_location,
+        url=None,
+        create_log=True,
+        test_mode=False,
+    ):
         twilio_response = ""
+
         if test_mode:
-            print(f"Sending test sms text to {cust_no}: {message}")
+            print(f"Sending TEST sms text to {cust_no}: {message}")
             twilio_response = "Test Mode"
-        if not test_mode:
+
+        else:
             # for SMS Messages
             client = Client(self.sid, self.token)
             try:
                 # MMS
                 if url is not None:
                     twilio_message = client.messages.create(
-                        from_=self.phone,
-                        to=to_phone,
-                        media_url=url,
-                        body=message)
+                        from_=self.phone, to=to_phone, media_url=url, body=message
+                    )
                 # SMS
                 else:
                     twilio_message = client.messages.create(
-                        from_=self.phone,
-                        to=to_phone,
-                        body=message)
+                        from_=self.phone, to=to_phone, body=message
+                    )
 
             except TwilioRestException as err:
                 if err.code in [21614, 30003, 30005, 30006]:
@@ -61,9 +69,10 @@ def move_phone_1_to_landline(cust_no, phone_number):
         WHERE MBL_PHONE_1 = '{cp_phone}'
     """
     db.query_db(move_landline_query, commit=True)
-    create_sms_log(cust_no=cust_no,
-                   phone=cp_phone,
-                   sent_message="Landline",
-                   response="Changed in CP",
-                   log_location=creds.landline_log)
-
+    create_sms_log(
+        cust_no=cust_no,
+        phone=cp_phone,
+        sent_message="Landline",
+        response="Changed in CP",
+        log_location=creds.landline_log,
+    )
