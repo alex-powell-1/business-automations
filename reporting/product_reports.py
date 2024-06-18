@@ -37,7 +37,9 @@ def cost_of_goods_sold(start_date, stop_date, store):
             return 0
 
 
-def revenue_sales_report(start_date, stop_date, split=True, anna_mode=False, short=False):
+def revenue_sales_report(
+    start_date, stop_date, split=True, anna_mode=False, short=False
+):
     query = f"""
     "{creds.DATABASE}"."dbo"."USP_RPT_SA_BY_X";1
     'select distinct PS_STR.STR_ID as GRP_ID, PS_STR.DESCR as GRP_DESCR
@@ -70,7 +72,8 @@ def revenue_sales_report(start_date, stop_date, split=True, anna_mode=False, sho
         if split:
             return (
                 f"\n<p>In-Store Sales: ${"{:,}".format(retail_sales - retail_valid_returns - retail_nonvalid_returns)}<br>"
-                f"E-Comm Sales: ${"{:,}".format(web_sales - web_valid_returns - web_nonvalid_returns)}</p>")
+                f"E-Comm Sales: ${"{:,}".format(web_sales - web_valid_returns - web_nonvalid_returns)}</p>"
+            )
 
         elif anna_mode:
             if start_date == stop_date:
@@ -78,29 +81,34 @@ def revenue_sales_report(start_date, stop_date, split=True, anna_mode=False, sho
             else:
                 date_prefix = f"\n<p><b>{start_date:%b %d} - {stop_date:%b %d}</b>:<br>"
 
-            return (date_prefix +
-                    f"In-Store Sales: ${"{:,}".format(retail_sales - retail_valid_returns
+            return (
+                date_prefix
+                + f"In-Store Sales: ${"{:,}".format(retail_sales - retail_valid_returns
                                                       - retail_nonvalid_returns)}<br>"
-                    f"E-Comm Sales: ${"{:,}".format(web_sales - web_valid_returns - web_nonvalid_returns)}<br>"
-
-                    f"Total: ${"{:,}".format((retail_sales + web_sales) -
+                f"E-Comm Sales: ${"{:,}".format(web_sales - web_valid_returns - web_nonvalid_returns)}<br>"
+                f"Total: ${"{:,}".format((retail_sales + web_sales) -
                                              (web_valid_returns + web_nonvalid_returns) -
                                              (retail_valid_returns + retail_nonvalid_returns))}<br>"
-                    f"{get_total_tickets(start_date, stop_date)}</p>")
+                f"{get_total_tickets(start_date, stop_date)}</p>"
+            )
 
         # for reports with combined reporting
         else:
             if short:
-                return (f"\n<p>{start_date:%B %Y}: "
-                        f"${"{:,}".format((retail_sales + web_sales) -
+                return (
+                    f"\n<p>{start_date:%B %Y}: "
+                    f"${"{:,}".format((retail_sales + web_sales) -
                                           (web_valid_returns + web_nonvalid_returns) -
-                                          (retail_valid_returns + retail_nonvalid_returns))}</p>")
+                                          (retail_valid_returns + retail_nonvalid_returns))}</p>"
+                )
             else:
-                return (f"\n<p>{start_date} - {stop_date}: "
-                        f"${"{:,}".format((retail_sales + web_sales) -
+                return (
+                    f"\n<p>{start_date} - {stop_date}: "
+                    f"${"{:,}".format((retail_sales + web_sales) -
                                           (web_valid_returns + web_nonvalid_returns) -
                                           (retail_valid_returns + retail_nonvalid_returns))}"
-                        f"{get_total_tickets(start_date, stop_date)}</p>")
+                    f"{get_total_tickets(start_date, stop_date)}</p>"
+                )
     else:
         return "No Revenue Data Today"
 
@@ -127,7 +135,7 @@ def get_total_tickets(start_day, end_day):
 
 
 def get_list_of_current_photo_sku():
-    """Returns a sorted list of unique filenames from ItemImages Folder """
+    """Returns a sorted list of unique filenames from ItemImages Folder"""
     list_of_files = os.listdir(creds.photo_path)
     list_of_sku = []
     for item in list_of_files[1:]:
@@ -138,8 +146,16 @@ def get_list_of_current_photo_sku():
     return final_sku_list
 
 
-def create_top_items_report(beginning_date, ending_date, mode="sales", merged=False,
-                            binding_id="", number_of_items=15, category='ALL', return_format=1):
+def create_top_items_report(
+    beginning_date,
+    ending_date,
+    mode="sales",
+    merged=False,
+    binding_id="",
+    number_of_items=15,
+    category="ALL",
+    return_format=1,
+):
     """creates top items report by sales or quantity"""
     # format 3 is a list of top item skus
     if return_format == 3:
@@ -148,7 +164,7 @@ def create_top_items_report(beginning_date, ending_date, mode="sales", merged=Fa
         # Format one and two are strings (html, and text based response)
         result = ""
 
-    if category == 'ALL':
+    if category == "ALL":
         category_var = " (1=1) "
     else:
         category_var = f"(VI_PS_TKT_HIST_LIN.CATEG_COD = ''{category}'')"
@@ -214,20 +230,28 @@ def create_top_items_report(beginning_date, ending_date, mode="sales", merged=Fa
             # html version
             if return_format == 1:
                 if mode == "quantity":
-                    result += (f"\n<p>#{counter}: {item[0]} - {item[1]}: {num_sold - num_returns} Units Sold - "
-                               f"Current Stock: {current_stock}</p>")
+                    result += (
+                        f"\n<p>#{counter}: {item[0]} - {item[1]}: {num_sold - num_returns} Units Sold - "
+                        f"Current Stock: {current_stock}</p>"
+                    )
                 else:
-                    result += (f"\n<p>#{counter}: {item[0]} - {item[1]} - Revenue: ${"{:,}".format(total)} - "
-                               f"Units Sold: {num_sold - num_returns} - "
-                               f"Current Stock: {current_stock}</p>")
+                    result += (
+                        f"\n<p>#{counter}: {item[0]} - {item[1]} - Revenue: ${"{:,}".format(total)} - "
+                        f"Units Sold: {num_sold - num_returns} - "
+                        f"Current Stock: {current_stock}</p>"
+                    )
             # text version
             elif return_format == 2:
                 if mode == "quantity":
-                    result += (f"#{counter}: {item[0]} - {item[1]}: {num_sold - num_returns} Units Sold - "
-                               f"Current Stock: {current_stock}\n")
+                    result += (
+                        f"#{counter}: {item[0]} - {item[1]}: {num_sold - num_returns} Units Sold - "
+                        f"Current Stock: {current_stock}\n"
+                    )
                 else:
-                    result += (f"#{counter}: {item[0]} - {item[1]} - Revenue: ${"{:,}".format(total)} - "
-                               f"Units Sold: {num_sold - num_returns} - Current Stock: {current_stock}\n")
+                    result += (
+                        f"#{counter}: {item[0]} - {item[1]} - Revenue: ${"{:,}".format(total)} - "
+                        f"Units Sold: {num_sold - num_returns} - Current Stock: {current_stock}\n"
+                    )
             # item numbers only
             elif return_format == 3:
                 result.append(item[0])
@@ -295,7 +319,7 @@ def get_sales_rep_report():
 
 
 def wholesale_total(start_date, stop_date, number=10):
-    """Creates a list of top customer_tools (by sales) within a given time frame. Sorted by revenue. """
+    """Creates a list of top customer_tools (by sales) within a given time frame. Sorted by revenue."""
     query = f"""
     "{creds.DATABASE}"."dbo"."USP_RPT_SA_BY_X";1
     'select distinct AR_CUST.CUST_NO as GRP_ID, AR_CUST.NAM as GRP_DESCR
@@ -327,7 +351,7 @@ def wholesale_total(start_date, stop_date, number=10):
 
 
 def top_customer_report(start_date, stop_date, category, number=10):
-    """Creates a list of top customer_tools (by sales) within a given time frame. Sorted by revenue. """
+    """Creates a list of top customer_tools (by sales) within a given time frame. Sorted by revenue."""
     query = f"""
     "{creds.DATABASE}"."dbo"."USP_RPT_SA_BY_X";1
     'select distinct AR_CUST.CUST_NO as GRP_ID, AR_CUST.NAM as GRP_DESCR
@@ -363,30 +387,47 @@ def top_customer_report(start_date, stop_date, category, number=10):
                 full_name = customer_details[0][2]
                 phone = customer_details[0][3]
                 email = customer_details[0][4]
-                top_customer_id_list.append([cust_no, first_name, last_name, full_name,
-                                             sale_total, tickets, phone, email])
+                top_customer_id_list.append(
+                    [
+                        cust_no,
+                        first_name,
+                        last_name,
+                        full_name,
+                        sale_total,
+                        tickets,
+                        phone,
+                        email,
+                    ]
+                )
             else:
                 continue
         counter = 1
         result = ""
-        if category == 'WHOLESALE':
+        if category == "WHOLESALE":
             for x in top_customer_id_list:
-                result += (f"<p>#{counter}: {x[3]}, Tickets: {x[5]}, Revenue: ${"{:,}".format(x[4])}</p>"
-                           f"<p>Name: {x[1]} {x[2]} Phone: {x[6]},  Email: {x[7]}</p><br>")
+                result += (
+                    f"<p>#{counter}: {x[3]}, Tickets: {x[5]}, Revenue: ${"{:,}".format(x[4])}</p>"
+                    f"<p>Name: {x[1]} {x[2]} Phone: {x[6]},  Email: {x[7]}</p><br>"
+                )
                 counter += 1
         else:
             for x in top_customer_id_list:
-                result += (f"<p>#{counter}: {x[3]}, Tickets: {x[5]}, Revenue: {"{:,}".format(x[4])}</p>"
-                           f"<p>Phone: {x[6]},  Email: {x[7]}</p>")
+                result += (
+                    f"<p>#{counter}: {x[3]}, Tickets: {x[5]}, Revenue: {"{:,}".format(x[4])}</p>"
+                    f"<p>Phone: {x[6]},  Email: {x[7]}</p>"
+                )
                 counter += 1
         return result
     else:
-        return (f"<p>No customer data available for {category.lower()} customer_tools from "
-                f"{start_date:{date_format}} - {stop_date:{date_format}}.</p>")
+        return (
+            f"<p>No customer data available for {category.lower()} customer_tools from "
+            f"{start_date:{date_format}} - {stop_date:{date_format}}.</p>"
+        )
 
 
 def get_missing_variant_names():
     from product_tools.products import get_binding_ids, get_variant_names
+
     binding_ids = get_binding_ids()
     for x in binding_ids:
         for y in get_variant_names(x):
@@ -396,6 +437,7 @@ def get_missing_variant_names():
 
 def get_missing_image_list():
     from product_tools.products import Product
+
     """Returns a sorted list of e-commerce items with missing images"""
     # all_e_comm_items = get_ecomm_items(mode=2)
     all_ecomm_items_with_stock = get_ecomm_items_with_stock()
@@ -414,7 +456,11 @@ def get_missing_image_list():
                 if item_number not in all_current_photos:
                     # Add item objects to either list
                     missing_image_list_child.append(item)
-                if binding_key != "" and binding_key not in all_current_photos and binding_key not in check_list:
+                if (
+                    binding_key != ""
+                    and binding_key not in all_current_photos
+                    and binding_key not in check_list
+                ):
                     missing_image_list_parent.append(item)
                     check_list.append(binding_key)
                 else:
@@ -437,17 +483,21 @@ def get_missing_image_list():
                     contents += f"\n<p>{item.item_no}, Missing Web Title, Current Stock: {item.quantity_available}</p>"
                 else:
                     # contents += f'\n<p>{item.item_no}, <a href="{item.item_url}">{item.web_title}</a>, Current Stock: {item.quantity_available}</p>'
-                    contents += f'\n<p>{item.item_no}, {item.web_title}, Current Stock: {item.quantity_available}</p>'
+                    contents += f"\n<p>{item.item_no}, {item.web_title}, Current Stock: {item.quantity_available}</p>"
             # Parent Items
             else:
                 if item.web_title is None:
-                    contents += (f"\n<p>{item.item_no}, Missing Web Title, "
-                                 f"{item.variant_name}, Current Stock: {item.buffered_quantity_available}</p>")
+                    contents += (
+                        f"\n<p>{item.item_no}, Missing Web Title, "
+                        f"{item.variant_name}, Current Stock: {item.buffered_quantity_available}</p>"
+                    )
                 else:
                     # contents += (f'\n<p>{item.item_no}, <a href="{item.item_url}">{item.web_title}, '
                     #              f'{item.variant_name}</a>, Current Stock: {item.quantity_available}</p>')
-                    contents += (f'\n<p>{item.item_no}, {item.web_title}, '
-                                 f'{item.variant_name}, Current Stock: {item.quantity_available}</p>')
+                    contents += (
+                        f"\n<p>{item.item_no}, {item.web_title}, "
+                        f"{item.variant_name}, Current Stock: {item.quantity_available}</p>"
+                    )
     else:
         contents += "\n<p>No Missing Images for Products</p>"
 
@@ -457,8 +507,10 @@ def get_missing_image_list():
         contents += f"\n<p><br><u>Total binding IDs with no image</u>: <b>{len(missing_image_list_parent)}\n</b></p>"
         for item in missing_image_list_parent:
             if item.web_title is None:
-                contents += (f"\n<p>{item.binding_key}, Missing Web Title, "
-                             f"{item.variant_name}, Current Stock: {item.buffered_quantity_available}</p>")
+                contents += (
+                    f"\n<p>{item.binding_key}, Missing Web Title, "
+                    f"{item.variant_name}, Current Stock: {item.buffered_quantity_available}</p>"
+                )
             else:
                 contents += f'\n<p>{item.binding_key}, <a href="{item.item_url}">{item.web_title}</a></p>'
 
@@ -583,8 +635,10 @@ def get_low_stock_items(number_of_items):
         result = ""
         counter = 1
         for item in result_list[0:number_of_items]:
-            result += (f"\n<p>#{counter}: {item[0]}, {item[1]}, Rev: ${round(item[2] / 1000, 1)}K, "
-                       f"Sold: {item[3]}, Current Stock: {item[4]}</p>")
+            result += (
+                f"\n<p>#{counter}: {item[0]}, {item[1]}, Rev: ${round(item[2] / 1000, 1)}K, "
+                f"Sold: {item[3]}, Current Stock: {item[4]}</p>"
+            )
             counter += 1
         return result
     else:
@@ -681,6 +735,7 @@ def get_item_descriptions():
 
 def get_missing_item_descriptions(min_length):
     from product_tools.products import Product
+
     query = f"""
     SELECT IM_ITEM.ITEM_NO
     FROM EC_ITEM_DESCR
@@ -699,32 +754,54 @@ def get_missing_item_descriptions(min_length):
         list_size = len(response)
 
         # Section Header
-        result += f"\n<p><u>Total products with no description</u>: <b>{list_size}</b></p>"
+        result += (
+            f"\n<p><u>Total products with no description</u>: <b>{list_size}</b></p>"
+        )
         counter = 1
         for x in response:
             item = Product(x[0])
             if item.buffered_quantity_available > 0:
                 if item.item_url is not None:
-                    result += (f'\n<p>#{counter}: {item.item_no}, <a href="{item.item_url}">{item.web_title}</a>, '
-                               f'Current Stock: {item.quantity_available}</p>')
+                    result += (
+                        f'\n<p>#{counter}: {item.item_no}, <a href="{item.item_url}">{item.web_title}</a>, '
+                        f"Current Stock: {item.quantity_available}</p>"
+                    )
                 else:
-                    result += (f'\n<p>#{counter}: {item.item_no}, {item.web_title}, '
-                               f'Current Stock: {item.quantity_available}</p>')
+                    result += (
+                        f"\n<p>#{counter}: {item.item_no}, {item.web_title}, "
+                        f"Current Stock: {item.quantity_available}</p>"
+                    )
                 counter += 1
         return result
 
 
-def report_generator(revenue=False, last_week_report=False, mtd_month_report=False, last_year_mtd_report=False,
-                     forecasting_report=False, top_items_by_category=False, missing_images_report=False,
-                     negatives_report=False, ecomm_category_report=False, non_web_enabled_report=False,
-                     low_stock_items_report=False, sales_rep_report=False, wholesale_report=False,
-                     inactive_items_report=False, cogs_report=False, missing_descriptions_report=False,
-                     year_to_date=False, title="Administrative Report"):
+def report_generator(
+    revenue=False,
+    last_week_report=False,
+    mtd_month_report=False,
+    last_year_mtd_report=False,
+    forecasting_report=False,
+    top_items_by_category=False,
+    missing_images_report=False,
+    negatives_report=False,
+    ecomm_category_report=False,
+    non_web_enabled_report=False,
+    low_stock_items_report=False,
+    sales_rep_report=False,
+    wholesale_report=False,
+    inactive_items_report=False,
+    cogs_report=False,
+    missing_descriptions_report=False,
+    year_to_date=False,
+    title="Administrative Report",
+):
     """Produces Text for Email Report"""
 
     # Title
-    report = (f"\n<h1><strong>{title}</strong></h1>\n"
-              f"\n<h3>{datetime.now():%A %B %d, %Y}</h3>")
+    report = (
+        f"\n<h1><strong>{title}</strong></h1>\n"
+        f"\n<h3>{datetime.now():%A %B %d, %Y}</h3>"
+    )
 
     if revenue:
         section_header = "Revenue Report"
@@ -738,58 +815,52 @@ def report_generator(revenue=False, last_week_report=False, mtd_month_report=Fal
                 report += revenue_sales_report(
                     start_date=yesterday,
                     stop_date=yesterday,
-                    split=False, anna_mode=True)
+                    split=False,
+                    anna_mode=True,
+                )
 
             # For Monday. This will send Saturday's data instead of closed day, Sunday.
             elif day_of_week == 1:
                 saturday = yesterday + relativedelta(days=-1)
                 report += f"\n<h4><strong>Saturday's Total Revenue</strong></h4>"
                 report += revenue_sales_report(
-                    start_date=saturday,
-                    stop_date=saturday,
-                    split=False, anna_mode=True)
+                    start_date=saturday, stop_date=saturday, split=False, anna_mode=True
+                )
         except Exception as err:
             report += f"<p>Error! Message: {err}</p>"
 
         # CURRENT MONTH TOTAL REVENUE
         try:
-            section_header = f"\n<h4><strong>{month_start:%B} Total Revenue</strong></h4>"
+            section_header = f"\n<h4><strong>{month_start:%B} Revenue</strong></h4>"
             report += section_header
             for x in range(years_to_show):
                 report += revenue_sales_report(
                     start_date=month_start + relativedelta(years=(x * -1)),
                     stop_date=month_end + relativedelta(years=(x * -1)),
-                    split=False, short=True)
+                    split=False,
+                    short=True,
+                )
         except Exception as err:
             report += f"<p>Error! Message: {err}</p>"
 
         # LAST MONTH TOTAL REVENUE
         try:
-            section_header = f"\n<h4><strong>{last_month_start:%B} Total Revenue</strong></h4>"
+            section_header = (
+                f"\n<h4><strong>{last_month_start:%B} Total Revenue</strong></h4>"
+            )
             report += section_header
             for x in range(years_to_show):
                 report += revenue_sales_report(
                     start_date=last_month_start + relativedelta(years=(x * -1)),
                     stop_date=last_month_end + relativedelta(years=(x * -1)),
-                    split=False, short=True)
+                    split=False,
+                    short=True,
+                )
         except Exception as err:
             report += f"<p>Error! Message: {err}</p>"
 
-        # Add Last Six Weeks of Weekly Revenue (Sunday - Saturday each week)
-        report += (f"\n<h4><strong>Weekly Revenue</strong></h4>"
-                   f"\n<h5>Last Six Weeks</h5>")
-        try:
-            for x in range(weeks_to_show):
-                report += f"\n{revenue_sales_report(
-                    start_date=last_week_start + relativedelta(weeks=(x * -1)),
-                    stop_date=last_week_end + relativedelta(weeks=(x * -1)),
-                    split=False, anna_mode=True)}"
-
-        except Exception as err:
-            report += f"<p>Error! Message: {err}</p>"
-
-        report += "\n<h4><strong>Last Month Total</strong></h4>"
-        report += f"\n{revenue_sales_report(last_month_start, last_month_end, split=False, short=True)}"
+        # report += "\n<h4><strong>Last Month Total</strong></h4>"
+        # report += f"\n{revenue_sales_report(last_month_start, last_month_end, split=False, short=True)}"
 
         # Add Month-to-Date Revenue Data
         report += "<h4><strong>Month to Date</strong></h4>"
@@ -814,16 +885,32 @@ def report_generator(revenue=False, last_week_report=False, mtd_month_report=Fal
                 dynamic_year_start = year_start + relativedelta(years=(x * -1))
                 dynamic_today = today + relativedelta(years=(x * -1))
                 # Create Dynamic YTD Header
-                report += f'\n<h5>{dynamic_year_start:%x} - {dynamic_today:%x}</h5>'
+                report += f"\n<h5>{dynamic_year_start:%x} - {dynamic_today:%x}</h5>"
                 # Get Data
                 report += f"\n{revenue_sales_report(dynamic_year_start, dynamic_today, split=True)}"
 
         except Exception as err:
             report += f"<p>Error! Message: {err}</p>"
 
+        # Add Last Six Weeks of Weekly Revenue (Sunday - Saturday each week)
+        report += (
+            f"\n<h4><strong>Weekly Revenue</strong></h4>" f"\n<h5>Last Six Weeks</h5>"
+        )
+        try:
+            for x in range(weeks_to_show):
+                report += f"\n{revenue_sales_report(
+                    start_date=last_week_start + relativedelta(weeks=(x * -1)),
+                    stop_date=last_week_end + relativedelta(weeks=(x * -1)),
+                    split=False, anna_mode=True)}"
+
+        except Exception as err:
+            report += f"<p>Error! Message: {err}</p>"
+
     if cogs_report:
-        section_header = (f"\n<h2><strong>Cost of Goods Sold Report</strong></h2>"
-                          f"\n<h5>{last_week_start:{date_format}} - {last_week_end:{date_format}}</h5>")
+        section_header = (
+            f"\n<h2><strong>Cost of Goods Sold Report</strong></h2>"
+            f"\n<h5>{last_week_start:{date_format}} - {last_week_end:{date_format}}</h5>"
+        )
         report += section_header
         try:
             report += f"\n<p>Store 1: ${"{:,}".format(cost_of_goods_sold(start_date=last_week_start, 
@@ -834,8 +921,10 @@ def report_generator(revenue=False, last_week_report=False, mtd_month_report=Fal
             report += f"<p>Error! Message: {err}</p>"
 
     if sales_rep_report:
-        section_header = (f"\n<h2><strong>Sales Rep Report</strong></h2>"
-                          f"\n<h5>{last_week_start:{date_format}} - {last_week_end:{date_format}}</h5>")
+        section_header = (
+            f"\n<h2><strong>Sales Rep Report</strong></h2>"
+            f"\n<h5>{last_week_start:{date_format}} - {last_week_end:{date_format}}</h5>"
+        )
         report += section_header
         try:
             report += get_sales_rep_report()
@@ -844,28 +933,40 @@ def report_generator(revenue=False, last_week_report=False, mtd_month_report=Fal
             report += f"<p>Error! Message: {err}</p>"
 
     if wholesale_report:
-        section_header = (f"\n<h2><strong>Wholesale Totals</strong></h2>"
-                          f"\n<h5>{last_week_start:{date_format}} - {last_week_start:{last_week_end}}</h5>")
+        section_header = (
+            f"\n<h2><strong>Wholesale Totals</strong></h2>"
+            f"\n<h5>{last_week_start:{date_format}} - {last_week_start:{last_week_end}}</h5>"
+        )
         report += section_header
         try:
             data = wholesale_total(last_week_start, last_week_end, 1000)
             report += f"<p>Revenue for Top 10 Wholesale Customers: ${data[0]}</p>"
             report += f"<p>Revenue for ALL Wholesale Customers: ${data[1]}</p>"
 
-            section_header = (f"\n<h2><strong>Top Wholesale Customers</strong></h2>"
-                              f"\n<h5>{last_week_start:{date_format}} - {last_week_start:{last_week_end}}</h5>")
+            section_header = (
+                f"\n<h2><strong>Top Wholesale Customers</strong></h2>"
+                f"\n<h5>{last_week_start:{date_format}} - {last_week_start:{last_week_end}}</h5>"
+            )
             report += section_header
-            report += top_customer_report(last_week_start, last_week_end, category='WHOLESALE', number=10)
+            report += top_customer_report(
+                last_week_start, last_week_end, category="WHOLESALE", number=10
+            )
         except Exception as err:
             report += f"<p>Error! Message: {err}</p>"
 
     if last_week_report:
-        section_header = (f"\n<h2><strong>Last Week Report</strong></h2>"
-                          f"\n<h5>{last_week_start:{date_format}} - {last_week_end:{date_format}}</h5>")
+        section_header = (
+            f"\n<h2><strong>Last Week Report</strong></h2>"
+            f"\n<h5>{last_week_start:{date_format}} - {last_week_end:{date_format}}</h5>"
+        )
         report += section_header
         try:
-            forecast_top_10_by_sales = create_top_items_report(last_week_start, last_week_end, "sales")
-            forecast_top_10_by_quantity = create_top_items_report(last_week_start, last_week_end, "quantity")
+            forecast_top_10_by_sales = create_top_items_report(
+                last_week_start, last_week_end, "sales"
+            )
+            forecast_top_10_by_quantity = create_top_items_report(
+                last_week_start, last_week_end, "quantity"
+            )
             report += forecast_top_10_by_sales
             report += forecast_top_10_by_quantity
 
@@ -873,12 +974,18 @@ def report_generator(revenue=False, last_week_report=False, mtd_month_report=Fal
             report += f"<p>Error! Message: {err}</p>"
 
     if mtd_month_report:
-        section_header = (f"\n<h2><strong>Month to Date Report</strong></h2>"
-                          f"\n<h5>{month_start:{date_format}} - {today:{date_format}}</h5>")
+        section_header = (
+            f"\n<h2><strong>Month to Date Report</strong></h2>"
+            f"\n<h5>{month_start:{date_format}} - {today:{date_format}}</h5>"
+        )
         report += section_header
         try:
-            forecast_top_10_by_sales = create_top_items_report(month_start, today, "sales")
-            forecast_top_10_by_quantity = create_top_items_report(month_start, today, "quantity")
+            forecast_top_10_by_sales = create_top_items_report(
+                month_start, today, "sales"
+            )
+            forecast_top_10_by_quantity = create_top_items_report(
+                month_start, today, "quantity"
+            )
             report += forecast_top_10_by_sales
             report += forecast_top_10_by_quantity
 
@@ -886,12 +993,18 @@ def report_generator(revenue=False, last_week_report=False, mtd_month_report=Fal
             report += f"<p>Error! Message: {err}</p>"
 
     if last_year_mtd_report:
-        section_header = (f"\n<h2><strong>Last Year Month to Date Report</strong></h2>"
-                          f"\n<h5>{month_start_last_year:{date_format}} - {one_year_ago:{date_format}}</h5>")
+        section_header = (
+            f"\n<h2><strong>Last Year Month to Date Report</strong></h2>"
+            f"\n<h5>{month_start_last_year:{date_format}} - {one_year_ago:{date_format}}</h5>"
+        )
         report += section_header
         try:
-            forecast_top_10_by_sales = create_top_items_report(month_start_last_year, one_year_ago, "sales")
-            forecast_top_10_by_quantity = create_top_items_report(month_start_last_year, one_year_ago, "quantity")
+            forecast_top_10_by_sales = create_top_items_report(
+                month_start_last_year, one_year_ago, "sales"
+            )
+            forecast_top_10_by_quantity = create_top_items_report(
+                month_start_last_year, one_year_ago, "quantity"
+            )
             report += forecast_top_10_by_sales
             report += forecast_top_10_by_quantity
 
@@ -899,47 +1012,71 @@ def report_generator(revenue=False, last_week_report=False, mtd_month_report=Fal
             report += f"<p>Error! Message: {err}</p>"
 
     if forecasting_report:
-        section_header = (f"\n<h2><strong>{forecast_days} Days Forecasting Report</strong></h2>"
-                          f"\n<h5>{one_year_ago:{date_format}} - {last_year_forecast:{date_format}}</h5>")
+        section_header = (
+            f"\n<h2><strong>{forecast_days} Days Forecasting Report</strong></h2>"
+            f"\n<h5>{one_year_ago:{date_format}} - {last_year_forecast:{date_format}}</h5>"
+        )
         report += section_header
         try:
-            forecast_top_10_by_sales = create_top_items_report(one_year_ago, last_year_forecast, "sales")
-            forecast_top_10_by_quantity = create_top_items_report(one_year_ago, last_year_forecast, "quantity")
+            forecast_top_10_by_sales = create_top_items_report(
+                one_year_ago, last_year_forecast, "sales"
+            )
+            forecast_top_10_by_quantity = create_top_items_report(
+                one_year_ago, last_year_forecast, "quantity"
+            )
             report += forecast_top_10_by_sales
             report += forecast_top_10_by_quantity
-        
+
         except Exception as err:
             report += f"<p>Error! Message: {err}</p>"
 
     if low_stock_items_report:
-        section_header = (f"\n<h2><strong>Top {number_of_low_stock_items} Revenue Items with Low Stock</strong></h2>"
-                          f"\n<h5>{one_year_ago:{date_format}} - {last_year_low_stock_window:{date_format}}</h5>")
+        section_header = (
+            f"\n<h2><strong>Top {number_of_low_stock_items} Revenue Items with Low Stock</strong></h2>"
+            f"\n<h5>{one_year_ago:{date_format}} - {last_year_low_stock_window:{date_format}}</h5>"
+        )
         report += section_header
         try:
             report += get_low_stock_items(number_of_low_stock_items)
-        
+
         except Exception as err:
             report += f"<p>Error! Message: {err}</p>"
 
     if top_items_by_category:
-        section_header = "\n<h2><strong>Last Week Top Items by Top Categories</strong></h2>"
+        section_header = (
+            "\n<h2><strong>Last Week Top Items by Top Categories</strong></h2>"
+        )
         report += section_header
         category_list = []
         # Get Top Performing Categories by Revenue. Returns list of tuples ('TREES', '$3500')
         try:
-            for items in get_top_categories_by_sales(last_week_start, last_week_end, 10):
+            for items in get_top_categories_by_sales(
+                last_week_start, last_week_end, 10
+            ):
                 category_list.append((items[0], "$" + str("{:,}".format(items[2]))))
             counter = 1
             for x in category_list:
-                report += (f'\n<p class="rank"><strong>Category Rank #{counter}: {x[0]}</strong><br>'
-                           f"Total Revenue: {x[1]} from {last_week_start:{date_format}} - "
-                           f"{last_week_end:{date_format}}<br></p>")
-                report += create_top_items_report(last_week_start, last_week_end, number_of_items=10, mode='sales',
-                                                  category=x[0])
-                report += create_top_items_report(last_week_start, last_week_end, number_of_items=10, mode='quantity',
-                                                  category=x[0])
+                report += (
+                    f'\n<p class="rank"><strong>Category Rank #{counter}: {x[0]}</strong><br>'
+                    f"Total Revenue: {x[1]} from {last_week_start:{date_format}} - "
+                    f"{last_week_end:{date_format}}<br></p>"
+                )
+                report += create_top_items_report(
+                    last_week_start,
+                    last_week_end,
+                    number_of_items=10,
+                    mode="sales",
+                    category=x[0],
+                )
+                report += create_top_items_report(
+                    last_week_start,
+                    last_week_end,
+                    number_of_items=10,
+                    mode="quantity",
+                    category=x[0],
+                )
                 counter += 1
-        
+
         except Exception as err:
             report += f"<p>Error! Message: {err}</p>"
 
@@ -957,59 +1094,75 @@ def report_generator(revenue=False, last_week_report=False, mtd_month_report=Fal
 
 
 def administrative_report(recipients, log_file):
-    print(f"Generating Admin Report Data - Starting at {datetime.now():%H:%M:%S}", file=log_file)
-    subject = f'Administrative Report - {today:%x}'
-    report_data = report_generator(title="Administrative Report",
-                                   revenue=True,
-                                   cogs_report=True,
-                                   last_week_report=True,
-                                   mtd_month_report=True,
-                                   last_year_mtd_report=True,
-                                   forecasting_report=True,
-                                   top_items_by_category=True,
-                                   missing_images_report=True,
-                                   negatives_report=True,
-                                   ecomm_category_report=True,
-                                   non_web_enabled_report=True,
-                                   low_stock_items_report=True,
-                                   sales_rep_report=True,
-                                   wholesale_report=True,
-                                   inactive_items_report=True,
-                                   missing_descriptions_report=True)
+    print(
+        f"Generating Admin Report Data - Starting at {datetime.now():%H:%M:%S}",
+        file=log_file,
+    )
+    subject = f"Administrative Report - {today:%x}"
+    report_data = report_generator(
+        title="Administrative Report",
+        revenue=True,
+        cogs_report=True,
+        last_week_report=True,
+        mtd_month_report=True,
+        last_year_mtd_report=True,
+        forecasting_report=True,
+        top_items_by_category=True,
+        missing_images_report=True,
+        negatives_report=True,
+        ecomm_category_report=True,
+        non_web_enabled_report=True,
+        low_stock_items_report=True,
+        sales_rep_report=True,
+        wholesale_report=True,
+        inactive_items_report=True,
+        missing_descriptions_report=True,
+    )
     html_contents = boiler_plate + css + body_start + report_data + body_end
     try:
-        email_engine.send_staff_email(from_name=creds.company_name,
-                                     from_address=creds.sales_email,
-                                     from_pw=creds.sales_password,
-                                     recipients_list=recipients,
-                                     subject=subject,
-                                     content=html_contents,
-                                     logo=True,
-                                     mode='related',
-                                     product_photo=None)
+        email_engine.send_staff_email(
+            from_name=creds.company_name,
+            from_address=creds.sales_email,
+            from_pw=creds.sales_password,
+            recipients_list=recipients,
+            subject=subject,
+            content=html_contents,
+            logo=True,
+            mode="related",
+            product_photo=None,
+        )
     except Exception as err:
         error_type = "Sending Email"
         print(f"Error({error_type}): {err})", file=log_file)
 
-    print(f"Administrative Report: Completed at {datetime.now():%H:%M:%S}", file=log_file)
+    print(
+        f"Administrative Report: Completed at {datetime.now():%H:%M:%S}", file=log_file
+    )
     print("-----------------------", file=log_file)
 
 
 def revenue_report(recipients, log_file):
-    print(f"Generating Revenue Report Data - Starting at {datetime.now():%H:%M:%S}", file=log_file)
-    subject = f'Revenue Report - {today:%x}'
-    report_data = report_generator(revenue=True, cogs_report=True, title="Revenue Report")
+    print(
+        f"Generating Revenue Report Data - Starting at {datetime.now():%H:%M:%S}",
+        file=log_file,
+    )
+    subject = f"Revenue Report - {today:%x}"
+    report_data = report_generator(
+        revenue=True, cogs_report=True, title="Revenue Report"
+    )
     html_contents = boiler_plate + css + body_start + report_data + body_end
     try:
-        email_engine.send_html_email(from_name=creds.company_name,
-                                     from_address=creds.sales_email,
-                                     from_pw=creds.sales_password,
-                                     recipients_list=recipients,
-                                     subject=subject,
-                                     content=html_contents,
-                                     mode='related',
-                                     product_photo=None,
-                                     logo=True)
+        email_engine.send_html_email(
+            from_name=creds.company_name,
+            from_address=creds.sales_email,
+            from_pw=creds.sales_password,
+            recipients_list=recipients,
+            subject=subject,
+            content=html_contents,
+            mode="related",
+            product_photo=None,
+            logo=True,
+        )
     except Exception as err:
         error_type = "Sending Email"
         print(f"Error({error_type}): {err})", file=log_file)

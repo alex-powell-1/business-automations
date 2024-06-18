@@ -83,9 +83,8 @@ def post_document():
                 # {"AMT": 25, "PAY_COD": "BIG", "FINAL_PMT": "N"},
                 {
                     "AMT": 11.99,
-                    "PAY_COD": "GC",
+                    "PAY_COD": "BIG",
                     "FINAL_PMT": "N",
-                    "CARD_NO": "TEST-GFC-LUKE-3",
                 }
             ],
             "PS_DOC_TAX": [
@@ -96,6 +95,32 @@ def post_document():
                     "TAX_AMT": "0",
                     "TOT_TXBL_AMT": 11.99,  # not shipping
                 },
+            ],
+            # "PS_DOC_DISC": [
+            #     {
+            #         "DISC_ID": "100000000000106",
+            #         "DISC_AMT": 5.00,
+            #         "DISC_TYP": "A",
+            #         "APPLY_TO": "H",
+            #     }
+            # ],
+            "PS_DOC_HDR_TOT": [
+                {
+                    "TOT_TYP": "S",
+                    "INITIAL_MIN_DUE": 0,
+                    "TAX_AMT_SHIPPED": 0,
+                    "LINS": 1,
+                    "SUB_TOT": 11.99,
+                    "TOT_TND": 11.99,
+                    "TOT_CHNG": 0,
+                    "TOT_WEIGHT": 0,
+                    "TOT_CUBE": 0,
+                    "TOT": 11.99,
+                    "AMT_DUE": 0,
+                    "TOT_HDR_DISC": 5,
+                    "TOT_LIN_DISC": 0,
+                    "TOT_HDR_DISCNTBL_AMT": 11.99,
+                }
             ],
         },
     }
