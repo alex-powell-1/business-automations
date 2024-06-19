@@ -470,5 +470,4 @@ class Customers:
 
 if __name__ == "__main__":
     customers = Customers(last_sync=date_presets.business_start_date)
-    # customers.sync()
-    customers.delete_customers()
+    customers.sync()

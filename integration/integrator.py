@@ -69,6 +69,83 @@ class Integrator:
         Integrator.error_handler.print_errors()
 
 
+def main_menu():
+    print(
+        "Please enter a command to execute: \n"
+        "- initialize -- will delete all products, brands, categories, and customers from bigcommerce and start over.\n"
+        "- get -- will get info about a product, brand, category, or customer)\n"
+        "- delete -- will delete a product, brand, category, or customer from BC)\n"
+        "- sync -- will run a normal sync\n"
+    )
+
+    try:
+        input_command = input("Enter command: \n")
+    except KeyboardInterrupt:
+        sys.exit(0)
+    else:
+        # Initialize the integrator by deleting the catalog, rebuilding the tables, and syncing the catalog.
+        if input_command == "initialize":
+            integrator.initialize()
+        # Get information about a product, brand, category, or customer
+        elif input_command == "get":
+            command = input(
+                "\nEnter command: \n"
+                "- product\n"
+                "- brands\n"
+                "- categories\n"
+                "- customer\n\n"
+            )
+            if command == "product":
+                sku = input("Enter product sku: ")
+                payload = Catalog.get_product(item_no=sku)
+                product = integrator.catalog.Product(
+                    product_data=payload, last_sync=integrator.last_sync
+                )
+                product.get_product_details(last_sync=integrator.last_sync)
+                print(product)
+
+            elif command == "brands":
+                brands = integrator.catalog.Brands(last_sync=integrator.last_sync)
+                print(brands)
+
+            elif command == "categories":
+                tree = Catalog.CategoryTree(last_sync=integrator.last_sync)
+                print(tree)
+
+            elif command == "customer":
+                customer_id = input("Enter customer id: ")
+                integrator.customers.get_customer(customer_id=customer_id)
+
+            user_menu_choices()
+
+        elif input_command == "sync":
+            integrator.sync()
+
+        elif input_command.startswith("delete"):
+            command = input_command.split(" ")
+            if command[1] == "product":
+                integrator.catalog.delete_product(sku=command[2])
+            elif command[1] == "catalog":
+                integrator.catalog.delete_catalog()
+            elif command[1] == "brands":
+                integrator.catalog.delete_brands()
+            elif command[1] == "categories":
+                integrator.catalog.delete_categories()
+            elif command[1] == "products":
+                integrator.catalog.delete_products()
+        else:
+            print("Invalid command.")
+
+
+def user_menu_choices():
+    choice = input("\n\nPress 1 to continue or any other key to exit.")
+    if choice == "1":
+        print("\n\n")
+        main_menu()
+    else:
+        sys.exit(0)
+
+
 if __name__ == "__main__":
     integrator = Integrator()
     # Argument parsing
@@ -98,37 +175,7 @@ if __name__ == "__main__":
         elif sys.argv[1] == "input":
             print(interface.art)
             print(f"Version: {interface.Version}\n")
-            print(
-                "Please enter a command to execute: \n"
-                "1. initialize (will delete all \n"
-                "2. delete product <sku>\n"
-                "3. delete catalog\n"
-                "4. delete brands\n"
-                "5. delete categories\n"
-                "6. delete products\n"
-                "7. sync\n"
-            )
-            try:
-                input_command = input("Enter command: ")
-            except KeyboardInterrupt:
-                sys.exit(0)
-            else:
-                if input_command == "initialize":
-                    integrator.initialize()
-                elif input_command == "sync":
-                    integrator.sync()
-                elif input_command.startswith("delete"):
-                    command = input_command.split(" ")
-                    if command[1] == "product":
-                        integrator.catalog.delete_product(sku=command[2])
-                    elif command[1] == "catalog":
-                        integrator.catalog.delete_catalog()
-                    elif command[1] == "brands":
-                        integrator.catalog.delete_brands()
-                    elif command[1] == "categories":
-                        integrator.catalog.delete_categories()
-                    elif command[1] == "products":
-                        integrator.catalog.delete_products()
+            main_menu()
 
     else:
         integrator.sync()
