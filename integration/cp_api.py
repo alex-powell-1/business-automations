@@ -611,6 +611,7 @@ class OrderAPI(DocumentAPI):
         self.logger.info("Writing refund data")
 
 
+        # COME BACK HERE
         if self.is_pr():
             sub_tot = 0
 
@@ -861,7 +862,7 @@ class OrderAPI(DocumentAPI):
 
         self.logger.info("Writing tables")
         # tot_tndr = float(bc_order["total_inc_tax"] or 0)
-        tot_tndr = float(bc_order["total_inc_tax"] or 0)
+        tot_tndr = 0 if self.is_pr() else float(bc_order["total_inc_tax"] or 0)
 
         query = f"""
         DELETE FROM PS_DOC_HDR_TOT
@@ -875,6 +876,8 @@ class OrderAPI(DocumentAPI):
         else:
             self.error_handler.add_error_v("Total could not be removed")
             self.error_handler.add_error_v(response["message"])
+
+        # COME BACK HERE
 
         sub_tot = float(bc_order["subtotal_ex_tax"] or 0)
         document_discount = float(self.total_discount_amount or 0)
@@ -906,7 +909,7 @@ class OrderAPI(DocumentAPI):
             INSERT INTO PS_DOC_HDR_TOT
             (DOC_ID, TOT_TYP, INITIAL_MIN_DUE, HAS_TAX_OVRD, TAX_AMT_SHIPPED, LINS, TOT_GFC_AMT, TOT_SVC_AMT, SUB_TOT, TAX_OVRD_LINS, TOT_EXT_COST, TOT_MISC, TAX_AMT, NORM_TAX_AMT, TOT_TND, TOT_CHNG, TOT_WEIGHT, TOT_CUBE, TOT, AMT_DUE, TOT_HDR_DISC, TOT_LIN_DISC, TOT_HDR_DISCNTBL_AMT, TOT_TIP_AMT)
             VALUES
-            ('{doc_id}', 'S', 0, '!', 0, {len(payload["PS_DOC_HDR"]["PS_DOC_LIN"])}, 0, 0, {-(sub_tot + document_discount)}, 0, {-tot_ext_cost}, {shipping_amt}, 0, 0, {tot_tndr}, {sub_tot - self.total_discount_amount / float(bc_order["items_total"])}, 0, 0, {-(sub_tot - (self.total_discount_amount / float(bc_order["items_total"])))}, 0, {self.total_hdr_disc}, {self.total_lin_disc}, 0, 0)
+            ('{doc_id}', 'S', 0, '!', 0, {len(payload["PS_DOC_HDR"]["PS_DOC_LIN"])}, 0, 0, {-sub_tot}, 0, {-tot_ext_cost}, {shipping_amt}, 0, 0, {tot_tndr}, {sub_tot - self.total_discount_amount / float(bc_order["items_total"])}, 0, 0, {-(sub_tot - (self.total_discount_amount / float(bc_order["items_total"])))}, 0, {0}, {self.total_lin_disc + self.total_hdr_disc}, 0, 0)
             """
         else:
             query = f"""
