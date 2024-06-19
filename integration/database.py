@@ -34,7 +34,6 @@ class Database:
                                         IMAGE_URL nvarchar(255),
                                         IMAGE_FILEPATH nvarchar(255),
                                         IMAGE_SIZE int,
-                                        IMAGE_LST_MAINT_DT datetime,
                                         IS_CUSTOMIZED BIT,
                                         CUSTOM_URL nvarchar(255),
                                         LST_MAINT_DT datetime NOT NULL DEFAULT(current_timestamp)
