@@ -333,7 +333,7 @@ class OrderAPI(DocumentAPI):
         WHERE CUST_NO = '{cust_no}'
         """
         response = Database.db.query_db(query)
-        points_balance = float(response[0][0] or 0)
+        points_balance = float(response[0][0]) if response else 0
 
         wquery = f"""
         INSERT INTO PS_DOC_HDR_LOY_PGM
@@ -363,11 +363,7 @@ class OrderAPI(DocumentAPI):
         """
 
         response = Database.db.query_db(query)
-        points_used = 0
-        try:
-            points_used = math.floor(float(response[0][0] or 0))
-        except:
-            pass
+        points_used = math.floor(float(response[0][0])) if response else 0
 
         return points_used
 
@@ -630,7 +626,7 @@ class OrderAPI(DocumentAPI):
 
             response = Database.db.query_db(query)
 
-            return float(response[0][0])
+            return float(response[0][0]) if response else None
 
         def set_value(table, column, value, index):
             r = commit_query(
