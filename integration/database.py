@@ -75,82 +75,30 @@ class Database:
                                         LST_MAINT_DT datetime NOT NULL DEFAULT(current_timestamp)
                                         );
                                         """,
-                "custom_fields": f"""
-                                            CREATE TABLE SN_CUSTOM_FIELDS (
-                                            ID int IDENTITY(1,1) PRIMARY KEY,
-                                            ITEM_NO nvarchar(50),
-                                            PRODUCT_ID int,
-                                            FIELD_1_ID int,
-                                            FIELD_1_NAME varchar(60),
-                                            FIELD_1_VALUE varchar(255),
-                                            FIELD_1_DT datetime DEFAULT(current_timestamp),
-                                            FIELD_2_ID int,
-                                            FIELD_2_NAME varchar(60),
-                                            FIELD_2_VALUE varchar(255),
-                                            FIELD_2_DT datetime DEFAULT(current_timestamp),
-                                            FIELD_3_ID int,
-                                            FIELD_3_NAME varchar(60),
-                                            FIELD_3_VALUE varchar(255),
-                                            FIELD_3_DT datetime DEFAULT(current_timestamp),
-                                            FIELD_4_ID int,
-                                            FIELD_4_NAME varchar(60),
-                                            FIELD_4_VALUE varchar(255),
-                                            FIELD_4_DT datetime DEFAULT(current_timestamp),
-                                            FIELD_5_ID int,
-                                            FIELD_5_NAME varchar(60),
-                                            FIELD_5_VALUE varchar(255),
-                                            FIELD_5_DT datetime DEFAULT(current_timestamp),
-                                            FIELD_6_ID int,
-                                            FIELD_6_NAME varchar(60),
-                                            FIELD_6_VALUE varchar(255),
-                                            FIELD_6_DT datetime DEFAULT(current_timestamp),
-                                            FIELD_7_ID int,
-                                            FIELD_7_NAME varchar(60),
-                                            FIELD_7_VALUE varchar(255),
-                                            FIELD_7_DT datetime DEFAULT(current_timestamp),
-                                            FIELD_8_ID int,
-                                            FIELD_8_NAME varchar(60),
-                                            FIELD_8_VALUE varchar(255),
-                                            FIELD_8_DT datetime DEFAULT(current_timestamp),
-                                            FIELD_9_ID int,
-                                            FIELD_9_NAME varchar(60),
-                                            FIELD_9_VALUE varchar(255),
-                                            FIELD_9_DT datetime DEFAULT(current_timestamp),
-                                            FIELD_10_ID int,
-                                            FIELD_10_NAME varchar(60),
-                                            FIELD_10_VALUE varchar(255),
-                                            FIELD_10_DT datetime DEFAULT(current_timestamp),
-                                            FIELD_11_ID int,
-                                            FIELD_11_NAME varchar(60),
-                                            FIELD_11_VALUE varchar(255),
-                                            FIELD_11_DT datetime DEFAULT(current_timestamp),
-                                            FIELD_12_ID int,
-                                            FIELD_12_NAME varchar(60),
-                                            FIELD_12_VALUE varchar(255),
-                                            FIELD_12_DT datetime DEFAULT(current_timestamp),
-                                            FIELD_13_ID int,
-                                            FIELD_13_NAME varchar(60),
-                                            FIELD_13_VALUE varchar(255),
-                                            FIELD_13_DT datetime DEFAULT(current_timestamp),
-                                            FIELD_14_ID int,
-                                            FIELD_14_NAME varchar(60),
-                                            FIELD_14_VALUE varchar(255),
-                                            FIELD_14_DT datetime DEFAULT(current_timestamp),
-                                            FIELD_15_ID int,
-                                            FIELD_15_NAME varchar(60),
-                                            FIELD_15_VALUE varchar(255),
-                                            FIELD_15_DT datetime DEFAULT(current_timestamp),
-                                            LST_MAINT_DT datetime DEFAULT(current_timestamp),
-                                            );""",
                 "customers": f"""
-                                            CREATE TABLE {creds.bc_customer_table} (
-                                            ID int IDENTITY(1,1) PRIMARY KEY,
-                                            CUST_NO varchar(50) NOT NULL,
-                                            BC_CUST_ID int,
-                                            LST_MAINT_DT datetime NOT NULL DEFAULT(current_timestamp)
-                                            );
-                                            """,
+                                        CREATE TABLE {creds.bc_customer_table} (
+                                        ID int IDENTITY(1,1) PRIMARY KEY,
+                                        CUST_NO varchar(50) NOT NULL,
+                                        BC_CUST_ID int,
+                                        LST_MAINT_DT datetime NOT NULL DEFAULT(current_timestamp)
+                                        );
+                                        """,
+                "orders": f"""
+                                        CREATE TABLE {creds.bc_order_table} (
+                                        ID int IDENTITY(1, 1) PRIMARY KEY,
+                                        ORDER_NO int NOT NULL,
+                                        DOC_ID bigint,
+                                        STATUS bit DEFAULT(0)
+                                        )""",
+                "gift": f"""
+                                        CREATE TABLE {creds.bc_gift_cert_table} (
+                                        ID int IDENTITY(1, 1) PRIMARY KEY,
+                                        GFC_NO varchar(30) NOT NULL,
+                                        BC_GFC_ID int NOT NULL,
+                                        LST_MAINT_DT datetime NOT NULL DEFAULT(current_timestamp)
+                                        )""",
             }
+
             for table in tables:
                 self.db.query_db(tables[table], commit=True)
 
@@ -158,13 +106,12 @@ class Database:
         def drop_tables():
             tables = [
                 creds.bc_customer_table,
-                creds.bc_custom_fields,
-                creds.bc_custom_fields,
                 creds.bc_image_table,
                 creds.bc_product_table,
                 creds.bc_brands_table,
-                creds.bc_category_item_table,
                 creds.bc_category_table,
+                creds.bc_gift_cert_table,
+                creds.bc_order_table,
             ]
 
             def drop_table(table_name):

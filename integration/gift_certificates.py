@@ -386,8 +386,6 @@ class GiftCertificates:
                 pass
 
 
-import setup.date_presets as date_presets
-
 if __name__ == "__main__":
     certs = GiftCertificates(last_sync=date_presets.business_start_date)
     certs.sync()

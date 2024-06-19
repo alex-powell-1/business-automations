@@ -1,13 +1,14 @@
 from integration.catalog import Catalog
 from integration.customers import Customers
 from integration.database import Database
+from integration import interface
 
-from setup import date_presets, creds
+from setup import date_presets
 from datetime import datetime
 
 from integration.error_handler import GlobalErrorHandler
 
-
+import sys
 import time
 
 
@@ -16,13 +17,10 @@ class Integrator:
     logger = error_handler.logger
 
     def __init__(self):
-        last_sync = self.get_last_sync()
-        self.last_sync = last_sync
+        self.last_sync = self.get_last_sync()
         self.db = Database()
-        self.category_tree = Catalog.CategoryTree(last_sync=last_sync)
-        self.brands = Catalog.Brands(last_sync=last_sync)
         self.catalog = Catalog(
-            last_sync=last_sync,
+            last_sync=self.last_sync,
         )
 
         self.customers = None
@@ -30,40 +28,37 @@ class Integrator:
         self.orders = None
 
     def __str__(self):
-        return (
-            f"Integration Object\n"
-            f"Last Sync: {self.last_sync}\n"
-            f"{self.catalog}\n"
-            f"{self.category_tree}\n"
-        )
+        return f"Integrator\n" f"Last Sync: {self.last_sync}\n"
 
     def get_last_sync(self):
+        """Read the last sync time from a file for use in sync operations."""
         with open("last_sync.txt", "r+") as file:
             last_sync = datetime.strptime(file.read(), "%Y-%m-%d %H:%M:%S")
             Integrator.logger.info(message=f"Last Sync: {last_sync}")
             return last_sync
 
     def set_last_sync(self, start_time):
+        """Write the last sync time to a file for future use."""
         with open("last_sync.txt", "w") as file:
             file.write(start_time.strftime("%Y-%m-%d %H:%M:%S"))
 
     def initialize(self):
-        business_start = date_presets.business_start_date
+        """Initialize the integrator by deleting the catalog, rebuilding the tables, and syncing the catalog."""
         start_time = time.time()
+        self.catalog.delete_catalog()
         self.db.rebuild_tables()
-        self.category_tree = Catalog.CategoryTree(last_sync=business_start)
-        self.brands = Catalog.Brands(last_sync=business_start)
-        self.catalog = Catalog(last_sync=business_start)
-        self.customers = Customers(last_sync=business_start)
+        self.catalog = Catalog(last_sync=date_presets.business_start_date)
+        self.sync(initial=True)
+        # self.customers = Customers(last_sync=business_start)
         Integrator.logger.info(
             message=f"Initialization Complete. "
             f"Total time: {time.time() - start_time}"
         )
 
-    def sync(self):
+    def sync(self, initial=False):
         start_sync_time = datetime.now()
         self.logger.header("Sync Starting")
-        self.catalog.sync()
+        self.catalog.sync(initial=initial)
         self.set_last_sync(start_sync_time)
         completion_time = (datetime.now() - start_sync_time).seconds
         Integrator.logger.info(f"Sync completion time: {completion_time} seconds")
@@ -72,4 +67,64 @@ class Integrator:
 
 if __name__ == "__main__":
     integrator = Integrator()
-    integrator.sync()
+    # Argument parsing
+    if len(sys.argv) > 1:
+        if sys.argv[1] == "initialize":
+            integrator.initialize()
+        elif sys.argv[1] == "delete":
+            if len(sys.argv) > 2:
+                if sys.argv[2] == "product":
+                    if len(sys.argv) > 3:
+                        integrator.catalog.delete_product(sku=sys.argv[3])
+                    else:
+                        print("Please provide a sku to delete.")
+
+                elif sys.argv[2] == "catalog":
+                    integrator.catalog.delete_catalog()
+
+                elif sys.argv[2] == "brands":
+                    integrator.catalog.delete_brands()
+
+                elif sys.argv[2] == "categories":
+                    integrator.catalog.delete_categories()
+
+                elif sys.argv[2] == "products":
+                    integrator.catalog.delete_products()
+        # CLI interface
+        elif sys.argv[1] == "input":
+            print(interface.art)
+            print(f"Version: {interface.Version}\n")
+            print(
+                "Please enter a command to execute: \n"
+                "1. initialize (will delete all \n"
+                "2. delete product <sku>\n"
+                "3. delete catalog\n"
+                "4. delete brands\n"
+                "5. delete categories\n"
+                "6. delete products\n"
+                "7. sync\n"
+            )
+            try:
+                input_command = input("Enter command: ")
+            except KeyboardInterrupt:
+                sys.exit(0)
+            else:
+                if input_command == "initialize":
+                    integrator.initialize()
+                elif input_command == "sync":
+                    integrator.sync()
+                elif input_command.startswith("delete"):
+                    command = input_command.split(" ")
+                    if command[1] == "product":
+                        integrator.catalog.delete_product(sku=command[2])
+                    elif command[1] == "catalog":
+                        integrator.catalog.delete_catalog()
+                    elif command[1] == "brands":
+                        integrator.catalog.delete_brands()
+                    elif command[1] == "categories":
+                        integrator.catalog.delete_categories()
+                    elif command[1] == "products":
+                        integrator.catalog.delete_products()
+
+    else:
+        integrator.sync()
