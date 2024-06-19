@@ -18,6 +18,7 @@ from setup import query_engine
 from integration.utilities import get_all_binding_ids, convert_to_utc
 
 from integration.error_handler import GlobalErrorHandler
+import integration.object_processor as object_processor
 
 
 class Catalog:
@@ -36,7 +37,6 @@ class Catalog:
         self.mw_items = []
         self.sync_queue = []
         self.binding_ids = set()
-
         if self.sync_queue:
             self.binding_ids = set(
                 x["binding_id"] for x in self.sync_queue if "binding_id" in x
@@ -440,7 +440,6 @@ class Catalog:
             fail_count = 0
 
             Catalog.logger.info(f"Syncing {queue_length} products.")
-
             while len(self.sync_queue) > 0:
                 start_time = time.time()
                 target = self.sync_queue.pop()
@@ -496,6 +495,18 @@ class Catalog:
         else:
             Catalog.logger.info(f"Deleting Product: {sku}")
             product.delete_product(sku=sku)
+
+    @staticmethod
+    def get_product(item_no):
+        query = f"SELECT ITEM_NO, {creds.cp_field_binding_id} FROM IM_ITEM WHERE ITEM_NO = '{item_no}'"
+        response = Database.db.query_db(query)
+        if response is not None:
+            sku = response[0][0]
+            binding_id = response[0][1]
+        if binding_id:
+            return {"sku": sku, "binding_id": binding_id}
+        else:
+            return {"sku": sku}
 
     @staticmethod
     def get_family_members(binding_id, count=False, price=False, counterpoint=False):
@@ -586,54 +597,102 @@ class Catalog:
     @staticmethod
     def delete_categories():
         """Find parent categories and delete them from Big. Delete all categories from the middleware."""
-        query = f"SELECT DISTINCT BC_CATEG_ID FROM {creds.bc_category_table} WHERE CP_PARENT_ID = 0"
-        response = Database.db.query_db(query)
-        if response is not None:
-            parent_category_list = [x[0] for x in response]
-            for category in parent_category_list:
-                url = f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/catalog/categories/{category}"
+
+        def batch_delete_categories(category_list):
+            while category_list:
+                batch = []
+                while len(batch) < 250:
+                    if not category_list:
+                        break
+                    batch.append(str(category_list.pop()))
+
+                batch_string = ",".join(batch)
+
+                url = f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/catalog/trees/categories?category_id:in={batch_string}"
+
                 bc_response = requests.delete(
                     url=url, headers=creds.test_bc_api_headers, timeout=120
                 )
+
                 if bc_response.status_code == 204:
                     Catalog.logger.success(
-                        f"Category {category} deleted from BigCommerce."
+                        f"Products {batch_string} deleted from BigCommerce."
                     )
+                    query = f"""
+                    DELETE FROM {creds.bc_category_table} WHERE BC_CATEG_ID in ({batch_string})
+                    """
+                    sql_response = Database.db.query_db(query, commit=True)
+                    if sql_response["code"] == 200:
+                        Catalog.logger.success(
+                            f"Categories {batch_string} deleted from Middleware."
+                        )
+                    else:
+                        Catalog.error_handler.add_error_v(
+                            error=f"Error deleting categories {batch_string} from Middleware."
+                        )
                 else:
                     Catalog.error_handler.add_error_v(
-                        error=f"Error deleting category {category} from BigCommerce."
+                        error=f"Error deleting categories {batch_string} from BigCommerce."
                     )
-                    Catalog.logger.info(
-                        f"Delete URL: {url}\n"
-                        f"Response: {json.dumps(bc_response.json(), indent=4)}"
-                    )
+                    Catalog.logger.log(f"Url: {url}")
+                    Catalog.logger.log(bc_response)
 
             query = f"DELETE FROM {creds.bc_category_table}"
             response = Database.db.query_db(query, commit=True)
+
             if response["code"] == 200:
-                Catalog.logger.success(f"Category {category} deleted from Middleware.")
+                Catalog.logger.success(
+                    f"Category: {batch_string} deleted from Middleware."
+                )
             else:
                 Catalog.error_handler.add_error_v(
-                    error=f"Error deleting category {category} from Middleware."
+                    error=f"Error deleting category: {batch_string} from Middleware."
                 )
 
+        # Get all parent categories from Middleware
+        query = f"SELECT DISTINCT BC_CATEG_ID FROM {creds.bc_category_table} WHERE CP_PARENT_ID = 0"
+        response = Database.db.query_db(query)
+        parent_category_list = [x[0] for x in response] if response else []
+
+        # Delete all categories from BigCommerce and Middleware
+        if parent_category_list:
+            batch_delete_categories(parent_category_list)
         else:
-            Catalog.logger.warn("No categories found in Middleware.")
+            Catalog.logger.warn(
+                "No categories found in Middleware. Will check BigCommerce."
+            )
+
+        # As a failsafe for broken mappings, get all categories from BigCommerce and delete them.
+        category_id_list = []
+        page = 1
+        more_pages = True
+        while more_pages:
+            url = f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/catalog/categories?limit=250&page={page}"
+            response = requests.get(url, headers=creds.test_bc_api_headers)
+            for category in response.json()["data"]:
+                category_id_list.append(category["id"])
+            count = response.json()["meta"]["pagination"]["count"]
+            if count == 0:
+                more_pages = False
+            page += 1
+
+        # Delete all remaining categories from BigCommerce
+        if category_id_list:
+            batch_delete_categories(category_list=category_id_list)
+        else:
+            Catalog.logger.info("No categories found in BigCommerce.")
 
     @staticmethod
     def delete_products():
         """Deletes all products from BigCommerce and Middleware."""
-        query = f"SELECT DISTINCT PRODUCT_ID FROM {creds.bc_product_table}"
-        response = Database.db.query_db(query)
-        if response is not None:
-            product_id_list = [x[0] for x in response]
 
-            while product_id_list:
+        def batch_delete_products(product_list):
+            while product_list:
                 batch = []
                 while len(batch) < 250:
-                    if not product_id_list:
+                    if not product_list:
                         break
-                    batch.append(str(product_id_list.pop()))
+                    batch.append(str(product_list.pop()))
 
                 batch_string = ",".join(batch)
 
@@ -666,40 +725,102 @@ class Catalog:
                     )
                     Catalog.logger.log(f"Url: {url}")
                     Catalog.logger.log(bc_response)
+
+        # Get all product IDs from Middleware
+        query = f"SELECT DISTINCT PRODUCT_ID FROM {creds.bc_product_table}"
+        response = Database.db.query_db(query)
+        product_id_list = [x[0] for x in response] if response else []
+
+        if product_id_list:
+            batch_delete_products(product_id_list)
         else:
-            Catalog.logger.warn("No products found in Middleware.")
+            Catalog.logger.warn(
+                "No products found in Middleware. Will check BigCommerce."
+            )
+
+        # As a failsafe, get all products from BigCommerce and delete them.
+        product_id_list = []
+        page = 1
+        more_pages = True
+        while more_pages:
+            url = f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/catalog/products?limit=250&page={page}"
+            response = requests.get(url, headers=creds.test_bc_api_headers)
+            for product in response.json()["data"]:
+                product_id_list.append(product["id"])
+            count = response.json()["meta"]["pagination"]["count"]
+            if count == 0:
+                more_pages = False
+            page += 1
+        if product_id_list:
+            batch_delete_products(product_list=product_id_list)
+        else:
+            Catalog.logger.info("No products found in BigCommerce.")
 
     @staticmethod
     def delete_brands():
         """Deletes all brands from Middleware."""
-        query = f"SELECT DISTINCT BC_BRAND_ID FROM {creds.bc_brands_table}"
-        response = Database.db.query_db(query)
-        if response is not None:
-            brand_id_list = [x[0] for x in response]
-            for brand in brand_id_list:
-                url = f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/catalog/brands/{brand}"
+
+        def batch_delete_brands(brand_list):
+            while brand_list:
+                # Create Batch
+                batch = []
+                while len(batch) < 250:
+                    if not brand_list:
+                        break
+                    batch.append(str(brand_list.pop()))
+                batch_string = ",".join(batch)
+                # Delete Batch
+                url = f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/catalog/brands?id:in={batch_string}"
                 bc_response = requests.delete(
                     url=url, headers=creds.test_bc_api_headers, timeout=120
                 )
                 if bc_response.status_code == 204:
-                    Catalog.logger.success(f"Brand {brand} deleted from BigCommerce.")
-                    query = f"DELETE FROM {creds.bc_brands_table} WHERE BC_BRAND_ID = {brand}"
+                    Catalog.logger.success(
+                        f"Brand:\n{batch_string}\ndeleted from BigCommerce."
+                    )
+                    query = f"DELETE FROM {creds.bc_brands_table} WHERE BC_BRAND_ID in ({batch_string})"
                     response = Database.db.query_db(query, commit=True)
                     if response["code"] == 200:
                         Catalog.logger.success(
-                            f"Brand {brand} deleted from Middleware."
+                            f"Brand:\n{batch_string}\ndeleted from Middleware."
                         )
                     else:
                         Catalog.error_handler.add_error_v(
-                            error=f"Error deleting brand {brand} from Middleware."
+                            error=f"Error deleting brand:\n{batch_string}\nfrom Middleware."
                         )
                 else:
                     Catalog.error_handler.add_error_v(
-                        error=f"Error deleting brand {brand} from BigCommerce."
+                        error=f"Error deleting brand:\n{batch_string}\nfrom BigCommerce."
                     )
 
+        query = f"SELECT DISTINCT BC_BRAND_ID FROM {creds.bc_brands_table}"
+        response = Database.db.query_db(query)
+        brand_id_list = [x[0] for x in response] if response else []
+
+        # Delete all brands from Middleware and BigCommerce
+        if brand_id_list:
+            batch_delete_brands(brand_id_list)
         else:
-            Catalog.logger.warn("No brands found in Middleware.")
+            Catalog.logger.warn(
+                "No brands found in Middleware. Will check BigCommerce."
+            )
+        # As a failsafe, get all brands from BigCommerce and delete them.
+        brand_id_list = []
+        page = 1
+        more_pages = True
+        while more_pages:
+            url = f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/catalog/brands?limit=250&page={page}"
+            response = requests.get(url, headers=creds.test_bc_api_headers)
+            for brand in response.json()["data"]:
+                brand_id_list.append(brand["id"])
+            count = response.json()["meta"]["pagination"]["count"]
+            if count == 0:
+                more_pages = False
+            page += 1
+        if brand_id_list:
+            batch_delete_brands(brand_id_list)
+        else:
+            Catalog.logger.info("No brands found in BigCommerce.")
 
     @staticmethod
     def delete_catalog():
@@ -1107,7 +1228,7 @@ class Catalog:
                     print(f"Category {self.category_name} deleted from Middleware.")
 
     class Brands:
-        def __init__(self, last_sync):
+        def __init__(self, last_sync=datetime(1970, 1, 1)):
             self.db = Database.db
             self.last_sync = last_sync
             self.cp_brands = set()
@@ -1120,11 +1241,12 @@ class Catalog:
         def __str__(self):
             result = ""
             for brand in self.brands:
-                result += (
-                    f"{brand.name}\n"
-                    f"---------------------------------------\n"
-                    f"Last Modified: {brand.last_maint_dt}\n\n"
-                )
+                result += f"Brand Name: {brand.name}\n"
+                result += f"---------------------------------------\n"
+                result += f"Counterpoint Brand ID: {brand.cp_brand_id}\n"
+                result += f"BigCommerce Brand ID: {brand.bc_brand_id}\n"
+                result += f"Last Maintenance Date: {brand.last_maint_dt}\n\n"
+
             return result
 
         @staticmethod
@@ -1295,7 +1417,6 @@ class Catalog:
             def __init__(self, cp_brand_id, description, last_maint_dt, last_sync):
                 self.db = query_engine.QueryEngine()
                 self.cp_brand_id = cp_brand_id
-                print(f"Brand ID: {self.cp_brand_id}")
                 self.bc_brand_id = None
                 self.name = description
                 self.page_title = description
@@ -1311,9 +1432,7 @@ class Catalog:
                     str(re.sub("[^A-Za-z0-9 ]+", "", self.name)).split(" ")
                 )
                 self.last_maint_dt = last_maint_dt
-                if self.last_maint_dt > last_sync:
-                    # setter
-                    self.get_brand_details(last_sync)
+                self.get_brand_details(last_sync)
 
             def get_brand_details(self, last_sync):
                 query = f"""SELECT *
@@ -1375,6 +1494,16 @@ class Catalog:
                             print(f"No updates found for brand {self.name}.")
 
                 # Brand Not Found, Create New Brand
+                else:
+                    self.create()
+
+            def process(self):
+                query = f"""
+                SELECT * FROM {creds.bc_brands_table}
+                WHERE CP_BRAND_ID = '{self.cp_brand_id}'"""
+                response = self.db.query_db(query)
+                if response:
+                    self.update()
                 else:
                     self.create()
 
@@ -1561,8 +1690,6 @@ class Catalog:
     class Product:
         def __init__(self, product_data, last_sync):
             self.db = Database.db
-            # self.error_handler: ErrorHandler = error_handler
-            # Catalog.logger: Logger = self.error_handler.logger
 
             self.sku = product_data["sku"]
             self.binding_id = (
@@ -1651,28 +1778,27 @@ class Catalog:
             # Validate Product
             self.validation_retries = 10
 
-            self.errors = []
-
         def __str__(self):
             result = ""
             line = "-" * 25 + "\n\n"
-            result += f"Printing Bound Product Details for: {self.binding_id}\n"
+            result += line
+            result += f"Printing Product Details for: {self.web_title}\n"
             for k, v in self.__dict__.items():
                 result += f"{k}: {v}\n"
             result += line
-            result += "Printing Child Product Details\n"
             if len(self.variants) > 1:
+                result += "Printing Child Product Details\n"
                 variant_index = 1
                 for variant in self.variants:
                     result += f"Variant: {variant_index}\n"
                     result += line
                     for k, v in variant.__dict__.items():
-                        result += f"{k}: {v}\n"
+                        result += f"    {k}: {v}\n"
                     for image in variant.images:
                         result += f"Image: {image.image_name}\n"
-                        result += f"Thumbnail: {image.is_thumbnail}\n"
-                        result += f"Variant Image: {image.is_variant_image}\n"
-                        result += f"Sort Order: {image.sort_order}\n"
+                        result += f"    Thumbnail: {image.is_thumbnail}\n"
+                        result += f"    Variant Image: {image.is_variant_image}\n"
+                        result += f"    Sort Order: {image.sort_order}\n"
                     result += line
                     variant_index += 1
             return result
@@ -1954,10 +2080,10 @@ class Catalog:
 
                     if response:
                         if response[0][0] > 1:
-                            message = f"Product {self.binding_id} has a duplicate web title. Will Append Sku to Web Title."
-                            self.errors.append(message)
+                            Catalog.logger.warn(
+                                f"Product {self.binding_id} has a duplicate web title. Will Append Sku to Web Title."
+                            )
 
-                            Catalog.logger.warn(message)
                             if self.is_bound:
                                 new_web_title = f"{self.web_title} - {self.binding_id}"
                             else:
@@ -2674,91 +2800,26 @@ class Catalog:
                 if not id_list:
                     return
 
-            if asynchronous:
+            async def bc_delete_custom_fields_async():
+                async with aiohttp.ClientSession() as session:
+                    for field_id in id_list:
+                        async_url = f"""https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/catalog/products/{self.product_id}/custom-fields/{field_id}"""
 
-                async def bc_delete_custom_fields_async():
-                    async with aiohttp.ClientSession() as session:
-                        for field_id in id_list:
-                            async_url = f"""https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/catalog/products/{self.product_id}/custom-fields/{field_id}"""
+                        async with session.delete(
+                            url=async_url, headers=creds.test_bc_api_headers
+                        ) as resp:
+                            text_response = await resp.text()
+                            if text_response:
+                                print(text_response)
 
-                            async with session.delete(
-                                url=async_url, headers=creds.test_bc_api_headers
-                            ) as resp:
-                                text_response = await resp.text()
-                                if text_response:
-                                    print(text_response)
+            asyncio.run(bc_delete_custom_fields_async())
 
-                asyncio.run(bc_delete_custom_fields_async())
-                update_cf1_query = f"""UPDATE {creds.bc_product_table}
-                            SET CUSTOM_FIELDS = NULL, LST_MAINT_DT = GETDATE()
-                            WHERE PRODUCT_ID = '{self.product_id}' AND IS_PARENT = 1
-                            """
-                self.db.query_db(update_cf1_query, commit=True)
-
-            else:
-                # Synchronous Version
-                success = True
-                success_list = []
-                db = query_engine.QueryEngine()
-                # Delete Each Custom Field
-                for number in id_list:
-                    url = (
-                        f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/"
-                        f"catalog/products/{self.product_id}/custom-fields/{number}"
-                    )
-
-                    cf_remove_response = requests.delete(
-                        url=url, headers=creds.test_bc_api_headers, timeout=10
-                    )
-                    if cf_remove_response.status_code == 204:
-                        success_list.append(number)
-                    else:
-                        success = False
-                        message = f"BigCommerce: Error deleting custom fields for Product {self.sku}."
-                        print(message)
-                        self.errors.append(message)
-                        print(cf_remove_response.content)
-                # If all custom fields were deleted successfully, remove CUSTOM_FIELDS from middleware
-                if success:
-                    update_cf1_query = f"""UPDATE {creds.bc_product_table}
-                            SET CUSTOM_FIELDS = NULL, LST_MAINT_DT = GETDATE()
-                            WHERE PRODUCT_ID = '{self.product_id}' AND IS_PARENT = 1
-                            """
-                    try:
-                        db.query_db(update_cf1_query, commit=True)
-                    except Exception as e:
-                        message = (
-                            f"Middleware REMOVE CUSTOM_FIELDS: {self.sku}: FAILED ",
-                            e,
-                        )
-                        print(message)
-                        self.errors.append(message)
-                else:
-                    # Partial Success
-                    # If this wasn't totally successful, but some were deleted,
-                    # update the CUSTOM_FIELDS in middleware
-                    if success_list:
-                        success_list_string = ",".join(
-                            str(cust_field) for cust_field in success_list
-                        )
-                        update_cf2_query = f"""
-                        UPDATE {creds.bc_product_table}
-                        SET CUSTOM_FIELDS = '{success_list_string}', LST_MAINT_DT = GETDATE()
-                        WHERE PRODUCT_ID = '{self.product_id}' AND IS_PARENT = 1
-                        """
-                        try:
-                            db.query_db(update_cf2_query, commit=True)
-                        except Exception as e:
-                            message = (
-                                f"Middleware CUSTOM_FIELDS ROLLBACK: {self.sku}: FAILED ",
-                                e,
-                            )
-                            print(message)
-                            self.errors.append(message)
-                    else:
-                        # If no custom fields were deleted, but there was an error,
-                        # don't update the CUSTOM_FIELDS in middleware
-                        pass
+            update_cf1_query = f"""
+                UPDATE {creds.bc_product_table} 
+                SET CUSTOM_FIELDS = NULL, LST_MAINT_DT = GETDATE() 
+                WHERE PRODUCT_ID = '{self.product_id}' AND IS_PARENT = 1
+                """
+            self.db.query_db(update_cf1_query, commit=True)
 
         def bc_get_option_id(self):
             url = f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/catalog/products/{self.product_id}/options"
@@ -4154,6 +4215,4 @@ class Catalog:
 
 
 if __name__ == "__main__":
-    # tree = Catalog.CategoryTree(last_sync=datetime(2021, 1, 1))
-    # tree.sync()
     pass
