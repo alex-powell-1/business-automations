@@ -14,6 +14,7 @@ import uuid
 def generate_guid():
     return str(uuid.uuid4())
 
+
 class CounterPointAPI:
     def __init__(self, session: requests.Session = requests.Session()):
         self.base_url = creds.cp_api_server
@@ -46,6 +47,7 @@ class CounterPointAPI:
 
         return response
 
+
 class DocumentAPI(CounterPointAPI):
     def __init__(self, session: requests.Session = requests.Session()):
         super().__init__(session=session)
@@ -69,6 +71,7 @@ class DocumentAPI(CounterPointAPI):
         response = self.post(url, payload=payload)
 
         return response
+
 
 class OrderAPI(DocumentAPI):
     def __init__(self, session: requests.Session = requests.Session()):
@@ -101,17 +104,15 @@ class OrderAPI(DocumentAPI):
                             total_discount += float(discount["amount"])
 
                 ext_cost = 0
-                try:
-                    query = f"""
-                    SELECT LST_COST FROM IM_ITEM
-                    WHERE ITEM_NO = '{product["sku"]}'
-                    """
 
-                    response = Database.db.query_db(query)
+                query = f"""
+                SELECT LST_COST FROM IM_ITEM
+                WHERE ITEM_NO = '{product["sku"]}'
+                """
 
+                response = Database.db.query_db(query)
+                if response is not None:
                     ext_cost = float(response[0][0])
-                except:
-                    pass
 
                 ext_prc = (
                     float(product["base_price"]) * float(product["quantity"])
@@ -180,7 +181,6 @@ class OrderAPI(DocumentAPI):
         return gift_cards
 
     def get_payment_from_bc_order(self, bc_order: dict):
-
         def negative(num):
             return num if num == 0 else -num
 
@@ -255,7 +255,9 @@ class OrderAPI(DocumentAPI):
         if response["code"] == 200:
             self.logger.success(f"Discount {disc_seq_no} created")
         else:
-            self.error_handler.add_error_v(f"Discount {disc_seq_no} could not be created")
+            self.error_handler.add_error_v(
+                f"Discount {disc_seq_no} could not be created"
+            )
 
         return
 
@@ -310,7 +312,9 @@ class OrderAPI(DocumentAPI):
         if response["code"] == 200:
             self.logger.success(f"Line loyalty points +{points_earned}")
         else:
-            self.error_handler.add_error_v(f"Line #{lin_seq_no} could not receive loyalty points")
+            self.error_handler.add_error_v(
+                f"Line #{lin_seq_no} could not receive loyalty points"
+            )
 
         return points_earned
 
@@ -469,7 +473,9 @@ class OrderAPI(DocumentAPI):
 
         if bc_order["payment_status"] in ["declined", ""]:
             oapi.error_handler.add_error_v("Order payment declined")
-            oapi.error_handler.add_error_v(f"Order status: '{bc_order["payment_status"]}'")
+            oapi.error_handler.add_error_v(
+                f"Order status: '{bc_order["payment_status"]}'"
+            )
             return
 
         cust_no = OrderAPI.get_cust_no(bc_order)
@@ -489,9 +495,11 @@ class OrderAPI(DocumentAPI):
         payload = self.get_post_order_payload(cust_no, bc_order)
 
         response = self.post_document(payload)
-        
+
         if response.json()["ErrorCode"] == "SUCCESS":
-            self.logger.success(f"Order {response.json()['Documents'][0]['DOC_ID']} created")
+            self.logger.success(
+                f"Order {response.json()['Documents'][0]['DOC_ID']} created"
+            )
         else:
             self.error_handler.add_error_v("Order could not be created")
             self.error_handler.add_error_v(response.content)
@@ -500,8 +508,14 @@ class OrderAPI(DocumentAPI):
         doc_id = response.json()["Documents"][0]["DOC_ID"]
 
         try:
-            if payload["PS_DOC_HDR"]["TKT_NUM"] and payload["PS_DOC_HDR"]["TKT_NUM"] != "":
-                self.write_ticket_no(doc_id, f"{payload["PS_DOC_HDR"]["TKT_NUM"]}{"R1" if self.is_refund(bc_order) else ""}")
+            if (
+                payload["PS_DOC_HDR"]["TKT_NUM"]
+                and payload["PS_DOC_HDR"]["TKT_NUM"] != ""
+            ):
+                self.write_ticket_no(
+                    doc_id,
+                    f"{payload["PS_DOC_HDR"]["TKT_NUM"]}{"R1" if self.is_refund(bc_order) else ""}",
+                )
         except:
             pass
 
@@ -569,7 +583,6 @@ class OrderAPI(DocumentAPI):
             self.error_handler.add_error_v("Payment could not be updated")
             self.error_handler.add_error_v(r["message"])
 
-
         r = commit_query(
             f"""
             UPDATE PS_DOC_PMT_APPLY
@@ -631,7 +644,9 @@ class OrderAPI(DocumentAPI):
             if r["code"] == 200:
                 self.logger.success(f"[{table}] Line {index} {column} set to {value}")
             else:
-                self.error_handler.add_error_v(f"[{table}] Line {index} {column} could not be set to {value}")
+                self.error_handler.add_error_v(
+                    f"[{table}] Line {index} {column} could not be set to {value}"
+                )
                 self.error_handler.add_error_v(r["message"])
 
         def negative_column(table: str, column: str, index: int):
@@ -768,7 +783,9 @@ class OrderAPI(DocumentAPI):
         if response["code"] == 200:
             self.logger.success("Updated payment application types")
         else:
-            self.error_handler.add_error_v("Payment application types could not be updated")
+            self.error_handler.add_error_v(
+                "Payment application types could not be updated"
+            )
             self.error_handler.add_error_v(response["message"])
 
         if self.is_refund(bc_order):
@@ -861,7 +878,9 @@ class OrderAPI(DocumentAPI):
         if response["code"] == 200:
             self.logger.success("Removed original document reference")
         else:
-            self.error_handler.add_error_v("Original document reference could not be removed")
+            self.error_handler.add_error_v(
+                "Original document reference could not be removed"
+            )
             self.error_handler.add_error_v(response["message"])
 
     @staticmethod
@@ -921,16 +940,19 @@ class OrderAPI(DocumentAPI):
         cust_no = OrderAPI.get_customer_from_info(user_info)
 
         return cust_no
-    
+
     @staticmethod
     def get_order(order_id: str | int):
         url = f"https://api.bigcommerce.com/stores/{creds.big_store_hash}/v2/orders/{order_id}"
         order = JsonTools.get_json(url)
 
-        order["transactions"] = JsonTools.get_json(f"https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/orders/{order_id}/transactions")
+        order["transactions"] = JsonTools.get_json(
+            f"https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/orders/{order_id}/transactions"
+        )
         order = JsonTools.unpack(order)
-        
+
         return order
+
 
 class JsonTools:
     @staticmethod
