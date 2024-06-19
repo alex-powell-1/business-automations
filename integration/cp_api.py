@@ -125,7 +125,7 @@ class OrderAPI(DocumentAPI):
                 response = Database.db.query_db(query)
                 if response is not None:
                     ext_cost = float(response[0][0])
-                except:
+                else:
                     pass
 
                 try:
