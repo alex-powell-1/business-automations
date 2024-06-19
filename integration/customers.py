@@ -10,6 +10,7 @@ import integration.object_processor as object_processor
 from integration.error_handler import ErrorHandler, Logger, GlobalErrorHandler
 
 import time
+import json
 
 from integration.utilities import VirtualRateLimiter
 
@@ -18,7 +19,6 @@ class Customers:
     def __init__(self, last_sync):
         self.last_sync = last_sync
         self.db = Database.db
-
         self.logger = GlobalErrorHandler.logger
         self.error_handler = GlobalErrorHandler.error_handler
 
@@ -31,7 +31,8 @@ class Customers:
         FROM {creds.ar_cust_table}
         WHERE
         LST_MAINT_DT > '{self.last_sync}' and
-        CUST_NAM_TYP = 'P'
+        CUST_NAM_TYP = 'P' AND
+        LOY_PTS_BAL > 0
         """
 
         response = self.db.query_db(query)
@@ -46,6 +47,78 @@ class Customers:
         self.processor.process()
 
         self.error_handler.print_errors()
+
+    def delete_customers(self, middleware=True):
+        """Deletes all customers from BigCommerce and Middleware in 250 count batch."""
+
+        def batch_delete_customers(customer_list):
+            while customer_list:
+                batch = []
+                while len(batch) < 250:
+                    if not customer_list:
+                        break
+                    batch.append(str(customer_list.pop()))
+
+                batch_string = ",".join(batch)
+                url = f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/customers?id:in={batch_string}"
+                bc_response = requests.delete(
+                    url=url, headers=creds.test_bc_api_headers, timeout=120
+                )
+                if bc_response.status_code == 204:
+                    self.logger.success(
+                        f"Customers: {batch_string} deleted from BigCommerce."
+                    )
+                    query = f"""
+                    DELETE FROM {creds.bc_customer_table} WHERE BC_CUST_ID in ({batch_string})
+                    """
+                    sql_response = Database.db.query_db(query, commit=True)
+
+                    if sql_response["code"] == 200:
+                        self.logger.success(
+                            f"Customers:\n{batch_string}\nDeleted from Middleware."
+                        )
+                    else:
+                        self.error_handler.add_error_v(
+                            error=f"Error deleting customers:\n{batch_string}\nfrom Middleware."
+                        )
+                else:
+                    self.error_handler.add_error_v(
+                        error=f"Error deleting customers:\n{batch_string}\nfrom BigCommerce. Url: {url}"
+                    )
+                    self.logger.info(
+                        f"Response: {json.dumps(bc_response.json(), indent=4)}"
+                    )
+
+        # Get all customer ids from Middleware
+        query = f"SELECT DISTINCT BC_CUST_ID FROM {creds.bc_customer_table}"
+        response = Database.db.query_db(query)
+        customer_id_list = [x[0] for x in response] if response is not None else []
+
+        if customer_id_list:
+            batch_delete_customers(customer_list=customer_id_list)
+        else:
+            self.logger.warn(
+                "No customers found in Middleware. Will Check BigCommerce."
+            )
+
+        # Final Cleanup in case of broken mappings
+        # Get all customer ids from BigCommerce
+        customer_id_list = []
+        page = 1
+        more_pages = True
+        while more_pages:
+            url = f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/customers?limit=250&page={page}"
+            response = requests.get(url, headers=creds.test_bc_api_headers)
+            for customer in response.json()["data"]:
+                customer_id_list.append(customer["id"])
+            count = response.json()["meta"]["pagination"]["count"]
+            if count == 0:
+                more_pages = False
+            page += 1
+        if customer_id_list:
+            batch_delete_customers(customer_list=customer_id_list)
+        else:
+            self.logger.info("No customers found in BigCommerce.")
 
     class Customer:
         def __init__(self, cust_result, error_handler: ErrorHandler):
@@ -388,4 +461,5 @@ class Customers:
 
 if __name__ == "__main__":
     customers = Customers(last_sync=date_presets.business_start_date)
-    customers.sync()
+    # customers.sync()
+    customers.delete_customers()

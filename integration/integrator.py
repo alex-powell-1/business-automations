@@ -3,7 +3,7 @@ from integration.customers import Customers
 from integration.database import Database
 from integration import interface
 
-from setup import date_presets
+from setup import date_presets, creds
 from datetime import datetime
 
 from integration.error_handler import GlobalErrorHandler
@@ -19,6 +19,7 @@ class Integrator:
     def __init__(self):
         self.last_sync = self.get_last_sync()
         self.db = Database()
+
         self.catalog = Catalog(
             last_sync=self.last_sync,
         )
@@ -46,8 +47,11 @@ class Integrator:
         """Initialize the integrator by deleting the catalog, rebuilding the tables, and syncing the catalog."""
         start_time = time.time()
         self.catalog.delete_catalog()
+        self.customers.delete_customers()
         self.db.rebuild_tables()
-        self.catalog = Catalog(last_sync=date_presets.business_start_date)
+        self.catalog = Catalog(
+            last_sync=date_presets.business_start_date,
+        )
         self.sync(initial=True)
         # self.customers = Customers(last_sync=business_start)
         Integrator.logger.info(

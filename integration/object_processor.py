@@ -7,6 +7,7 @@ import copy
 
 from integration.utilities import VirtualRateLimiter
 
+
 class ObjectProcessor:
     def __init__(self, objects: list = [], speed: int = 50):
         self.objects = objects
@@ -22,8 +23,10 @@ class ObjectProcessor:
                 while VirtualRateLimiter.is_paused():
                     time.sleep(0.1)
                 executor.submit(self.process_object, obj)
-        
-        print(f"Processed {len(self.objects)} objects in {time.time() - start_time} seconds.")
+
+        print(
+            f"Processed {len(self.objects)} objects in {time.time() - start_time} seconds."
+        )
 
     def get_session(self):
         if not hasattr(self.thread_local, "session"):
@@ -39,25 +42,25 @@ class ObjectProcessor:
             while VirtualRateLimiter.is_paused():
                 time.sleep(0.1)
             return self.get_session().post(*args, **kwargs)
-        
+
         def get(*args, **kwargs):
             VirtualRateLimiter().limit()
             while VirtualRateLimiter.is_paused():
                 time.sleep(0.1)
             return self.get_session().get(*args, **kwargs)
-        
+
         def put(*args, **kwargs):
             VirtualRateLimiter().limit()
             while VirtualRateLimiter.is_paused():
                 time.sleep(0.1)
             return self.get_session().put(*args, **kwargs)
-        
+
         def delete(*args, **kwargs):
             VirtualRateLimiter().limit()
             while VirtualRateLimiter.is_paused():
                 time.sleep(0.1)
             return self.get_session().delete(*args, **kwargs)
-        
+
         session.post = post
         session.get = get
         session.put = put
