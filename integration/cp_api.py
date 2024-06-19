@@ -546,7 +546,6 @@ class OrderAPI(DocumentAPI):
             else:
                 oapi.error_handler.add_error_v("Could not cleanup order")
 
-
             raise e
 
     def post_partial_refund(self, cust_no: str, bc_order: dict):
