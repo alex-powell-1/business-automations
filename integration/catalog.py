@@ -25,8 +25,6 @@ class Catalog:
     logger = error_handler.logger
 
     all_binding_ids = get_all_binding_ids()
-    store_hash = creds.test_big_store_hash
-    api_header = creds.test_bc_api_headers
 
     def __init__(self, last_sync=datetime(1970, 1, 1)):
         self.last_sync = last_sync
@@ -37,15 +35,12 @@ class Catalog:
         self.cp_items = []
         self.mw_items = []
         self.sync_queue = []
-        self.get_products()
+        self.binding_ids = set()
 
         if self.sync_queue:
             self.binding_ids = set(
                 x["binding_id"] for x in self.sync_queue if "binding_id" in x
             )
-
-        self.product_errors = []
-        # Still need to get ALL list from mw and cp
 
     def __str__(self):
         return f"Items to Process: {len(self.sync_queue)}\n"
@@ -62,8 +57,9 @@ class Catalog:
         )
         self.mw_items = [x[0] for x in middleware_items] if middleware_items else []
 
-        # Get all products that have been updated since the last sync
         # Create the Sync Queue
+        # ---------------------
+        # Get all products that have been updated since the last sync
 
         query = f"""
         SELECT ITEM_NO, ITEM.{creds.cp_field_binding_id} as 'Binding ID'
@@ -81,7 +77,7 @@ class Catalog:
                 queue_payload = {}
                 if binding_id is not None:
                     # Check if the binding ID matches the correct format. (e.g. B0001)
-                    pattern = r"B\d{4}"
+                    pattern = creds.binding_id_format
                     if not bool(re.fullmatch(pattern, binding_id)):
                         message = f"Product {binding_id} has an invalid binding ID."
                         Catalog.error_handler.add_error_v(
@@ -89,6 +85,7 @@ class Catalog:
                         )
                         # Skip this product
                         continue
+
                     else:
                         # Get Parent to Process.
                         query = f"""
@@ -106,46 +103,24 @@ class Catalog:
                                 Catalog.logger.warn(
                                     f"Multiple parents found for {binding_id}."
                                 )
-                                # Choose the lowest price parent.
-                                # Family Members
-                                family_members = Catalog.get_family_members(
-                                    binding_id=binding_id, price=True
+                                # Set Parent Status for new parent.
+                                parent_sku = self.set_parent(
+                                    binding_id=binding_id, remove_current=True
                                 )
-                                print(family_members)
-                                parent_sku = min(
-                                    family_members, key=lambda x: x["price_1"]
-                                )["sku"]
-
-                                Catalog.logger.info(
-                                    f"Family Members: {family_members}, Target new parent item: {parent_sku}"
-                                )
-                                self.remove_parent(binding_id)
-                                self.set_parent(parent_sku=parent_sku)
 
                             else:
+                                # Single Parent Found.
                                 parent_sku = parent_list[0]
                         else:
                             # Missing Parent! Will choose the lowest price web enabled variant as the parent.
                             Catalog.logger.warn(
                                 f"Parent SKU not found for {binding_id}."
                             )
-                            # Family Members
-                            family_members = Catalog.get_family_members(
-                                binding_id=binding_id, price=True
-                            )
-                            parent_sku = min(
-                                family_members, key=lambda x: x["price_1"]
-                            )["sku"]
-                            Catalog.logger.info(
-                                f"Family Members: {family_members}, Target new parent item: {parent_sku}"
-                            )
-
-                            self.set_parent(parent_sku=parent_sku)
+                            parent_sku = self.set_parent(binding_id=binding_id)
 
                         queue_payload = {"sku": parent_sku, "binding_id": binding_id}
                 else:
                     # This will add single products to the queue
-                    # result.append({"sku": sku, "binding_id": binding_id})
                     queue_payload = {"sku": sku}
 
                 result.append(queue_payload)
@@ -154,13 +129,36 @@ class Catalog:
 
             res = []
             [res.append(x) for x in result if x not in res]
-
             self.sync_queue = res
-            self.sync_queue = [
-                {"sku": "202280"},
-            ]
 
-    def set_parent(self, parent_sku):
+    def set_parent(self, binding_id, remove_current=False):
+        # Get Family Members.
+        family_members = Catalog.get_family_members(binding_id=binding_id, price=True)
+        # Choose the lowest price family member as the parent.
+        parent_sku = min(family_members, key=lambda x: x["price_1"])["sku"]
+
+        Catalog.logger.info(
+            f"Family Members: {family_members}, Target new parent item: {parent_sku}"
+        )
+
+        if remove_current:
+            # Remove Parent Status from all children.
+            remove_parent_query = f"""
+                    UPDATE IM_ITEM 
+                    SET IS_ADM_TKT = 'N', LST_MAINT_DT = GETDATE()
+                    WHERE {creds.cp_field_binding_id} = '{binding_id}'
+                    """
+            remove_parent_response = self.db.query_db(remove_parent_query, commit=True)
+            if remove_parent_response["code"] == 200:
+                Catalog.logger.success(
+                    f"Parent status removed from all children of binding: {binding_id}."
+                )
+            else:
+                Catalog.error_handler.add_error_v(
+                    error=f"Error removing parent status from children of binding: {binding_id}. Response: {remove_parent_response}"
+                )
+
+        # Set Parent Status for new parent.
         query = f"""
         UPDATE IM_ITEM
         SET IS_ADM_TKT = 'Y'
@@ -175,28 +173,19 @@ class Catalog:
                 error=f"Error setting parent status for {parent_sku}. Response {set_parent_response}"
             )
 
-    def remove_parent(self, binding_id):
-        print("Entering Remove Parent Function of Product Class")
-        """Remove parent status from all children"""
-        query = f"""
-                UPDATE IM_ITEM 
-                SET IS_ADM_TKT = 'N', LST_MAINT_DT = GETDATE()
-                WHERE {creds.cp_field_binding_id} = '{binding_id}'
-                """
-        self.db.query_db(query, commit=True)
-        print(f"Parent status removed from all children of binding: {binding_id}.")
+        return parent_sku
 
     def process_product_deletes(self):
         # This compares the CP and MW product lists and deletes any products that are not in both lists.
         delete_targets = Catalog.get_deletion_target(
-            middleware_list=self.mw_items, counterpoint_list=self.cp_items
+            secondary_source=self.mw_items, primary_source=self.cp_items
         )
         add_targets = []
 
         for item in self.sync_queue:
             if "binding_id" not in item:
                 # Check if the target product has a binding ID in the middleware database.
-                mw_binding_id = self.get_binding_id_from_sku(
+                mw_binding_id = Catalog.get_binding_id_from_sku(
                     item["sku"], middleware=True
                 )
                 if mw_binding_id:
@@ -207,6 +196,7 @@ class Catalog:
                 family_members = Catalog.get_family_members(
                     binding_id=item["binding_id"], counterpoint=True
                 )
+
                 for member in family_members:
                     query = f"""
                     SELECT ID, BINDING_ID
@@ -231,31 +221,7 @@ class Catalog:
         if delete_targets:
             Catalog.logger.info(f"Product Delete Targets: {delete_targets}")
             for x in delete_targets:
-                query = f"SELECT BINDING_ID FROM {creds.bc_product_table} WHERE ITEM_NO = '{x}'"
-                response = self.db.query_db(query)
-                if response is not None:
-                    binding_id = response[0][0]
-                else:
-                    binding_id = None
-                    self.logger.warn(
-                        f"Binding ID not found for {x}. Response: {response}"
-                    )
-                delete_payload = {"sku": x}
-
-                if binding_id:
-                    delete_payload["binding_id"] = binding_id
-
-                product = Catalog.Product(
-                    product_data=delete_payload,
-                    last_sync=self.last_sync,
-                )
-
-                if binding_id:
-                    print(f"Deleting Product: {x} with Binding ID: {binding_id}")
-                    product.delete_variant(sku=x, binding_id=binding_id)
-                else:
-                    print(f"Deleting Product: {x}")
-                    product.delete_product(sku=x)
+                Catalog.delete_product(sku=x)
 
         time.sleep(2)
 
@@ -265,10 +231,9 @@ class Catalog:
                 parent_sku = x["parent"]
                 variant_sku = x["variant"]
                 # Get Product ID associated with item.
-                query = f"SELECT PRODUCT_ID FROM {creds.bc_product_table} WHERE ITEM_NO = '{parent_sku}'"
-                response = self.db.query_db(query)
-                if response is not None:
-                    product_id = response[0][0]
+                product_id = Catalog.get_product_id_from_sku(parent_sku)
+
+                if product_id is not None:
                     variant = Catalog.Product.Variant(
                         sku=variant_sku, last_run_date=self.last_sync
                     )
@@ -339,12 +304,12 @@ class Catalog:
 
                 if variant_id is not None:
                     url = (
-                        f"https://api.bigcommerce.com/stores/{Catalog.store_hash}/v3/catalog/"
+                        f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/catalog/"
                         f"products/{product_id}/variants/{variant_id}/images/"
                     )
                     response = requests.post(
                         url=url,
-                        headers=Catalog.api_header,
+                        headers=creds.test_bc_api_headers,
                         json={"image_url": ""},
                     )
                     if response.status_code == 200:
@@ -360,10 +325,10 @@ class Catalog:
                             f"Error deleting primary variant image: {response.json()}"
                         )
 
-            delete_img_url = f"https://api.bigcommerce.com/stores/{Catalog.store_hash}/v3/catalog/products/{product_id}/images/{image_id}"
+            delete_img_url = f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/catalog/products/{product_id}/images/{image_id}"
 
             img_del_res = requests.delete(
-                url=delete_img_url, headers=Catalog.api_header, timeout=10
+                url=delete_img_url, headers=creds.test_bc_api_headers, timeout=10
             )
 
             if img_del_res.status_code == 204:
@@ -391,7 +356,7 @@ class Catalog:
                 )
 
             # Delete image from WebDav directory
-            web_dav_response = self.delete_image_from_webdav(image_name)
+            web_dav_response = Catalog.delete_image_from_webdav(image_name)
             if web_dav_response.status_code == 204:
                 Catalog.logger.success(f"Image {image_name} deleted from WebDav.")
             else:
@@ -404,7 +369,7 @@ class Catalog:
         mw_image_list = get_middleware_images()
 
         delete_targets = Catalog.get_deletion_target(
-            counterpoint_list=local_images, middleware_list=mw_image_list
+            primary_source=local_images, secondary_source=mw_image_list
         )
 
         if delete_targets:
@@ -416,7 +381,7 @@ class Catalog:
         update_list = delete_targets
 
         addition_targets = Catalog.get_deletion_target(
-            counterpoint_list=mw_image_list, middleware_list=local_images
+            primary_source=mw_image_list, secondary_source=local_images
         )
 
         if addition_targets:
@@ -453,14 +418,19 @@ class Catalog:
             f"Image Add/Delete Processing Complete. Time: {time.time() - start_time}"
         )
 
-    def sync(self):
-        # Process Product Deletions and Images
-        self.process_product_deletes()
-        # self.process_images()
+    def sync(self, initial=False):
+        if not initial:
+            # Process Product Deletions and Images
+            self.process_product_deletes()
+            self.process_images()
+
         # Sync Category Tree
         self.category_tree.sync()
         # Sync Product Brands
         self.brands.sync()
+
+        self.get_products()
+
         # Sync Products
         if not self.sync_queue:
             Catalog.logger.success("No products to sync.")
@@ -476,11 +446,9 @@ class Catalog:
                 target = self.sync_queue.pop()
                 prod = self.Product(target, last_sync=self.last_sync)
                 prod.get_product_details(last_sync=self.last_sync)
-
                 Catalog.logger.info(
                     f"Processing Product: {prod.sku}, Binding: {prod.binding_id}, Title: {prod.web_title}"
                 )
-
                 if prod.validate_inputs():
                     if prod.process():
                         Catalog.logger.success(
@@ -506,6 +474,28 @@ class Catalog:
                 f"Success Count: {success_count}\n"
                 f"Fail Count: {fail_count}\n"
             )
+
+    def delete_product(self, sku):
+        delete_payload = {"sku": sku}
+        binding_id = Catalog.get_binding_id_from_sku(sku, middleware=True)
+        if binding_id is not None:
+            delete_payload["binding_id"] = binding_id
+        else:
+            Catalog.logger.warn(f"Binding ID not found for {sku}.")
+
+        product = Catalog.Product(
+            product_data=delete_payload,
+            last_sync=self.last_sync,
+        )
+
+        if binding_id:
+            Catalog.logger.info(
+                f"Deleting Product: {sku} with Binding ID: {binding_id}"
+            )
+            product.delete_variant(sku=sku, binding_id=binding_id)
+        else:
+            Catalog.logger.info(f"Deleting Product: {sku}")
+            product.delete_product(sku=sku)
 
     @staticmethod
     def get_family_members(binding_id, count=False, price=False, counterpoint=False):
@@ -551,7 +541,8 @@ class Catalog:
                 if response is not None:
                     return [x[0] for x in response]
 
-    def get_binding_id_from_sku(self, sku, middleware=False):
+    @staticmethod
+    def get_binding_id_from_sku(sku, middleware=False):
         if middleware:
             query = f"""
             SELECT BINDING_ID
@@ -564,11 +555,21 @@ class Catalog:
             FROM IM_ITEM
             WHERE ITEM_NO = '{sku}'
             """
-        response = self.db.query_db(query)
+        response = Database.db.query_db(query)
         if response is not None:
             return response[0][0]
 
-    def delete_image_from_webdav(self, image_name):
+    @staticmethod
+    def get_product_id_from_sku(sku):
+        query = (
+            f"SELECT PRODUCT_ID FROM {creds.bc_product_table} WHERE ITEM_NO = '{sku}'"
+        )
+        response = Database.db.query_db(query)
+        if response is not None:
+            return response[0][0]
+
+    @staticmethod
+    def delete_image_from_webdav(image_name):
         url = f"{creds.web_dav_product_photos}/{image_name}.jpg"
         response = requests.delete(
             url,
@@ -577,13 +578,50 @@ class Catalog:
         return response
 
     @staticmethod
-    def get_deletion_target(counterpoint_list, middleware_list):
+    def get_deletion_target(primary_source, secondary_source):
         return [
-            element for element in middleware_list if element not in counterpoint_list
+            element for element in secondary_source if element not in primary_source
         ]
 
     @staticmethod
-    def reset_products():
+    def delete_categories():
+        """Find parent categories and delete them from Big. Delete all categories from the middleware."""
+        query = f"SELECT DISTINCT BC_CATEG_ID FROM {creds.bc_category_table} WHERE CP_PARENT_ID = 0"
+        response = Database.db.query_db(query)
+        if response is not None:
+            parent_category_list = [x[0] for x in response]
+            for category in parent_category_list:
+                url = f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/catalog/categories/{category}"
+                bc_response = requests.delete(
+                    url=url, headers=creds.test_bc_api_headers, timeout=120
+                )
+                if bc_response.status_code == 204:
+                    Catalog.logger.success(
+                        f"Category {category} deleted from BigCommerce."
+                    )
+                else:
+                    Catalog.error_handler.add_error_v(
+                        error=f"Error deleting category {category} from BigCommerce."
+                    )
+                    Catalog.logger.info(
+                        f"Delete URL: {url}\n"
+                        f"Response: {json.dumps(bc_response.json(), indent=4)}"
+                    )
+
+            query = f"DELETE FROM {creds.bc_category_table}"
+            response = Database.db.query_db(query, commit=True)
+            if response["code"] == 200:
+                Catalog.logger.success(f"Category {category} deleted from Middleware.")
+            else:
+                Catalog.error_handler.add_error_v(
+                    error=f"Error deleting category {category} from Middleware."
+                )
+
+        else:
+            Catalog.logger.warn("No categories found in Middleware.")
+
+    @staticmethod
+    def delete_products():
         """Deletes all products from BigCommerce and Middleware."""
         query = f"SELECT DISTINCT PRODUCT_ID FROM {creds.bc_product_table}"
         response = Database.db.query_db(query)
@@ -599,9 +637,11 @@ class Catalog:
 
                 batch_string = ",".join(batch)
 
-                url = f"https://api.bigcommerce.com/stores/{Catalog.store_hash}/v3/catalog/products?id:in={batch_string}"
+                url = f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/catalog/products?id:in={batch_string}"
 
-                bc_response = requests.delete(url=url, headers=Catalog.api_header)
+                bc_response = requests.delete(
+                    url=url, headers=creds.test_bc_api_headers, timeout=120
+                )
 
                 if bc_response.status_code == 204:
                     Catalog.logger.success(
@@ -628,6 +668,45 @@ class Catalog:
                     Catalog.logger.log(bc_response)
         else:
             Catalog.logger.warn("No products found in Middleware.")
+
+    @staticmethod
+    def delete_brands():
+        """Deletes all brands from Middleware."""
+        query = f"SELECT DISTINCT BC_BRAND_ID FROM {creds.bc_brands_table}"
+        response = Database.db.query_db(query)
+        if response is not None:
+            brand_id_list = [x[0] for x in response]
+            for brand in brand_id_list:
+                url = f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/catalog/brands/{brand}"
+                bc_response = requests.delete(
+                    url=url, headers=creds.test_bc_api_headers, timeout=120
+                )
+                if bc_response.status_code == 204:
+                    Catalog.logger.success(f"Brand {brand} deleted from BigCommerce.")
+                    query = f"DELETE FROM {creds.bc_brands_table} WHERE BC_BRAND_ID = {brand}"
+                    response = Database.db.query_db(query, commit=True)
+                    if response["code"] == 200:
+                        Catalog.logger.success(
+                            f"Brand {brand} deleted from Middleware."
+                        )
+                    else:
+                        Catalog.error_handler.add_error_v(
+                            error=f"Error deleting brand {brand} from Middleware."
+                        )
+                else:
+                    Catalog.error_handler.add_error_v(
+                        error=f"Error deleting brand {brand} from BigCommerce."
+                    )
+
+        else:
+            Catalog.logger.warn("No brands found in Middleware.")
+
+    @staticmethod
+    def delete_catalog():
+        """Deletes all products, categories, and brands from BigCommerce and Middleware."""
+        Catalog.delete_products()
+        Catalog.delete_categories()
+        Catalog.delete_brands()
 
     class CategoryTree:
         def __init__(self, last_sync):
@@ -784,10 +863,12 @@ class Catalog:
                     # Delete Category from BigCommerce
                     print(f"BigCommerce: DELETE {bc_category_id}")
                     url = (
-                        f"https://api.bigcommerce.com/stores/{Catalog.store_hash}"
+                        f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}"
                         f"/v3/catalog/trees/categories?category_id:in={bc_category_id}"
                     )
-                    response = requests.delete(url=url, headers=Catalog.api_header)
+                    response = requests.delete(
+                        url=url, headers=creds.test_bc_api_headers
+                    )
                     if 207 >= response.status_code >= 200:
                         print(
                             response.status_code
@@ -893,7 +974,7 @@ class Catalog:
                     self.bc_parent_id = 0
 
             def bc_create_category(self):
-                url = f" https://api.bigcommerce.com/stores/{Catalog.store_hash}/v3/catalog/trees/categories"
+                url = f" https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/catalog/trees/categories"
                 payload = [
                     {
                         "name": self.category_name,
@@ -924,7 +1005,7 @@ class Catalog:
                 ]
 
                 response = requests.post(
-                    url=url, headers=Catalog.api_header, json=payload
+                    url=url, headers=creds.test_bc_api_headers, json=payload
                 )
                 if response.status_code == 201 or response.status_code == 207:
                     print(
@@ -939,7 +1020,7 @@ class Catalog:
                     print(response.json())
 
             def bc_update_category(self):
-                url = f" https://api.bigcommerce.com/stores/{Catalog.store_hash}/v3/catalog/trees/categories"
+                url = f" https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/catalog/trees/categories"
                 payload = [
                     {
                         "category_id": self.bc_categ_id,
@@ -952,7 +1033,7 @@ class Catalog:
                 ]
 
                 response = requests.put(
-                    url=url, headers=Catalog.api_header, json=payload, timeout=10
+                    url=url, headers=creds.test_bc_api_headers, json=payload, timeout=10
                 )
                 if response.status_code == 200:
                     print(
@@ -1000,10 +1081,10 @@ class Catalog:
                 # Delete Category from BigCommerce
                 print(f"BigCommerce: DELETE {self.category_name}")
                 url = (
-                    f"https://api.bigcommerce.com/stores/{Catalog.store_hash}/v3/"
+                    f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/"
                     f"catalog/trees/categories/{self.bc_categ_id}"
                 )
-                response = requests.delete(url=url, headers=Catalog.api_header)
+                response = requests.delete(url=url, headers=creds.test_bc_api_headers)
                 if response.status_code == 204:
                     print(f"Category {self.category_name} deleted from BigCommerce.")
                 else:
@@ -1155,15 +1236,15 @@ class Catalog:
             mw_brand_ids = [x[0] for x in self.mw_brands]
             cp_brand_ids = [x[0] for x in self.cp_brands]
             delete_targets = Catalog.get_deletion_target(
-                middleware_list=mw_brand_ids, counterpoint_list=cp_brand_ids
+                secondary_source=mw_brand_ids, primary_source=cp_brand_ids
             )
 
             def bc_delete_brand(target):
                 url = (
-                    f"https://api.bigcommerce.com/stores/{Catalog.store_hash}/v3/"
+                    f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/"
                     f"catalog/brands/{target}"
                 )
-                response = requests.delete(url=url, headers=Catalog.api_header)
+                response = requests.delete(url=url, headers=creds.test_bc_api_headers)
                 if response.status_code == 204:
                     print(
                         f"BigCommerce: Brand {x} DELETE: SUCCESS. Code: {response.status_code}"
@@ -1295,7 +1376,6 @@ class Catalog:
 
                 # Brand Not Found, Create New Brand
                 else:
-                    print("No matching brand found.")
                     self.create()
 
             def create(self):
@@ -1320,10 +1400,10 @@ class Catalog:
                             },
                         }
 
-                    url = f"https://api.bigcommerce.com/stores/{Catalog.store_hash}/v3/catalog/brands"
+                    url = f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/catalog/brands"
                     payload = construct_payload()
                     response = requests.post(
-                        url=url, headers=Catalog.api_header, json=payload
+                        url=url, headers=creds.test_bc_api_headers, json=payload
                     )
                     if response.status_code in [200, 207]:
                         print(
@@ -1376,7 +1456,7 @@ class Catalog:
             def update(self):
                 def update_bc_brand():
                     url = (
-                        f"https://api.bigcommerce.com/stores/{Catalog.store_hash}/v3"
+                        f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3"
                         f"/catalog/brands/{self.bc_brand_id}"
                     )
                     payload = {
@@ -1398,7 +1478,7 @@ class Catalog:
                         },
                     }
                     response = requests.put(
-                        url=url, headers=Catalog.api_header, json=payload
+                        url=url, headers=creds.test_bc_api_headers, json=payload
                     )
                     if response.status_code in [200, 207]:
                         print(
@@ -1713,10 +1793,6 @@ class Catalog:
                             variant_image.is_variant_image = True
                         self.images.append(variant_image)
                         variant_image_count += 1
-
-                print(f"Images for {self.binding_id}:")
-                for image in self.images:
-                    print(image.image_name, image.is_variant_image, image.is_thumbnail)
 
                 # Set the product last maintained date to the latest of the variants. This will be used in the validation process.
                 # If the product has been updated since the last sync, it will go through full validation. Otherwise, it will be skipped.
@@ -2470,10 +2546,10 @@ class Catalog:
         def bc_post_product(self):
             """Create product in BigCommerce. For this implementation, this is a single product with no
             variants"""
-            url = f"https://api.bigcommerce.com/stores/{Catalog.store_hash}/v3/catalog/products?include=custom_fields,options,variants,images"
+            url = f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/catalog/products?include=custom_fields,options,variants,images"
             payload = self.construct_product_payload()
             bc_response = requests.post(
-                url=url, headers=Catalog.api_header, json=payload, timeout=120
+                url=url, headers=creds.test_bc_api_headers, json=payload, timeout=120
             )
             if bc_response.status_code in [200, 201, 207]:
                 if self.is_bound:
@@ -2509,10 +2585,13 @@ class Catalog:
             if self.product_id:
                 image_payload["product_id"] = self.product_id
 
-            url = f"https://api.bigcommerce.com/stores/{Catalog.store_hash}/v3/catalog/products/{self.product_id}/images"
+            url = f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/catalog/products/{self.product_id}/images"
 
             bc_response = requests.post(
-                url=url, headers=Catalog.api_header, json=image_payload, timeout=120
+                url=url,
+                headers=creds.test_bc_api_headers,
+                json=image_payload,
+                timeout=120,
             )
 
             if bc_response.status_code == 200:
@@ -2535,13 +2614,13 @@ class Catalog:
 
         def bc_update_product(self, payload):
             url = (
-                f"https://api.bigcommerce.com/stores/{Catalog.store_hash}/v3/"
+                f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/"
                 f"catalog/products/{self.product_id}?include=custom_fields,options,variants,images"
             )
 
             bc_response = requests.put(
                 url=url,
-                headers=Catalog.api_header,
+                headers=creds.test_bc_api_headers,
                 json=payload,
                 timeout=120,
             )
@@ -2573,11 +2652,11 @@ class Catalog:
         def bc_get_custom_fields(self):
             custom_fields = []
             cf_url = (
-                f"https://api.bigcommerce.com/stores/{Catalog.store_hash}/v3/"
+                f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/"
                 f"catalog/products/{self.product_id}/custom-fields"
             )
             cf_response = requests.get(
-                url=cf_url, headers=Catalog.api_header, timeout=120
+                url=cf_url, headers=creds.test_bc_api_headers, timeout=120
             )
             if cf_response.status_code == 200:
                 custom_field_data = cf_response.json()["data"]
@@ -2600,10 +2679,10 @@ class Catalog:
                 async def bc_delete_custom_fields_async():
                     async with aiohttp.ClientSession() as session:
                         for field_id in id_list:
-                            async_url = f"""https://api.bigcommerce.com/stores/{Catalog.store_hash}/v3/catalog/products/{self.product_id}/custom-fields/{field_id}"""
+                            async_url = f"""https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/catalog/products/{self.product_id}/custom-fields/{field_id}"""
 
                             async with session.delete(
-                                url=async_url, headers=Catalog.api_header
+                                url=async_url, headers=creds.test_bc_api_headers
                             ) as resp:
                                 text_response = await resp.text()
                                 if text_response:
@@ -2624,12 +2703,12 @@ class Catalog:
                 # Delete Each Custom Field
                 for number in id_list:
                     url = (
-                        f"https://api.bigcommerce.com/stores/{Catalog.store_hash}/v3/"
+                        f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/"
                         f"catalog/products/{self.product_id}/custom-fields/{number}"
                     )
 
                     cf_remove_response = requests.delete(
-                        url=url, headers=Catalog.api_header, timeout=10
+                        url=url, headers=creds.test_bc_api_headers, timeout=10
                     )
                     if cf_remove_response.status_code == 204:
                         success_list.append(number)
@@ -2682,21 +2761,23 @@ class Catalog:
                         pass
 
         def bc_get_option_id(self):
-            url = f"https://api.bigcommerce.com/stores/{Catalog.store_hash}/v3/catalog/products/{self.product_id}/options"
-            response = requests.get(url, headers=Catalog.api_header, timeout=120)
+            url = f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/catalog/products/{self.product_id}/options"
+            response = requests.get(url, headers=creds.test_bc_api_headers, timeout=120)
             if response.status_code == 200:
                 return response.json()["data"][0]["id"]
 
         def bc_delete_product_option_value(self, product_id, option_id, value_id):
-            url = f"https://api.bigcommerce.com/stores/{Catalog.store_hash}/v3/catalog/products/{product_id}/options/{option_id}/values/{value_id}"
-            response = requests.delete(url, headers=Catalog.api_header, timeout=120)
+            url = f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/catalog/products/{product_id}/options/{option_id}/values/{value_id}"
+            response = requests.delete(
+                url, headers=creds.test_bc_api_headers, timeout=120
+            )
             return response
 
         def bc_create_product_variant_option_value(
             self, variant_name, product_id, option_id
         ):
             url = (
-                f"https://api.bigcommerce.com/stores/{Catalog.store_hash}/v3/catalog/"
+                f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/catalog/"
                 f"products/{product_id}/options/{option_id}/values"
             )
             print(f"Option Value ID URL: {url}")
@@ -2709,7 +2790,7 @@ class Catalog:
             print(f"OPTION ID Value Payload: {value_payload}")
             response = requests.post(
                 url=url,
-                headers=Catalog.api_header,
+                headers=creds.test_bc_api_headers,
                 json=value_payload,
                 timeout=120,
             )
@@ -2748,24 +2829,19 @@ class Catalog:
 
             if product_id is None:
                 if binding_id:
-                    delete_url = f"https://api.bigcommerce.com/stores/{Catalog.store_hash}/v3/catalog/products?sku={binding_id}"
+                    delete_url = f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/catalog/products?sku={binding_id}"
                 else:
-                    delete_url = f"https://api.bigcommerce.com/stores/{Catalog.store_hash}/v3/catalog/products?sku={sku}"
+                    delete_url = f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/catalog/products?sku={sku}"
             else:
-                delete_url = f"https://api.bigcommerce.com/stores/{Catalog.store_hash}/v3/catalog/products?id={product_id}"
+                delete_url = f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/catalog/products?id={product_id}"
 
             print(f"Delete URL: {delete_url}")
 
             del_product_response = requests.delete(
-                url=delete_url, headers=Catalog.api_header, timeout=120
+                url=delete_url, headers=creds.test_bc_api_headers, timeout=120
             )
             if del_product_response.status_code == 204:
                 print(f"Product {sku} deleted from BigCommerce.")
-
-                # if binding_id:
-                #     product_id = self.get_product_id(item_no=binding_id)
-                # else:
-                #     product_id = self.get_product_id(item_no=sku)
 
                 if product_id is None:
                     if binding_id:
@@ -2778,12 +2854,21 @@ class Catalog:
                     delete_query = f"""DELETE FROM {creds.bc_product_table} WHERE PRODUCT_ID = '{product_id}' 
                     DELETE FROM {creds.bc_image_table} WHERE PRODUCT_ID = '{product_id}'"""
 
-                self.db.query_db(delete_query, commit=True)
-                return True
+                sql_del_res = self.db.query_db(delete_query, commit=True)
+                if sql_del_res["code"] == 200:
+                    Catalog.logger.success(
+                        f"Product {sku} deleted from BigCommerce and Middleware."
+                    )
+                    return True
+                else:
+                    Catalog.error_handler.add_error_v(
+                        error=f"Error deleting product {sku} from Middleware. Response: {sql_del_res}"
+                    )
+                    return False
             else:
-                print(f"Error deleting product {sku} from BigCommerce.")
-                print(del_product_response.json())
-                print(delete_url)
+                Catalog.error_handler.add_error_v(
+                    error=f"Error deleting product {sku} from BigCommerce. Response: {del_product_response} \n URL: {delete_url}"
+                )
                 return False
 
         def delete_variant(self, sku, binding_id=None):
@@ -2816,13 +2901,13 @@ class Catalog:
                     print(f"sku: {sku}")
 
                 url = (
-                    f"https://api.bigcommerce.com/stores/{Catalog.store_hash}/"
+                    f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/"
                     f"v3/catalog/products/{product_id}/variants/{variant_id}"
                 )
 
                 # Step 1: Delete Variant from Big Commerce
                 del_variant_response = requests.delete(
-                    url=url, headers=Catalog.api_header, timeout=120
+                    url=url, headers=creds.test_bc_api_headers, timeout=120
                 )
                 # print(f"Delete Variant Response: {del_variant_response.status_code}")
                 if del_variant_response.status_code == 204:
@@ -2856,18 +2941,24 @@ class Catalog:
                         # Step 4: Delete Variant from Middleware (Product and Image Tables)
                         delete_query = f"DELETE FROM {creds.bc_product_table} WHERE VARIANT_ID = '{variant_id}'"
                         response = self.db.query_db(delete_query, commit=True)
-                        # print(delete_query)
-                        # print(response)
+
+                        if response["code"] == 200:
+                            Catalog.logger.success(
+                                f"Variant {sku} deleted from Big Commerce and Middleware."
+                            )
+                            return True
 
                     else:
-                        print(
-                            f"Error deleting option value {variant_option_value_id} from BigCommerce."
+                        Catalog.error_handler.add_error_v(
+                            error=f"Error deleting option value {variant_option_value_id} from BigCommerce. Response: {del_option_res} \n URL: {url}"
                         )
-                        print(del_option_res.json())
+                        return False
 
                 else:
-                    print(f"Error deleting product {sku} from BigCommerce.")
-                    print(del_variant_response.json())
+                    print(
+                        f"Error deleting product {sku} from BigCommerce. Response: {del_variant_response} \n URL: {url}"
+                    )
+                    return False
 
         def delete_image(self, image_id=None, product_id=None, image_name=None):
             """Delete image from BigCommerce and SQL."""
@@ -2880,10 +2971,10 @@ class Catalog:
                 # else:
                 product_id = self.get_product_id(image_id=image_id)
 
-            delete_img_url = f"https://api.bigcommerce.com/stores/{Catalog.store_hash}/v3/catalog/products/{product_id}/images/{image_id}"
+            delete_img_url = f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/catalog/products/{product_id}/images/{image_id}"
 
             img_del_res = requests.delete(
-                url=delete_img_url, headers=Catalog.api_header, timeout=120
+                url=delete_img_url, headers=creds.test_bc_api_headers, timeout=120
             )
             if img_del_res.status_code == 204:
                 delete_images_query = (
@@ -3070,9 +3161,6 @@ class Catalog:
 
         def insert_image(self, image) -> bool:
             """Insert image into SQL."""
-            print(
-                f"Entering insert_image function of PRODUCT class for {image.image_name}"
-            )
             img_insert = f"""
             INSERT INTO {creds.bc_image_table} (IMAGE_NAME, ITEM_NO, FILE_PATH,
             IMAGE_URL, PRODUCT_ID, IMAGE_ID, THUMBNAIL, IMAGE_NUMBER, SORT_ORDER,
@@ -3481,21 +3569,25 @@ class Catalog:
             def bc_get_option_id(self, product_id=None):
                 if product_id is None:
                     product_id = self.product_id
-                url = f"https://api.bigcommerce.com/stores/{Catalog.store_hash}/v3/catalog/products/{product_id}/options"
-                response = requests.get(url, headers=Catalog.api_header, timeout=120)
+                url = f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/catalog/products/{product_id}/options"
+                response = requests.get(
+                    url, headers=creds.test_bc_api_headers, timeout=120
+                )
                 if response.status_code == 200:
                     return response.json()["data"][0]["id"]
 
             def bc_delete_product_option_value(self, product_id, option_id, value_id):
-                url = f"https://api.bigcommerce.com/stores/{Catalog.store_hash}/v3/catalog/products/{product_id}/options/{option_id}/values/{value_id}"
-                response = requests.delete(url, headers=Catalog.api_header, timeout=120)
+                url = f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/catalog/products/{product_id}/options/{option_id}/values/{value_id}"
+                response = requests.delete(
+                    url, headers=creds.test_bc_api_headers, timeout=120
+                )
                 return response
 
             def bc_create_product_variant_option_value(
                 self, variant_name, product_id, option_id
             ):
                 url = (
-                    f"https://api.bigcommerce.com/stores/{Catalog.store_hash}/v3/catalog/"
+                    f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/catalog/"
                     f"products/{product_id}/options/{option_id}/values"
                 )
                 print(f"Option Value ID URL: {url}")
@@ -3509,7 +3601,7 @@ class Catalog:
                 print(f"OPTION ID Value Payload: {value_payload}")
                 response = requests.post(
                     url=url,
-                    headers=Catalog.api_header,
+                    headers=creds.test_bc_api_headers,
                     json=value_payload,
                     timeout=120,
                 )
@@ -3568,7 +3660,7 @@ class Catalog:
                     print("I have images!")
                     variant_payload["image_url"] = self.images[0].image_url
 
-                url = f"https://api.bigcommerce.com/stores/{Catalog.store_hash}/v3/catalog/products/{product_id}/variants"
+                url = f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/catalog/products/{product_id}/variants"
                 print(f"self.product_id: {self.product_id}")
                 print(f"self.option_id: {self.option_id}")
                 print(f"self.option_value_id: {self.option_value_id}")
@@ -3578,7 +3670,7 @@ class Catalog:
 
                 bc_response = requests.post(
                     url=url,
-                    headers=Catalog.api_header,
+                    headers=creds.test_bc_api_headers,
                     json=variant_payload,
                     timeout=120,
                 )
@@ -3680,10 +3772,10 @@ class Catalog:
             def get_bc_product_images(self):
                 """Get BigCommerce image information for product's images"""
                 url = (
-                    f"https://api.bigcommerce.com/stores/{Catalog.store_hash}/v3/"
+                    f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/"
                     f"catalog/products/{self.product_id}/images"
                 )
-                response = requests.get(url=url, headers=Catalog.api_header)
+                response = requests.get(url=url, headers=creds.test_bc_api_headers)
                 if response is not None:
                     for x in response.json():
                         # Could use this to back-fill database with image id and sort order info
@@ -3720,9 +3812,9 @@ class Catalog:
             def hard_reset_variant(self):
                 """Hard reset for single item (variant). Used in pathological case of single item being turned into a merged item."""
                 print("Performing hard reset on variant. Sku is ", self.sku)
-                url = f"https://api.bigcommerce.com/stores/{Catalog.store_hash}/v3/catalog/products?sku={self.sku}"
+                url = f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/catalog/products?sku={self.sku}"
                 delete_response = requests.delete(
-                    url=url, headers=Catalog.api_header, timeout=10
+                    url=url, headers=creds.test_bc_api_headers, timeout=10
                 )
 
                 if delete_response.status_code == 204:
@@ -3755,37 +3847,25 @@ class Catalog:
             def __init__(
                 self,
                 image_name: str,
-                sku="",
-                image_url="",
-                product_id=0,
-                variant_id=0,
-                image_id=None,
-                is_thumbnail=False,
-                sort_order=0,
-                is_binding_image=False,
-                is_binding_id=None,
-                is_variant_image=False,
-                description="",
-                size=0,
             ):
                 self.db = Database.db
 
                 self.id = None
                 self.image_name = image_name  # This is the file name
-                self.sku = sku
+                self.sku = ""
                 self.file_path = f"{creds.photo_path}/{self.image_name}"
-                self.image_url = image_url
-                self.product_id = product_id
-                self.variant_id = variant_id
-                self.image_id = image_id
-                self.is_thumbnail = is_thumbnail
+                self.image_url = ""
+                self.product_id = None
+                self.variant_id = None
+                self.image_id = None
+                self.is_thumbnail = False
                 self.image_number = 1
-                self.sort_order = sort_order
-                self.is_binding_image = is_binding_image
-                self.binding_id = is_binding_id
-                self.is_variant_image = is_variant_image
-                self.description = description
-                self.size = size
+                self.sort_order = 0
+                self.is_binding_image = False
+                self.binding_id = None
+                self.is_variant_image = False
+                self.description = ""
+                self.size = 0
                 self.last_maintained_dt = None
                 self.get_image_details()
 
@@ -3810,9 +3890,7 @@ class Catalog:
                     self.image_url = response[0][4]
                     self.product_id = response[0][5]
                     self.image_id = response[0][6]
-                    # self.is_thumbnail = True if response[0][7] == 1 else False
                     self.image_number = response[0][8]
-                    # self.sort_order = response[0][9]
                     self.is_binding_image = True if response[0][10] == 1 else False
                     self.binding_id = response[0][11]
                     self.is_variant_image = True if response[0][12] == 1 else False
@@ -3822,16 +3900,6 @@ class Catalog:
                     self.size = response[0][14]
                     self.last_maintained_dt = response[0][15]
 
-                    # size_check = os.path.getsize(self.file_path)
-
-                    # if self.size != size_check:
-                    #     print(f"\n\nUPLOADING NEW IMAGE FOR {self.image_name}\n\n")
-                    #     self.image_url = self.upload_product_image()
-                    #     print(f"new image url: {self.image_url}")
-                    #     self.delete_image(self.image_name)
-                    #     self.set_image_details()
-                    # else:
-                    #     print(f"Image {self.image_name} has not been modified.")
                 else:
                     self.image_url = self.upload_product_image()
                     self.set_image_details()
@@ -4015,16 +4083,23 @@ class Catalog:
 
                 url = f"{creds.web_dav_product_photos}/{new_name}"
                 try:
-                    requests.put(
+                    img_upload_res = requests.put(
                         url,
                         data=data,
                         auth=HTTPDigestAuth(creds.web_dav_user, creds.web_dav_pw),
                     )
                 except Exception as e:
-                    print(f"Error uploading image: {e}")
+                    Catalog.error_handler.add_error_v(
+                        error=f"Error uploading image: {e}"
+                    )
                 else:
                     # return public url of image
-                    return f"{creds.public_web_dav_photos}/{new_name}"
+                    if img_upload_res.status_code == 201:
+                        return f"{creds.public_web_dav_photos}/{new_name}"
+                    else:
+                        Catalog.error_handler.add_error_v(
+                            error=f"Error uploading image: {img_upload_res.status_code} - {img_upload_res.text}"
+                        )
 
             def resize_image(self):
                 size = (1280, 1280)
@@ -4041,26 +4116,28 @@ class Catalog:
 
             def bc_get_image(self):
                 url = (
-                    f"https://api.bigcommerce.com/stores/{Catalog.store_hash}/v3/catalog/"
+                    f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/catalog/"
                     f"products/{self.product_id}/images/{self.image_id}"
                 )
-                response = requests.get(url=url, headers=Catalog.api_header)
+                response = requests.get(url=url, headers=creds.test_bc_api_headers)
                 return response.content
 
             def bc_delete_image(self):
                 """Photos can either be variant images or product images. Two flows in this function"""
                 if self.is_variant_image:
                     url = (
-                        f"https://api.bigcommerce.com/stores/{Catalog.store_hash}/v3/catalog/"
+                        f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/catalog/"
                         f"products/{self.product_id}/variants/{self.variant_id}/images/{self.image_id}"
                     )
-                    response = requests.delete(url=url, headers=Catalog.api_header)
+                    response = requests.delete(
+                        url=url, headers=creds.test_bc_api_headers
+                    )
 
                 url = (
-                    f"https://api.bigcommerce.com/stores/{Catalog.store_hash}/v3/catalog/"
+                    f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/catalog/"
                     f"products/{self.product_id}/images/{self.image_id}"
                 )
-                response = requests.delete(url=url, headers=Catalog.api_header)
+                response = requests.delete(url=url, headers=creds.test_bc_api_headers)
 
                 return response.content
 
@@ -4073,4 +4150,10 @@ class Catalog:
             def sql_delete_photo(self):
                 query = f"DELETE FROM {creds.bc_image_table} WHERE IMAGE_NAME = '{self.image_name}'"
                 query_engine.QueryEngine().query_db(query, commit=True)
-                print(f"Photo {self.image_name} deleted from database.")  #
+                print(f"Photo {self.image_name} deleted from database.")
+
+
+if __name__ == "__main__":
+    # tree = Catalog.CategoryTree(last_sync=datetime(2021, 1, 1))
+    # tree.sync()
+    pass

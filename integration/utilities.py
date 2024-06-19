@@ -2,10 +2,10 @@ import json
 from integration.database import query_engine
 import re
 import time
-
+from setup import creds
 from datetime import datetime
 from email.utils import formatdate
-
+import base64
 from integration.error_handler import ErrorHandler, Logger, GlobalErrorHandler
 
 
@@ -64,9 +64,16 @@ def get_all_binding_ids():
     )
 
     def valid(binding_id):
-        return re.match(r"B\d{4}", binding_id)
+        return re.match(creds.binding_id_format, binding_id)
 
     return [binding[0] for binding in response if valid(binding[0])]
+
+
+def encode_base64(input_string):
+    # Ensure the string is in bytes, then encode it
+    encoded_string = base64.b64encode(input_string.encode())
+    # Convert the bytes back into a string and return it
+    return encoded_string.decode()
 
 
 class VirtualRateLimiter:
