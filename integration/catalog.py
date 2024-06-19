@@ -1237,6 +1237,8 @@ class Catalog:
             self.brands = set()
             # get all brands from CP and MW
             self.get_brands()
+            self.update_brand_timestamps(last_run=self.last_sync)
+            self.process_deletes()
 
         def __str__(self):
             result = ""
@@ -1254,80 +1256,77 @@ class Catalog:
             """Takes in a list of SKUs and updates the last maintenance date in input table for each product in the
             list"""
 
-            def get_updated_brands(date):
-                """Get a tuple of two sets:
-                1. all SKUs that have had their photo modified since the input date.
-                2. all file names that have been modified since the input date."""
-                file_result = set()
+            def get_brand_photos_middleware():
+                query = f"""
+                SELECT IMAGE_NAME, IMAGE SIZE FROM {creds.bc_brands_table}
+                """
+                response = query_engine.QueryEngine().query_db(query)
+                return (
+                    [{"image_name": x[0], "image_size": x[1]} for x in response]
+                    if response
+                    else []
+                )
+
+            def get_brand_photos_local():
+                result_list = []
                 # Iterate over all files in the directory
                 for filename in os.listdir(creds.brand_photo_path):
                     if filename not in ["Thumbs.db", "desktop.ini", ".DS_Store"]:
-                        # Get the full path of the file
-                        file_path = os.path.join(creds.brand_photo_path, filename)
+                        file_size = os.path.getsize(
+                            f"{creds.brand_photo_path}/{filename}"
+                        )
+                        result_list.append(
+                            {"image_name": filename, "image_size": file_size}
+                        )
+                return result_list
 
-                        # Get the last modified date of the file
-                        try:
-                            modified_date = datetime.fromtimestamp(
-                                os.path.getmtime(file_path)
-                            )
-                        except FileNotFoundError:
-                            modified_date = datetime(1970, 1, 1)
-
-                        # If the file has been modified since the input date, print its name
-                        if modified_date > date:
-                            file_result.add(filename)
-
-                return file_result
-
-            file_list = get_updated_brands(last_run)
-            code_tuple = tuple([x.split(".")[0] for x in file_list])
-            # If no files have been modified, return
-            if len(code_tuple) == 0:
-                return
-            else:
-                mw_where_filter = f"WHERE CP_BRAND_ID in {code_tuple}"
-                cp_where_filter = f"WHERE PROF_COD in {code_tuple}"
-                if len(code_tuple) == 1:
-                    mw_where_filter = f"WHERE CP_BRAND_ID = '{code_tuple[0]}'"
-                    cp_where_filter = f"WHERE PROF_COD = '{code_tuple[0]}'"
-
-                db = query_engine.QueryEngine()
-                query = (
-                    f"UPDATE {creds.bc_brands_table} "
-                    f"SET IMAGE_LST_MAINT_DT = GETDATE(), LST_MAINT_DT = GETDATE() "
-                    f"{mw_where_filter} "
-                    f"UPDATE IM_ITEM_PROF_COD "
-                    f"SET LST_MAINT_DT = GETDATE() "
-                    f"{cp_where_filter} "
-                )
-
-                try:
-                    response = db.query_db(query, commit=True)
-                except Exception as e:
-                    print(f"Error updating product timestamps: {e}")
+            def update_timestamp(target):
+                query = f"""
+                UPDATE IM_ITEM_PROF_COD
+                SET LST_MAINT_DT = GETDATE()
+                WHERE PROF_COD = '{target}'"""
+                response = query_engine.QueryEngine().query_db(query, commit=True)
+                if response["code"] == 200:
+                    Catalog.logger.success(f"Brand {target} updated in Counterpoint.")
                 else:
-                    if response["code"] == 200:
-                        print("Brand: LST_MAINT_DT UPDATE sent.")
+                    Catalog.error_handler.add_error_v(
+                        error=f"Error updating brand {target} in Counterpoint."
+                    )
+
+            for image in get_brand_photos_local():
+                if image["image_name"] not in [
+                    x["image_name"] for x in get_brand_photos_middleware()
+                ]:
+                    # Update Timestamp of brand in IM table
+                    profile_code = image["image_name"].split(".")[0]
+                    print(
+                        f"Brand Image Not Found. Updating LST_MAINT_DT for {profile_code} in Counterpoint."
+                    )
+                    update_timestamp(profile_code)
+                    pass
+                else:
+                    if (
+                        image["image_size"]
+                        != [
+                            x["image_size"]
+                            for x in get_brand_photos_middleware()
+                            if x["image_name"] == image["image_name"]
+                        ][0]
+                    ):
+                        # Update Timestamp of brand in IM table
+                        profile_code = image["image_name"].split(".")[0]
+                        print(
+                            f"Brand Image Size Mismatch. Updating LST_MAINT_DT for {profile_code} in Counterpoint."
+                        )
+                        update_timestamp(profile_code)
                     else:
-                        print(response)
+                        # Update Timestamp of brand in IM table
+                        print("Brand Image Size Match")
+                        pass
 
         def sync(self):
-            # trip lst_maint_dt for all brands whose photos have been updated
-            self.update_brand_timestamps(last_run=self.last_sync)
-            # process deletes
-            self.process_deletes()
-            # create Brand objects for each brand that has been updated
-            self.construct_brands()
-
-        def construct_brands(self):
-            for cp_brand in self.cp_brands:
-                # Filter out brands that are not new or updated
-                if cp_brand[2] > self.last_sync:
-                    brand = self.Brand(
-                        cp_brand[0], cp_brand[1], cp_brand[2], self.last_sync
-                    )
-                    self.brands.add(brand)
-                    print(f"Brand {brand.name} added to sync queue.")
+            for brand in self.brands:
+                brand.process()
 
         def get_brands(self):
             def get_cp_brands():
@@ -1352,6 +1351,15 @@ class Catalog:
 
             get_cp_brands()
             get_mw_brands()
+
+            for cp_brand in self.cp_brands:
+                # Filter out brands that are not new or updated
+                if cp_brand[2] > self.last_sync:
+                    brand = self.Brand(
+                        cp_brand[0], cp_brand[1], cp_brand[2], self.last_sync
+                    )
+                    self.brands.add(brand)
+                    print(f"Brand {brand.name} added to sync queue.")
 
         def process_deletes(self):
             delete_count = 0
@@ -1416,17 +1424,18 @@ class Catalog:
         class Brand:
             def __init__(self, cp_brand_id, description, last_maint_dt, last_sync):
                 self.db = query_engine.QueryEngine()
+                self.db_id = None
                 self.cp_brand_id = cp_brand_id
                 self.bc_brand_id = None
                 self.name = description
                 self.page_title = description
-                self.meta_keywords = ""
-                self.meta_description = ""
-                self.search_keywords = ""
-                self.image_name = ""
-                self.image_url = ""
+                self.meta_keywords = None
+                self.meta_description = None
+                self.search_keywords = None
+                self.image_name = None
+                self.image_url = None
                 self.image_filepath = f"{creds.brand_photo_path}/{self.cp_brand_id}.jpg"
-                self.image_last_modified = None
+                self.image_size = None
                 self.is_custom_url = True
                 self.custom_url = "-".join(
                     str(re.sub("[^A-Za-z0-9 ]+", "", self.name)).split(" ")
@@ -1443,59 +1452,38 @@ class Catalog:
 
                 response = self.db.query_db(query)
                 if response is not None:
-                    # Brand Found, Update Brand in middleware first with pull from counterpoint
-                    # if upon fresh pull, data doesn't exist, then delete, otherwise update and then
-                    # run the following code
+                    self.db_id = response[0][0]
+                    self.bc_brand_id = response[0][2]
+                    self.name = response[0][16]  # This pulls fresh from CP each time
+                    self.page_title = response[0][4]
+                    self.meta_keywords = response[0][5]
+                    self.meta_description = response[0][6]
+                    self.search_keywords = response[0][7]
+                    self.image_name = response[0][8]
+                    self.image_url = response[0][9]
+                    self.image_filepath = response[0][10]
+                    self.image_size = response[0][11]
+                    image_size = os.path.getsize(self.image_filepath)
+                    self.is_custom_url = True if response[0][12] == 1 else False
+                    self.custom_url = response[0][13]
+                    self.last_maint_dt = response[0][14]
 
-                    for x in response:
-                        self.bc_brand_id = x[2]
-                        self.name = x[3]
-                        self.page_title = x[4]
-                        self.meta_keywords = x[5]
-                        self.meta_description = x[6]
-                        self.search_keywords = x[7]
-                        self.image_name = x[8]
-                        self.image_url = x[9]
-                        self.image_filepath = x[10]
-                        self.image_last_modified = (
-                            x[11] if x[11] else self.get_image_last_modified()
-                        )
-                        self.is_custom_url = True if x[12] == 1 else False
-                        self.custom_url = x[13]
-                        self.last_maint_dt = x[14]
-                        name = x[16]
-                        updated = False
+                    # Image Exists in DB
+                    if self.image_name is not None:
+                        if self.image_size != image_size:
+                            self.image_url = self.upload_brand_image()
 
-                        if self.name != name:
-                            print("Name Mismatch")
-                            updated = True
-                            self.name = name
+                    # Image Does Not Exist in DB
+                    else:
+                        self.image_name, self.image_size = self.get_brand_image()
 
-                        # Image Exists in DB
                         if self.image_name is not None:
-                            # Image Updated
-                            if self.image_last_modified > last_sync:
-                                print("Image Updated")
-                                updated = True
-                                self.upload_brand_image()
-
-                        # Image Does Not Exist in DB
-                        else:
-                            self.image_name = self.get_brand_image()
-                            if self.image_name != "":
-                                updated = True
-                                self.image_url = self.upload_brand_image()
-
-                        if updated:
-                            print("Updating Brand")
-                            self.update()
-
-                        else:
-                            print(f"No updates found for brand {self.name}.")
-
-                # Brand Not Found, Create New Brand
+                            self.image_url = self.upload_brand_image()
                 else:
-                    self.create()
+                    # Brand does not exist in Middleware
+                    self.image_name, self.image_size = self.get_brand_image()
+                    if self.image_name is not None:
+                        self.image_url = self.upload_brand_image()
 
             def process(self):
                 query = f"""
@@ -1512,22 +1500,24 @@ class Catalog:
 
                 def create_bc_brand():
                     def construct_payload():
-                        return {
+                        result = {
                             "name": self.name,
                             "page_title": self.page_title,
-                            "meta_keywords": self.meta_keywords.split(",")
-                            if self.meta_keywords
-                            else [],
-                            "meta_description": self.meta_description,
-                            "search_keywords": self.search_keywords
-                            if self.search_keywords
-                            else "",
-                            "image_url": self.image_url,
                             "custom_url": {
                                 "url": f"/{self.custom_url}/",
                                 "is_customized": self.is_custom_url,
                             },
                         }
+                        if self.image_url:
+                            result["image_url"] = self.image_url
+                        if self.meta_keywords:
+                            result["meta_keywords"] = self.meta_keywords
+                        if self.meta_description:
+                            result["meta_description"] = self.meta_description
+                        if self.search_keywords:
+                            result["search_keywords"] = self.search_keywords
+
+                        return result
 
                     url = f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/catalog/brands"
                     payload = construct_payload()
@@ -1553,7 +1543,7 @@ class Catalog:
                     print("insert")
                     query = f"""
                     INSERT INTO {creds.bc_brands_table} (CP_BRAND_ID, BC_BRAND_ID, NAME, PAGE_TITLE, META_KEYWORDS, 
-                    META_DESCR, SEARCH_KEYWORDS, IMAGE_NAME, IMAGE_URL, IMAGE_FILEPATH, IMAGE_LST_MAINT_DT, IS_CUSTOMIZED, 
+                    META_DESCR, SEARCH_KEYWORDS, IMAGE_NAME, IMAGE_URL, IMAGE_FILEPATH, IMAGE_SIZE, IS_CUSTOMIZED, 
                     CUSTOM_URL)
                     VALUES ('{self.cp_brand_id}', 
                     {self.bc_brand_id}, 
@@ -1565,7 +1555,7 @@ class Catalog:
                     {f"'{self.image_name}'" if self.image_name != "" else "NULL"},
                     {f"'{self.image_url}'" if self.image_url != "" else "NULL"}, 
                     {f"'{self.image_filepath}'" if self.image_filepath else "NULL"}, 
-                    {f"'{self.image_last_modified:%Y-%m-%d %H:%M:%S}'" if self.image_last_modified else "NULL"},
+                    {self.image_size if self.image_size else "NULL"},
                     {1 if self.is_custom_url else 0},
                     {f"'{self.custom_url}'" if self.custom_url else "NULL"})
                     """
@@ -1632,7 +1622,7 @@ class Catalog:
                     IMAGE_NAME = {f"'{self.image_name}'" if self.image_name != "" else "NULL"}, 
                     IMAGE_URL = {f"'{self.image_url}'" if self.image_url != "" else "NULL"}, 
                     IMAGE_FILEPATH = {f"'{self.image_filepath}'" if self.image_filepath else "NULL"},
-                    IMAGE_LST_MAINT_DT = {f"'{self.image_last_modified:%Y-%m-%d %H:%M:%S}'" if self.image_last_modified else "NULL"},
+                    IMAGE_SIZE = {self.image_size if self.image_size else "NULL"},
                     IS_CUSTOMIZED = {1 if self.is_custom_url else 0}, 
                     CUSTOM_URL = {f"'{self.custom_url}'" if self.custom_url else "NULL"}, LST_MAINT_DT = GETDATE()
                     WHERE CP_BRAND_ID = '{self.cp_brand_id}'
@@ -1654,8 +1644,11 @@ class Catalog:
                 """Get image file name from directory"""
                 for filename in os.listdir(creds.brand_photo_path):
                     if filename.split(".")[0] == self.cp_brand_id:
-                        return filename
-                return ""
+                        file_size = os.path.getsize(
+                            f"{creds.brand_photo_path}/{filename}"
+                        )
+                        return filename, file_size
+                return None, None
 
             def get_image_last_modified(self):
                 """Get last modified date of image file"""
@@ -1665,27 +1658,32 @@ class Catalog:
                     return datetime(1970, 1, 1)
 
             def upload_brand_image(self) -> str:
-                """Upload file to import folder on webDAV server and turn public url"""
+                """Upload brand file to import folder on webDAV server and turn public url"""
                 try:
                     data = open(self.image_filepath, "rb")
                 except FileNotFoundError:
-                    return ""
-
-                self.image_name = f"{self.cp_brand_id}.jpg"
-
-                url = f"{creds.web_dav_product_photos}/{self.image_name}"
-
+                    return None
+                random_int = random.randint(1000, 9999)
+                new_name = f"{self.image_name.split(".")[0]}-{random_int}.jpg"
+                url = f"{creds.web_dav_product_photos}/{new_name}"
                 try:
-                    requests.put(
+                    img_upload_res = requests.put(
                         url,
                         data=data,
                         auth=HTTPDigestAuth(creds.web_dav_user, creds.web_dav_pw),
                     )
                 except Exception as e:
-                    print(f"Error uploading image: {e}")
+                    Catalog.error_handler.add_error_v(
+                        error=f"Error uploading image: {e}"
+                    )
                 else:
                     # return public url of image
-                    return f"{creds.public_web_dav_photos}/{self.image_name}"
+                    if img_upload_res.status_code == 201:
+                        return f"{creds.public_web_dav_photos}/{new_name}"
+                    else:
+                        Catalog.error_handler.add_error_v(
+                            error=f"Error uploading brand image: {img_upload_res.status_code} - {img_upload_res.text}"
+                        )
 
     class Product:
         def __init__(self, product_data, last_sync):
@@ -4215,4 +4213,7 @@ class Catalog:
 
 
 if __name__ == "__main__":
-    pass
+    database = Database()
+    database.rebuild_tables()
+    brands = Catalog.Brands()
+    brands.sync()
