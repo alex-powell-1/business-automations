@@ -27,13 +27,20 @@ class Customers:
 
     def get_customers(self):
         query = f"""
-        SELECT TOP 300 CUST_NO, FST_NAM, LST_NAM, EMAIL_ADRS_1, PHONE_1, LOY_PTS_BAL, ADRS_1, CITY, STATE, ZIP_COD, CNTRY
+        SELECT CUST_NO, FST_NAM, LST_NAM, EMAIL_ADRS_1, PHONE_1, LOY_PTS_BAL, ADRS_1, CITY, STATE, ZIP_COD, CNTRY
         FROM {creds.ar_cust_table}
         WHERE
         LST_MAINT_DT > '{self.last_sync}' and
         CUST_NAM_TYP = 'P' AND
         LOY_PTS_BAL > 0
         """
+
+        # query = f"""
+        # SELECT CUST_NO, FST_NAM, LST_NAM, EMAIL_ADRS_1, PHONE_1, LOY_PTS_BAL, ADRS_1, CITY, STATE, ZIP_COD, CNTRY
+        # FROM {creds.ar_cust_table}
+        # WHERE
+        # CUST_NO in ('OL-100778')
+        # """
 
         response = self.db.query_db(query)
         if response is not None:
@@ -289,9 +296,11 @@ class Customers:
                         "address1": self.address,
                         "city": self.city,
                         "postal_code": self.zip,
-                        "state_or_province": state_code_to_full_name(self.state)
-                        if len(self.state) == 2
-                        else self.state,
+                        "state_or_province": (
+                            state_code_to_full_name(self.state)
+                            if len(self.state) == 2
+                            else self.state
+                        ),
                         "country_code": utilities.country_to_country_code(
                             self.country
                             if self.country is not None

@@ -25,23 +25,18 @@ class GiftCertificates:
         self.certificates = self.get_certificates()
         self.processor = object_processor.ObjectProcessor(objects=self.certificates)
 
-        self.big_certificates = self.get_certificates_from_big()
-        self.big_processor = object_processor.ObjectProcessor(
-            objects=self.big_certificates
-        )
-
     def get_certificates(self):
-        # query = f"""
-        # SELECT GFC_NO, ORIG_AMT, CURR_AMT, ORIG_DAT, ORIG_CUST_NO
-        # FROM {creds.sy_gfc_table}
-        # WHERE LST_MAINT_DT > '{self.last_sync}'
-        # """
-
         query = f"""
-        SELECT TOP 200 GFC_NO, ORIG_AMT, CURR_AMT, ORIG_DAT, ORIG_CUST_NO
+        SELECT GFC_NO, ORIG_AMT, CURR_AMT, ORIG_DAT, ORIG_CUST_NO
         FROM {creds.sy_gfc_table}
         WHERE LST_MAINT_DT > '{self.last_sync}'
         """
+
+        # query = f"""
+        # SELECT TOP 200 GFC_NO, ORIG_AMT, CURR_AMT, ORIG_DAT, ORIG_CUST_NO
+        # FROM {creds.sy_gfc_table}
+        # WHERE LST_MAINT_DT > '{self.last_sync}'
+        # """
 
         response = self.db.query_db(query)
         if response is not None:
@@ -51,42 +46,7 @@ class GiftCertificates:
                     result.append(self.Certificate(x, error_handler=self.error_handler))
             return result
 
-    def get_certificates_from_big(self):
-        def get_page(page: int):
-            response = requests.get(
-                f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v2/gift_certificates?page={page}&limit=250",
-                headers=creds.test_bc_api_headers,
-            )
-            print(response.text)
-            return response.json()
-
-        def get_all_pages():
-            page = 1
-            response = get_page(page)
-            result = []
-            while len(response) > 0:
-                result += response
-                page += 1
-                response = get_page(page)
-            return result
-
-        def get_certificates():
-            pages = get_all_pages()
-            result = []
-            for page in pages:
-                for cert in page:
-                    result.append(
-                        self.BigCommerceCertificate(
-                            cert, error_handler=self.error_handler
-                        )
-                    )
-
-            return result
-
-        return get_certificates()
-
     def sync(self):
-        # self.big_processor.process()
         self.processor.process()
 
         self.error_handler.print_errors()
@@ -280,110 +240,6 @@ class GiftCertificates:
                     return update()
 
             get_processing_method()
-
-    class BigCommerceCertificate:
-        def __init__(self, cert_result, error_handler: ErrorHandler = None):
-            self.gift_card_no = cert_result["code"]
-            self.original_amount = cert_result["amount"]
-            self.current_amount = cert_result["balance"]
-
-            self.amount_used = self.original_amount - self.current_amount
-
-            self.original_date = cert_result["purchase_date"]
-            self.user_info = {
-                "name": cert_result["from_name"],
-                "email": cert_result["from_email"],
-            }
-            self.bc_id = cert_result["id"]
-            self.customer = self.get_customer_from_info(self.user_info)
-            self.cust_no = self.customer.cust_no if self.customer is not None else None
-
-            self.error_handler: ErrorHandler = error_handler
-            self.logger: Logger = self.error_handler.logger
-
-        class Customer:
-            def __init__(self, cust_result):
-                self.cust_no = cust_result[0]
-
-        def get_customer_from_info(self, user_info):
-            columns = "CUST_NO"
-
-            queries = [
-                f"""
-                SELECT {columns} FROM {creds.ar_cust_table} WHERE
-                NAM like '{user_info['name']}'
-                """
-            ]
-
-            if user_info["email"].endswith("@store.com"):
-                cust_no = user_info["email"].split("@")[0]
-
-                query = f"""
-                SELECT {columns} FROM {creds.ar_cust_table} WHERE
-                CUST_NO like '{cust_no}'
-                """
-
-                queries.append(query)
-            else:
-                query = f"""
-                SELECT {columns} FROM {creds.ar_cust_table} WHERE
-                EMAIL_ADRS_1 like '{user_info['email']}'
-                """
-
-                queries.append(query)
-
-            query = f"""
-            SELECT {columns} FROM {creds.ar_cust_table} WHERE
-            CUST_NO like '{user_info['name']}'
-            """
-
-            queries.append(query)
-
-            for query in queries:
-                response = Database.db.query_db(query)
-                if response is not None:
-                    if len(response) > 1:
-                        self.logger.warn(
-                            f"Multiple customers found for {user_info['name']} {user_info['email']}"
-                        )
-                    elif len(response) == 1:
-                        return self.Customer(response[0])
-
-            return None
-
-        def sync(self):
-            class SQLSync:
-                def __init__(self, gift_card_no):
-                    self.gift_card_no = gift_card_no
-                    self.db = Database.db
-
-                def insert(self, bc_id: int):
-                    query = f"""
-                    INSERT INTO {creds.bc_gift_table}
-                    (GFC_NO, BC_GFC_ID)
-                    VALUES ('{self.gift_card_no}', {bc_id})
-                    """
-                    self.db.query_db(query, commit=True)
-
-                def update(self, bc_id: int):
-                    query = f"""
-                    UPDATE {creds.bc_gift_table}
-                    SET BC_GFC_ID = {bc_id}
-                    WHERE GFC_NO = '{self.gift_card_no}'
-                    """
-                    self.db.query_db(query, commit=True)
-
-            return SQLSync(self.gift_card_no)
-
-        def process(self, session: requests.Session):
-            def create():
-                pass
-
-            def update():
-                pass
-
-            def get_processing_method():
-                pass
 
 
 if __name__ == "__main__":
