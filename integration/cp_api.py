@@ -486,7 +486,7 @@ class OrderAPI(DocumentAPI):
         return len(response) > 0
 
     @staticmethod
-    def post_order(order_id: str | int, session: requests.Session = requests.Session()):
+    def post_order(order_id: str | int, cust_no_override: str = None, session: requests.Session = requests.Session()):
         oapi = OrderAPI(session=session)
 
         bc_order = OrderAPI.get_order(order_id)
@@ -494,19 +494,60 @@ class OrderAPI(DocumentAPI):
         if bc_order["payment_status"] in ["declined", ""]:
             oapi.error_handler.add_error_v("Order payment declined")
             oapi.error_handler.add_error_v(
-                f"Order status: '{bc_order["payment_status"]}'"
+                f"Payment status: '{bc_order["payment_status"]}'"
             )
             return
 
-        cust_no = OrderAPI.get_cust_no(bc_order)
-        if cust_no is None or cust_no == "" or not oapi.has_cust(cust_no):
-            oapi.error_handler.add_error_v("Valid customer number is required")
-            return
-        
-        if bc_order["payment_status"] == "partially refunded":
-            oapi.post_partial_refund(cust_no=cust_no, bc_order=bc_order)
+        cust_no = ""
+
+        if cust_no_override is None:
+            cust_no = OrderAPI.get_cust_no(bc_order)
+            if cust_no is None or cust_no == "" or not oapi.has_cust(cust_no):
+                oapi.error_handler.add_error_v("Valid customer number is required")
+                return
         else:
-            oapi.post_bc_order(cust_no=cust_no, bc_order=bc_order)
+            cust_no = cust_no_override
+        
+        try:
+            if bc_order["payment_status"] == "partially refunded":
+                oapi.post_partial_refund(cust_no=cust_no, bc_order=bc_order)
+            else:
+                oapi.post_bc_order(cust_no=cust_no, bc_order=bc_order)
+        except Exception as e:
+            oapi.error_handler.add_error_v("Order could not be posted")
+            oapi.error_handler.add_error_v(e)
+
+            query = f"""
+            SELECT TOP 2 DOC_ID FROM PS_DOC_HDR
+            WHERE CUST_NO = '{cust_no}'
+            AND TKT_DT > '{datetime.now().strftime("%Y-%m-%d")}'
+            ORDER BY LST_MAINT_DT DESC
+            """
+
+            oapi.logger.info("Attempting to cleanup order")
+
+            response = Database.db.query_db(query)
+
+            if response is not None and len(response) > 0 and len(response) < 3:
+                for result in response:
+                    doc_id = result[0]
+
+                    query = f"""
+                    DELETE FROM PS_DOC_HDR WHERE DOC_ID = '{doc_id}'
+                    """
+
+                    response = Database.db.query_db(query, commit=True)
+
+                    if response["code"] == 200:
+                        oapi.logger.success(f"Order {doc_id} deleted")
+                    else:
+                        oapi.error_handler.add_error_v(f"Order {doc_id} could not be deleted")
+                        oapi.error_handler.add_error_v(response["message"])
+            else:
+                oapi.error_handler.add_error_v("Could not cleanup order")
+
+
+            raise e
 
     def post_partial_refund(self, cust_no: str, bc_order: dict):
         self.logger.info("Posting order as partial refund")
@@ -528,7 +569,11 @@ class OrderAPI(DocumentAPI):
             self.error_handler.add_error_v("Order could not be created")
             self.error_handler.add_error_v(response.content)
 
-        doc_id = response.json()["Documents"][0]["DOC_ID"]
+        try:
+            doc_id = response.json()["Documents"][0]["DOC_ID"]
+        except:
+            self.error_handler.add_error_v("Document ID could not be retrieved")
+            return
 
         try:
             if payload["PS_DOC_HDR"]["TKT_NUM"] and payload["PS_DOC_HDR"]["TKT_NUM"] != "":
@@ -568,7 +613,11 @@ class OrderAPI(DocumentAPI):
             self.error_handler.add_error_v("Order could not be created")
             self.error_handler.add_error_v(response.content)
 
-        doc_id = response.json()["Documents"][0]["DOC_ID"]
+        try:
+            doc_id = response.json()["Documents"][0]["DOC_ID"]
+        except:
+            self.error_handler.add_error_v("Document ID could not be retrieved")
+            return
 
         try:
             if payload["PS_DOC_HDR"]["TKT_NUM"] and payload["PS_DOC_HDR"]["TKT_NUM"] != "":
