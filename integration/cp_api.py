@@ -2,13 +2,13 @@ from setup import creds
 import requests
 import json
 import math
-from datetime import datetime
+from datetime import datetime, timezone
 from integration.database import Database
 from integration.error_handler import GlobalErrorHandler, Logger, ErrorHandler
 import uuid
 
 
-ORDER_PREFIX = ""
+ORDER_PREFIX = "B-"
 REFUND_SUFFIX = "R1"
 PARTIAL_REFUND_SUFFIX = "PR"
 
@@ -98,7 +98,7 @@ class OrderAPI(DocumentAPI):
             return self.refund
         else:
             return False
-
+        
     def is_pr(self, set: bool = None):
         if self.pr is not None:
             return self.pr
@@ -136,15 +136,14 @@ class OrderAPI(DocumentAPI):
                     pass
 
                 try:
-                    qty = (
-                        float(product["quantity_refunded"])
-                        if self.is_pr()
-                        else float(product["quantity"])
-                    )
+                    qty = float(product["quantity_refunded"]) if self.is_pr() else float(product["quantity"])
                 except:
                     qty = float(product["quantity"])
 
-                ext_prc = float(product["base_price"]) * qty - total_discount
+                ext_prc = (
+                    float(product["base_price"]) * qty
+                    - total_discount
+                )
 
                 line_item = {
                     "LIN_TYP": "O",
@@ -154,7 +153,9 @@ class OrderAPI(DocumentAPI):
                     "PRC": ext_prc / qty,
                     "EXT_PRC": -ext_prc if self.is_refund() else ext_prc,
                     "EXT_COST": (
-                        -ext_cost * qty if self.is_refund() else ext_cost * qty
+                        -ext_cost * qty
+                        if self.is_refund()
+                        else ext_cost * qty
                     ),
                     "DSC_AMT": total_discount,
                 }
@@ -199,9 +200,7 @@ class OrderAPI(DocumentAPI):
                     "FINAL_PMT": "N",
                     "CARD_NO": gift_card["gift_certificate"]["code"],
                     "PMT_LIN_TYP": "C" if self.is_refund() else "T",
-                    "REMAINING_BAL": float(
-                        gift_card["gift_certificate"]["remaining_balance"]
-                    ),
+                    "REMAINING_BAL": float(gift_card["gift_certificate"]["remaining_balance"])
                 }
 
                 gift_cards.append(_gift_card)
@@ -496,11 +495,7 @@ class OrderAPI(DocumentAPI):
         return len(response) > 0
 
     @staticmethod
-    def post_order(
-        order_id: str | int,
-        cust_no_override: str = None,
-        session: requests.Session = requests.Session(),
-    ):
+    def post_order(order_id: str | int, cust_no_override: str = None, session: requests.Session = requests.Session()):
         oapi = OrderAPI(session=session)
 
         bc_order = OrderAPI.get_order(order_id)
@@ -555,9 +550,7 @@ class OrderAPI(DocumentAPI):
                     if response["code"] == 200:
                         oapi.logger.success(f"Order {doc_id} deleted")
                     else:
-                        oapi.error_handler.add_error_v(
-                            f"Order {doc_id} could not be deleted"
-                        )
+                        oapi.error_handler.add_error_v(f"Order {doc_id} could not be deleted")
                         oapi.error_handler.add_error_v(response["message"])
             else:
                 oapi.error_handler.add_error_v("Could not cleanup order")
@@ -573,15 +566,13 @@ class OrderAPI(DocumentAPI):
         if cust_no is None or cust_no == "" or not self.has_cust(cust_no):
             self.error_handler.add_error_v("Valid customer number is required")
             return
-
+        
         payload = self.get_post_order_payload(cust_no, bc_order)
 
         response = self.post_document(payload)
 
         if response.json()["ErrorCode"] == "SUCCESS":
-            self.logger.success(
-                f"Order {response.json()['Documents'][0]['DOC_ID']} created"
-            )
+            self.logger.success(f"Order {response.json()['Documents'][0]['DOC_ID']} created")
         else:
             self.error_handler.add_error_v("Order could not be created")
             self.error_handler.add_error_v(response.content)
@@ -593,14 +584,8 @@ class OrderAPI(DocumentAPI):
             return
 
         try:
-            if (
-                payload["PS_DOC_HDR"]["TKT_NUM"]
-                and payload["PS_DOC_HDR"]["TKT_NUM"] != ""
-            ):
-                self.write_ticket_no(
-                    doc_id,
-                    f"{payload["PS_DOC_HDR"]["TKT_NUM"]}{PARTIAL_REFUND_SUFFIX if self.is_refund(bc_order) else ""}",
-                )
+            if payload["PS_DOC_HDR"]["TKT_NUM"] and payload["PS_DOC_HDR"]["TKT_NUM"] != "":
+                self.write_ticket_no(doc_id, f"{payload["PS_DOC_HDR"]["TKT_NUM"]}{PARTIAL_REFUND_SUFFIX if self.is_refund(bc_order) else ""}")
         except:
             pass
 
@@ -616,22 +601,20 @@ class OrderAPI(DocumentAPI):
         self.logger.success(f"Order {doc_id} created")
 
         return response
-
+        
     def post_bc_order(self, cust_no: str, bc_order: dict):
         self.logger.info("Posting order")
 
         if cust_no is None or cust_no == "" or not self.has_cust(cust_no):
             self.error_handler.add_error_v("Valid customer number is required")
             return
-
+        
         payload = self.get_post_order_payload(cust_no, bc_order)
 
         response = self.post_document(payload)
 
         if response.json()["ErrorCode"] == "SUCCESS":
-            self.logger.success(
-                f"Order {response.json()['Documents'][0]['DOC_ID']} created"
-            )
+            self.logger.success(f"Order {response.json()['Documents'][0]['DOC_ID']} created")
         else:
             self.error_handler.add_error_v("Order could not be created")
             self.error_handler.add_error_v(response.content)
@@ -643,14 +626,8 @@ class OrderAPI(DocumentAPI):
             return
 
         try:
-            if (
-                payload["PS_DOC_HDR"]["TKT_NUM"]
-                and payload["PS_DOC_HDR"]["TKT_NUM"] != ""
-            ):
-                self.write_ticket_no(
-                    doc_id,
-                    f"{payload["PS_DOC_HDR"]["TKT_NUM"]}{REFUND_SUFFIX if self.is_refund(bc_order) else ""}",
-                )
+            if payload["PS_DOC_HDR"]["TKT_NUM"] and payload["PS_DOC_HDR"]["TKT_NUM"] != "":
+                self.write_ticket_no(doc_id, f"{payload["PS_DOC_HDR"]["TKT_NUM"]}{REFUND_SUFFIX if self.is_refund(bc_order) else ""}")
         except:
             pass
 
@@ -694,16 +671,8 @@ class OrderAPI(DocumentAPI):
             for line_item in payload["PS_DOC_HDR"]["PS_DOC_LIN"]:
                 sub_tot += float(line_item["EXT_PRC"])
 
-            bc_order["subtotal_ex_tax"] = float(
-                bc_order["refunded_amount"] or 0
-            ) + float(self.total_discount_amount or 0) / float(
-                bc_order["items_total"] or 1
-            )
-            bc_order["subtotal_inc_tax"] = float(
-                bc_order["refunded_amount"] or 0
-            ) + float(self.total_discount_amount or 0) / float(
-                bc_order["items_total"] or 1
-            )
+            bc_order["subtotal_ex_tax"] = float(bc_order["refunded_amount"] or 0) + float(self.total_discount_amount or 0) / float(bc_order["items_total"] or 1)
+            bc_order["subtotal_inc_tax"] = float(bc_order["refunded_amount"] or 0) + float(self.total_discount_amount or 0) / float(bc_order["items_total"] or 1)
 
             bc_order["total_ex_tax"] = float(bc_order["refunded_amount"] or 0)
             bc_order["total_inc_tax"] = float(bc_order["refunded_amount"] or 0)
@@ -728,6 +697,9 @@ class OrderAPI(DocumentAPI):
             self.error_handler.add_error_v("Payment could not be updated")
             self.error_handler.add_error_v(r["message"])
 
+
+
+
         for payment in payload["PS_DOC_HDR"]["PS_DOC_PMT"]:
             if payment["PAY_COD"] == "GC":
                 remaining_bal = float(payment["REMAINING_BAL"])
@@ -744,10 +716,10 @@ class OrderAPI(DocumentAPI):
                         return float(response[0][0])
                     except:
                         return 0
-
+                    
                 def get_bal_diff():
                     return remaining_bal - get_gfc_bal()
-
+                
                 def get_next_seq_no():
                     query = f"""
                     SELECT MAX(SEQ_NO) FROM SY_GFC_ACTIV
@@ -760,6 +732,7 @@ class OrderAPI(DocumentAPI):
                         return int(response[0][0]) + 1
                     except:
                         return 1
+                
 
                 def add_gfc_bal(amt: float | int):
                     current_date = datetime.now().strftime("%Y-%m-%d")
@@ -778,9 +751,7 @@ class OrderAPI(DocumentAPI):
                     if r["code"] == 200:
                         self.logger.success(f"Gift card balance updated")
                     else:
-                        self.error_handler.add_error_v(
-                            "Gift card balance could not be updated"
-                        )
+                        self.error_handler.add_error_v("Gift card balance could not be updated")
                         self.error_handler.add_error_v(r["message"])
 
                     r = commit_query(
@@ -794,9 +765,7 @@ class OrderAPI(DocumentAPI):
                     if r["code"] == 200:
                         self.logger.success(f"Gift card balance updated")
                     else:
-                        self.error_handler.add_error_v(
-                            "Gift card balance could not be updated"
-                        )
+                        self.error_handler.add_error_v("Gift card balance could not be updated")
                         self.error_handler.add_error_v(r["message"])
 
                 add_gfc_bal(get_bal_diff())
@@ -815,6 +784,10 @@ class OrderAPI(DocumentAPI):
                 else:
                     self.error_handler.add_error_v("Loyalty points could not be added")
                     self.error_handler.add_error_v(response["message"])
+
+
+
+
 
         r = commit_query(
             f"""
@@ -866,9 +839,7 @@ class OrderAPI(DocumentAPI):
             try:
                 return float(response[0][0]) if response else None
             except Exception as e:
-                self.error_handler.add_error_v(
-                    f"[{table}] Line {index} {column} could not be retrieved"
-                )
+                self.error_handler.add_error_v(f"[{table}] Line {index} {column} could not be retrieved")
                 raise e
 
         def set_value(table, column, value, index):
@@ -949,6 +920,9 @@ class OrderAPI(DocumentAPI):
 
         def convert_date_string_to_datetime(date_string):
             date = datetime.strptime(date_string, "%a, %d %b %Y %H:%M:%S %z")
+
+            date = date.replace(tzinfo=timezone.utc).astimezone(tz=None)
+
             return date
 
         def convert_datetime_to_date_string(date):
@@ -981,9 +955,8 @@ class OrderAPI(DocumentAPI):
 
             for payment in payload["PS_DOC_HDR"]["PS_DOC_PMT"]:
                 total += abs(float(payment["AMT"]))
-
+                
             return total
-
         tot_tndr = 0 if self.is_refund() else get_tndr()
 
         query = f"""
