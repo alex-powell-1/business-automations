@@ -12,6 +12,11 @@ from integration.error_handler import GlobalErrorHandler, Logger, ErrorHandler
 import uuid
 
 
+ORDER_PREFIX = "B-"
+REFUND_SUFFIX = "R1"
+PARTIAL_REFUND_SUFFIX = "PR"
+
+
 def generate_guid():
     return str(uuid.uuid4())
 
@@ -124,7 +129,10 @@ class OrderAPI(DocumentAPI):
 
                 response = Database.db.query_db(query)
                 if response is not None:
-                    ext_cost = float(response[0][0])
+                    try:
+                        ext_cost = float(response[0][0])
+                    except:
+                        pass
                 else:
                     pass
 
@@ -357,7 +365,11 @@ class OrderAPI(DocumentAPI):
         WHERE CUST_NO = '{cust_no}'
         """
         response = Database.db.query_db(query)
-        points_balance = float(response[0][0]) if response else 0
+        points_balance = 0
+        try:
+            points_balance = float(response[0][0]) if response else 0
+        except:
+            pass
 
         wquery = f"""
         INSERT INTO PS_DOC_HDR_LOY_PGM
@@ -387,7 +399,13 @@ class OrderAPI(DocumentAPI):
         """
 
         response = Database.db.query_db(query)
-        points_used = math.floor(float(response[0][0])) if response else 0
+
+        points_used = 0
+
+        try:
+            points_used = math.floor(float(response[0][0])) if response else 0
+        except:
+            pass
 
         return points_used
 
@@ -426,7 +444,7 @@ class OrderAPI(DocumentAPI):
                 "STR_ID": "WEB",
                 "STA_ID": "WEB",
                 "DRW_ID": "1",
-                "TKT_NUM": f"B-{bc_order["id"]}",
+                "TKT_NUM": f"{ORDER_PREFIX}{bc_order["id"]}",
                 "CUST_NO": cust_no,
                 "TKT_TYP": "T",
                 "DOC_TYP": "O",
@@ -576,7 +594,7 @@ class OrderAPI(DocumentAPI):
 
         try:
             if payload["PS_DOC_HDR"]["TKT_NUM"] and payload["PS_DOC_HDR"]["TKT_NUM"] != "":
-                self.write_ticket_no(doc_id, f"{payload["PS_DOC_HDR"]["TKT_NUM"]}{"PR" if self.is_refund(bc_order) else ""}")
+                self.write_ticket_no(doc_id, f"{payload["PS_DOC_HDR"]["TKT_NUM"]}{PARTIAL_REFUND_SUFFIX if self.is_refund(bc_order) else ""}")
         except:
             pass
 
@@ -593,8 +611,6 @@ class OrderAPI(DocumentAPI):
 
         return response
         
-
-
     def post_bc_order(self, cust_no: str, bc_order: dict):
         self.logger.info("Posting order")
 
@@ -620,7 +636,7 @@ class OrderAPI(DocumentAPI):
 
         try:
             if payload["PS_DOC_HDR"]["TKT_NUM"] and payload["PS_DOC_HDR"]["TKT_NUM"] != "":
-                self.write_ticket_no(doc_id, f"{payload["PS_DOC_HDR"]["TKT_NUM"]}{"R1" if self.is_refund(bc_order) else ""}")
+                self.write_ticket_no(doc_id, f"{payload["PS_DOC_HDR"]["TKT_NUM"]}{REFUND_SUFFIX if self.is_refund(bc_order) else ""}")
         except:
             pass
 
@@ -733,7 +749,7 @@ class OrderAPI(DocumentAPI):
                 def add_gfc_bal(amt: float | int):
                     current_date = datetime.now().strftime("%Y-%m-%d")
 
-                    tkt_no = f"{payload['PS_DOC_HDR']['TKT_NUM']}{"R1" if self.is_refund(bc_order) else ""}"
+                    tkt_no = f"{payload['PS_DOC_HDR']['TKT_NUM']}{REFUND_SUFFIX if self.is_refund(bc_order) else ""}"
 
                     r = commit_query(
                         f"""
@@ -832,7 +848,11 @@ class OrderAPI(DocumentAPI):
 
             response = Database.db.query_db(query)
 
-            return float(response[0][0]) if response else None
+            try:
+                return float(response[0][0]) if response else None
+            except Exception as e:
+                self.error_handler.add_error_v(f"[{table}] Line {index} {column} could not be retrieved")
+                raise e
 
         def set_value(table, column, value, index):
             r = commit_query(
@@ -958,10 +978,6 @@ class OrderAPI(DocumentAPI):
             except Exception as e:
                 self.error_handler.add_error_v("Could not get cost")
                 self.error_handler.add_error_v(e)
-
-        print(self.total_lin_disc)
-        print(self.total_hdr_disc)
-        print(self.total_discount_amount)
 
         if self.is_refund(bc_order):
             self.total_lin_disc = abs(self.total_lin_disc)
@@ -1160,11 +1176,15 @@ class OrderAPI(DocumentAPI):
             response = Database.db.query_db(query)
             if response is not None:
                 if len(response) > 1:
-                    print(
+                    eh = ErrorHandler()
+                    eh.add_error_v(
                         f"Multiple customers found for {user_info['name']} {user_info['email']}"
                     )
                 elif len(response) == 1:
-                    return response[0][0]
+                    try:
+                        return response[0][0]
+                    except:
+                        pass
 
         return None
 
