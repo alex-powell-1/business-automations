@@ -70,6 +70,8 @@ class Integrator:
 
 
 def main_menu():
+    print(interface.art)
+    print(f"Version: {interface.Version}\n")
     print(
         "Please enter a command to execute: \n"
         "- initialize -- will delete all products, brands, categories, and customers from bigcommerce and start over.\n"
@@ -173,9 +175,7 @@ if __name__ == "__main__":
                     integrator.catalog.delete_products()
         # CLI interface
         elif sys.argv[1] == "input":
-            print(interface.art)
-            print(f"Version: {interface.Version}\n")
             main_menu()
 
     else:
-        integrator.sync()
+        integrator.sync(initial=True)

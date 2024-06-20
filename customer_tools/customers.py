@@ -72,7 +72,9 @@ class Customer:
             self.birth_month = response[0][18]
             self.spouse_birth_month = response[0][19]
             self.sms_subscribe = response[0][20]
-            self.pricing_tier = int(response[0][21]) if response[0][21] is not None else None
+            self.pricing_tier = (
+                int(response[0][21]) if response[0][21] is not None else None
+            )
 
     def add_to_mailerlite(self):
         url = "https://connect.mailerlite.com/api/subscribers/"
@@ -80,10 +82,10 @@ class Customer:
         headers = {
             "Authorization": f"Bearer {creds.mailerlite_token}",
             "Content-Type": "application/json",
-            "Accept": "application/json"
+            "Accept": "application/json",
         }
 
-        if self.category == 'WHOLESALE':
+        if self.category == "WHOLESALE":
             payload = {
                 "email": self.email_1,
                 "groups": [creds.wholesale_mailing_list],
@@ -91,8 +93,8 @@ class Customer:
                     "name": self.first_name,
                     "last_name": self.last_name,
                     "company": self.name,
-                    "phone": self.phone_1
-                }
+                    "phone": self.phone_1,
+                },
             }
         else:
             payload = {
@@ -101,8 +103,8 @@ class Customer:
                 "fields": {
                     "name": self.first_name,
                     "last_name": self.last_name,
-                    "phone": self.phone_1
-                }
+                    "phone": self.phone_1,
+                },
             }
 
         response = requests.post(url, headers=headers, json=payload)
@@ -115,14 +117,16 @@ class Customer:
         WHERE CUST_NO = '{self.number}'
         """
         db.query_db(query, commit=True)
-        create_customer_log(customer_number=self.number,
-                            first_name=self.first_name,
-                            last_name=self.last_name,
-                            name=self.name,
-                            phone_1=self.phone_1,
-                            status_1_col_name="unsubscribed",
-                            status_1_data=f"Unsubscribed on {date_presets.today:%x}",
-                            log_location=creds.unsubscribed_sms)
+        create_customer_log(
+            customer_number=self.number,
+            first_name=self.first_name,
+            last_name=self.last_name,
+            name=self.name,
+            phone_1=self.phone_1,
+            status_1_col_name="unsubscribed",
+            status_1_data=f"Unsubscribed on {date_presets.today:%x}",
+            log_location=creds.unsubscribed_sms,
+        )
 
     def subscribe_to_sms(self):
         query = f"""
@@ -158,7 +162,11 @@ class Customer:
                 WHERE CUST_NO = '{self.number}'
                 """
         db.query_db(query, commit=True)
-        print(f"{self.name}({self.number}) pricing tier updated from {current_tier} to {target_tier}", file=log_file)
+        print(
+            f"{self.name}({self.number}) pricing tier updated from {current_tier} to {target_tier}",
+            file=log_file,
+        )
+
 
 # --------------------------------------------
 
@@ -181,27 +189,44 @@ def export_retail_customer_csv(log_file):
         if response is None:
             print("No Retail Data", file=log_file)
         else:
-            header_list = ['Customer Number', 'First Name', 'Last Name', 'Email Address',
-                           'Phone - home', 'Birth Month', 'Point Balance']
+            header_list = [
+                "Customer Number",
+                "First Name",
+                "Last Name",
+                "Email Address",
+                "Phone - home",
+                "Birth Month",
+                "Point Balance",
+            ]
 
-            open(creds.retail_customer_backup, 'w')
-            export_file = open(creds.retail_customer_backup, 'a')
+            open(creds.retail_customer_backup, "w")
+            export_file = open(creds.retail_customer_backup, "a")
             w = csv.writer(export_file)
 
             w.writerow(header_list)
 
             for x in response:
-                customer_number = x[0]
-                first_name = x[1]
-                last_name = x[2]
-                email_address = x[3]
-                phone = x[4]
+                customer_number = x[0] if x[0] is not None else ""
+                first_name = x[1] if x[1] is not None else ""
+                last_name = x[2] if x[2] is not None else ""
+                email_address = x[3] if x[3] is not None else ""
+                phone = x[4] if x[4] is not None else ""
                 # Change nulls to empty string
                 birth_month = int(x[5]) if x[5] is not None else ""
                 # Change nulls to 0. Change Negative Numbers to 0
                 point_balance = int(x[6]) if x[6] is not None or int(x[6]) >= 0 else 0
 
-                w.writerow([customer_number, first_name, last_name, email_address, phone, birth_month, point_balance])
+                w.writerow(
+                    [
+                        customer_number,
+                        first_name,
+                        last_name,
+                        email_address,
+                        phone,
+                        birth_month,
+                        point_balance,
+                    ]
+                )
 
             export_file.close()
     finally:
@@ -226,23 +251,30 @@ def export_wholesale_customer_csv(log_file):
         if response is None:
             print("No Wholesale Data", file=log_file)
         else:
-            header_list = ['Customer Number', 'First Name', 'Last Name', 'Email Address',
-                           'Phone Number']
+            header_list = [
+                "Customer Number",
+                "First Name",
+                "Last Name",
+                "Email Address",
+                "Phone Number",
+            ]
 
-            open(creds.wholesale_customer_backup, 'w')
-            export_file = open(creds.wholesale_customer_backup, 'a')
+            open(creds.wholesale_customer_backup, "w")
+            export_file = open(creds.wholesale_customer_backup, "a")
             w = csv.writer(export_file)
 
             w.writerow(header_list)
 
             for x in response:
-                customer_number = x[0]
-                first_name = x[1]
-                last_name = x[2]
-                email_address = x[3]
-                phone = x[4]
+                customer_number = x[0] if x[0] is not None else ""
+                first_name = x[1] if x[1] is not None else ""
+                last_name = x[2] if x[2] is not None else ""
+                email_address = x[3] if x[3] is not None else ""
+                phone = x[4] if x[4] is not None else ""
 
-                w.writerow([customer_number, first_name, last_name, email_address, phone])
+                w.writerow(
+                    [customer_number, first_name, last_name, email_address, phone]
+                )
 
             export_file.close()
     finally:
@@ -268,6 +300,7 @@ def is_current_customer(customer_number):
         return True
     else:
         return False
+
 
 def get_customer_number_by_phone(phone):
     query = f"""
@@ -337,19 +370,29 @@ def lookup_customer_by_phone(phone_number):
 
 def is_customer(email_address, phone_number):
     """Checks to see if an email or phone number belongs to a current customer"""
-    return (lookup_customer_by_email(email_address) is not None or
-            lookup_customer_by_phone(phone_number) is not None)
+    return (
+        lookup_customer_by_email(email_address) is not None
+        or lookup_customer_by_phone(phone_number) is not None
+    )
 
 
-def add_new_customer(first_name, last_name, phone_number,
-                     email_address, street_address, city, state, zip_code):
+def add_new_customer(
+    first_name,
+    last_name,
+    phone_number,
+    email_address,
+    street_address,
+    city,
+    state,
+    zip_code,
+):
     if not is_customer(email_address=email_address, phone_number=phone_number):
-        url = f'{creds.cp_api_server}/CUSTOMER/'
+        url = f"{creds.cp_api_server}/CUSTOMER/"
         headers = {
-            'Authorization': f'Basic {creds.cp_api_user}',
-            'APIKey': creds.cp_api_key,
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
+            "Authorization": f"Basic {creds.cp_api_user}",
+            "APIKey": creds.cp_api_key,
+            "Content-Type": "application/json",
+            "Accept": "application/json",
         }
         payload = {
             "Workgroup": "1",
@@ -357,13 +400,13 @@ def add_new_customer(first_name, last_name, phone_number,
                 "FST_NAM": first_name,
                 "LST_NAM": last_name,
                 "STR_ID": "1",
-                'EMAIL_ADRS_1': email_address,
-                'PHONE_1': phone_number,
-                'ADRS_1': street_address,
-                'CITY': city,
-                'STATE': state,
-                'ZIP_COD': zip_code,
-            }
+                "EMAIL_ADRS_1": email_address,
+                "PHONE_1": phone_number,
+                "ADRS_1": street_address,
+                "CITY": city,
+                "STATE": state,
+                "ZIP_COD": zip_code,
+            },
         }
 
         response = requests.post(url, headers=headers, verify=False, json=payload)
@@ -371,7 +414,7 @@ def add_new_customer(first_name, last_name, phone_number,
         pretty = json.loads(pretty)
         pretty = json.dumps(pretty, indent=4)
         print(pretty)
-        return response.json()['CUST_NO']
+        return response.json()["CUST_NO"]
     else:
         return "Already a customer"
 
@@ -408,7 +451,10 @@ def get_customers_with_no_contact_1():
 
 
 def set_negative_loyalty_points_to_zero(log_file):
-    print(f"Set Negative Loyalty to 0: Starting at {datetime.now():%H:%M:%S}", file=log_file)
+    print(
+        f"Set Negative Loyalty to 0: Starting at {datetime.now():%H:%M:%S}",
+        file=log_file,
+    )
     target_customers = get_customers_with_negative_loyalty()
     if target_customers is not None:
         print(f"{len(target_customers)} Customers to Update", file=log_file)
@@ -468,8 +514,11 @@ def set_contact_1(log_file):
                     except Exception as err:
                         print(f"Error: {x} - {err}", file=log_file)
                     else:
-                        print(f"Customer {x}: "
-                              f"Contact 1 updated to: {full_name.replace("''", "'")}", file=log_file)
+                        print(
+                            f"Customer {x}: "
+                            f"Contact 1 updated to: {full_name.replace("''", "'")}",
+                            file=log_file,
+                        )
 
     print(f"Set Contact 1: Finished at {datetime.now():%H:%M:%S}", file=log_file)
     print("-----------------------", file=log_file)

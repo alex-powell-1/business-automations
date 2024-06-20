@@ -1,13 +1,9 @@
 from datetime import datetime
 
-import big_commerce.big_products
 import customer_tools.stop_sms
-from analysis import web_scraping
-from big_commerce import coupons
 from customer_tools import stock_notification
 from customer_tools import tiered_pricing
 from customer_tools import customers
-from customer_tools.customers import set_contact_1
 from product_tools import always_online
 from product_tools import brands
 from product_tools import featured
@@ -17,7 +13,6 @@ from product_tools import resize_photos
 from product_tools import set_inactive_status
 from product_tools import sort_order
 from product_tools import stock_buffer
-from product_tools import prices
 from reporting import lead_generator_notification
 from reporting import product_reports
 from reporting import report_builder
@@ -32,12 +27,7 @@ from sms.sms_messages import (
     returning_customers,
     wholesale_sms_messages,
 )
-
 from utilities import backups
-# from integration import integrator
-
-# integrator = integrator.Integrator()
-# integrator.sync()
 
 # -----------------
 # Driver for Business Automations
@@ -245,29 +235,31 @@ try:
 
         # 2 AM TASKS
         if hour == 2:
-            # TOTAL SOLD
-            # Update Big Commerce with "total_sold" for all ecommerce items. This lets customer_tools
-            # Sort search results by "Best Sellers" with accurate information
-            # Runs at 2AM and takes approx. 15 minutes
-            try:
-                related_items.update_total_sold(log_file)
-            except Exception as err:
-                errors += 1
-                print("Error: Update Total Sold", file=log_file)
-                print(err, file=log_file)
-                print("-----------------------\n", file=log_file)
+            if datetime.today().weekday() == 6:
+                # Only on Sundays
+                # TOTAL SOLD
+                # Update Big Commerce with "total_sold" for all ecommerce items. This lets customer_tools
+                # Sort search results by "Best Sellers" with accurate information
+                # Runs at 2AM and takes approx. 15 minutes
+                try:
+                    related_items.update_total_sold(log_file)
+                except Exception as err:
+                    errors += 1
+                    print("Error: Update Total Sold", file=log_file)
+                    print(err, file=log_file)
+                    print("-----------------------\n", file=log_file)
 
-            # RELATED ITEMS
-            # Update Big Commerce with related items for each product.
-            # Gives products popular amendments and products per category during
-            # Same time last year
-            try:
-                related_items.set_related_items_by_category(log_file)
-            except Exception as err:
-                errors += 1
-                print("Error:Related Items", file=log_file)
-                print(err, file=log_file)
-                print("-----------------------\n", file=log_file)
+                # RELATED ITEMS
+                # Update Big Commerce with related items for each product.
+                # Gives products popular amendments and products per category during
+                # Same time last year
+                try:
+                    related_items.set_related_items_by_category(log_file)
+                except Exception as err:
+                    errors += 1
+                    print("Error:Related Items", file=log_file)
+                    print(err, file=log_file)
+                    print("-----------------------\n", file=log_file)
 
         # 4 AM TASKS
         if hour == 4:
@@ -288,26 +280,28 @@ try:
                 print(err, file=log_file)
                 print("-----------------------\n", file=log_file)
 
-            # SORT ORDER BY PREDICTED REVENUE, RELEASE DATE, AND STOCK LEVEL
-            # Update Sort Order for all product_tools at 4AM.
-            # Uses revenue data from same period last year as a predictive method of rank importance.
-            try:
-                sort_order.sort_order_engine(log_file)
-            except Exception as err:
-                errors += 1
-                print("Error: Sort Order", file=log_file)
-                print(err, file=log_file)
-                print("-----------------------\n", file=log_file)
+            if datetime.today().weekday() == 6:
+                # Only on Sundays
+                # SORT ORDER BY PREDICTED REVENUE, RELEASE DATE, AND STOCK LEVEL
+                # Update Sort Order for all product_tools at 4AM.
+                # Uses revenue data from same period last year as a predictive method of rank importance.
+                try:
+                    sort_order.sort_order_engine(log_file)
+                except Exception as err:
+                    errors += 1
+                    print("Error: Sort Order", file=log_file)
+                    print(err, file=log_file)
+                    print("-----------------------\n", file=log_file)
 
-            # FEATURED PRODUCTSs
-            # Update Featured Products at 4 AMs
-            try:
-                featured.update_featured_items(log_file)
-            except Exception as err:
-                errors += 1
-                print("Error: Featured Products", file=log_file)
-                print(err, file=log_file)
-                print("-----------------------\n", file=log_file)
+                # FEATURED PRODUCTSs
+                # Update Featured Products at 4 AMs
+                try:
+                    featured.update_featured_items(log_file)
+                except Exception as err:
+                    errors += 1
+                    print("Error: Featured Products", file=log_file)
+                    print(err, file=log_file)
+                    print("-----------------------\n", file=log_file)
 
         # 11:30 AM TASKS
     if hour == 11 and minute == 30:
