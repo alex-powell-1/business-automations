@@ -49,5 +49,6 @@ class OrderProcessor:
         ObjectProcessor(orders).process()
 
 
-order = Order(1153)
-order.post_order()
+if __name__ == "__main__":
+    order = Order(1153)
+    order.post_order()
