@@ -22,11 +22,14 @@ def generate_guid():
 
 
 class CounterPointAPI:
+    logger = GlobalErrorHandler.logger
+    error_handler = GlobalErrorHandler.error_handler
+
     def __init__(self, session: requests.Session = requests.Session()):
         self.base_url = creds.cp_api_server
         self.session = session
-        self.logger = Logger("//MAINSERVER/Share/logs/integration/order.log")
-        self.error_handler = ErrorHandler(logger=self.logger)
+        self.logger = CounterPointAPI.logger
+        self.error_handler = CounterPointAPI.error_handler
 
         self.get_headers = {
             "Authorization": f"Basic {creds.cp_api_user}",
