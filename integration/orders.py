@@ -49,7 +49,8 @@ class OrderProcessor:
         ObjectProcessor(orders).process()
 
 
-orders = [1150, 1151, 1152]
+if __name__ == "__main__":
+    orders = [1150, 1151, 1152]
 
-for order in orders:
-    Order(order).process()
+    for order in orders:
+        Order(order).process()

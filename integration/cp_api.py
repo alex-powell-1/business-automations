@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from integration.database import Database
 from integration.error_handler import GlobalErrorHandler, Logger, ErrorHandler
 import uuid
+from customer_tools import customers
 
 
 ORDER_PREFIX = ""
@@ -486,14 +487,162 @@ class OrderAPI(DocumentAPI):
         return payload
 
     def has_cust(self, cust_no):
-        query = f"""
-        SELECT CUST_NO FROM {creds.ar_cust_table}
-        WHERE CUST_NO = '{cust_no}'
-        """
+        return customers.is_current_customer(cust_no)
+        
 
-        response = Database.db.query_db(query)
+    def has_cust_info(self, bc_order: dict):
+        email = self.billing_or_shipping(bc_order, "email")
+        phone = self.billing_or_shipping(bc_order, "phone")
 
-        return len(response) > 0
+        return OrderAPI.get_customer_from_info({
+            "email": email,
+            "phone": phone
+        })
+
+
+    def billing(self, bc_order: dict, key: str):
+        try:
+            return bc_order["billing_address"][key]
+        except:
+            return None
+        
+    def shipping(self, bc_order: dict, key: str):
+        try:
+            return bc_order["shipping_addresses"]["url"][0][key]
+        except:
+            return None
+
+    def billing_or_shipping(self, bc_order: dict, key: str):
+        try:
+            return self.billing(bc_order, key) or self.shipping(bc_order, key)
+        except:
+            return None
+
+    def create_new_customer(self, bc_order: dict):
+        def bos(key: str):
+            return self.billing_or_shipping(bc_order, key)
+        def b(key: str):
+            return self.billing(bc_order, key)
+        def s(key: str):
+            return self.shipping(bc_order, key)
+        first_name = bos("first_name")
+        last_name = bos("last_name")
+        phone_number = bos("phone")
+        email_address = bos("email")
+        street_address = b("street_1")
+        city = b("city")
+        state = b("state")
+        zip_code = b("zip")
+
+        cust_no = customers.add_new_customer(
+            first_name=first_name,
+            last_name=last_name,
+            phone_number=phone_number,
+            email_address=email_address,
+            street_address=street_address,
+            city=city,
+            state=state,
+            zip_code=zip_code
+        )
+
+        def write_shipping_adr():
+            first_name = s("first_name")
+            last_name = s("last_name")
+            phone_number = s("phone")
+            email_address = s("email")
+            street_address = s("street_1")
+            city = s("city")
+            state = s("state")
+            zip_code = s("zip")
+
+            response = customers.update_customer_shipping(
+                cust_no=cust_no,
+                first_name=first_name,
+                last_name=last_name,
+                phone_number=phone_number,
+                email_address=email_address,
+                street_address=street_address,
+                city=city,
+                state=state,
+                zip_code=zip_code
+            )
+
+            if response["code"] == 200:
+                self.logger.success("Shipping address updated")
+            else:
+                self.error_handler.add_error_v("Shipping address could not be updated")
+                self.error_handler.add_error_v(response["message"])
+
+        write_shipping_adr()
+
+    def update_cust(self, bc_order: dict, cust_no: str | int):
+        if not self.has_cust(cust_no):
+            self.error_handler.add_error_v("Valid customer number is required")
+            return
+
+        def b(key: str):
+            return self.billing(bc_order, key)
+        def s(key: str):
+            return self.shipping(bc_order, key)
+        
+        def write_cust():
+            first_name = b("first_name")
+            last_name = b("last_name")
+            phone_number = b("phone")
+            email_address = b("email")
+            street_address = b("street_1")
+            city = b("city")
+            state = b("state")
+            zip_code = b("zip")
+
+            response = customers.update_customer(
+                cust_no=cust_no,
+                first_name=first_name,
+                last_name=last_name,
+                phone_number=phone_number,
+                email_address=email_address,
+                street_address=street_address,
+                city=city,
+                state=state,
+                zip_code=zip_code
+            )
+
+            if response["code"] == 200:
+                self.logger.success("Customer updated")
+            else:
+                self.error_handler.add_error_v("Customer could not be updated")
+                self.error_handler.add_error_v(response["message"])
+
+        def write_shipping_adr():
+            first_name = s("first_name")
+            last_name = s("last_name")
+            phone_number = s("phone")
+            email_address = s("email")
+            street_address = s("street_1")
+            city = s("city")
+            state = s("state")
+            zip_code = s("zip")
+
+            response = customers.update_customer_shipping(
+                cust_no=cust_no,
+                first_name=first_name,
+                last_name=last_name,
+                phone_number=phone_number,
+                email_address=email_address,
+                street_address=street_address,
+                city=city,
+                state=state,
+                zip_code=zip_code
+            )
+
+            if response["code"] == 200:
+                self.logger.success("Shipping address updated")
+            else:
+                self.error_handler.add_error_v("Shipping address could not be updated")
+                self.error_handler.add_error_v(response["message"])
+
+        write_cust()
+        write_shipping_adr()
 
     @staticmethod
     def post_order(
@@ -514,8 +663,16 @@ class OrderAPI(DocumentAPI):
 
         cust_no = ""
 
-        if cust_no_override is None:
+        if not oapi.has_cust_info(bc_order):
+            CounterPointAPI.logger.info("Creating new customer")
+            oapi.create_new_customer(bc_order)
             cust_no = OrderAPI.get_cust_no(bc_order)
+        else:
+            CounterPointAPI.logger.info("Updating existing customer")
+            cust_no = OrderAPI.get_cust_no(bc_order)
+            oapi.update_cust(bc_order, cust_no)
+
+        if cust_no_override is None:
             if cust_no is None or cust_no == "" or not oapi.has_cust(cust_no):
                 oapi.error_handler.add_error_v("Valid customer number is required")
                 return
@@ -1182,59 +1339,37 @@ class OrderAPI(DocumentAPI):
 
     @staticmethod
     def get_customer_from_info(user_info):
-        columns = "CUST_NO"
+        return customers.lookup_customer(email_address=user_info["email"], phone_number=user_info["phone"])
 
-        queries = [
-            f"""
-            SELECT {columns} FROM {creds.ar_cust_table} WHERE
-            NAM like '{user_info['name']}'
-            """
-        ]
+    @staticmethod
+    def get_cust_phone(bc_order: dict):
+        try:
+            phone = bc_order["billing_address"]["phone"]
 
-        if user_info["email"].endswith("@store.com"):
-            cust_no = user_info["email"].split("@")[0]
+            if phone is None or phone == "":
+                phone = bc_order["shipping_addresses"]["url"][0]["phone"]
 
-            query = f"""
-            SELECT {columns} FROM {creds.ar_cust_table} WHERE
-            CUST_NO like '{cust_no}'
-            """
+            return phone
+        except:
+            return ""
+        
+    @staticmethod
+    def get_cust_email(bc_order: dict):
+        try:
+            email = bc_order["billing_address"]["email"]
 
-            queries.append(query)
-        else:
-            query = f"""
-            SELECT {columns} FROM {creds.ar_cust_table} WHERE
-            EMAIL_ADRS_1 like '{user_info['email']}'
-            """
+            if email is None or email == "":
+                email = bc_order["shipping_addresses"]["url"][0]["email"]
 
-            queries.append(query)
-
-        query = f"""
-        SELECT {columns} FROM {creds.ar_cust_table} WHERE
-        CUST_NO like '{user_info['name']}'
-        """
-
-        queries.append(query)
-
-        for query in queries:
-            response = Database.db.query_db(query)
-            if response is not None:
-                if len(response) > 1:
-                    CounterPointAPI.error_handler.add_error_v(
-                        f"Multiple customers found for {user_info['name']} {user_info['email']}"
-                    )
-                elif len(response) == 1:
-                    try:
-                        return response[0][0]
-                    except:
-                        pass
-
-        return None
+            return email
+        except:
+            return ""
 
     @staticmethod
     def get_cust_no(bc_order: dict):
         user_info = {
-            "name": f"{bc_order["billing_address"]["first_name"]} {bc_order['billing_address']['last_name']}",
-            "email": bc_order["billing_address"]["email"],
+            "email": OrderAPI.get_cust_email(bc_order),
+            "phone": OrderAPI.get_cust_phone(bc_order),
         }
 
         cust_no = OrderAPI.get_customer_from_info(user_info)
@@ -1272,7 +1407,7 @@ class JsonTools:
     def unpack(obj: dict):
         for key, value in obj.items():
             if isinstance(value, dict):
-                if key in ["products", "coupons"]:
+                if key in ["products", "coupons", "shipping_addresses"]:
                     obj[key] = JsonTools.unpack(value)
             elif isinstance(value, list):
                 obj[key] = JsonTools.unpack_list(value)
