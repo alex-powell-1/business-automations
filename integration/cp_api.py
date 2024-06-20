@@ -920,6 +920,9 @@ class OrderAPI(DocumentAPI):
 
         def convert_date_string_to_datetime(date_string):
             date = datetime.strptime(date_string, "%a, %d %b %Y %H:%M:%S %z")
+
+            date = date.replace(tzinfo=timezone.utc).astimezone(tz=None)
+
             return date
 
         def convert_datetime_to_date_string(date):
