@@ -919,9 +919,18 @@ class OrderAPI(DocumentAPI):
         self.logger.info("Writing tables")
 
         def convert_date_string_to_datetime(date_string):
-            return datetime.strptime(date_string, "%Y-%m-%d %H:%M:%S")
+            date = datetime.strptime(date_string, "%a, %d %b %Y %H:%M:%S %z")
+            return date
 
-        date = convert_date_string_to_datetime(bc_order["date_created"])
+        def convert_datetime_to_date_string(date):
+            date_string = date.strftime("%Y-%m-%d %H:%M:%S.%f")
+            return date_string[:-3]
+
+        def double_convert_date(date_str):
+            date = convert_date_string_to_datetime(date_str)
+            return convert_datetime_to_date_string(date)
+
+        date = double_convert_date(bc_order["date_created"])
 
         query = f"""
         UPDATE PS_DOC_HDR
