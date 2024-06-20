@@ -36,7 +36,7 @@ class Order:
     def post_order(self, cust_no_override: str = None):
         OrderAPI.post_order(self.order_id, cust_no_override=cust_no_override)
 
-    def process(self):
+    def process(self, session=None):
         self.post_order()
 
 
@@ -49,5 +49,7 @@ class OrderProcessor:
         ObjectProcessor(orders).process()
 
 
-order = Order(1153)
-order.post_order()
+orders = [1150, 1151, 1152]
+
+for order in orders:
+    Order(order).process()
