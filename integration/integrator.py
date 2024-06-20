@@ -47,7 +47,7 @@ class Integrator:
         """Initialize the integrator by deleting the catalog, rebuilding the tables, and syncing the catalog."""
         start_time = time.time()
         self.catalog.delete_catalog()
-        self.customers.delete_customers()
+        # self.customers.delete_customers()
         self.db.rebuild_tables()
         self.catalog = Catalog(
             last_sync=date_presets.business_start_date,
