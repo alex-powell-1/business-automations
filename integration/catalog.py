@@ -177,6 +177,7 @@ class Catalog:
 
     def process_product_deletes(self):
         # This compares the CP and MW product lists and deletes any products that are not in both lists.
+        Catalog.logger.info("Processing Product Deletions.")
         delete_targets = Catalog.get_deletion_target(
             secondary_source=self.mw_items, primary_source=self.cp_items
         )
@@ -222,9 +223,11 @@ class Catalog:
             Catalog.logger.info(f"Product Delete Targets: {delete_targets}")
             for x in delete_targets:
                 Catalog.delete_product(sku=x)
-
+        else:
+            Catalog.logger.info("No products to delete.")
         time.sleep(2)
 
+        Catalog.logger.info("Processing Product Additions.")
         if add_targets:
             Catalog.logger.info(f"Product Add Targets: {add_targets}")
             for x in add_targets:
@@ -241,6 +244,8 @@ class Catalog:
                         f"\n\nPosting new variant for {variant_sku} to product ID {product_id}.\n\n"
                     )
                     variant.bc_post_variant(product_id=product_id)
+        else:
+            Catalog.logger.info("No products to add.")
 
     def process_images(self):
         """Assesses Image folder. Deletes images from MW and BC. Updates LST_MAINT_DT in CP if new images have been added."""
@@ -364,6 +369,7 @@ class Catalog:
                     error=f"Error deleting image {image_name} from WebDav. {web_dav_response.text}"
                 )
 
+        Catalog.logger.info("Processing Image Updates.")
         start_time = time.time()
         local_images = get_local_images()
         mw_image_list = get_middleware_images()
@@ -377,6 +383,8 @@ class Catalog:
             for x in delete_targets:
                 Catalog.logger.info(f"Deleting Image {x[0]}.\n")
                 delete_image(x[0])
+        else:
+            Catalog.logger.info("No image deletions found.")
 
         update_list = delete_targets
 
@@ -424,55 +432,57 @@ class Catalog:
             self.process_product_deletes()
             self.process_images()
 
-        # Sync Category Tree
-        self.category_tree.sync()
+        # # Sync Category Tree
+        # self.category_tree.sync()
         # Sync Product Brands
         self.brands.sync()
 
-        self.get_products()
+        # # PRODUCTS
+        # # --------
+        # # Get Products
+        # self.get_products()
+        # # Sync Products
+        # if not self.sync_queue:
+        #     Catalog.logger.success("No products to sync.")
+        # else:
+        #     queue_length = len(self.sync_queue)
+        #     success_count = 0
+        #     fail_count = 0
 
-        # Sync Products
-        if not self.sync_queue:
-            Catalog.logger.success("No products to sync.")
-        else:
-            queue_length = len(self.sync_queue)
-            success_count = 0
-            fail_count = 0
+        #     Catalog.logger.info(f"Syncing {queue_length} products.")
+        #     while len(self.sync_queue) > 0:
+        #         start_time = time.time()
+        #         target = self.sync_queue.pop()
+        #         prod = self.Product(target, last_sync=self.last_sync)
+        #         prod.get_product_details(last_sync=self.last_sync)
+        #         Catalog.logger.info(
+        #             f"Processing Product: {prod.sku}, Binding: {prod.binding_id}, Title: {prod.web_title}"
+        #         )
+        #         if prod.validate_inputs():
+        #             if prod.process():
+        #                 Catalog.logger.success(
+        #                     f"Product SKU: {prod.sku} Binding ID: {prod.binding_id}, Title: {prod.web_title} processed successfully."
+        #                 )
+        #                 success_count += 1
+        #             else:
+        #                 Catalog.error_handler.add_error_v(
+        #                     error=f"Product SKU: {prod.sku} Binding ID: {prod.binding_id}, Title: {prod.web_title} failed to process."
+        #                 )
+        #                 fail_count += 1
+        #         else:
+        #             fail_count += 1
 
-            Catalog.logger.info(f"Syncing {queue_length} products.")
-            while len(self.sync_queue) > 0:
-                start_time = time.time()
-                target = self.sync_queue.pop()
-                prod = self.Product(target, last_sync=self.last_sync)
-                prod.get_product_details(last_sync=self.last_sync)
-                Catalog.logger.info(
-                    f"Processing Product: {prod.sku}, Binding: {prod.binding_id}, Title: {prod.web_title}"
-                )
-                if prod.validate_inputs():
-                    if prod.process():
-                        Catalog.logger.success(
-                            f"Product SKU: {prod.sku} Binding ID: {prod.binding_id}, Title: {prod.web_title} processed successfully."
-                        )
-                        success_count += 1
-                    else:
-                        Catalog.error_handler.add_error_v(
-                            error=f"Product SKU: {prod.sku} Binding ID: {prod.binding_id}, Title: {prod.web_title} failed to process."
-                        )
-                        fail_count += 1
-                else:
-                    fail_count += 1
+        #         queue_length -= 1
+        #         Catalog.logger.info(
+        #             f"Product {prod.sku} processed in {time.time() - start_time} seconds.Products Remaining: {queue_length}\n\n"
+        #         )
 
-                queue_length -= 1
-                Catalog.logger.info(
-                    f"Product {prod.sku} processed in {time.time() - start_time} seconds.Products Remaining: {queue_length}\n\n"
-                )
-
-            Catalog.logger.info(
-                "-----------------------\n"
-                "Sync Complete.\n"
-                f"Success Count: {success_count}\n"
-                f"Fail Count: {fail_count}\n"
-            )
+        #     Catalog.logger.info(
+        #         "-----------------------\n"
+        #         "Sync Complete.\n"
+        #         f"Success Count: {success_count}\n"
+        #         f"Fail Count: {fail_count}\n"
+        #     )
 
     def delete_product(self, sku):
         delete_payload = {"sku": sku}
@@ -578,6 +588,15 @@ class Catalog:
         response = Database.db.query_db(query)
         if response is not None:
             return response[0][0]
+
+    @staticmethod
+    def get_filesize(filepath):
+        try:
+            file_size = os.path.getsize(filepath)
+        except FileNotFoundError:
+            return None
+        else:
+            return file_size
 
     @staticmethod
     def delete_image_from_webdav(image_name):
@@ -1236,8 +1255,8 @@ class Catalog:
             # self.brands will be a set of Brand objects only created if the last_maint_dt is > than last sync
             self.brands = set()
             # get all brands from CP and MW
-            self.get_brands()
             self.update_brand_timestamps(last_run=self.last_sync)
+            self.get_brands()
             self.process_deletes()
 
         def __str__(self):
@@ -1258,7 +1277,7 @@ class Catalog:
 
             def get_brand_photos_middleware():
                 query = f"""
-                SELECT IMAGE_NAME, IMAGE SIZE FROM {creds.bc_brands_table}
+                SELECT IMAGE_NAME, IMAGE_SIZE FROM {creds.bc_brands_table} WHERE IMAGE_NAME IS NOT NULL
                 """
                 response = query_engine.QueryEngine().query_db(query)
                 return (
@@ -1293,36 +1312,49 @@ class Catalog:
                         error=f"Error updating brand {target} in Counterpoint."
                     )
 
-            for image in get_brand_photos_local():
-                if image["image_name"] not in [
-                    x["image_name"] for x in get_brand_photos_middleware()
-                ]:
+            local_brand_images = get_brand_photos_local()
+            mw_brand_images = get_brand_photos_middleware()
+
+            # Check for new or updated images
+            for local_image in local_brand_images:
+                if local_image["image_name"] not in [
+                    x["image_name"] for x in mw_brand_images
+                ]:  # A local image is found that is not in middleware.
                     # Update Timestamp of brand in IM table
-                    profile_code = image["image_name"].split(".")[0]
-                    print(
-                        f"Brand Image Not Found. Updating LST_MAINT_DT for {profile_code} in Counterpoint."
+                    profile_code = local_image["image_name"].split(".")[0]
+                    Catalog.logger.info(
+                        f"Local brand image not found in middleware. Updating LST_MAINT_DT for {profile_code} in Counterpoint."
                     )
                     update_timestamp(profile_code)
-                    pass
+
                 else:
+                    # A local image is found that is in middleware.
                     if (
-                        image["image_size"]
+                        local_image["image_size"]
                         != [
                             x["image_size"]
-                            for x in get_brand_photos_middleware()
-                            if x["image_name"] == image["image_name"]
+                            for x in mw_brand_images
+                            if x["image_name"] == local_image["image_name"]
                         ][0]
-                    ):
+                    ):  # Image size mismatch
                         # Update Timestamp of brand in IM table
-                        profile_code = image["image_name"].split(".")[0]
-                        print(
+                        profile_code = local_image["image_name"].split(".")[0]
+                        Catalog.logger.info(
                             f"Brand Image Size Mismatch. Updating LST_MAINT_DT for {profile_code} in Counterpoint."
                         )
                         update_timestamp(profile_code)
-                    else:
-                        # Update Timestamp of brand in IM table
-                        print("Brand Image Size Match")
-                        pass
+
+            # Check for deleted images
+            for mw_image in mw_brand_images:
+                if mw_image["image_name"] not in [
+                    x["image_name"] for x in local_brand_images
+                ]:
+                    # Update Timestamp of brand in IM table
+                    profile_code = mw_image["image_name"].split(".")[0]
+                    Catalog.logger.info(
+                        f"Brand Image Deleted. Updating LST_MAINT_DT for {profile_code} in Counterpoint."
+                    )
+                    update_timestamp(profile_code)
 
         def sync(self):
             for brand in self.brands:
@@ -1461,29 +1493,44 @@ class Catalog:
                     self.search_keywords = response[0][7]
                     self.image_name = response[0][8]
                     self.image_url = response[0][9]
-                    self.image_filepath = response[0][10]
+                    self.image_filepath = (
+                        f"{creds.brand_photo_path}/{self.cp_brand_id}.jpg"
+                    )
                     self.image_size = response[0][11]
-                    image_size = os.path.getsize(self.image_filepath)
+                    image_size = Catalog.get_filesize(self.image_filepath)
                     self.is_custom_url = True if response[0][12] == 1 else False
                     self.custom_url = response[0][13]
                     self.last_maint_dt = response[0][14]
 
                     # Image Exists in DB
                     if self.image_name is not None:
-                        if self.image_size != image_size:
-                            self.image_url = self.upload_brand_image()
+                        if image_size is not None:
+                            # Image exists locally. Check for size match.
+                            if self.image_size != image_size:
+                                self.image_url, self.image_size = (
+                                    self.upload_brand_image()
+                                )
+                        else:
+                            # Image does not exist locally. Reset image values.
+                            self.image_url = None
+                            self.image_filepath = None
+                            self.image_size = None
+                            self.image_name = None
 
                     # Image Does Not Exist in DB
                     else:
                         self.image_name, self.image_size = self.get_brand_image()
 
                         if self.image_name is not None:
-                            self.image_url = self.upload_brand_image()
+                            self.image_url, self.image_size = self.upload_brand_image()
+                        else:
+                            self.image_url = None
+                            self.image_size = None
                 else:
                     # Brand does not exist in Middleware
                     self.image_name, self.image_size = self.get_brand_image()
                     if self.image_name is not None:
-                        self.image_url = self.upload_brand_image()
+                        self.image_url, self.image_size = self.upload_brand_image()
 
             def process(self):
                 query = f"""
@@ -1496,33 +1543,12 @@ class Catalog:
                     self.create()
 
             def create(self):
-                self.image_url = self.upload_brand_image()
-
                 def create_bc_brand():
-                    def construct_payload():
-                        result = {
-                            "name": self.name,
-                            "page_title": self.page_title,
-                            "custom_url": {
-                                "url": f"/{self.custom_url}/",
-                                "is_customized": self.is_custom_url,
-                            },
-                        }
-                        if self.image_url:
-                            result["image_url"] = self.image_url
-                        if self.meta_keywords:
-                            result["meta_keywords"] = self.meta_keywords
-                        if self.meta_description:
-                            result["meta_description"] = self.meta_description
-                        if self.search_keywords:
-                            result["search_keywords"] = self.search_keywords
-
-                        return result
-
                     url = f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/catalog/brands"
-                    payload = construct_payload()
                     response = requests.post(
-                        url=url, headers=creds.test_bc_api_headers, json=payload
+                        url=url,
+                        headers=creds.test_bc_api_headers,
+                        json=self.construct_payload(),
                     )
                     if response.status_code in [200, 207]:
                         print(
@@ -1552,9 +1578,9 @@ class Catalog:
                     {f"'{self.meta_keywords.replace("'", "''")}'" if self.meta_keywords else "NULL"}, 
                     {f"'{self.meta_description.replace("'", "''")}'" if self.meta_description else "NULL"}, 
                     {f"'{self.search_keywords.replace("'", "''")}'" if self.search_keywords else "NULL"}, 
-                    {f"'{self.image_name}'" if self.image_name != "" else "NULL"},
-                    {f"'{self.image_url}'" if self.image_url != "" else "NULL"}, 
-                    {f"'{self.image_filepath}'" if self.image_filepath else "NULL"}, 
+                    {f"'{self.image_name}'" if self.image_name else "NULL"},
+                    {f"'{self.image_url}'" if self.image_url else "NULL"}, 
+                    {f"'{self.image_filepath}'" if self.image_name else "NULL"}, 
                     {self.image_size if self.image_size else "NULL"},
                     {1 if self.is_custom_url else 0},
                     {f"'{self.custom_url}'" if self.custom_url else "NULL"})
@@ -1578,26 +1604,11 @@ class Catalog:
                         f"https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3"
                         f"/catalog/brands/{self.bc_brand_id}"
                     )
-                    payload = {
-                        "name": self.name,
-                        "page_title": self.page_title,
-                        "meta_keywords": self.meta_keywords.split(",")
-                        if self.meta_keywords
-                        else [],
-                        "meta_description": self.meta_description
-                        if self.meta_description
-                        else "",
-                        "search_keywords": self.search_keywords
-                        if self.search_keywords
-                        else "",
-                        "image_url": self.image_url,
-                        "custom_url": {
-                            "url": f"/{self.custom_url}/",
-                            "is_customized": self.is_custom_url,
-                        },
-                    }
+
                     response = requests.put(
-                        url=url, headers=creds.test_bc_api_headers, json=payload
+                        url=url,
+                        headers=creds.test_bc_api_headers,
+                        json=self.construct_payload(),
                     )
                     if response.status_code in [200, 207]:
                         print(
@@ -1619,9 +1630,9 @@ class Catalog:
                     {f"'{self.meta_keywords.replace("'", "''")}'" if self.meta_keywords else "NULL"}, 
                     META_DESCR = {f"'{self.meta_description.replace("'", "''")}'" if self.meta_description else "NULL"}, 
                     SEARCH_KEYWORDS = {f"'{self.search_keywords.replace("'", "''")}'" if self.search_keywords else "NULL"},
-                    IMAGE_NAME = {f"'{self.image_name}'" if self.image_name != "" else "NULL"}, 
-                    IMAGE_URL = {f"'{self.image_url}'" if self.image_url != "" else "NULL"}, 
-                    IMAGE_FILEPATH = {f"'{self.image_filepath}'" if self.image_filepath else "NULL"},
+                    IMAGE_NAME = {f"'{self.image_name}'" if self.image_name else "NULL"}, 
+                    IMAGE_URL = {f"'{self.image_url}'" if self.image_url else "NULL"}, 
+                    IMAGE_FILEPATH = {f"'{self.image_filepath}'" if self.image_name else "NULL"},
                     IMAGE_SIZE = {self.image_size if self.image_size else "NULL"},
                     IS_CUSTOMIZED = {1 if self.is_custom_url else 0}, 
                     CUSTOM_URL = {f"'{self.custom_url}'" if self.custom_url else "NULL"}, LST_MAINT_DT = GETDATE()
@@ -1643,12 +1654,34 @@ class Catalog:
             def get_brand_image(self):
                 """Get image file name from directory"""
                 for filename in os.listdir(creds.brand_photo_path):
-                    if filename.split(".")[0] == self.cp_brand_id:
+                    if filename.split(".")[0].lower() == self.cp_brand_id.lower():
                         file_size = os.path.getsize(
                             f"{creds.brand_photo_path}/{filename}"
                         )
                         return filename, file_size
                 return None, None
+
+            def construct_payload(self):
+                payload = {
+                    "name": self.name,
+                    "page_title": self.page_title,
+                    "custom_url": {
+                        "url": f"/{self.custom_url}/",
+                        "is_customized": self.is_custom_url,
+                    },
+                }
+
+                payload["image_url"] = self.image_url if self.image_url else ""
+
+                payload["meta_description"] = (
+                    self.meta_description if self.meta_description else ""
+                )
+
+                payload["search_keywords"] = (
+                    self.search_keywords if self.search_keywords else ""
+                )
+
+                return payload
 
             def get_image_last_modified(self):
                 """Get last modified date of image file"""
@@ -1662,7 +1695,8 @@ class Catalog:
                 try:
                     data = open(self.image_filepath, "rb")
                 except FileNotFoundError:
-                    return None
+                    return None, None
+                file_size = os.path.getsize(self.image_filepath)
                 random_int = random.randint(1000, 9999)
                 new_name = f"{self.image_name.split(".")[0]}-{random_int}.jpg"
                 url = f"{creds.web_dav_product_photos}/{new_name}"
@@ -1679,7 +1713,7 @@ class Catalog:
                 else:
                     # return public url of image
                     if img_upload_res.status_code == 201:
-                        return f"{creds.public_web_dav_photos}/{new_name}"
+                        return f"{creds.public_web_dav_photos}/{new_name}", file_size
                     else:
                         Catalog.error_handler.add_error_v(
                             error=f"Error uploading brand image: {img_upload_res.status_code} - {img_upload_res.text}"
@@ -2578,12 +2612,7 @@ class Catalog:
                 return create()
             else:
                 # Product Found, Update Product
-                if self.validate_outputs():
-                    # Check to see if all children have been removed as a result of output validation
-                    if len(self.variants) > 0:
-                        return update()
-                    else:
-                        return True
+                return update()
 
         def replace_image(self, image) -> bool:
             """Replace image in BigCommerce and SQL."""
@@ -4213,7 +4242,6 @@ class Catalog:
 
 
 if __name__ == "__main__":
-    database = Database()
-    database.rebuild_tables()
-    brands = Catalog.Brands()
-    brands.sync()
+    # database = Database()
+    # database.rebuild_tables()
+    Catalog.delete_brands()
