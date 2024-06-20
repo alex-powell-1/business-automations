@@ -3,12 +3,8 @@ import requests
 import json
 import math
 from datetime import datetime
-
 from integration.database import Database
-
 from integration.error_handler import GlobalErrorHandler, Logger, ErrorHandler
-
-
 import uuid
 
 
@@ -154,7 +150,6 @@ class OrderAPI(DocumentAPI):
                     "ITEM_NO": product["sku"],
                     "USR_ENTD_PRC": "N",
                     "QTY_SOLD": qty,
-                    # "QTY_RET": float(product["quantity"]) if self.is_refund() else 0,
                     "PRC": ext_prc / qty,
                     "EXT_PRC": -ext_prc if self.is_refund() else ext_prc,
                     "EXT_COST": (
@@ -380,13 +375,6 @@ class OrderAPI(DocumentAPI):
         VALUES
         ('{doc_id}', 0, 0, 0, 0, 0, {points_earned}, {points_redeemed}, {points_balance})
         """
-
-        # wquery = f"""
-        # INSERT INTO PS_DOC_HDR_LOY_PGM
-        # (DOC_ID, LIN_LOY_PTS_EARND, LOY_PTS_EARND_GROSS, LOY_PTS_ADJ_FOR_RDM, LOY_PTS_ADJ_FOR_INC_RND, LOY_PTS_ADJ_FOR_OVER_MAX, LOY_PTS_EARND_NET, LOY_PTS_RDM, LOY_PTS_BAL)
-        # VALUES
-        # ('107437365396751', 0, 0, 0, 0, 0, 24, 31, 24)
-        # """
 
         response = Database.db.query_db(wquery, commit=True)
 
@@ -677,15 +665,12 @@ class OrderAPI(DocumentAPI):
     def refund_writes(self, doc_id, payload, bc_order):
         self.logger.info("Writing refund data")
 
-
-        # COME BACK HERE
         if self.is_pr():
             sub_tot = 0
 
             for line_item in payload["PS_DOC_HDR"]["PS_DOC_LIN"]:
                 sub_tot += float(line_item["EXT_PRC"])
 
-            # diff = float(bc_order["subtotal_ex_tax"] or 0) - float(bc_order["refunded_amount"] or 0)
             bc_order["subtotal_ex_tax"] = float(bc_order["refunded_amount"] or 0) + float(self.total_discount_amount or 0) / float(bc_order["items_total"] or 1)
             bc_order["subtotal_inc_tax"] = float(bc_order["refunded_amount"] or 0) + float(self.total_discount_amount or 0) / float(bc_order["items_total"] or 1)
 
@@ -932,7 +917,7 @@ class OrderAPI(DocumentAPI):
             self.redeem_loyalty_pmts(doc_id, payload, bc_order)
 
         self.logger.info("Writing tables")
-        # tot_tndr = float(bc_order["total_inc_tax"] or 0)
+
         def get_tndr():
             total = 0
 
@@ -955,14 +940,10 @@ class OrderAPI(DocumentAPI):
             self.error_handler.add_error_v("Total could not be removed")
             self.error_handler.add_error_v(response["message"])
 
-        # COME BACK HERE
-
         sub_tot = float(bc_order["subtotal_ex_tax"] or 0)
         document_discount = float(self.total_discount_amount or 0)
         gfc_amount = float(self.total_gfc_amount)
         shipping_amt = float(bc_order["base_shipping_cost"] or 0)
-
-        # tot = float(bc_order["total_inc_tax"] or 0)
 
         tot_ext_cost = 0
 
@@ -1105,8 +1086,6 @@ class OrderAPI(DocumentAPI):
         self.cleanup(doc_id)
 
     def cleanup(self, doc_id):
-        # raise Exception("Cleanup not implemented")
-
         self.logger.info("Cleaning up")
 
         query = f"""
