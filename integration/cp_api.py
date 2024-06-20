@@ -3,13 +3,14 @@ import requests
 import json
 import math
 from datetime import datetime
-
 from integration.database import Database
-
 from integration.error_handler import GlobalErrorHandler, Logger, ErrorHandler
-
-
 import uuid
+
+
+ORDER_PREFIX = "B-"
+REFUND_SUFFIX = "R1"
+PARTIAL_REFUND_SUFFIX = "PR"
 
 
 def generate_guid():
@@ -17,11 +18,14 @@ def generate_guid():
 
 
 class CounterPointAPI:
+    logger = GlobalErrorHandler.logger
+    error_handler = GlobalErrorHandler.error_handler
+
     def __init__(self, session: requests.Session = requests.Session()):
         self.base_url = creds.cp_api_server
         self.session = session
-        self.logger = Logger("//MAINSERVER/Share/logs/integration/order.log")
-        self.error_handler = ErrorHandler(logger=self.logger)
+        self.logger = CounterPointAPI.logger
+        self.error_handler = CounterPointAPI.error_handler
 
         self.get_headers = {
             "Authorization": f"Basic {creds.cp_api_user}",
@@ -124,12 +128,15 @@ class OrderAPI(DocumentAPI):
 
                 response = Database.db.query_db(query)
                 if response is not None:
-                    ext_cost = float(response[0][0])
+                    try:
+                        ext_cost = float(response[0][0])
+                    except:
+                        pass
                 else:
                     pass
 
                 try:
-                    qty = float(product["quantity_refunded"]) if product["is_refunded"] else float(product["quantity"])
+                    qty = float(product["quantity_refunded"]) if self.is_pr() else float(product["quantity"])
                 except:
                     qty = float(product["quantity"])
 
@@ -143,7 +150,6 @@ class OrderAPI(DocumentAPI):
                     "ITEM_NO": product["sku"],
                     "USR_ENTD_PRC": "N",
                     "QTY_SOLD": qty,
-                    # "QTY_RET": float(product["quantity"]) if self.is_refund() else 0,
                     "PRC": ext_prc / qty,
                     "EXT_PRC": -ext_prc if self.is_refund() else ext_prc,
                     "EXT_COST": (
@@ -357,7 +363,11 @@ class OrderAPI(DocumentAPI):
         WHERE CUST_NO = '{cust_no}'
         """
         response = Database.db.query_db(query)
-        points_balance = float(response[0][0]) if response else 0
+        points_balance = 0
+        try:
+            points_balance = float(response[0][0]) if response else 0
+        except:
+            pass
 
         wquery = f"""
         INSERT INTO PS_DOC_HDR_LOY_PGM
@@ -365,13 +375,6 @@ class OrderAPI(DocumentAPI):
         VALUES
         ('{doc_id}', 0, 0, 0, 0, 0, {points_earned}, {points_redeemed}, {points_balance})
         """
-
-        # wquery = f"""
-        # INSERT INTO PS_DOC_HDR_LOY_PGM
-        # (DOC_ID, LIN_LOY_PTS_EARND, LOY_PTS_EARND_GROSS, LOY_PTS_ADJ_FOR_RDM, LOY_PTS_ADJ_FOR_INC_RND, LOY_PTS_ADJ_FOR_OVER_MAX, LOY_PTS_EARND_NET, LOY_PTS_RDM, LOY_PTS_BAL)
-        # VALUES
-        # ('107437365396751', 0, 0, 0, 0, 0, 24, 31, 24)
-        # """
 
         response = Database.db.query_db(wquery, commit=True)
 
@@ -387,7 +390,13 @@ class OrderAPI(DocumentAPI):
         """
 
         response = Database.db.query_db(query)
-        points_used = math.floor(float(response[0][0])) if response else 0
+
+        points_used = 0
+
+        try:
+            points_used = math.floor(float(response[0][0])) if response else 0
+        except:
+            pass
 
         return points_used
 
@@ -426,7 +435,7 @@ class OrderAPI(DocumentAPI):
                 "STR_ID": "WEB",
                 "STA_ID": "WEB",
                 "DRW_ID": "1",
-                "TKT_NUM": f"B-{bc_order["id"]}",
+                "TKT_NUM": f"{ORDER_PREFIX}{bc_order["id"]}",
                 "CUST_NO": cust_no,
                 "TKT_TYP": "T",
                 "DOC_TYP": "O",
@@ -507,7 +516,7 @@ class OrderAPI(DocumentAPI):
                 return
         else:
             cust_no = cust_no_override
-        
+
         try:
             if bc_order["payment_status"] == "partially refunded":
                 oapi.post_partial_refund(cust_no=cust_no, bc_order=bc_order)
@@ -576,7 +585,7 @@ class OrderAPI(DocumentAPI):
 
         try:
             if payload["PS_DOC_HDR"]["TKT_NUM"] and payload["PS_DOC_HDR"]["TKT_NUM"] != "":
-                self.write_ticket_no(doc_id, f"{payload["PS_DOC_HDR"]["TKT_NUM"]}{"PR" if self.is_refund(bc_order) else ""}")
+                self.write_ticket_no(doc_id, f"{payload["PS_DOC_HDR"]["TKT_NUM"]}{PARTIAL_REFUND_SUFFIX if self.is_refund(bc_order) else ""}")
         except:
             pass
 
@@ -593,8 +602,6 @@ class OrderAPI(DocumentAPI):
 
         return response
         
-
-
     def post_bc_order(self, cust_no: str, bc_order: dict):
         self.logger.info("Posting order")
 
@@ -620,7 +627,7 @@ class OrderAPI(DocumentAPI):
 
         try:
             if payload["PS_DOC_HDR"]["TKT_NUM"] and payload["PS_DOC_HDR"]["TKT_NUM"] != "":
-                self.write_ticket_no(doc_id, f"{payload["PS_DOC_HDR"]["TKT_NUM"]}{"R1" if self.is_refund(bc_order) else ""}")
+                self.write_ticket_no(doc_id, f"{payload["PS_DOC_HDR"]["TKT_NUM"]}{REFUND_SUFFIX if self.is_refund(bc_order) else ""}")
         except:
             pass
 
@@ -658,15 +665,12 @@ class OrderAPI(DocumentAPI):
     def refund_writes(self, doc_id, payload, bc_order):
         self.logger.info("Writing refund data")
 
-
-        # COME BACK HERE
         if self.is_pr():
             sub_tot = 0
 
             for line_item in payload["PS_DOC_HDR"]["PS_DOC_LIN"]:
                 sub_tot += float(line_item["EXT_PRC"])
 
-            # diff = float(bc_order["subtotal_ex_tax"] or 0) - float(bc_order["refunded_amount"] or 0)
             bc_order["subtotal_ex_tax"] = float(bc_order["refunded_amount"] or 0) + float(self.total_discount_amount or 0) / float(bc_order["items_total"] or 1)
             bc_order["subtotal_inc_tax"] = float(bc_order["refunded_amount"] or 0) + float(self.total_discount_amount or 0) / float(bc_order["items_total"] or 1)
 
@@ -733,7 +737,7 @@ class OrderAPI(DocumentAPI):
                 def add_gfc_bal(amt: float | int):
                     current_date = datetime.now().strftime("%Y-%m-%d")
 
-                    tkt_no = f"{payload['PS_DOC_HDR']['TKT_NUM']}{"R1" if self.is_refund(bc_order) else ""}"
+                    tkt_no = f"{payload['PS_DOC_HDR']['TKT_NUM']}{REFUND_SUFFIX if self.is_refund(bc_order) else ""}"
 
                     r = commit_query(
                         f"""
@@ -832,7 +836,11 @@ class OrderAPI(DocumentAPI):
 
             response = Database.db.query_db(query)
 
-            return float(response[0][0]) if response else None
+            try:
+                return float(response[0][0]) if response else None
+            except Exception as e:
+                self.error_handler.add_error_v(f"[{table}] Line {index} {column} could not be retrieved")
+                raise e
 
         def set_value(table, column, value, index):
             r = commit_query(
@@ -909,7 +917,7 @@ class OrderAPI(DocumentAPI):
             self.redeem_loyalty_pmts(doc_id, payload, bc_order)
 
         self.logger.info("Writing tables")
-        # tot_tndr = float(bc_order["total_inc_tax"] or 0)
+
         def get_tndr():
             total = 0
 
@@ -932,14 +940,10 @@ class OrderAPI(DocumentAPI):
             self.error_handler.add_error_v("Total could not be removed")
             self.error_handler.add_error_v(response["message"])
 
-        # COME BACK HERE
-
         sub_tot = float(bc_order["subtotal_ex_tax"] or 0)
         document_discount = float(self.total_discount_amount or 0)
         gfc_amount = float(self.total_gfc_amount)
         shipping_amt = float(bc_order["base_shipping_cost"] or 0)
-
-        tot = float(bc_order["total_inc_tax"] or 0)
 
         tot_ext_cost = 0
 
@@ -959,24 +963,20 @@ class OrderAPI(DocumentAPI):
                 self.error_handler.add_error_v("Could not get cost")
                 self.error_handler.add_error_v(e)
 
-        print(self.total_lin_disc)
-        print(self.total_hdr_disc)
-        print(self.total_discount_amount)
-
         if self.is_refund(bc_order):
             self.total_lin_disc = abs(self.total_lin_disc)
             query = f"""
             INSERT INTO PS_DOC_HDR_TOT
             (DOC_ID, TOT_TYP, INITIAL_MIN_DUE, HAS_TAX_OVRD, TAX_AMT_SHIPPED, LINS, TOT_GFC_AMT, TOT_SVC_AMT, SUB_TOT, TAX_OVRD_LINS, TOT_EXT_COST, TOT_MISC, TAX_AMT, NORM_TAX_AMT, TOT_TND, TOT_CHNG, TOT_WEIGHT, TOT_CUBE, TOT, AMT_DUE, TOT_HDR_DISC, TOT_LIN_DISC, TOT_HDR_DISCNTBL_AMT, TOT_TIP_AMT)
             VALUES
-            ('{doc_id}', 'S', 0, '!', 0, {len(payload["PS_DOC_HDR"]["PS_DOC_LIN"])}, 0, 0, {-sub_tot - self.total_hdr_disc}, 0, {-tot_ext_cost}, {shipping_amt}, 0, 0, {tot_tndr}, {(sub_tot - self.total_discount_amount / float(bc_order["items_total"])) if self.is_pr() else (sub_tot - self.total_discount_amount)}, 0, 0, {(-(sub_tot - (self.total_discount_amount / float(bc_order["items_total"])))) if self.is_pr() else -(sub_tot - self.total_discount_amount)}, 0, {0 if self.is_pr() else self.total_hdr_disc}, {self.total_lin_disc + self.total_hdr_disc if self.is_pr() else self.total_lin_disc}, 0, 0)
+            ('{doc_id}', 'S', 0, '!', 0, {len(payload["PS_DOC_HDR"]["PS_DOC_LIN"])}, 0, 0, {-(sub_tot - self.total_discount_amount / float(bc_order["items_total"])) if self.is_pr() else -(sub_tot - document_discount)}, 0, {-tot_ext_cost}, {shipping_amt}, 0, 0, {tot_tndr}, {(sub_tot - self.total_discount_amount / float(bc_order["items_total"])) if self.is_pr() else (sub_tot - self.total_discount_amount)}, 0, 0, {(-(sub_tot - (self.total_discount_amount / float(bc_order["items_total"])))) if self.is_pr() else -(sub_tot - self.total_discount_amount)}, 0, {0 if self.is_pr() else -self.total_hdr_disc}, {self.total_lin_disc + self.total_hdr_disc if self.is_pr() else self.total_lin_disc}, 0, 0)
             """
         else:
             query = f"""
             INSERT INTO PS_DOC_HDR_TOT
             (DOC_ID, TOT_TYP, INITIAL_MIN_DUE, HAS_TAX_OVRD, TAX_AMT_SHIPPED, LINS, TOT_GFC_AMT, TOT_SVC_AMT, SUB_TOT, TAX_OVRD_LINS, TOT_EXT_COST, TOT_MISC, TAX_AMT, NORM_TAX_AMT, TOT_TND, TOT_CHNG, TOT_WEIGHT, TOT_CUBE, TOT, AMT_DUE, TOT_HDR_DISC, TOT_LIN_DISC, TOT_HDR_DISCNTBL_AMT, TOT_TIP_AMT)
             VALUES
-            ('{doc_id}', 'S', 0, '!', 0, {len(payload["PS_DOC_HDR"]["PS_DOC_LIN"])}, {gfc_amount}, 0, {sub_tot - document_discount}, 0, {tot_ext_cost}, {shipping_amt}, 0, 0, {tot_tndr}, 0, 0, 0, {tot}, 0, {self.total_hdr_disc}, {self.total_lin_disc}, {sub_tot}, 0)
+            ('{doc_id}', 'S', 0, '!', 0, {len(payload["PS_DOC_HDR"]["PS_DOC_LIN"])}, {gfc_amount}, 0, {sub_tot - document_discount}, 0, {tot_ext_cost}, {shipping_amt}, 0, 0, {tot_tndr}, 0, 0, 0, {tot_tndr}, 0, {self.total_hdr_disc}, {self.total_lin_disc}, {sub_tot}, 0)
             """
 
         response = Database.db.query_db(query, commit=True)
@@ -1086,8 +1086,6 @@ class OrderAPI(DocumentAPI):
         self.cleanup(doc_id)
 
     def cleanup(self, doc_id):
-        # raise Exception("Cleanup not implemented")
-
         self.logger.info("Cleaning up")
 
         query = f"""
@@ -1160,11 +1158,14 @@ class OrderAPI(DocumentAPI):
             response = Database.db.query_db(query)
             if response is not None:
                 if len(response) > 1:
-                    print(
+                    CounterPointAPI.error_handler.add_error_v(
                         f"Multiple customers found for {user_info['name']} {user_info['email']}"
                     )
                 elif len(response) == 1:
-                    return response[0][0]
+                    try:
+                        return response[0][0]
+                    except:
+                        pass
 
         return None
 

@@ -60,7 +60,7 @@ class ErrorHandler:
         if self.logger:
             self.logger.log("")
             self.logger.log("ERRORS:")
-            self.logger.log("------------------")
+            self.logger.log("------------------------------")
 
         if self.errors:
             for error in self.errors:
@@ -71,7 +71,7 @@ class ErrorHandler:
             self.logger.log("No Sync Errors Found.")
 
         if self.logger:
-            self.logger.log("------------------")
+            self.logger.log("------------------------------")
             self.logger.log("")
             self.logger.log("")
 
