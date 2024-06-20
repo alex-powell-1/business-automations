@@ -47,3 +47,7 @@ class OrderProcessor:
     def process(self):
         orders = [Order(order_id) for order_id in self.order_ids]
         ObjectProcessor(orders).process()
+
+
+order = Order(1153)
+order.post_order()
