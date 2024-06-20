@@ -947,6 +947,26 @@ class OrderAPI(DocumentAPI):
 
         self.logger.info("Writing tables")
 
+        def convert_date_string_to_datetime(date_string):
+            return datetime.strptime(date_string, "%Y-%m-%d %H:%M:%S")
+
+        date = convert_date_string_to_datetime(bc_order["date_created"])
+
+        query = f"""
+        UPDATE PS_DOC_HDR
+        SET TKT_DT = '{date}'
+        WHERE DOC_ID = '{doc_id}'
+        """
+
+        response = Database.db.query_db(query, commit=True)
+
+        if response["code"] == 200:
+            self.logger.success("Date updated")
+        else:
+            self.error_handler.add_error_v("Date could not be updated")
+            self.error_handler.add_error_v(response["message"])
+
+
         def get_tndr():
             total = 0
 
