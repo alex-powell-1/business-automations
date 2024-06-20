@@ -1,8 +1,3 @@
-import os
-
-cwd = os.getcwd()
-print(cwd)
-
 from integration.catalog import Catalog
 from integration.customers import Customers
 from integration.database import Database

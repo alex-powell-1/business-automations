@@ -565,9 +565,3 @@ finally:
     print(f"Total Errors: {errors}", file=log_file)
     print("-----------------------\n\n\n", file=log_file)
     log_file.close()
-
-
-from integration.integrator import Integrator
-
-integrator = Integrator()
-integrator.sync()
