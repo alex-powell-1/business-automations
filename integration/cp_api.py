@@ -1158,8 +1158,7 @@ class OrderAPI(DocumentAPI):
             response = Database.db.query_db(query)
             if response is not None:
                 if len(response) > 1:
-                    eh = ErrorHandler()
-                    eh.add_error_v(
+                    CounterPointAPI.error_handler.add_error_v(
                         f"Multiple customers found for {user_info['name']} {user_info['email']}"
                     )
                 elif len(response) == 1:
