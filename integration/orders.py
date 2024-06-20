@@ -1,4 +1,5 @@
 from integration.cp_api import OrderAPI
+from integration.object_processor import ObjectProcessor
 
 
 class Order:
@@ -34,3 +35,15 @@ class Order:
 
     def post_order(self, cust_no_override: str = None):
         OrderAPI.post_order(self.order_id, cust_no_override=cust_no_override)
+
+    def process(self):
+        self.post_order()
+
+
+class OrderProcessor:
+    def __init__(self, order_ids: list[str | int] = []):
+        self.order_ids = order_ids
+
+    def process(self):
+        orders = [Order(order_id) for order_id in self.order_ids]
+        ObjectProcessor(orders).process()
