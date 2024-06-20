@@ -129,7 +129,7 @@ class OrderAPI(DocumentAPI):
                     pass
 
                 try:
-                    qty = float(product["quantity_refunded"]) if product["is_refunded"] else float(product["quantity"])
+                    qty = float(product["quantity_refunded"]) if self.is_pr() else float(product["quantity"])
                 except:
                     qty = float(product["quantity"])
 
@@ -507,7 +507,7 @@ class OrderAPI(DocumentAPI):
                 return
         else:
             cust_no = cust_no_override
-        
+
         try:
             if bc_order["payment_status"] == "partially refunded":
                 oapi.post_partial_refund(cust_no=cust_no, bc_order=bc_order)
@@ -939,7 +939,7 @@ class OrderAPI(DocumentAPI):
         gfc_amount = float(self.total_gfc_amount)
         shipping_amt = float(bc_order["base_shipping_cost"] or 0)
 
-        tot = float(bc_order["total_inc_tax"] or 0)
+        # tot = float(bc_order["total_inc_tax"] or 0)
 
         tot_ext_cost = 0
 
@@ -969,14 +969,14 @@ class OrderAPI(DocumentAPI):
             INSERT INTO PS_DOC_HDR_TOT
             (DOC_ID, TOT_TYP, INITIAL_MIN_DUE, HAS_TAX_OVRD, TAX_AMT_SHIPPED, LINS, TOT_GFC_AMT, TOT_SVC_AMT, SUB_TOT, TAX_OVRD_LINS, TOT_EXT_COST, TOT_MISC, TAX_AMT, NORM_TAX_AMT, TOT_TND, TOT_CHNG, TOT_WEIGHT, TOT_CUBE, TOT, AMT_DUE, TOT_HDR_DISC, TOT_LIN_DISC, TOT_HDR_DISCNTBL_AMT, TOT_TIP_AMT)
             VALUES
-            ('{doc_id}', 'S', 0, '!', 0, {len(payload["PS_DOC_HDR"]["PS_DOC_LIN"])}, 0, 0, {-sub_tot - self.total_hdr_disc}, 0, {-tot_ext_cost}, {shipping_amt}, 0, 0, {tot_tndr}, {(sub_tot - self.total_discount_amount / float(bc_order["items_total"])) if self.is_pr() else (sub_tot - self.total_discount_amount)}, 0, 0, {(-(sub_tot - (self.total_discount_amount / float(bc_order["items_total"])))) if self.is_pr() else -(sub_tot - self.total_discount_amount)}, 0, {0 if self.is_pr() else self.total_hdr_disc}, {self.total_lin_disc + self.total_hdr_disc if self.is_pr() else self.total_lin_disc}, 0, 0)
+            ('{doc_id}', 'S', 0, '!', 0, {len(payload["PS_DOC_HDR"]["PS_DOC_LIN"])}, 0, 0, {-(sub_tot - self.total_discount_amount / float(bc_order["items_total"])) if self.is_pr() else -(sub_tot - document_discount)}, 0, {-tot_ext_cost}, {shipping_amt}, 0, 0, {tot_tndr}, {(sub_tot - self.total_discount_amount / float(bc_order["items_total"])) if self.is_pr() else (sub_tot - self.total_discount_amount)}, 0, 0, {(-(sub_tot - (self.total_discount_amount / float(bc_order["items_total"])))) if self.is_pr() else -(sub_tot - self.total_discount_amount)}, 0, {0 if self.is_pr() else -self.total_hdr_disc}, {self.total_lin_disc + self.total_hdr_disc if self.is_pr() else self.total_lin_disc}, 0, 0)
             """
         else:
             query = f"""
             INSERT INTO PS_DOC_HDR_TOT
             (DOC_ID, TOT_TYP, INITIAL_MIN_DUE, HAS_TAX_OVRD, TAX_AMT_SHIPPED, LINS, TOT_GFC_AMT, TOT_SVC_AMT, SUB_TOT, TAX_OVRD_LINS, TOT_EXT_COST, TOT_MISC, TAX_AMT, NORM_TAX_AMT, TOT_TND, TOT_CHNG, TOT_WEIGHT, TOT_CUBE, TOT, AMT_DUE, TOT_HDR_DISC, TOT_LIN_DISC, TOT_HDR_DISCNTBL_AMT, TOT_TIP_AMT)
             VALUES
-            ('{doc_id}', 'S', 0, '!', 0, {len(payload["PS_DOC_HDR"]["PS_DOC_LIN"])}, {gfc_amount}, 0, {sub_tot - document_discount}, 0, {tot_ext_cost}, {shipping_amt}, 0, 0, {tot_tndr}, 0, 0, 0, {tot}, 0, {self.total_hdr_disc}, {self.total_lin_disc}, {sub_tot}, 0)
+            ('{doc_id}', 'S', 0, '!', 0, {len(payload["PS_DOC_HDR"]["PS_DOC_LIN"])}, {gfc_amount}, 0, {sub_tot - document_discount}, 0, {tot_ext_cost}, {shipping_amt}, 0, 0, {tot_tndr}, 0, 0, 0, {tot_tndr}, 0, {self.total_hdr_disc}, {self.total_lin_disc}, {sub_tot}, 0)
             """
 
         response = Database.db.query_db(query, commit=True)
