@@ -19,8 +19,10 @@ def generate_guid():
 
 
 class CounterPointAPI:
-    logger = GlobalErrorHandler.logger
-    error_handler = GlobalErrorHandler.error_handler
+    logger = Logger(
+        f"//MAINSERVER/Share/logs/integration/orders/orders_{datetime.now().strftime("%m_%d_%y")}.log"
+    )
+    error_handler = ErrorHandler(logger)
 
     def __init__(self, session: requests.Session = requests.Session()):
         self.base_url = creds.cp_api_server
@@ -488,24 +490,19 @@ class OrderAPI(DocumentAPI):
 
     def has_cust(self, cust_no):
         return customers.is_current_customer(cust_no)
-        
 
     def has_cust_info(self, bc_order: dict):
         email = self.billing_or_shipping(bc_order, "email")
         phone = self.billing_or_shipping(bc_order, "phone")
 
-        return OrderAPI.get_customer_from_info({
-            "email": email,
-            "phone": phone
-        })
-
+        return OrderAPI.get_customer_from_info({"email": email, "phone": phone})
 
     def billing(self, bc_order: dict, key: str):
         try:
             return bc_order["billing_address"][key]
         except:
             return None
-        
+
     def shipping(self, bc_order: dict, key: str):
         try:
             return bc_order["shipping_addresses"]["url"][0][key]
@@ -521,10 +518,13 @@ class OrderAPI(DocumentAPI):
     def create_new_customer(self, bc_order: dict):
         def bos(key: str):
             return self.billing_or_shipping(bc_order, key)
+
         def b(key: str):
             return self.billing(bc_order, key)
+
         def s(key: str):
             return self.shipping(bc_order, key)
+
         first_name = bos("first_name")
         last_name = bos("last_name")
         phone_number = bos("phone")
@@ -542,7 +542,7 @@ class OrderAPI(DocumentAPI):
             street_address=street_address,
             city=city,
             state=state,
-            zip_code=zip_code
+            zip_code=zip_code,
         )
 
         def write_shipping_adr():
@@ -564,7 +564,7 @@ class OrderAPI(DocumentAPI):
                 street_address=street_address,
                 city=city,
                 state=state,
-                zip_code=zip_code
+                zip_code=zip_code,
             )
 
             if response["code"] == 200:
@@ -582,9 +582,10 @@ class OrderAPI(DocumentAPI):
 
         def b(key: str):
             return self.billing(bc_order, key)
+
         def s(key: str):
             return self.shipping(bc_order, key)
-        
+
         def write_cust():
             first_name = b("first_name")
             last_name = b("last_name")
@@ -604,7 +605,7 @@ class OrderAPI(DocumentAPI):
                 street_address=street_address,
                 city=city,
                 state=state,
-                zip_code=zip_code
+                zip_code=zip_code,
             )
 
             if response["code"] == 200:
@@ -632,7 +633,7 @@ class OrderAPI(DocumentAPI):
                 street_address=street_address,
                 city=city,
                 state=state,
-                zip_code=zip_code
+                zip_code=zip_code,
             )
 
             if response["code"] == 200:
@@ -723,7 +724,7 @@ class OrderAPI(DocumentAPI):
 
     # def get_refund_index(self, tkt_num):
     #     query = f"""
-    #     SELECT TKT_NO 
+    #     SELECT TKT_NO
     #     """
 
     def post_partial_refund(self, cust_no: str, bc_order: dict):
@@ -1344,7 +1345,9 @@ class OrderAPI(DocumentAPI):
 
     @staticmethod
     def get_customer_from_info(user_info):
-        return customers.lookup_customer(email_address=user_info["email"], phone_number=user_info["phone"])
+        return customers.lookup_customer(
+            email_address=user_info["email"], phone_number=user_info["phone"]
+        )
 
     @staticmethod
     def get_cust_phone(bc_order: dict):
@@ -1357,7 +1360,7 @@ class OrderAPI(DocumentAPI):
             return phone
         except:
             return ""
-        
+
     @staticmethod
     def get_cust_email(bc_order: dict):
         try:

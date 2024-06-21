@@ -18,7 +18,7 @@ from twilio.twiml.messaging_response import MessagingResponse
 from waitress import serve
 
 from setup import creds, email_engine, sms_engine, authorization
-from setup import query_engine
+from integration.error_handler import GlobalErrorHandler
 from setup import log_engine
 
 app = flask.Flask(__name__)
@@ -58,6 +58,8 @@ def get_service_information():
         abort(400, description=e.message)
     else:
         payload = json.dumps(data)
+
+    try:
         connection = pika.BlockingConnection(pika.ConnectionParameters("localhost"))
 
         channel = connection.channel()
@@ -70,9 +72,13 @@ def get_service_information():
             body=payload,
             properties=pika.BasicProperties(delivery_mode=pika.DeliveryMode.Persistent),
         )
-        print(f"Sent: {payload}")
-        connection.close()
 
+        connection.close()
+    except Exception as e:
+        GlobalErrorHandler.error_handler.add_error_v(
+            error=f"Error sending design request to RabbitMQ: {e}", origin="design_info"
+        )
+    else:
         return "Your information has been received. Please check your email for more information from our team."
 
 
@@ -269,22 +275,28 @@ def incoming_sms():
 def bc_orders():
     """Webhook route for incoming orders. Sends to RabbitMQ queue for asynchronous processing"""
     response_data = request.get_json()
-    print(response_data)
     order_id = response_data["data"]["id"]
 
+    GlobalErrorHandler.logger.info(f"Received order {order_id}")
+
     # Send order to RabbitMQ for asynchronous processing
-    connection = pika.BlockingConnection(pika.ConnectionParameters("localhost"))
-    channel = connection.channel()
+    try:
+        connection = pika.BlockingConnection(pika.ConnectionParameters("localhost"))
+        channel = connection.channel()
 
-    channel.queue_declare(queue="bc_orders", durable=True)
+        channel.queue_declare(queue="bc_orders", durable=True)
 
-    channel.basic_publish(
-        exchange="",
-        routing_key="bc_orders",
-        body=str(order_id),
-        properties=pika.BasicProperties(delivery_mode=pika.DeliveryMode.Persistent),
-    )
-    connection.close()
+        channel.basic_publish(
+            exchange="",
+            routing_key="bc_orders",
+            body=str(order_id),
+            properties=pika.BasicProperties(delivery_mode=pika.DeliveryMode.Persistent),
+        )
+        connection.close()
+    except Exception as e:
+        GlobalErrorHandler.error_handler.add_error_v(
+            error=f"Error sending order {order_id} to RabbitMQ: {e}", origin="bc_orders"
+        )
 
     return jsonify({"success": True}), 200
 

@@ -36,13 +36,17 @@ class Order:
         return self.payload
 
     def post_order(self, cust_no_override: str = None):
-        try:
-            OrderAPI.post_order(self.order_id, cust_no_override=cust_no_override)
-        except:
-            GlobalErrorHandler.error_handler.add_error_v(
-                error=f"Error processing order {self.order_id}",
-                origin="integration.orders",
-            )
+        # try:
+        OrderAPI.post_order(self.order_id, cust_no_override=cust_no_override)
+        # except Exception as e:
+        #     GlobalErrorHandler.error_handler.add_error_v(
+        #         error=f"Error processing order {self.order_id}",
+        #         origin="integration.orders",
+        #     )
+
+        #     GlobalErrorHandler.error_handler.add_error_v(
+        #         error=str(e), origin="integration.orders"
+        #     )
 
     def process(self, session=None):
         self.post_order()

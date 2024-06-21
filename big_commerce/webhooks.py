@@ -34,8 +34,13 @@ def create_webhook(pretty=True):
         "Content-Type": "application/json",
         "Accept": "application/json",
     }
+    # payload = {
+    #     "scope": "store/order/created",
+    #     "destination": creds.ngrok_domain + "/bc",
+    # }
+
     payload = {
-        "scope": "store/order/created",
+        "scope": "store/order/refund/created",
         "destination": creds.ngrok_domain + "/bc",
     }
 
@@ -54,4 +59,5 @@ def create_webhook(pretty=True):
 
 
 if __name__ == "__main__":
-    print(get_webhooks())
+    # print(get_webhooks())
+    print(create_webhook())
