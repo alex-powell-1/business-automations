@@ -17,6 +17,7 @@ class Database:
                                         CATEG_NAME nvarchar(255) NOT NULL,
                                         SORT_ORDER int,
                                         DESCRIPTION text,
+                                        IS_VISIBLE BIT NOT NULL DEFAULT(1),
                                         LST_MAINT_DT datetime NOT NULL DEFAULT(current_timestamp)
                                         );
                                         """,

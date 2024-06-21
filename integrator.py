@@ -66,7 +66,8 @@ class Integrator:
         self.set_last_sync(start_sync_time)
         completion_time = (datetime.now() - start_sync_time).seconds
         Integrator.logger.info(f"Sync completion time: {completion_time} seconds")
-        Integrator.error_handler.print_errors()
+        if Integrator.error_handler.errors:
+            Integrator.error_handler.print_errors()
 
 
 def main_menu():

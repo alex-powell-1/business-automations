@@ -508,6 +508,10 @@ class Catalog:
             product.delete_product(sku=sku)
 
     @staticmethod
+    def parse_custom_url_string(string: str):
+        return "-".join(str(re.sub("[^A-Za-z0-9 ]+", "", string)).lower().split(" "))
+
+    @staticmethod
     def get_product(item_no):
         query = f"SELECT ITEM_NO, {creds.cp_field_binding_id} FROM IM_ITEM WHERE ITEM_NO = '{item_no}'"
         response = Database.db.query_db(query)
@@ -887,7 +891,7 @@ class Catalog:
         def get_cp_updates(self):
             query = """
             SELECT cp.CATEG_ID, ISNULL(cp.PARENT_ID, 0), cp.DESCR, cp.DISP_SEQ_NO, cp.HTML_DESCR, 
-            cp.LST_MAINT_DT, sn.CP_CATEG_ID
+            cp.LST_MAINT_DT, sn.CP_CATEG_ID, sn.is_visible
             FROM EC_CATEG cp
             FULL OUTER JOIN SN_CATEG sn on cp.CATEG_ID=sn.CP_CATEG_ID
             """
@@ -901,8 +905,8 @@ class Catalog:
                         self.delete_category(x[6])
                         continue
                     lst_maint_dt = x[5]
-
                     sn_cp_categ_id = x[6]
+                    is_visible = x[7]
 
                     if sn_cp_categ_id is None:
                         # Insert new records
@@ -917,6 +921,7 @@ class Catalog:
                         {sort_order}, '{description}', '{lst_maint_dt:%Y-%m-%d %H:%M:%S}')
                         """
                         self.db.query_db(query, commit=True)
+
                     else:
                         if lst_maint_dt > self.last_sync:
                             # Update existing records
@@ -925,14 +930,17 @@ class Catalog:
                             sort_order = x[3]
                             description = x[4]
                             lst_maint_dt = x[5]
+
                             query = f"""
                             UPDATE {creds.bc_category_table}
                             SET CP_PARENT_ID = {cp_parent_id}, CATEG_NAME = '{category_name}',
                             SORT_ORDER = {sort_order}, DESCRIPTION = '{description}', 
+                            IS_VISIBLE = {1 if is_visible else 0},
                             LST_MAINT_DT = '{lst_maint_dt:%Y-%m-%d %H:%M:%S}'
                             WHERE CP_CATEG_ID = {sn_cp_categ_id}
                             """
                             update_res = self.db.query_db(query, commit=True)
+
                             if update_res["code"] == 200:
                                 Catalog.logger.success(
                                     f"Category {category_name} updated in Middleware."
@@ -1065,6 +1073,7 @@ class Catalog:
                 self.bc_parent_id = bc_parent_id
                 self.sort_order = sort_order
                 self.description = description
+                self.is_visible = self.get_visibility()
                 self.lst_maint_dt = lst_maint_dt
                 self.children = []
 
@@ -1082,6 +1091,18 @@ class Catalog:
 
             def add_child(self, child):
                 self.children.append(child)
+
+            def get_visibility(self):
+                query = f"""
+                SELECT IS_VISIBLE
+                FROM SN_CATEG
+                WHERE CP_CATEG_ID = {self.cp_categ_id}
+                """
+                response = query_engine.QueryEngine().query_db(query)
+                if response:
+                    return response[0][0]
+                else:
+                    return False
 
             def get_bc_id(self):
                 query = f"""
@@ -1112,6 +1133,22 @@ class Catalog:
                 else:
                     self.bc_parent_id = 0
 
+            def get_full_custom_url_path(self):
+                parent_id = self.cp_parent_id
+                url_path = []
+                url_path.append(Catalog.parse_custom_url_string(self.category_name))
+                while parent_id != 0:
+                    query = f"SELECT CATEG_NAME, CP_PARENT_ID FROM SN_CATEG WHERE CP_CATEG_ID = {parent_id}"
+                    response = query_engine.QueryEngine().query_db(query)
+                    if response:
+                        url_path.append(
+                            Catalog.parse_custom_url_string(response[0][0] or "")
+                        )
+                        parent_id = response[0][1]
+                    else:
+                        break
+                return f"/{"/".join(url_path[::-1])}/"
+
             def bc_create_category(self):
                 url = f" https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/trees/categories"
                 payload = [
@@ -1119,9 +1156,9 @@ class Catalog:
                         "name": self.category_name,
                         "url": {
                             "path": "-".join(
-                                str(
-                                    re.sub("[^A-Za-z0-9 ]+", "", self.category_name)
-                                ).split(" ")
+                                str(re.sub("[^A-Za-z0-9 ]+", "", self.category_name))
+                                .split(" ")
+                                .lower()
                             ),
                             "is_customized": False,
                         },
@@ -1130,15 +1167,7 @@ class Catalog:
                         "description": self.description,
                         "sort_order": self.sort_order,
                         "page_title": self.category_name,
-                        # "meta_keywords": [
-                        #   "shower",
-                        #   "tub"
-                        # ],
-                        # "meta_description": "string",
-                        # "layout_file": "category.html",
-                        # "image_url": "https://cdn8.bigcommerce.com/s-123456/product_images/d/fakeimage.png",
-                        "is_visible": True,
-                        "search_keywords": "string",
+                        "is_visible": self.is_visible,
                         "default_product_sort": "use_store_settings",
                     }
                 ]
@@ -1146,12 +1175,34 @@ class Catalog:
                 response = requests.post(
                     url=url, headers=creds.bc_api_headers, json=payload
                 )
-                if response.status_code == 201 or response.status_code == 207:
+                if response.status_code in [201, 207]:
                     print(
                         f"BigCommerce: POST: {self.category_name}: SUCCESS Code: {response.status_code}"
                     )
                     category_id = response.json()["data"][0]["category_id"]
                     return category_id
+
+                elif response.status_code == 429:
+                    ms_to_wait = int(response.headers["X-Rate-Limit-Time-Reset-Ms"])
+                    seconds_to_wait = (ms_to_wait / 1000) + 1
+                    VirtualRateLimiter.pause_requests(seconds_to_wait)
+                    time.sleep(seconds_to_wait)
+
+                    response = requests.post(
+                        url=url, headers=creds.bc_api_headers, json=payload
+                    )
+                    if response.status_code in [201, 207]:
+                        print(
+                            f"BigCommerce: POST: {self.category_name}: SUCCESS Code: {response.status_code}"
+                        )
+                        category_id = response.json()["data"][0]["category_id"]
+                        return category_id
+                    else:
+                        print(
+                            f"BigCommerce: POST: {self.category_name}: Failure Code: {response.status_code}"
+                        )
+                        print(response.json())
+
                 else:
                     print(
                         f"BigCommerce: POST: {self.category_name}: Failure Code: {response.status_code}"
@@ -1167,17 +1218,45 @@ class Catalog:
                         "parent_id": self.bc_parent_id,
                         "tree_id": 1,
                         "page_title": self.category_name,
-                        "is_visible": True,
+                        "is_visible": self.is_visible,
+                        "sort_order": self.sort_order,
+                        "url": {
+                            "path": self.get_full_custom_url_path(),
+                            "is_customized": False,
+                        },
                     }
                 ]
+
+                print(self.get_full_custom_url_path())
 
                 response = requests.put(
                     url=url, headers=creds.bc_api_headers, json=payload, timeout=10
                 )
-                if response.status_code == 200:
+                if response.status_code in [200, 207]:
                     print(
                         f"BigCommerce: UPDATE: {self.category_name} Category: SUCCESS Code: {response.status_code}\n"
                     )
+
+                elif response.status_code == 429:
+                    ms_to_wait = int(response.headers["X-Rate-Limit-Time-Reset-Ms"])
+                    seconds_to_wait = (ms_to_wait / 1000) + 1
+                    VirtualRateLimiter.pause_requests(seconds_to_wait)
+                    time.sleep(seconds_to_wait)
+
+                    response = requests.put(
+                        url=url, headers=creds.bc_api_headers, json=payload, timeout=10
+                    )
+                    if response.status_code == 200:
+                        print(
+                            f"BigCommerce: UPDATE: {self.category_name} Category: SUCCESS Code: {response.status_code}\n"
+                        )
+                    else:
+                        print(
+                            f"BigCommerce: UPDATE: {self.category_name} Category: FAILED Status: {response.status_code} "
+                            f"Payload: {payload}\n"
+                            f"Response: {response.text}\n"
+                        )
+
                 else:
                     print(
                         f"BigCommerce: UPDATE: {self.category_name} "
@@ -1188,9 +1267,9 @@ class Catalog:
 
             def write_category_to_middleware(self):
                 query = f"""
-                INSERT INTO SN_CATEG (BC_CATEG_ID, CP_CATEG_ID, CP_PARENT_ID, CATEG_NAME, SORT_ORDER, DESCRIPTION)
+                INSERT INTO SN_CATEG (BC_CATEG_ID, CP_CATEG_ID, CP_PARENT_ID, CATEG_NAME, SORT_ORDER, DESCRIPTION, IS_VISIBLE)
                 VALUES ({self.bc_categ_id}, {self.cp_categ_id}, {self.cp_parent_id}, 
-                '{self.category_name}', {self.sort_order}, '{self.description}')
+                '{self.category_name}', {self.sort_order}, '{self.description}', {1 if self.is_visible else 0})
                 """
                 try:
                     query_engine.QueryEngine().query_db(query, commit=True)
@@ -1205,7 +1284,8 @@ class Catalog:
                 UPDATE SN_CATEG
                 SET BC_CATEG_ID = {self.bc_categ_id}, CP_PARENT_ID = {self.cp_parent_id}, 
                 CATEG_NAME = '{self.category_name}', 
-                SORT_ORDER = {self.sort_order}, DESCRIPTION = '{self.description}'
+                SORT_ORDER = {self.sort_order}, DESCRIPTION = '{self.description}',
+                IS_VISIBLE = {1 if self.is_visible else 0} 
                 WHERE CP_CATEG_ID = {self.cp_categ_id}
                 """
                 try:

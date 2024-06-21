@@ -30,7 +30,7 @@ from sms.sms_messages import (
 from utilities import backups
 
 # -----------------
-# Driver for Business Automations
+# Scheduled Tasks
 # -----------------
 
 now = datetime.now()

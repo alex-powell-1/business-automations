@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>{{title}}</title>
+</head>
+<body>
+    <header>
+        <img src="cid:image1">
+    </header>
+
+    <section>
+        <p>Greetings!</p>
+
+        <p>Welcome to {{ company }} online! </p>
+
+        <p>We are excited to share our selection with you! <br>
+
+        Here's your coupon for $10 off your first order of $50 or more! </p>
+
+        <h2>Coupon Code: {{ coupon }}</h2>
+        <h2><a href="{{ company_url }}">Use Online Now!</a></h2>
+
+        <p>This coupon is valid on our website for the next 3 days! Enter the code at the checkout to save instantly.</p>
+    </section>
+
+    <section>
+        <p>Thanks,<br>
+        <strong>{{ signature_name }}</strong><br>
+        {{ signature_title }}<br>
+        {{ company_phone }}<br>
+        {{ company }}<br>
+        {{ company_address }}<br>
+        <a href={{company_url}}>{{company}}</a><br>
+        <a href={{company_reviews}}>Recent Google Reviews</a></p>
+    </section>
+
+</body>
+</html>
