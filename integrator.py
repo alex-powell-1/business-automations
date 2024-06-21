@@ -3,7 +3,7 @@ from integration.customers import Customers
 from integration.database import Database
 from integration import interface
 
-from setup import date_presets, creds
+from setup import date_presets
 from datetime import datetime
 
 from integration.error_handler import GlobalErrorHandler
@@ -124,17 +124,75 @@ def main_menu():
             integrator.sync()
 
         elif input_command.startswith("delete"):
-            command = input_command.split(" ")
-            if command[1] == "product":
-                integrator.catalog.delete_product(sku=command[2])
-            elif command[1] == "catalog":
-                integrator.catalog.delete_catalog()
-            elif command[1] == "brands":
-                integrator.catalog.delete_brands()
-            elif command[1] == "categories":
-                integrator.catalog.delete_categories()
-            elif command[1] == "products":
-                integrator.catalog.delete_products()
+            command = (
+                input(
+                    "\nEnter command: \n"
+                    "- product\n"
+                    "- catalog\n"
+                    "- brands\n"
+                    "- categories\n"
+                    "- products\n\n"
+                )
+                .lower()
+                .strip()
+            )
+            if command == "product":
+                sku = input("Enter product sku: ")
+                print(f"Are you sure you want to delete product {sku}? (y/n)")
+                choice = input("Enter choice: ")
+                if choice.lower() == "y":
+                    integrator.catalog.delete_product(sku=sku)
+                    main_menu()
+                else:
+                    print("Aborted.")
+                    time.sleep(2)
+                    main_menu()
+
+            elif command == "catalog":
+                print(
+                    "Are you sure you want to delete the product catalog?\nThis includes all products, brands, and categories(y/n)"
+                )
+                choice = input("Enter choice: ")
+                if choice.lower() == "y":
+                    integrator.catalog.delete_catalog()
+                    main_menu()
+                else:
+                    print("Aborted.")
+                    time.sleep(2)
+                    main_menu()
+
+            elif command == "brands":
+                print("Are you sure you want to delete all brands? (y/n)")
+                choice = input("Enter choice: ")
+                if choice.lower() == "y":
+                    integrator.catalog.delete_brands()
+                    main_menu()
+                else:
+                    print("Aborted.")
+                    time.sleep(2)
+                    main_menu()
+
+            elif command == "categories":
+                print("Are you sure you want to delete all categories? (y/n)")
+                choice = input("Enter choice: ")
+                if choice.lower() == "y":
+                    integrator.catalog.delete_categories()
+                    main_menu()
+                else:
+                    print("Aborted.")
+                    time.sleep(2)
+                    main_menu()
+
+            elif command == "products":
+                print("Are you sure you want to delete all products? (y/n)")
+                choice = input("Enter choice: ")
+                if choice.lower() == "y":
+                    integrator.catalog.delete_products()
+                    main_menu()
+                else:
+                    print("Aborted.")
+                    time.sleep(2)
+                    main_menu()
         else:
             print("Invalid command.")
 
@@ -178,4 +236,4 @@ if __name__ == "__main__":
             main_menu()
 
     else:
-        integrator.sync(initial=True)
+        integrator.sync()

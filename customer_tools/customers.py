@@ -356,12 +356,8 @@ def lookup_customer_by_email(email_address):
     if response is not None:
         return response[0][0]
 
-def format_phone_number(phone_number: str):
-    phone_number = ''.join(filter(str.isdigit, phone_number))
-    return f"{phone_number[0:3]}-{phone_number[3:6]}-{phone_number[6:]}"
 
 def lookup_customer_by_phone(phone_number):
-    phone_number = format_phone_number(phone_number)
     query = f"""
     SELECT TOP 1 CUST_NO
     FROM AR_CUST
@@ -370,9 +366,6 @@ def lookup_customer_by_phone(phone_number):
     response = db.query_db(query)
     if response is not None:
         return response[0][0]
-    
-def lookup_customer(email_address, phone_number):
-    return lookup_customer_by_email(email_address) or lookup_customer_by_phone(phone_number)
 
 
 def is_customer(email_address, phone_number):
@@ -393,61 +386,6 @@ def add_new_customer(
     state,
     zip_code,
 ):
-    states = {
-        "Alabama": "AL",
-        "Alaska": "AK",
-        "Arizona": "AZ",
-        "Arkansas": "AR",
-        "California": "CA",
-        "Colorado": "CO",
-        "Connecticut": "CT",
-        "Delaware": "DE",
-        "Florida": "FL",
-        "Georgia": "GA",
-        "Hawaii": "HI",
-        "Idaho": "ID",
-        "Illinois": "IL",
-        "Indiana": "IN",
-        "Iowa": "IA",
-        "Kansas": "KS",
-        "Kentucky": "KY",
-        "Louisiana": "LA",
-        "Maine": "ME",
-        "Maryland": "MD",
-        "Massachusetts": "MA",
-        "Michigan": "MI",
-        "Minnesota": "MN",
-        "Mississippi": "MS",
-        "Missouri": "MO",
-        "Montana": "MT",
-        "Nebraska": "NE",
-        "Nevada": "NV",
-        "New Hampshire": "NH",
-        "New Jersey": "NJ",
-        "New Mexico": "NM",
-        "New York": "NY",
-        "North Carolina": "NC",
-        "North Dakota": "ND",
-        "Ohio": "OH",
-        "Oklahoma": "OK",
-        "Oregon": "OR",
-        "Pennsylvania": "PA",
-        "Rhode Island": "RI",
-        "South Carolina": "SC",
-        "South Dakota": "SD",
-        "Tennessee": "TN",
-        "Texas": "TX",
-        "Utah": "UT",
-        "Vermont": "VT",
-        "Virginia": "VA",
-        "Washington": "WA",
-        "West Virginia": "WV",
-        "Wisconsin": "WI",
-        "Wyoming": "WY",
-    }
-
-    phone_number = format_phone_number(phone_number)
-
     if not is_customer(email_address=email_address, phone_number=phone_number):
         url = f"{creds.cp_api_server}/CUSTOMER/"
         headers = {
@@ -466,234 +404,19 @@ def add_new_customer(
                 "PHONE_1": phone_number,
                 "ADRS_1": street_address,
                 "CITY": city,
-                "STATE": states[state],
+                "STATE": state,
                 "ZIP_COD": zip_code,
             },
         }
 
         response = requests.post(url, headers=headers, verify=False, json=payload)
-        
-        if response.status_code in [200, 201]:
-            print(f"Customer Added: {response.json()}")
-        else:
-            print(f"Error: {response.status_code} - {response.text}")
-
+        pretty = response.content
+        pretty = json.loads(pretty)
+        pretty = json.dumps(pretty, indent=4)
+        print(pretty)
         return response.json()["CUST_NO"]
     else:
         return "Already a customer"
-    
-def update_customer(
-    cust_no: str | int,
-    first_name: str,
-    last_name: str,
-    phone_number: str,
-    email_address: str,
-    street_address: str,
-    city: str,
-    state: str,
-    zip_code: str,
-):
-    states = {
-        "Alabama": "AL",
-        "Alaska": "AK",
-        "Arizona": "AZ",
-        "Arkansas": "AR",
-        "California": "CA",
-        "Colorado": "CO",
-        "Connecticut": "CT",
-        "Delaware": "DE",
-        "Florida": "FL",
-        "Georgia": "GA",
-        "Hawaii": "HI",
-        "Idaho": "ID",
-        "Illinois": "IL",
-        "Indiana": "IN",
-        "Iowa": "IA",
-        "Kansas": "KS",
-        "Kentucky": "KY",
-        "Louisiana": "LA",
-        "Maine": "ME",
-        "Maryland": "MD",
-        "Massachusetts": "MA",
-        "Michigan": "MI",
-        "Minnesota": "MN",
-        "Mississippi": "MS",
-        "Missouri": "MO",
-        "Montana": "MT",
-        "Nebraska": "NE",
-        "Nevada": "NV",
-        "New Hampshire": "NH",
-        "New Jersey": "NJ",
-        "New Mexico": "NM",
-        "New York": "NY",
-        "North Carolina": "NC",
-        "North Dakota": "ND",
-        "Ohio": "OH",
-        "Oklahoma": "OK",
-        "Oregon": "OR",
-        "Pennsylvania": "PA",
-        "Rhode Island": "RI",
-        "South Carolina": "SC",
-        "South Dakota": "SD",
-        "Tennessee": "TN",
-        "Texas": "TX",
-        "Utah": "UT",
-        "Vermont": "VT",
-        "Virginia": "VA",
-        "Washington": "WA",
-        "West Virginia": "WV",
-        "Wisconsin": "WI",
-        "Wyoming": "WY",
-    }
-
-    state = states[state]
-
-    phone_number = format_phone_number(phone_number)
-
-    FST_NAM = first_name.title().strip()
-    LST_NAM = last_name.title().strip()
-    NAM = f"{FST_NAM} {LST_NAM}"
-    NAM_UPR = NAM.upper()
-    FST_NAM_UPR = FST_NAM.upper()
-    LST_NAM_UPR = LST_NAM.upper()
-
-    query = f"""
-    UPDATE AR_CUST
-    SET FST_NAM = '{FST_NAM}',
-    LST_NAM = '{LST_NAM}',
-    NAM = '{NAM}',
-    NAM_UPR = '{NAM_UPR}',
-    FST_NAM_UPR = '{FST_NAM_UPR}',
-    LST_NAM_UPR = '{LST_NAM_UPR}',
-    PHONE_1 = '{phone_number}',
-    EMAIL_ADRS_1 = '{email_address}',
-    ADRS_1 = '{street_address}',
-    CITY = '{city}',
-    STATE = '{state}',
-    ZIP_COD = '{zip_code}',
-    CONTCT_1 = '{NAM}'
-    WHERE CUST_NO = '{cust_no}'
-    """
-
-    response = db.query_db(query, commit=True)
-
-    return response
-
-def update_customer_shipping(
-    cust_no: str | int,
-    first_name: str,
-    last_name: str,
-    phone_number: str,
-    email_address: str,
-    street_address: str,
-    city: str,
-    state: str,
-    zip_code: str,
-):
-    states = {
-        "Alabama": "AL",
-        "Alaska": "AK",
-        "Arizona": "AZ",
-        "Arkansas": "AR",
-        "California": "CA",
-        "Colorado": "CO",
-        "Connecticut": "CT",
-        "Delaware": "DE",
-        "Florida": "FL",
-        "Georgia": "GA",
-        "Hawaii": "HI",
-        "Idaho": "ID",
-        "Illinois": "IL",
-        "Indiana": "IN",
-        "Iowa": "IA",
-        "Kansas": "KS",
-        "Kentucky": "KY",
-        "Louisiana": "LA",
-        "Maine": "ME",
-        "Maryland": "MD",
-        "Massachusetts": "MA",
-        "Michigan": "MI",
-        "Minnesota": "MN",
-        "Mississippi": "MS",
-        "Missouri": "MO",
-        "Montana": "MT",
-        "Nebraska": "NE",
-        "Nevada": "NV",
-        "New Hampshire": "NH",
-        "New Jersey": "NJ",
-        "New Mexico": "NM",
-        "New York": "NY",
-        "North Carolina": "NC",
-        "North Dakota": "ND",
-        "Ohio": "OH",
-        "Oklahoma": "OK",
-        "Oregon": "OR",
-        "Pennsylvania": "PA",
-        "Rhode Island": "RI",
-        "South Carolina": "SC",
-        "South Dakota": "SD",
-        "Tennessee": "TN",
-        "Texas": "TX",
-        "Utah": "UT",
-        "Vermont": "VT",
-        "Virginia": "VA",
-        "Washington": "WA",
-        "West Virginia": "WV",
-        "Wisconsin": "WI",
-        "Wyoming": "WY",
-    }
-
-    state = states[state] or state
-
-    phone_number = format_phone_number(phone_number)
-
-    FST_NAM = first_name.title().strip()
-    LST_NAM = last_name.title().strip()
-    NAM = f"{FST_NAM} {LST_NAM}"
-    NAM_UPR = NAM.upper()
-    FST_NAM_UPR = FST_NAM.upper()
-    LST_NAM_UPR = LST_NAM.upper()
-
-    query = f"""
-    SELECT CUST_NO FROM AR_SHIP_ADRS WHERE CUST_NO = '{cust_no}'
-    """
-
-    response = db.query_db(query)
-
-    has_user = False
-
-    if response is not None and len(response) > 0:
-        has_user = True
-
-    if has_user:
-        query = f"""
-        UPDATE AR_SHIP_ADRS
-        SET FST_NAM = '{FST_NAM}',
-        LST_NAM = '{LST_NAM}',
-        NAM = '{NAM}',
-        NAM_UPR = '{NAM_UPR}',
-        FST_NAM_UPR = '{FST_NAM_UPR}',
-        LST_NAM_UPR = '{LST_NAM_UPR}',
-        PHONE_1 = '{phone_number}',
-        EMAIL_ADRS_1 = '{email_address}',
-        ADRS_1 = '{street_address}',
-        CITY = '{city}',
-        STATE = '{state}',
-        ZIP_COD = '{zip_code}',
-        CONTCT_1 = '{NAM}'
-        WHERE CUST_NO = '{cust_no}'
-        """
-    else:
-        query = f"""
-        INSERT INTO AR_SHIP_ADRS
-        (CUST_NO, FST_NAM, LST_NAM, NAM, NAM_UPR, FST_NAM_UPR, LST_NAM_UPR, PHONE_1, EMAIL_ADRS_1, ADRS_1, CITY, STATE, ZIP_COD, CONTCT_1)
-        VALUES
-        ('{cust_no}', '{FST_NAM}', '{LST_NAM}', '{NAM}', '{NAM_UPR}', '{FST_NAM_UPR}', '{LST_NAM_UPR}', '{phone_number}', '{email_address}', '{street_address}', '{city}', '{state}', '{zip_code}', '{NAM}')
-        """
-
-    response = db.query_db(query, commit=True)
-
-    return response
 
 
 def get_customers_with_negative_loyalty():
@@ -749,7 +472,7 @@ def set_negative_loyalty_points_to_zero(log_file):
             else:
                 print(f"Customer {x} Updated to Loyalty Points: 0")
     else:
-        print(f"No Customers to Update", file=log_file)
+        print("No Customers to Update", file=log_file)
 
     print(f"Set Contact 1: Finished at {datetime.now():%H:%M:%S}", file=log_file)
     print("-----------------------", file=log_file)

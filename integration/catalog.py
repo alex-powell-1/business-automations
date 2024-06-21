@@ -16,9 +16,9 @@ from integration.database import Database
 from setup import creds
 from setup import query_engine
 from integration.utilities import get_all_binding_ids, convert_to_utc
+from integration.utilities import VirtualRateLimiter
 
 from integration.error_handler import GlobalErrorHandler
-import integration.object_processor as object_processor
 
 
 class Catalog:
@@ -26,6 +26,7 @@ class Catalog:
     logger = error_handler.logger
 
     all_binding_ids = get_all_binding_ids()
+    mw_brands = set()
 
     def __init__(self, last_sync=datetime(1970, 1, 1)):
         self.last_sync = last_sync
@@ -125,11 +126,11 @@ class Catalog:
 
                 result.append(queue_payload)
 
-                Catalog.logger.info(message=f"Adding Product to Queue: {queue_payload}")
-
             res = []
             [res.append(x) for x in result if x not in res]
             self.sync_queue = res
+
+            Catalog.logger.info(f"Sync Queue: {self.sync_queue}")
 
     def set_parent(self, binding_id, remove_current=False):
         # Get Family Members.
@@ -178,6 +179,7 @@ class Catalog:
     def process_product_deletes(self):
         # This compares the CP and MW product lists and deletes any products that are not in both lists.
         Catalog.logger.info("Processing Product Deletions.")
+
         delete_targets = Catalog.get_deletion_target(
             secondary_source=self.mw_items, primary_source=self.cp_items
         )
@@ -222,7 +224,7 @@ class Catalog:
         if delete_targets:
             Catalog.logger.info(f"Product Delete Targets: {delete_targets}")
             for x in delete_targets:
-                Catalog.delete_product(sku=x)
+                self.delete_product(sku=x)
         else:
             Catalog.logger.info("No products to delete.")
         time.sleep(2)
@@ -427,11 +429,6 @@ class Catalog:
         )
 
     def sync(self, initial=False):
-        if not initial:
-            # Process Product Deletions and Images
-            self.process_product_deletes()
-            self.process_images()
-
         # Sync Category Tree
         self.category_tree.sync()
         # Sync Product Brands
@@ -441,6 +438,10 @@ class Catalog:
         # --------
         # Get Products
         self.get_products()
+        if not initial:
+            # Process Product Deletions and Images
+            self.process_product_deletes()
+            self.process_images()
         # Sync Products
         if not self.sync_queue:
             Catalog.logger.success("No products to sync.")
@@ -474,7 +475,7 @@ class Catalog:
 
                 queue_length -= 1
                 Catalog.logger.info(
-                    f"Product {prod.sku} processed in {time.time() - start_time} seconds.Products Remaining: {queue_length}\n\n"
+                    f"Product {prod.sku} processed in {time.time() - start_time} seconds. Products Remaining: {queue_length}\n\n"
                 )
 
             Catalog.logger.info(
@@ -1261,7 +1262,7 @@ class Catalog:
             result = ""
             for brand in self.brands:
                 result += f"Brand Name: {brand.name}\n"
-                result += f"---------------------------------------\n"
+                result += "---------------------------------------\n"
                 result += f"Counterpoint Brand ID: {brand.cp_brand_id}\n"
                 result += f"BigCommerce Brand ID: {brand.bc_brand_id}\n"
                 result += f"Last Maintenance Date: {brand.last_maint_dt}\n\n"
@@ -1377,7 +1378,7 @@ class Catalog:
                 response = self.db.query_db(query)
                 if response:
                     for x in response:
-                        self.mw_brands.add((x[0], x[1], x[2]))
+                        Catalog.mw_brands.add((x[0], x[1], x[2]))
 
             get_cp_brands()
             get_mw_brands()
@@ -1393,7 +1394,7 @@ class Catalog:
 
         def process_deletes(self):
             delete_count = 0
-            mw_brand_ids = [x[0] for x in self.mw_brands]
+            mw_brand_ids = [x[0] for x in list(Catalog.mw_brands)]
             cp_brand_ids = [x[0] for x in self.cp_brands]
             delete_targets = Catalog.get_deletion_target(
                 secondary_source=mw_brand_ids, primary_source=cp_brand_ids
@@ -2160,9 +2161,7 @@ class Catalog:
             if check_for_invalid_brand:
                 # Test for missing brand
                 if self.brand:
-                    bc_brands = [
-                        x[0] for x in Catalog.Brands(last_sync=self.last_sync).mw_brands
-                    ]
+                    bc_brands = [x[0] for x in list(Catalog.mw_brands)]
                     if self.brand not in bc_brands:
                         message = f"Product {self.binding_id} has a brand, but it is not valid. Will delete invalid brand."
                         Catalog.logger.warn(message)
@@ -2514,9 +2513,7 @@ class Catalog:
                     create_response = self.bc_post_product()
                     if create_response.status_code in [200, 207]:
                         self.get_product_data_from_bc(bc_response=create_response)
-                        print("INSERTING PRODUCT")
                         if self.insert_product():
-                            print("INSERTING IMAGES")
                             if self.insert_images():
                                 return True
                             else:
@@ -2704,10 +2701,20 @@ class Catalog:
             )
             if bc_response.status_code in [200, 201, 207]:
                 if self.is_bound:
-                    message = f"POST Code: {bc_response.status_code}. Product: {self.sku} Binding ID: {self.binding_id} Success"
+                    message = f"POST Code: {bc_response.status_code}. Product: {self.sku} Binding ID: {self.binding_id} Create Success"
                 else:
-                    message = f"POST Code: {bc_response.status_code}. POST Product: {self.sku} Success"
+                    message = f"POST Code: {bc_response.status_code}. POST Product: {self.sku} Create Success"
                 Catalog.logger.success(message)
+
+            elif bc_response.status_code == 429:
+                ms_to_wait = int(bc_response.headers["X-Rate-Limit-Time-Reset-Ms"])
+                seconds_to_wait = (ms_to_wait / 1000) + 1
+                VirtualRateLimiter.pause_requests(seconds_to_wait)
+                time.sleep(seconds_to_wait)
+
+                bc_response = requests.post(
+                    url=url, headers=creds.bc_api_headers, json=payload, timeout=120
+                )
 
             else:
                 Catalog.error_handler.add_error_v(
@@ -2746,10 +2753,38 @@ class Catalog:
             )
 
             if bc_response.status_code == 200:
-                # Catalog.logger.success(
-                #     f"Image: {image.image_name} Posted to BigCommerce"
-                # )
-                pass
+                Catalog.logger.success(
+                    f"Image: {image.image_name} Posted to BigCommerce"
+                )
+
+            elif bc_response.status_code == 429:
+                ms_to_wait = int(bc_response.headers["X-Rate-Limit-Time-Reset-Ms"])
+                seconds_to_wait = (ms_to_wait / 1000) + 1
+                time.sleep(seconds_to_wait)
+
+                bc_response = requests.post(
+                    url=url,
+                    headers=creds.bc_api_headers,
+                    json=image_payload,
+                    timeout=120,
+                )
+
+                if bc_response.status_code == 200:
+                    Catalog.logger.success(
+                        f"Image: {image.image_name} Posted to BigCommerce"
+                    )
+                else:
+                    Catalog.error_handler.add_error_v(
+                        error=f"POST Image: {image.image_name} to BigCommerce. Response Code: {bc_response.status_code}"
+                    )
+                    Catalog.logger.warn(
+                        f"Code {bc_response.status_code}: POST Image: {image.image_name}"
+                    )
+                    Catalog.logger.info(f"Payload: {image_payload}")
+                    Catalog.logger.info(
+                        f"Response: {json.dumps(bc_response.json(), indent=4)}"
+                    )
+
             else:
                 Catalog.error_handler.add_error_v(
                     error=f"POST Image: {image.image_name} to BigCommerce. Response Code: {bc_response.status_code}"
@@ -2777,13 +2812,24 @@ class Catalog:
             )
 
             if bc_response.status_code in [200, 201, 207]:
-                pass
-                # if self.is_bound:
-                #     message = f"POST Code: {bc_response.status_code}. Product: {self.sku} Binding ID: {self.binding_id} Success"
-                # else:
-                #     message = f"POST Code: {bc_response.status_code}. POST Product: {self.sku} Success"
+                if self.is_bound:
+                    message = f"PUT Code: {bc_response.status_code}. Product: {self.sku} Binding ID: {self.binding_id} Update Success"
+                else:
+                    message = f"PUT Code: {bc_response.status_code}. Product: {self.sku} Update Success"
+                Catalog.logger.success(message)
 
-                # Catalog.logger.success(message)
+            elif bc_response.status_code == 429:
+                ms_to_wait = int(bc_response.headers["X-Rate-Limit-Time-Reset-Ms"])
+                seconds_to_wait = (ms_to_wait / 1000) + 1
+                VirtualRateLimiter.pause_requests(seconds_to_wait)
+                time.sleep(seconds_to_wait)
+
+                bc_response = requests.put(
+                    url=url,
+                    headers=creds.bc_api_headers,
+                    json=payload,
+                    timeout=120,
+                )
 
             else:
                 Catalog.error_handler.add_error_v(
@@ -2802,6 +2848,7 @@ class Catalog:
 
         def bc_get_custom_fields(self):
             custom_fields = []
+
             cf_url = (
                 f"https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/"
                 f"catalog/products/{self.product_id}/custom-fields"
@@ -2813,6 +2860,30 @@ class Catalog:
                 custom_field_data = cf_response.json()["data"]
                 for field in custom_field_data:
                     custom_fields.append(field["id"])
+
+            elif cf_response.status_code == 429:
+                ms_to_wait = int(cf_response.headers["X-Rate-Limit-Time-Reset-Ms"])
+                seconds_to_wait = (ms_to_wait / 1000) + 1
+                VirtualRateLimiter.pause_requests(seconds_to_wait)
+                time.sleep(seconds_to_wait)
+                cf_response = requests.get(
+                    url=cf_url, headers=creds.bc_api_headers, timeout=120
+                )
+                if cf_response.status_code == 200:
+                    custom_field_data = cf_response.json()["data"]
+                    for field in custom_field_data:
+                        custom_fields.append(field["id"])
+                else:
+                    Catalog.error_handler.add_error_v(
+                        f"Error getting custom fields from BigCommerce. Response: {cf_response.status_code}\n{cf_response.content}"
+                    )
+                    return None
+            else:
+                Catalog.error_handler.add_error_v(
+                    f"Error getting custom fields from BigCommerce. Response: {cf_response.status_code}\n{cf_response.content}"
+                )
+                return None
+
             return custom_fields
 
         def bc_delete_custom_fields(self, asynchronous=False):
@@ -2834,8 +2905,33 @@ class Catalog:
                             url=async_url, headers=creds.bc_api_headers
                         ) as resp:
                             text_response = await resp.text()
-                            if text_response:
-                                print(text_response)
+                            status_code = resp.status
+
+                            if status_code == 429:
+                                ms_to_wait = int(
+                                    resp.headers["X-Rate-Limit-Time-Reset-Ms"]
+                                )
+
+                                seconds_to_wait = (ms_to_wait / 1000) + 1
+
+                                VirtualRateLimiter.pause_requests(seconds_to_wait)
+
+                                time.sleep(seconds_to_wait)
+
+                                async with session.delete(
+                                    url=async_url, headers=creds.bc_api_headers
+                                ) as resp:
+                                    text_response = await resp.text()
+                                    status_code = resp.status
+
+                                    if status_code == 204:
+                                        Catalog.logger.success(
+                                            f"Custom Field {field_id} Deleted from BigCommerce."
+                                        )
+                                    else:
+                                        Catalog.error_handler.add_error_v(
+                                            f"Error deleting custom field {field_id} from BigCommerce. Response: {status_code}\n{text_response}"
+                                        )
 
             asyncio.run(bc_delete_custom_fields_async())
 
@@ -2919,8 +3015,6 @@ class Catalog:
             else:
                 delete_url = f"https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/products?id={product_id}"
 
-            print(f"Delete URL: {delete_url}")
-
             del_product_response = requests.delete(
                 url=delete_url, headers=creds.bc_api_headers, timeout=120
             )
@@ -2978,11 +3072,6 @@ class Catalog:
                     variant_id = response[0][1]
                     option_id = response[0][2]
                     variant_option_value_id = response[0][3]
-                    print(
-                        f"Product ID: {product_id}, Variant ID: {variant_id}, "
-                        f"Option ID: {option_id}, Option Value ID: {variant_option_value_id}"
-                    )
-                    print(f"sku: {sku}")
 
                 url = (
                     f"https://api.bigcommerce.com/stores/{creds.big_store_hash}/"
