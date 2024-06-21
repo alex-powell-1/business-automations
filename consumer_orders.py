@@ -13,6 +13,8 @@ from setup import barcode_engine
 from setup import creds, product_engine, log_engine, query_engine
 from setup.order_engine import Order, utc_to_local
 
+from integration.orders import Order as BCOrder
+
 
 class RabbitMQConsumer:
     def __init__(self, queue_name, host="localhost"):
@@ -220,6 +222,9 @@ class RabbitMQConsumer:
                     f"Skipping Order #{order_id}: Payment Status: {order.payment_status}",
                     file=log_file,
                 )
+
+            bc_order = BCOrder(order_id)
+            bc_order.process()
 
         except Exception as err:
             error_type = "General Catch"
