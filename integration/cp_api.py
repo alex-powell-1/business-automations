@@ -10,7 +10,7 @@ from customer_tools import customers
 
 
 ORDER_PREFIX = ""
-REFUND_SUFFIX = "R1"
+REFUND_SUFFIX = "R"
 PARTIAL_REFUND_SUFFIX = "PR"
 
 
@@ -720,6 +720,11 @@ class OrderAPI(DocumentAPI):
                 oapi.error_handler.add_error_v("Could not cleanup order")
 
             raise e
+
+    # def get_refund_index(self, tkt_num):
+    #     query = f"""
+    #     SELECT TKT_NO 
+    #     """
 
     def post_partial_refund(self, cust_no: str, bc_order: dict):
         self.logger.info("Posting order as partial refund")
