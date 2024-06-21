@@ -1,9 +1,10 @@
 import pandas
 
-from setup.big_products import *
-from setup.date_presets import *
+from setup.big_products import bc_get_variant, bc_update_product
 from setup.query_engine import QueryEngine
 from setup.log_engine import create_product_log
+from setup import creds
+from datetime import datetime
 
 db = QueryEngine()
 
@@ -428,7 +429,7 @@ def get_ecomm_items(mode=1):
 
     # Mode 3 returns a list of skus and bc product ID of single e-comm items, and unique binding keys
     if mode == 3:
-        query = f"""
+        query = """
             SELECT ITEM_NO, PRODUCT_ID
             FROM CPI_BC_PRODUCTS
             WHERE WEB_ID = '1'
@@ -446,7 +447,7 @@ def get_ecomm_items(mode=1):
 
 
 def get_zero_stock_ecomm_products():
-    query = f"""
+    query = """
     SELECT ITEM.ITEM_NO
     FROM IM_ITEM ITEM
     INNER JOIN IM_INV INV ON ITEM.ITEM_NO = INV.ITEM_NO
@@ -461,7 +462,7 @@ def get_zero_stock_ecomm_products():
 
 
 def get_ecomm_products_with_stock():
-    query = f"""
+    query = """
     SELECT ITEM.ITEM_NO
     FROM IM_ITEM ITEM
     INNER JOIN IM_INV INV ON ITEM.ITEM_NO = INV.ITEM_NO
@@ -508,7 +509,7 @@ def get_variant_info_from_big(sku):
 
 
 def get_binding_ids():
-    query = f"""
+    query = """
     SELECT DISTINCT USR_PROF_ALPHA_16
     FROM IM_ITEM
     WHERE USR_PROF_ALPHA_16 IS NOT NULL
@@ -571,22 +572,6 @@ def get_merged_product_combined_stock(binding_id):
             return None
     else:
         return None
-
-
-# def get_items_with_no_sales_history():
-#     from reporting.product_reports import create_top_items_report
-#     all_ecomm_items = get_ecomm_items(mode=2)
-#     top_ecomm_items = create_top_items_report(
-#         beginning_date=one_year_ago,
-#         ending_date=last_year_forecast,
-#         mode="sales",
-#         number_of_items=get_ecomm_items(mode=1),
-#         return_format=3)
-#     result = []
-#     for x in all_ecomm_items:
-#         if x not in top_ecomm_items:
-#             result.append(x)
-#     return result
 
 
 def get_new_items(start_date, end_date, min_price):
@@ -700,7 +685,7 @@ def get_bc_product_id(sku):
 
 
 def get_product_categories_cp():
-    query = f"""
+    query = """
     SELECT CATEG_COD
     FROM IM_CATEG_COD
     """
@@ -713,7 +698,7 @@ def get_product_categories_cp():
 
 
 def fix_html_trash():
-    query = f"""
+    query = """
     SELECT ITEM_NO, HTML_DESCR
     FROM EC_ITEM_DESCR
     WHERE HTML_DESCR like '%<div%'
@@ -756,7 +741,7 @@ def fix_html_trash():
 
 def export_html_descr():
     log = creds.description_log
-    query = f"""
+    query = """
     SELECT ITEM_NO, HTML_DESCR
     FROM EC_ITEM_DESCR
     WHERE HTML_DESCR IS NOT NULL
