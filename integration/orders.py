@@ -31,7 +31,7 @@ class Order:
     def get_payload(self):
         if self.payload is None:
             self.payload = self.oapi.get_post_order_payload(
-                self.get_bc_order(), self.get_cust_no()
+                bc_order=self.get_bc_order(), cust_no=self.get_cust_no()
             )
         return self.payload
 

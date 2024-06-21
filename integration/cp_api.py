@@ -96,7 +96,8 @@ class OrderAPI(DocumentAPI):
         if self.refund is not None:
             return self.refund
         elif bc_order is not None:
-            self.refund = bc_order["status"] == "Refunded"
+            print(bc_order)
+            self.refund = (bc_order["status"] == "Refunded")
             # self.refund = False
             return self.refund
         else:
