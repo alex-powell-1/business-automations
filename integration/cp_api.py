@@ -183,7 +183,7 @@ class OrderAPI(DocumentAPI):
                 self.line_item_length += 1
 
                 gift_cards.append(gift_card)
-                self.total_gfc_amount += float(gift_card["amount"])
+                self.total_gfc_amount += float(gift_card["base_price"])
 
         return gift_cards
 
