@@ -1,6 +1,8 @@
 from integration.cp_api import OrderAPI
 from integration.object_processor import ObjectProcessor
 
+from integration.error_handler import GlobalErrorHandler
+
 
 class Order:
     def __init__(self, order_id: str | int):
@@ -34,7 +36,13 @@ class Order:
         return self.payload
 
     def post_order(self, cust_no_override: str = None):
-        OrderAPI.post_order(self.order_id, cust_no_override=cust_no_override)
+        try:
+            OrderAPI.post_order(self.order_id, cust_no_override=cust_no_override)
+        except:
+            GlobalErrorHandler.error_handler.add_error_v(
+                error=f"Error processing order {self.order_id}",
+                origin="integration.orders",
+            )
 
     def process(self, session=None):
         self.post_order()
