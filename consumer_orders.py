@@ -41,187 +41,186 @@ class RabbitMQConsumer:
         GlobalErrorHandler.logger.info(
             "Getting Order Details for Order #{}".format(order_id)
         )
+        try:
+            order = Order(order_id)
 
-        order = Order(order_id)
-
-        # Filter out DECLINED payments
-        if order.status_id == 11:
-            # Add order to SQL Database. Datestamp and status are added by default.
-            bc_date = order.date_created
-            # Format Date and Time
-            dt_date = utils.parsedate_to_datetime(bc_date)
-            date = utc_to_local(dt_date).strftime("%m/%d/%Y")  # ex. 04/24/2024
-            time = utc_to_local(dt_date).strftime("%I:%M:%S %p")  # ex. 02:34:24 PM
-            products = order.order_products
-            product_list = []
-            gift_card_only = True
-            for x in products:
-                if x["type"] == "physical":
-                    gift_card_only = False
-                item = product_engine.Product(x["sku"])
-                product_details = {
-                    "sku": item.item_no,
-                    "name": item.descr,
-                    "qty": x["quantity"],
-                    "base_price": x["base_price"],
-                    "base_total": x["base_total"],
-                }
-                product_list.append(product_details)
-
-            # Currently, the printing does not work correctly with bigcommerce line discounts. We will need
-            # to address this issue as well.
-
-            # FILTER OUT GIFT CARDS (NO PHYSICAL PRODUCTS)
-            if not gift_card_only:
-                # Create Barcode
-                barcode_filename = "barcode"
-                GlobalErrorHandler.logger.info("Creating barcode")
-                try:
-                    barcode_engine.generate_barcode(
-                        data=order_id, filename=barcode_filename
-                    )
-                except Exception as err:
-                    error_type = "barcode"
-                    GlobalErrorHandler.error_handler.add_error_v(
-                        error=f"Error ({error_type}): {err}",
-                        origin="Design - Barcode",
-                    )
-                else:
-                    GlobalErrorHandler.logger.success(
-                        f"Creating barcode - Success at {datetime.now():%H:%M:%S}",
-                    )
-
-                GlobalErrorHandler.logger.info("Creating Word Document")
-                # Create the Word document
-                try:
-                    doc = DocxTemplate("./templates/ticket_template.docx")
-                    barcode = InlineImage(
-                        doc, f"./{barcode_filename}.png", height=Mm(15)
-                    )  # width in mm
-                    context = {
-                        # Company Details
-                        "company_name": creds.company_name,
-                        "co_address": creds.company_address,
-                        "co_phone": creds.company_phone,
-                        # Order Details
-                        "order_number": order_id,
-                        "order_date": date,
-                        "order_time": time,
-                        "order_subtotal": float(order.subtotal_inc_tax),
-                        "order_shipping": float(order.shipping_cost_inc_tax),
-                        "order_total": float(order.total_inc_tax),
-                        # Customer Billing
-                        "cb_name": order.billing_first_name
-                        + " "
-                        + order.billing_last_name,
-                        "cb_phone": order.billing_phone,
-                        "cb_email": order.billing_email,
-                        "cb_street": order.billing_street_address,
-                        "cb_city": order.billing_city,
-                        "cb_state": order.billing_state,
-                        "cb_zip": order.billing_zip,
-                        # Customer Shipping
-                        "shipping_method": order.shipping_method,
-                        "cs_name": order.shipping_first_name
-                        + " "
-                        + order.shipping_last_name,
-                        "cs_phone": order.shipping_phone,
-                        "cs_email": order.shipping_email,
-                        "cs_street": order.shipping_street_address,
-                        "cs_city": order.shipping_city,
-                        "cs_state": order.shipping_state,
-                        "cs_zip": order.shipping_zip,
-                        # Product Details
-                        "number_of_items": order.items_total,
-                        "ticket_notes": order.customer_message,
-                        "products": product_list,
-                        "coupon_code": order.order_coupons["code"],
-                        "coupon_discount": float(order.coupon_discount),
-                        "loyalty": float(order.store_credit_amount),
-                        "gc_amount": float(order.gift_certificate_amount),
-                        "barcode": barcode,
+            # Filter out DECLINED payments
+            if order.status_id == 11:
+                # Add order to SQL Database. Datestamp and status are added by default.
+                bc_date = order.date_created
+                # Format Date and Time
+                dt_date = utils.parsedate_to_datetime(bc_date)
+                date = utc_to_local(dt_date).strftime("%m/%d/%Y")  # ex. 04/24/2024
+                time = utc_to_local(dt_date).strftime("%I:%M:%S %p")  # ex. 02:34:24 PM
+                products = order.order_products
+                product_list = []
+                gift_card_only = True
+                for x in products:
+                    if x["type"] == "physical":
+                        gift_card_only = False
+                    item = product_engine.Product(x["sku"])
+                    product_details = {
+                        "sku": item.item_no,
+                        "name": item.descr,
+                        "qty": x["quantity"],
+                        "base_price": x["base_price"],
+                        "base_total": x["base_total"],
                     }
+                    product_list.append(product_details)
 
-                    doc.render(context)
-                    ticket_name = f"ticket_{order_id}_{datetime.now().strftime("%m_%d_%y_%H_%M_%S")}.docx"
-                    file_path = creds.ticket_location + ticket_name
-                    doc.save(file_path)
-                except Exception as err:
-                    error_type = "Word Document"
-                    GlobalErrorHandler.error_handler.add_error_v(
-                        error=f"Error ({error_type}): {err}",
-                        origin="Design - Word Document",
-                    )
-                else:
-                    GlobalErrorHandler.logger.success(
-                        f"Creating Word Document - Success at {datetime.now():%H:%M:%S}"
-                    )
+                # Currently, the printing does not work correctly with bigcommerce line discounts. We will need
+                # to address this issue as well.
+
+                # FILTER OUT GIFT CARDS (NO PHYSICAL PRODUCTS)
+                if not gift_card_only:
+                    # Create Barcode
+                    barcode_filename = "barcode"
+                    GlobalErrorHandler.logger.info("Creating barcode")
                     try:
-                        # Print the file to default printer
-                        os.startfile(file_path, "print")
-                    except Exception as err:
-                        error_type = "Printing"
-                        GlobalErrorHandler.error_handler.add_error_v(
-                            f"Error ({error_type}): {err}",
-                            origin="Design - Printing",
+                        barcode_engine.generate_barcode(
+                            data=order_id, filename=barcode_filename
                         )
-                    else:
-                        GlobalErrorHandler.logger.success(
-                            f"Printing - Success at {datetime.now():%H:%M:%S}"
-                        )
-
-                    GlobalErrorHandler.logger.info("Deleting barcode files")
-
-                    # Delete barcode files
-                    try:
-                        os.remove(f"./{barcode_filename}.png")
-                        # os.remove(f"./{order_id}.svg")
                     except Exception as err:
-                        error_type = "Deleting Barcode"
+                        error_type = "barcode"
                         GlobalErrorHandler.error_handler.add_error_v(
                             error=f"Error ({error_type}): {err}",
-                            origin="Design - Deleting Barcode",
+                            origin="Design - Barcode",
                         )
                     else:
                         GlobalErrorHandler.logger.success(
-                            f"Deleting Barcode - Success at {datetime.now():%H:%M:%S}"
+                            f"Creating barcode - Success at {datetime.now():%H:%M:%S}",
                         )
-            # Gift Card Only
+
+                    GlobalErrorHandler.logger.info("Creating Word Document")
+                    # Create the Word document
+                    try:
+                        doc = DocxTemplate("./templates/ticket_template.docx")
+                        barcode = InlineImage(
+                            doc, f"./{barcode_filename}.png", height=Mm(15)
+                        )  # width in mm
+                        context = {
+                            # Company Details
+                            "company_name": creds.company_name,
+                            "co_address": creds.company_address,
+                            "co_phone": creds.company_phone,
+                            # Order Details
+                            "order_number": order_id,
+                            "order_date": date,
+                            "order_time": time,
+                            "order_subtotal": float(order.subtotal_inc_tax),
+                            "order_shipping": float(order.shipping_cost_inc_tax),
+                            "order_total": float(order.total_inc_tax),
+                            # Customer Billing
+                            "cb_name": order.billing_first_name
+                            + " "
+                            + order.billing_last_name,
+                            "cb_phone": order.billing_phone,
+                            "cb_email": order.billing_email,
+                            "cb_street": order.billing_street_address,
+                            "cb_city": order.billing_city,
+                            "cb_state": order.billing_state,
+                            "cb_zip": order.billing_zip,
+                            # Customer Shipping
+                            "shipping_method": order.shipping_method,
+                            "cs_name": order.shipping_first_name
+                            + " "
+                            + order.shipping_last_name,
+                            "cs_phone": order.shipping_phone,
+                            "cs_email": order.shipping_email,
+                            "cs_street": order.shipping_street_address,
+                            "cs_city": order.shipping_city,
+                            "cs_state": order.shipping_state,
+                            "cs_zip": order.shipping_zip,
+                            # Product Details
+                            "number_of_items": order.items_total,
+                            "ticket_notes": order.customer_message,
+                            "products": product_list,
+                            "coupon_code": order.order_coupons["code"],
+                            "coupon_discount": float(order.coupon_discount),
+                            "loyalty": float(order.store_credit_amount),
+                            "gc_amount": float(order.gift_certificate_amount),
+                            "barcode": barcode,
+                        }
+
+                        doc.render(context)
+                        ticket_name = f"ticket_{order_id}_{datetime.now().strftime("%m_%d_%y_%H_%M_%S")}.docx"
+                        file_path = creds.ticket_location + ticket_name
+                        doc.save(file_path)
+                    except Exception as err:
+                        error_type = "Word Document"
+                        GlobalErrorHandler.error_handler.add_error_v(
+                            error=f"Error ({error_type}): {err}",
+                            origin="Design - Word Document",
+                        )
+                    else:
+                        GlobalErrorHandler.logger.success(
+                            f"Creating Word Document - Success at {datetime.now():%H:%M:%S}"
+                        )
+                        try:
+                            # Print the file to default printer
+                            os.startfile(file_path, "print")
+                        except Exception as err:
+                            error_type = "Printing"
+                            GlobalErrorHandler.error_handler.add_error_v(
+                                f"Error ({error_type}): {err}",
+                                origin="Design - Printing",
+                            )
+                        else:
+                            GlobalErrorHandler.logger.success(
+                                f"Printing - Success at {datetime.now():%H:%M:%S}"
+                            )
+
+                        GlobalErrorHandler.logger.info("Deleting barcode files")
+
+                        # Delete barcode files
+                        try:
+                            os.remove(f"./{barcode_filename}.png")
+                            # os.remove(f"./{order_id}.svg")
+                        except Exception as err:
+                            error_type = "Deleting Barcode"
+                            GlobalErrorHandler.error_handler.add_error_v(
+                                error=f"Error ({error_type}): {err}",
+                                origin="Design - Deleting Barcode",
+                            )
+                        else:
+                            GlobalErrorHandler.logger.success(
+                                f"Deleting Barcode - Success at {datetime.now():%H:%M:%S}"
+                            )
+                # Gift Card Only
+                else:
+                    GlobalErrorHandler.logger.info(
+                        f"Skipping Order #{order_id}: Gift Card Only"
+                    )
+            # Declined Payments
+            elif order.status_id == 4:
+                GlobalErrorHandler.logger.info(
+                    f"Skipping Order #{order_id}: Order Refunded. Status: {order.payment_status}"
+                )
+            elif order.status_id == 6:
+                GlobalErrorHandler.logger.info(
+                    f"Skipping Order #{order_id}: Payment Declined. Status: {order.payment_status}"
+                )
             else:
                 GlobalErrorHandler.logger.info(
-                    f"Skipping Order #{order_id}: Gift Card Only"
+                    f"Skipping Order #{order_id}: Payment Status: {order.payment_status}"
                 )
-        # Declined Payments
-        elif order.status_id == 4:
-            GlobalErrorHandler.logger.info(
-                f"Skipping Order #{order_id}: Order Refunded. Status: {order.payment_status}"
-            )
-        elif order.status_id == 6:
-            GlobalErrorHandler.logger.info(
-                f"Skipping Order #{order_id}: Payment Declined. Status: {order.payment_status}"
+
+            # bc_order = BCOrder(order_id)
+            # bc_order.process()
+
+        except Exception as err:
+            error_type = "General Catch"
+            GlobalErrorHandler.error_handler.add_error_v(
+                error=f"Error ({error_type}): {err}",
+                origin="General Catch",
             )
         else:
-            GlobalErrorHandler.logger.info(
-                f"Skipping Order #{order_id}: Payment Status: {order.payment_status}"
+            ch.basic_ack(delivery_tag=method.delivery_tag)
+        finally:
+            GlobalErrorHandler.logger.success(
+                f"Processing Finished at {datetime.now():%H:%M:%S}\n"
             )
-
-        bc_order = BCOrder(order_id)
-        print(order_id)
-        bc_order.process()
-
-        # except Exception as err:
-        #     error_type = "General Catch"
-        #     GlobalErrorHandler.error_handler.add_error_v(
-        #         error=f"Error ({error_type}): {err}",
-        #         origin="General Catch",
-        #     )
-        # else:
-        #     ch.basic_ack(delivery_tag=method.delivery_tag)
-        # finally:
-        GlobalErrorHandler.logger.success(
-            f"Processing Finished at {datetime.now():%H:%M:%S}\n"
-        )
-        GlobalErrorHandler.error_handler.print_errors()
+            GlobalErrorHandler.error_handler.print_errors()
 
     def start_consuming(self):
         while True:
@@ -239,11 +238,11 @@ class RabbitMQConsumer:
                     error="Connection lost. Reconnecting...", origin="Design Consumer"
                 )
                 sleep(5)  # Wait before attempting reconnection
-            # except Exception as err:
-            #     GlobalErrorHandler.error_handler.add_error_v(
-            #         error=err, origin="Design Consumer"
-            #     )
-            #     sleep(5)  # Wait before attempting reconnection
+            except Exception as err:
+                GlobalErrorHandler.error_handler.add_error_v(
+                    error=err, origin="Design Consumer"
+                )
+                sleep(5)  # Wait before attempting reconnection
 
 
 if __name__ == "__main__":  #
