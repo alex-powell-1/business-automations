@@ -225,6 +225,7 @@ class RabbitMQConsumer:
 
             bc_order = BCOrder(order_id)
             bc_order.process()
+            # test
 
         except Exception as err:
             error_type = "General Catch"
