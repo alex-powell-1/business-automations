@@ -573,7 +573,9 @@ class OrderAPI(DocumentAPI):
                 self.error_handler.add_error_v("Shipping address could not be updated")
                 self.error_handler.add_error_v(response["message"])
 
-        write_shipping_adr()
+
+        if (bc_order["shipping_address_count"] or 0) > 0:
+            write_shipping_adr()
 
     def update_cust(self, bc_order: dict, cust_no: str | int):
         if not self.has_cust(cust_no):
@@ -643,7 +645,8 @@ class OrderAPI(DocumentAPI):
                 self.error_handler.add_error_v(response["message"])
 
         write_cust()
-        write_shipping_adr()
+        if (bc_order["shipping_address_count"] or 0) > 0:
+            write_shipping_adr()
 
     @staticmethod
     def post_order(
