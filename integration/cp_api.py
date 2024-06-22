@@ -726,10 +726,34 @@ class OrderAPI(DocumentAPI):
 
             raise e
 
-    # def get_refund_index(self, tkt_num):
-    #     query = f"""
-    #     SELECT TKT_NO
-    #     """
+    def tkt_num_exists(self, tkt_num: str, suffix: str = "", index: int = 1):
+        query = f"""
+        SELECT TKT_NO FROM PS_DOC_HDR
+        WHERE TKT_NO like '{tkt_num}{suffix}{index}'
+        """
+
+        response = Database.db.query_db(query)
+
+        try:
+            ticket_amt = len(response)
+
+            if ticket_amt == 0:
+                return False
+            else:
+                return True
+        except:
+            return False
+
+    def get_refund_index(self, tkt_num: str, suffix: str = ""):
+        index = 1
+        found = False
+        while not found:
+            if self.tkt_num_exists(tkt_num=tkt_num, suffix=suffix, index=index):
+                index += 1
+            else:
+                found = True
+
+        return index
 
     def post_partial_refund(self, cust_no: str, bc_order: dict):
         self.logger.info("Posting order as partial refund")
@@ -764,9 +788,10 @@ class OrderAPI(DocumentAPI):
                 payload["PS_DOC_HDR"]["TKT_NUM"]
                 and payload["PS_DOC_HDR"]["TKT_NUM"] != ""
             ):
+                refund_index = self.get_refund_index(tkt_num=payload["PS_DOC_HDR"]["TKT_NUM"], suffix=PARTIAL_REFUND_SUFFIX)
                 self.write_ticket_no(
                     doc_id,
-                    f"{payload["PS_DOC_HDR"]["TKT_NUM"]}{PARTIAL_REFUND_SUFFIX if self.is_refund(bc_order) else ""}",
+                    f"{payload["PS_DOC_HDR"]["TKT_NUM"]}{PARTIAL_REFUND_SUFFIX}{refund_index}",
                 )
         except:
             pass
@@ -814,10 +839,17 @@ class OrderAPI(DocumentAPI):
                 payload["PS_DOC_HDR"]["TKT_NUM"]
                 and payload["PS_DOC_HDR"]["TKT_NUM"] != ""
             ):
-                self.write_ticket_no(
-                    doc_id,
-                    f"{payload["PS_DOC_HDR"]["TKT_NUM"]}{REFUND_SUFFIX if self.is_refund(bc_order) else ""}",
-                )
+                if self.is_refund(bc_order):
+                    refund_index = self.get_refund_index(tkt_num=payload["PS_DOC_HDR"]["TKT_NUM"], suffix=REFUND_SUFFIX)
+                    self.write_ticket_no(
+                        doc_id,
+                        f"{payload["PS_DOC_HDR"]["TKT_NUM"]}{REFUND_SUFFIX}{refund_index}",
+                    )
+                else:
+                    self.write_ticket_no(
+                        doc_id,
+                        f"{payload["PS_DOC_HDR"]["TKT_NUM"]}",
+                    )
         except:
             pass
 
