@@ -174,6 +174,9 @@ class OrderAPI(DocumentAPI):
         gift_cards = []
 
         for i, product in enumerate(products, start=1):
+            if self.is_pr() and float(product["quantity_refunded"]) == 0:
+                continue
+            
             if product["type"] == "giftcertificate":
                 gift_card = {
                     "GFC_COD": "GC",
