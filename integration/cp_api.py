@@ -702,7 +702,7 @@ class OrderAPI(DocumentAPI):
 
         bc_order = OrderAPI.get_order(order_id)
 
-        if bc_order["payment_status"] in ["declined", ""]:
+        if str(bc_order["payment_status"]).lower() in ["declined", ""]:
             oapi.error_handler.add_error_v("Order payment declined")
             oapi.error_handler.add_error_v(
                 f"Payment status: '{bc_order["payment_status"]}'"
