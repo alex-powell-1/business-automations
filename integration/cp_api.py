@@ -13,11 +13,9 @@ ORDER_PREFIX = ""
 REFUND_SUFFIX = "R"
 PARTIAL_REFUND_SUFFIX = "PR"
 
-
-def generate_guid():
-    return str(uuid.uuid4())
-
-
+# This class is primarily used to interact with the NCR Counterpoint API
+# If you need documentation on the API, good luck.
+# https://github.com/NCRCounterpointAPI/APIGuide/blob/master/Endpoints/POST_Document.md
 class CounterPointAPI:
     logger = Logger(
         f"//MAINSERVER/Share/logs/integration/orders/orders_{datetime.now().strftime("%m_%d_%y")}.log"
@@ -56,6 +54,7 @@ class CounterPointAPI:
         return response
 
 
+# This class is used to interact with the NCR Counterpoint API's Document endpoint
 class DocumentAPI(CounterPointAPI):
     def __init__(self, session: requests.Session = requests.Session()):
         super().__init__(session=session)
@@ -81,6 +80,8 @@ class DocumentAPI(CounterPointAPI):
         return response
 
 
+# This is the primary class used in this file.
+# It is used to create/refund/partially refund orders.
 class OrderAPI(DocumentAPI):
     def __init__(self, session: requests.Session = requests.Session()):
         super().__init__(session=session)
@@ -92,6 +93,7 @@ class OrderAPI(DocumentAPI):
         self.refund = None
         self.pr = None
 
+    # Returns true if the provided BigCommerce order is a refund
     def is_refund(self, bc_order: dict = None):
         if self.refund is not None:
             return self.refund
@@ -103,6 +105,9 @@ class OrderAPI(DocumentAPI):
         else:
             return False
 
+    # Return self.pr if it is not None, set self.pr to set if set is not None, or return False
+    # This is used to determine if the order is a partial refund
+    # I'm not using the setter here because I am manually setting the self.pr value later.
     def is_pr(self, set: bool = None):
         if self.pr is not None:
             return self.pr
@@ -112,6 +117,8 @@ class OrderAPI(DocumentAPI):
         else:
             return False
 
+    # Returns a list of line items from a BigCommerce order.
+    # products is a list of products from a BigCommerce order.
     def get_line_items_from_bc_products(self, products: list):
         line_items = []
 
@@ -170,6 +177,8 @@ class OrderAPI(DocumentAPI):
 
         return line_items
 
+    # Returns a list of gift cards from a list of products from a BigCommerce order.
+    # products is a list of products from a BigCommerce order.
     def get_gift_cards_from_bc_products(self, products: list):
         gift_cards = []
 
@@ -194,6 +203,7 @@ class OrderAPI(DocumentAPI):
 
         return gift_cards
 
+    # Return a list of gift cards used as payment in a BigCommerce order.
     def get_gift_card_payments_from_bc_order(self, bc_order: dict):
         gift_cards = []
 
@@ -218,6 +228,7 @@ class OrderAPI(DocumentAPI):
 
         return gift_cards
 
+    # Returns a list of payments from a BigCommerce order.
     def get_payment_from_bc_order(self, bc_order: dict):
         def negative(num):
             return num if num == 0 else -num
@@ -235,7 +246,7 @@ class OrderAPI(DocumentAPI):
             payments.append(
                 {
                     "AMT": (
-                        -(float(bc_order["store_credit_amount"] or 0))
+                        (float(bc_order["store_credit_amount"] or 0))
                         if self.is_refund()
                         else float(bc_order["store_credit_amount"] or 0)
                     ),
@@ -249,12 +260,15 @@ class OrderAPI(DocumentAPI):
 
         return payments
 
+    # Returns true if the BigCommerce order requires shipping.
     def get_is_shipping(self, bc_order: dict):
         return float(bc_order["base_shipping_cost"]) > 0
 
+    # Returns the shipping cost of a BigCommerce order.
     def get_shipping_cost(self, bc_order: dict):
         return float(bc_order["base_shipping_cost"])
 
+    # Get a list of order notes from a BigCommerce order.
     def get_notes(self, bc_order: dict):
         notes = []
 
@@ -265,6 +279,7 @@ class OrderAPI(DocumentAPI):
 
         return notes
 
+    # Write entry into PS_DOC_DISC
     def write_one_doc_disc(
         self, doc_id, disc_seq_no: int, disc_amt: float, lin_seq_no: int = None
     ):
@@ -302,6 +317,7 @@ class OrderAPI(DocumentAPI):
 
         return
 
+    # Provide a list of line items and write discounts for each line.
     def write_doc_disc(self, doc_id, line_items: list[dict]):
         for i, line_item in enumerate(line_items, start=1):
             amt = float(line_item["DSC_AMT"])
@@ -315,6 +331,7 @@ class OrderAPI(DocumentAPI):
 
         return
 
+    # Write full document discount
     def write_h_doc_disc(self, doc_id, disc_amt: float):
         if disc_amt > 0:
             self.write_one_doc_disc(
@@ -323,6 +340,7 @@ class OrderAPI(DocumentAPI):
 
             self.discount_seq_no += 1
 
+    # Write all discounts from a BigCommerce order.
     def write_doc_discounts(self, doc_id, bc_order: dict):
         self.logger.info("Writing discounts")
         coupons = bc_order["coupons"]["url"]
@@ -338,6 +356,7 @@ class OrderAPI(DocumentAPI):
             )
             self.discount_seq_no += 1
 
+    # Write loyalty line
     def write_one_lin_loy(self, doc_id, line_item: dict, lin_seq_no: int):
         points_earned = (float(line_item["EXT_PRC"] or 0) / 20) or 0
 
@@ -359,6 +378,7 @@ class OrderAPI(DocumentAPI):
 
         return points_earned
 
+    # Write all loyalty lines from a list of line items from a BC order.
     def write_lin_loy(self, doc_id, line_items: list[dict]):
         points = 0
         for lin_seq_no, line_item in enumerate(line_items, start=1):
@@ -366,6 +386,7 @@ class OrderAPI(DocumentAPI):
 
         return points
 
+    # Write entry into PS_DOC_HDR_LOY_PGM
     def write_ps_doc_hdr_loy_pgm(
         self, doc_id, cust_no, points_earned: float, points_redeemed: float
     ):
@@ -394,6 +415,7 @@ class OrderAPI(DocumentAPI):
         else:
             self.error_handler.add_error_v("Loyalty points could not be written")
 
+    # Returns total number of loyalty points used.
     def get_loyalty_points_used(self, doc_id):
         query = f"""
         SELECT AMT FROM PS_DOC_PMT
@@ -411,6 +433,7 @@ class OrderAPI(DocumentAPI):
 
         return points_used
 
+    # Write loyalty points.
     def write_loyalty(self, doc_id, cust_no, line_items: list[dict]):
         self.logger.info("Writing loyalty")
         points_earned = math.floor(self.write_lin_loy(doc_id, line_items))
@@ -418,6 +441,7 @@ class OrderAPI(DocumentAPI):
 
         self.write_ps_doc_hdr_loy_pgm(doc_id, cust_no, points_earned, points_redeemed)
 
+    # Returns the total line discount amount summed together.
     def get_total_lin_disc(self, line_items: list[dict]):
         total = 0
 
@@ -426,6 +450,8 @@ class OrderAPI(DocumentAPI):
 
         return total
 
+    # Get the NCR Counterpoint API POST payload for a BigCommerce order.
+    # Assigns order to cust_no
     def get_post_order_payload(self, cust_no: str, bc_order: dict = {}):
         self.discount_seq_no = 1
         self.total_discount_amount = 0
@@ -477,7 +503,7 @@ class OrderAPI(DocumentAPI):
         if is_shipping:
             payload["PS_DOC_HDR"]["PS_DOC_HDR_MISC_CHRG"] = [
                 {
-                    "TOT_TYP": "S",
+                    "TOT_TYP": "O",
                     "MISC_CHRG_NO": "1",
                     "MISC_TYP": "A",
                     "MISC_AMT": shipping_cost,
@@ -496,33 +522,39 @@ class OrderAPI(DocumentAPI):
 
         return payload
 
+    # Check if the AR_CUST table has a customer with the provided cust_no
     def has_cust(self, cust_no):
         return customers.is_current_customer(cust_no)
 
+    # Check if the AR_CUST table has a customer with the provided email and phone
     def has_cust_info(self, bc_order: dict):
         email = self.billing_or_shipping(bc_order, "email")
         phone = self.billing_or_shipping(bc_order, "phone")
 
         return OrderAPI.get_customer_from_info({"email": email, "phone": phone})
 
+    # Returns the key from the billing_address
     def billing(self, bc_order: dict, key: str):
         try:
             return bc_order["billing_address"][key]
         except:
             return None
 
+    # Return the key from the shipping_addresses
     def shipping(self, bc_order: dict, key: str):
         try:
             return bc_order["shipping_addresses"]["url"][0][key]
         except:
             return None
 
+    # Return the key from the billing_address or shipping_addresses
     def billing_or_shipping(self, bc_order: dict, key: str):
         try:
             return self.billing(bc_order, key) or self.shipping(bc_order, key)
         except:
             return None
 
+    # Create a new customer from a BigCommerce order.
     def create_new_customer(self, bc_order: dict):
         def bos(key: str):
             return self.billing_or_shipping(bc_order, key)
@@ -582,9 +614,10 @@ class OrderAPI(DocumentAPI):
                 self.error_handler.add_error_v(response["message"])
 
 
-        if (bc_order["shipping_address_count"] or 0) > 0:
+        if (len(bc_order["shipping_addresses"]["url"]) or 0) > 0:
             write_shipping_adr()
 
+    # Update an existing customer from a BigCommerce order.
     def update_cust(self, bc_order: dict, cust_no: str | int):
         if not self.has_cust(cust_no):
             self.error_handler.add_error_v("Valid customer number is required")
@@ -653,9 +686,12 @@ class OrderAPI(DocumentAPI):
                 self.error_handler.add_error_v(response["message"])
 
         write_cust()
-        if (bc_order["shipping_address_count"] or 0) > 0:
+        if (len(bc_order["shipping_addresses"]["url"]) or 0) > 0:
             write_shipping_adr()
 
+    # This function will run the whole ordeal using the provided BigCommerce order_id.
+    # cust_no_override is used to override the customer number for the order when posted to Counterpoint.
+    # Session can be provided to use the same http session for all requests.
     @staticmethod
     def post_order(
         order_id: str | int,
@@ -666,33 +702,39 @@ class OrderAPI(DocumentAPI):
 
         bc_order = OrderAPI.get_order(order_id)
 
-        if bc_order["payment_status"] in ["declined", ""]:
+        if str(bc_order["payment_status"]).lower() in ["declined", ""]:
             oapi.error_handler.add_error_v("Order payment declined")
             oapi.error_handler.add_error_v(
                 f"Payment status: '{bc_order["payment_status"]}'"
             )
-            return
+            raise Exception("Order payment declined")
 
         cust_no = ""
 
-        if not oapi.has_cust_info(bc_order):
-            CounterPointAPI.logger.info("Creating new customer")
-            oapi.create_new_customer(bc_order)
-            cust_no = OrderAPI.get_cust_no(bc_order)
-        else:
-            CounterPointAPI.logger.info("Updating existing customer")
-            cust_no = OrderAPI.get_cust_no(bc_order)
-            oapi.update_cust(bc_order, cust_no)
+        try:
+            if not oapi.has_cust_info(bc_order):
+                CounterPointAPI.logger.info("Creating new customer")
+                oapi.create_new_customer(bc_order)
+                cust_no = OrderAPI.get_cust_no(bc_order)
+            else:
+                CounterPointAPI.logger.info("Updating existing customer")
+                cust_no = OrderAPI.get_cust_no(bc_order)
+                oapi.update_cust(bc_order, cust_no)
+        except:
+            raise Exception("Customer could not be created/updated")
 
         if cust_no_override is None:
             if cust_no is None or cust_no == "" or not oapi.has_cust(cust_no):
                 oapi.error_handler.add_error_v("Valid customer number is required")
-                return
+                raise Exception("Valid customer number is required")
         else:
             cust_no = cust_no_override
+            if not oapi.has_cust(cust_no):
+                oapi.error_handler.add_error_v("Valid customer number is required")
+                raise Exception("Valid customer number is required")
 
         try:
-            if bc_order["payment_status"] == "partially refunded":
+            if bc_order["status"] == "Partially Refunded":
                 oapi.post_partial_refund(cust_no=cust_no, bc_order=bc_order)
             else:
                 oapi.post_bc_order(cust_no=cust_no, bc_order=bc_order)
@@ -733,6 +775,7 @@ class OrderAPI(DocumentAPI):
 
             raise e
 
+    # Returns true if the provided ticket number exists in the PS_DOC_HDR table.
     def tkt_num_exists(self, tkt_num: str, suffix: str = "", index: int = 1):
         query = f"""
         SELECT TKT_NO FROM PS_DOC_HDR
@@ -751,6 +794,9 @@ class OrderAPI(DocumentAPI):
         except:
             return False
 
+    # Returns the refund index.
+    # Refund index is the number at the end of the ticket number on a refund or partial refund.
+    # Ex. 1151R1, 1151R2, 1150PR1, 1150PR2, etc.
     def get_refund_index(self, tkt_num: str, suffix: str = ""):
         index = 1
         found = False
@@ -762,6 +808,7 @@ class OrderAPI(DocumentAPI):
 
         return index
 
+    # Post a partial refund to Counterpoint.
     def post_partial_refund(self, cust_no: str, bc_order: dict):
         self.logger.info("Posting order as partial refund")
 
@@ -816,6 +863,7 @@ class OrderAPI(DocumentAPI):
 
         return response
 
+    # Post an order/refund to Counterpoint.
     def post_bc_order(self, cust_no: str, bc_order: dict):
         self.logger.info("Posting order")
 
@@ -911,7 +959,6 @@ class OrderAPI(DocumentAPI):
 
                     r = commit_query(
                         f"""
-
                         INSERT INTO SY_GFC
                         (GFC_NO, DESCR, DESCR_UPR, ORIG_DAT, ORIG_STR_ID, ORIG_STA_ID, ORIG_DOC_NO, ORIG_CUST_NO, GFC_COD, NO_EXP_DAT, ORIG_AMT, CURR_AMT, CREATE_METH, LIAB_ACCT_NO, RDM_ACCT_NO, RDM_METH, FORF_ACCT_NO, IS_VOID, LST_ACTIV_DAT, LST_MAINT_DT, LST_MAINT_USR_ID, ORIG_DOC_ID, ORIG_BUS_DAT, RS_STAT)
                         VALUES
@@ -959,6 +1006,7 @@ class OrderAPI(DocumentAPI):
 
         return response
 
+    # Writes the correct ticket number to the document.
     def write_ticket_no(self, doc_id, tkt_no):
         tables = ["PS_DOC_HDR", "PS_DOC_LIN", "PS_DOC_PMT"]
 
@@ -977,6 +1025,9 @@ class OrderAPI(DocumentAPI):
                 self.error_handler.add_error_v("Ticket number could not be updated")
                 self.error_handler.add_error_v(response["message"])
 
+    # Writes to several tables in Counterpoint.
+    # Necessary to process refunds correctly.
+    # This function is called before more_writes on refunds and partial refunds.
     def refund_writes(self, doc_id, payload, bc_order):
         self.logger.info("Writing refund data")
 
@@ -1092,7 +1143,7 @@ class OrderAPI(DocumentAPI):
             UPDATE PS_DOC_PMT
             SET AMT = {-(float(bc_order["total_inc_tax"] or 0))},
             HOME_CURNCY_AMT = {-(float(bc_order["total_inc_tax"] or 0))} 
-            WHERE DOC_ID = '{doc_id}' AND PAY_COD = 'BIG'
+            WHERE DOC_ID = '{doc_id}'
             """
         )
 
@@ -1305,6 +1356,7 @@ class OrderAPI(DocumentAPI):
             set_value_prc("PRC_BRK_DESCR", "'I'")
             invert_prc("QTY_PRCD")
 
+    # Updates the users loyalty points
     def redeem_loyalty_pmts(self, doc_id, payload, bc_order):
         for payment in payload["PS_DOC_HDR"]["PS_DOC_PMT"]:
             if payment["PAY_COD"] == "LOYALTY":
@@ -1322,6 +1374,7 @@ class OrderAPI(DocumentAPI):
                     self.error_handler.add_error_v("Loyalty points could not be added")
                     self.error_handler.add_error_v(response["message"])
 
+    # Writes to several tables in Counterpoint.
     def more_writes(self, doc_id, payload, bc_order):
         if not self.is_refund():
             self.redeem_loyalty_pmts(doc_id, payload, bc_order)
@@ -1525,8 +1578,47 @@ class OrderAPI(DocumentAPI):
             self.error_handler.add_error_v("Line total could not be updated")
             self.error_handler.add_error_v(response["message"])
 
+        def get_orig_doc_id():
+            query = f"""
+            SELECT ORIG_DOC_ID FROM PS_DOC_HDR_ORIG_DOC WHERE DOC_ID = '{doc_id}'
+            """
+
+            response = Database.db.query_db(query)
+
+            try:
+                return response[0][0]
+            except:
+                return None
+
+        if not self.is_refund(bc_order):
+            query = f"""
+            UPDATE PS_DOC_HDR_MISC_CHRG
+            SET DOC_ID = '{doc_id}',
+            TOT_TYP = 'S'
+            WHERE DOC_ID = '{get_orig_doc_id()}'
+            """
+        else:
+            query = f"""
+            UPDATE PS_DOC_HDR_MISC_CHRG
+            SET DOC_ID = '{doc_id}',
+            TOT_TYP = 'S',
+            MISC_AMT = {-(float(bc_order["base_shipping_cost"] or 0))}
+            WHERE DOC_ID = '{get_orig_doc_id()}'
+            """
+
+        response = Database.db.query_db(query, commit=True)
+
+        if response["code"] == 200:
+            self.logger.success("Updated shipping charge")
+        else:
+            self.error_handler.add_error_v("Shipping charge could not be updated")
+            self.error_handler.add_error_v(response["message"])
+
         self.cleanup(doc_id)
 
+    # Remove the original document and the reference to the original document
+    # The original document is the ORDER document that was created at the NCR Counterpoint API POST.
+    # The original document is different than the final TICKET document that we see and is not needed.
     def cleanup(self, doc_id):
         self.logger.info("Cleaning up")
 
@@ -1561,12 +1653,14 @@ class OrderAPI(DocumentAPI):
             )
             self.error_handler.add_error_v(response["message"])
 
+    # Get customer from email and phone number
     @staticmethod
     def get_customer_from_info(user_info):
         return customers.lookup_customer(
             email_address=user_info["email"], phone_number=user_info["phone"]
         )
 
+    # Get the customer's phone number from the BigCommerce order
     @staticmethod
     def get_cust_phone(bc_order: dict):
         try:
@@ -1579,6 +1673,7 @@ class OrderAPI(DocumentAPI):
         except:
             return ""
 
+    # Get the customer's email address from the BigCommerce order
     @staticmethod
     def get_cust_email(bc_order: dict):
         try:
@@ -1591,6 +1686,7 @@ class OrderAPI(DocumentAPI):
         except:
             return ""
 
+    # Get the customer's number from the BigCommerce order
     @staticmethod
     def get_cust_no(bc_order: dict):
         user_info = {
@@ -1602,6 +1698,7 @@ class OrderAPI(DocumentAPI):
 
         return cust_no
 
+    # Get the BigCommerce order object for a given order ID.
     @staticmethod
     def get_order(order_id: str | int):
         url = f"https://api.bigcommerce.com/stores/{creds.big_store_hash}/v2/orders/{order_id}"
@@ -1615,6 +1712,7 @@ class OrderAPI(DocumentAPI):
         return order
 
 
+# This class is used to parse the BigCommerce order response.
 class JsonTools:
     @staticmethod
     def get_json(url: str):
@@ -1640,13 +1738,16 @@ class JsonTools:
             elif isinstance(value, str) and value.startswith("http"):
                 try:
                     myjson = JsonTools.get_json(value)
+                    print(myjson)
                     if isinstance(myjson, list):
-                        JsonTools.unpack_list(myjson)
+                        myjson = JsonTools.unpack_list(myjson)
                     if isinstance(myjson, dict):
-                        JsonTools.unpack(myjson)
+                        myjson = JsonTools.unpack(myjson)
                     obj[key] = myjson
                 except:
                     if value.endswith("coupons"):
+                        obj[key] = []
+                    if value.endswith("shipping_addresses"):
                         obj[key] = []
                     pass
             elif key == "gift_certificate_id" and value is not None:

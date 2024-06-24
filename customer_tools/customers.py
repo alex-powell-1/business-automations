@@ -357,6 +357,10 @@ def lookup_customer_by_email(email_address):
         return response[0][0]
 
 def format_phone_number(phone_number: str):
+    phone_number = phone_number.replace("+1", "")
+    if len(phone_number) > 10 and phone_number.startswith("1"):
+        phone_number = phone_number[1:]
+
     phone_number = ''.join(filter(str.isdigit, phone_number))
     return f"{phone_number[0:3]}-{phone_number[3:6]}-{phone_number[6:]}"
 
