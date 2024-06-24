@@ -3,17 +3,24 @@ import pyodbc
 from pyodbc import ProgrammingError, Error
 import time
 
+from typing import Callable
 
+
+# WIP
 class Query:
-    def __init__(self, query, commit=False):
+    def __init__(self, query, cb: Callable, commit=False):
         self.query = query
         self.commit = commit
+        self.cb = cb
 
     def run_query(self):
         qe = QueryEngine()
-        return qe.query_db(self.query, commit=self.commit)
+        r = qe.query_db(self.query, commit=self.commit)
+        if self.cb:
+            self.cb(r)
 
 
+# WIP
 class QueryQueue:
     def __init__(self):
         self.queue: list[Query] = []
@@ -27,10 +34,16 @@ class QueryQueue:
 
         self.running = False
 
-    def add_query(self, query, commit=False):
-        self.queue.append(Query(query, commit=commit))
+    def add_query(self, query, cb: Callable, commit=False):
+        self.queue.append(Query(query=query, cb=cb, commit=commit))
         if not self.running:
             self.run_queue()
+
+    def query_db(self, query, commit=False):
+        def cb(r):
+            return r
+
+        self.add_query(query=query, cb=cb, commit=commit)
 
 
 class QueryEngine:
