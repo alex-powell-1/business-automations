@@ -503,7 +503,7 @@ class OrderAPI(DocumentAPI):
         if is_shipping:
             payload["PS_DOC_HDR"]["PS_DOC_HDR_MISC_CHRG"] = [
                 {
-                    "TOT_TYP": "S",
+                    "TOT_TYP": "O",
                     "MISC_CHRG_NO": "1",
                     "MISC_TYP": "A",
                     "MISC_AMT": shipping_cost,
@@ -1570,6 +1570,42 @@ class OrderAPI(DocumentAPI):
             self.logger.success("Updated line total")
         else:
             self.error_handler.add_error_v("Line total could not be updated")
+            self.error_handler.add_error_v(response["message"])
+
+        def get_orig_doc_id():
+            query = f"""
+            SELECT ORIG_DOC_ID FROM PS_DOC_HDR_ORIG_DOC WHERE DOC_ID = '{doc_id}'
+            """
+
+            response = Database.db.query_db(query)
+
+            try:
+                return response[0][0]
+            except:
+                return None
+
+        if not self.is_refund(bc_order):
+            query = f"""
+            UPDATE PS_DOC_HDR_MISC_CHRG
+            SET DOC_ID = '{doc_id}',
+            TOT_TYP = 'S'
+            WHERE DOC_ID = '{get_orig_doc_id()}'
+            """
+        else:
+            query = f"""
+            UPDATE PS_DOC_HDR_MISC_CHRG
+            SET DOC_ID = '{doc_id}',
+            TOT_TYP = 'S',
+            MISC_AMT = {-(float(bc_order["base_shipping_cost"] or 0))}
+            WHERE DOC_ID = '{get_orig_doc_id()}'
+            """
+
+        response = Database.db.query_db(query, commit=True)
+
+        if response["code"] == 200:
+            self.logger.success("Updated shipping charge")
+        else:
+            self.error_handler.add_error_v("Shipping charge could not be updated")
             self.error_handler.add_error_v(response["message"])
 
         self.cleanup(doc_id)
