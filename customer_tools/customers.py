@@ -358,6 +358,7 @@ def lookup_customer_by_email(email_address):
 
 def format_phone_number(phone_number: str):
     phone_number = phone_number.replace("+1", "")
+
     if len(phone_number) >= 11 and phone_number.startswith("1"):
         phone_number = phone_number[1:]
 
