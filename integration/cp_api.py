@@ -174,6 +174,9 @@ class OrderAPI(DocumentAPI):
         gift_cards = []
 
         for i, product in enumerate(products, start=1):
+            if self.is_pr() and float(product["quantity_refunded"]) == 0:
+                continue
+
             if product["type"] == "giftcertificate":
                 gift_card = {
                     "GFC_COD": "GC",
@@ -928,7 +931,7 @@ class OrderAPI(DocumentAPI):
                         f"""
                         INSERT INTO SY_GFC_ACTIV
                         (GFC_NO, SEQ_NO, DAT, STR_ID, STA_ID, DOC_NO, ACTIV_TYP, AMT, LST_MAINT_DT, LST_MAINT_USR_ID, DOC_ID)
-                        VALUES
+                        VALUESg
                         ('{gift_card["GFC_NO"]}', {get_next_seq_no()}, '{current_date}', 'WEB', 'WEB', '{tkt_no}', 'I', {amt}, GETDATE(), 'POS', '{doc_id}')
                         """
                     )
@@ -1001,6 +1004,88 @@ class OrderAPI(DocumentAPI):
             response = Database.db.query_db(query, commit=True)
 
             return response
+
+
+
+        # REMOVE GIFT CARD BALANCE
+        if len(payload["PS_DOC_HDR"]["__PS_DOC_GFC__"]) > 0:
+            for gift_card in payload["PS_DOC_HDR"]["__PS_DOC_GFC__"]:
+                card_no = gift_card["GFC_NO"]
+                def get_gfc_bal():
+                    query = f"""
+                    SELECT CURR_AMT FROM SY_GFC
+                    WHERE GFC_NO = '{card_no}'
+                    """
+
+                    response = Database.db.query_db(query)
+                    try:
+                        return float(response[0][0])
+                    except:
+                        return 0
+
+                def get_bal_diff(num: float | int):
+                    return num - get_gfc_bal()
+
+                def get_next_seq_no():
+                    query = f"""
+                    SELECT MAX(SEQ_NO) FROM SY_GFC_ACTIV
+                    WHERE GFC_NO = '{gift_card["GFC_NO"]}'
+                    """
+
+                    response = Database.db.query_db(query)
+
+                    try:
+                        return int(response[0][0]) + 1
+                    except:
+                        return 1
+
+                def add_gfc_bal(amt: float | int):
+                    current_date = datetime.now().strftime("%Y-%m-%d")
+
+                    tkt_no = payload['PS_DOC_HDR']['TKT_NUM']
+
+                    if self.is_pr():
+                        refund_index = int(self.get_refund_index(tkt_num=payload["PS_DOC_HDR"]["TKT_NUM"], suffix=PARTIAL_REFUND_SUFFIX)) - 1
+                        tkt_no = f"{payload['PS_DOC_HDR']['TKT_NUM']}{PARTIAL_REFUND_SUFFIX}{refund_index}"
+                    else:
+                        refund_index = int(self.get_refund_index(tkt_num=payload["PS_DOC_HDR"]["TKT_NUM"], suffix=REFUND_SUFFIX)) - 1
+                        tkt_no = f"{payload['PS_DOC_HDR']['TKT_NUM']}{REFUND_SUFFIX}{refund_index}"
+
+                    r = commit_query(
+                        f"""
+                        INSERT INTO SY_GFC_ACTIV
+                        (GFC_NO, SEQ_NO, DAT, STR_ID, STA_ID, DOC_NO, ACTIV_TYP, AMT, LST_MAINT_DT, LST_MAINT_USR_ID, DOC_ID)
+                        VALUES
+                        ('{card_no}', {get_next_seq_no()}, '{current_date}', 'WEB', 'WEB', '{tkt_no}', 'R', {amt}, GETDATE(), 'POS', '{doc_id}')
+                        """
+                    )
+
+                    if r["code"] == 200:
+                        self.logger.success(f"Gift card balance updated")
+                    else:
+                        self.error_handler.add_error_v(
+                            "Gift card balance could not be updated"
+                        )
+                        self.error_handler.add_error_v(r["message"])
+
+                    r = commit_query(
+                        f"""
+                        UPDATE SY_GFC
+                        SET CURR_AMT = {0}
+                        WHERE GFC_NO = '{card_no}'
+                        """
+                    )
+
+                    if r["code"] == 200:
+                        self.logger.success(f"Gift card balance updated")
+                    else:
+                        self.error_handler.add_error_v(
+                            "Gift card balance could not be updated"
+                        )
+                        self.error_handler.add_error_v(r["message"])
+
+                add_gfc_bal(get_bal_diff(0))
+
 
         r = commit_query(
             f"""
