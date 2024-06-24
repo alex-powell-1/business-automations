@@ -4,6 +4,35 @@ from pyodbc import ProgrammingError, Error
 import time
 
 
+class Query:
+    def __init__(self, query, commit=False):
+        self.query = query
+        self.commit = commit
+
+    def run_query(self):
+        qe = QueryEngine()
+        return qe.query_db(self.query, commit=self.commit)
+
+
+class QueryQueue:
+    def __init__(self):
+        self.queue: list[Query] = []
+        self.running = False
+
+    def run_queue(self):
+        self.running = True
+        for i, query in enumerate(self.queue):
+            query.run_query()
+            self.queue.pop(i)
+
+        self.running = False
+
+    def add_query(self, query, commit=False):
+        self.queue.append(Query(query, commit=commit))
+        if not self.running:
+            self.run_queue()
+
+
 class QueryEngine:
     def __init__(self):
         self.__SERVER = SERVER
