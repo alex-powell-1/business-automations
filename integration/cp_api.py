@@ -173,13 +173,16 @@ class OrderAPI(DocumentAPI):
     def get_gift_cards_from_bc_products(self, products: list):
         gift_cards = []
 
-        for product in products:
+        for i, product in enumerate(products, start=1):
             if product["type"] == "giftcertificate":
                 gift_card = {
                     "GFC_COD": "GC",
                     "GFC_NO": product["gift_certificate_id"]["code"],
                     "AMT": float(product["base_price"]),
                     "LIN_SEQ_NO": self.line_item_length + 1,
+                    "DESCR": "Gift Certificate",
+                    "CREATE_AS_STC": "N",
+                    "GFC_SEQ_NO": i,
                 }
                 self.line_item_length += 1
 
@@ -452,7 +455,8 @@ class OrderAPI(DocumentAPI):
                 ),
                 "PS_DOC_NOTE": notes,
                 "PS_DOC_LIN": self.get_line_items_from_bc_products(bc_products),
-                "PS_DOC_GFC": self.get_gift_cards_from_bc_products(bc_products),
+                # "PS_DOC_GFC": self.get_gift_cards_from_bc_products(bc_products),
+                "__PS_DOC_GFC__": self.get_gift_cards_from_bc_products(bc_products),
                 "PS_DOC_PMT": self.get_payment_from_bc_order(bc_order),
                 "PS_DOC_TAX": [
                     {
@@ -826,13 +830,15 @@ class OrderAPI(DocumentAPI):
             )
         else:
             self.error_handler.add_error_v("Order could not be created")
-            self.error_handler.add_error_v(response.content)
+            raise Exception(response.content)
 
         try:
             doc_id = response.json()["Documents"][0]["DOC_ID"]
         except:
             self.error_handler.add_error_v("Document ID could not be retrieved")
-            return
+            raise Exception("Document ID could not be retrieved")
+
+        # WRITE TICKET NUMBER
 
         try:
             if (
@@ -852,6 +858,90 @@ class OrderAPI(DocumentAPI):
                     )
         except:
             pass
+
+        # WRITE PS_DOC_GFC
+
+        if len(payload["PS_DOC_HDR"]["__PS_DOC_GFC__"]) > 0 and not self.is_refund(bc_order):
+            for gift_card in payload["PS_DOC_HDR"]["__PS_DOC_GFC__"]:
+                query = f"""
+                INSERT INTO PS_DOC_GFC
+                (DOC_ID, GFC_COD, GFC_NO, AMT, LIN_SEQ_NO, DESCR, CREATE_AS_STC, GFC_SEQ_NO)
+                VALUES
+                ('{doc_id}', '{gift_card["GFC_COD"]}', '{gift_card["GFC_NO"]}', {gift_card["AMT"]}, {gift_card["LIN_SEQ_NO"]}, '{gift_card["DESCR"]}', '{gift_card["CREATE_AS_STC"]}', {gift_card["GFC_SEQ_NO"]})
+                """
+
+                response = Database.db.query_db(query, commit=True)
+
+                if response["code"] == 200:
+                    self.logger.success("Gift card written")
+                else:
+                    self.error_handler.add_error_v("Gift card could not be written")
+                    self.error_handler.add_error_v(response["message"])
+
+                def commit_query(query):
+                    response = Database.db.query_db(query, commit=True)
+                    return response
+
+                def get_next_seq_no():
+                    query = f"""
+                    SELECT MAX(SEQ_NO) FROM SY_GFC_ACTIV
+                    WHERE GFC_NO = '{gift_card["GFC_NO"]}'
+                    """
+
+                    response = Database.db.query_db(query)
+
+                    try:
+                        return int(response[0][0]) + 1
+                    except:
+                        return 1
+
+                def add_gfc_bal(amt: float | int):
+                    current_date = datetime.now().strftime("%Y-%m-%d")
+
+                    tkt_no = payload['PS_DOC_HDR']['TKT_NUM']
+
+                    # if self.is_refund():
+                    #     refund_index = self.get_refund_index(tkt_num=payload["PS_DOC_HDR"]["TKT_NUM"], suffix=REFUND_SUFFIX)
+                    #     tkt_no = f"{payload['PS_DOC_HDR']['TKT_NUM']}{REFUND_SUFFIX}{refund_index}"
+                    # else:
+                    #     tkt_no = f"{payload['PS_DOC_HDR']['TKT_NUM']}"
+
+                    r = commit_query(
+                        f"""
+
+                        INSERT INTO SY_GFC
+                        (GFC_NO, DESCR, DESCR_UPR, ORIG_DAT, ORIG_STR_ID, ORIG_STA_ID, ORIG_DOC_NO, ORIG_CUST_NO, GFC_COD, NO_EXP_DAT, ORIG_AMT, CURR_AMT, CREATE_METH, LIAB_ACCT_NO, RDM_ACCT_NO, RDM_METH, FORF_ACCT_NO, IS_VOID, LST_ACTIV_DAT, LST_MAINT_DT, LST_MAINT_USR_ID, ORIG_DOC_ID, ORIG_BUS_DAT, RS_STAT)
+                        VALUES
+                        ('{gift_card["GFC_NO"]}', 'Gift Certificate', 'GIFT CERTIFICATE', '{current_date}', 'WEB', 'WEB', '{tkt_no}', '{cust_no}', 'GC', 'Y', {amt}, {amt}, 'G', 2090, 2090, '!', 8510, 'N', '{current_date}', GETDATE(), 'POS', '{doc_id}', '{current_date}', 0)
+                        """
+                    )
+
+                    if r["code"] == 200:
+                        self.logger.success(f"Gift card balance updated")
+                    else:
+                        self.error_handler.add_error_v(
+                            "Gift card balance could not be updated"
+                        )
+                        self.error_handler.add_error_v(r["message"])
+
+                    r = commit_query(
+                        f"""
+                        INSERT INTO SY_GFC_ACTIV
+                        (GFC_NO, SEQ_NO, DAT, STR_ID, STA_ID, DOC_NO, ACTIV_TYP, AMT, LST_MAINT_DT, LST_MAINT_USR_ID, DOC_ID)
+                        VALUES
+                        ('{gift_card["GFC_NO"]}', {get_next_seq_no()}, '{current_date}', 'WEB', 'WEB', '{tkt_no}', 'I', {amt}, GETDATE(), 'POS', '{doc_id}')
+                        """
+                    )
+
+                    if r["code"] == 200:
+                        self.logger.success(f"Gift card balance updated")
+                    else:
+                        self.error_handler.add_error_v(
+                            "Gift card balance could not be updated"
+                        )
+                        self.error_handler.add_error_v(r["message"])
+        
+                add_gfc_bal(gift_card["AMT"])
 
         self.write_loyalty(doc_id, cust_no, payload["PS_DOC_HDR"]["PS_DOC_LIN"])
         self.write_doc_discounts(doc_id, bc_order)
@@ -963,7 +1053,14 @@ class OrderAPI(DocumentAPI):
                 def add_gfc_bal(amt: float | int):
                     current_date = datetime.now().strftime("%Y-%m-%d")
 
-                    tkt_no = f"{payload['PS_DOC_HDR']['TKT_NUM']}{REFUND_SUFFIX if self.is_refund(bc_order) else ""}"
+                    tkt_no = ""
+
+                    if self.is_pr():
+                        refund_index = self.get_refund_index(tkt_num=payload["PS_DOC_HDR"]["TKT_NUM"], suffix=PARTIAL_REFUND_SUFFIX)
+                        tkt_no = f"{payload['PS_DOC_HDR']['TKT_NUM']}{PARTIAL_REFUND_SUFFIX}{refund_index}"
+                    else:
+                        refund_index = self.get_refund_index(tkt_num=payload["PS_DOC_HDR"]["TKT_NUM"], suffix=REFUND_SUFFIX)
+                        tkt_no = f"{payload['PS_DOC_HDR']['TKT_NUM']}{REFUND_SUFFIX}{refund_index}"
 
                     r = commit_query(
                         f"""
