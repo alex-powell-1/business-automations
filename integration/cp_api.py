@@ -246,7 +246,7 @@ class OrderAPI(DocumentAPI):
             payments.append(
                 {
                     "AMT": (
-                        -(float(bc_order["store_credit_amount"] or 0))
+                        (float(bc_order["store_credit_amount"] or 0))
                         if self.is_refund()
                         else float(bc_order["store_credit_amount"] or 0)
                     ),
@@ -728,7 +728,7 @@ class OrderAPI(DocumentAPI):
             cust_no = cust_no_override
 
         try:
-            if bc_order["payment_status"] == "partially refunded":
+            if bc_order["status"] == "Partially Refunded":
                 oapi.post_partial_refund(cust_no=cust_no, bc_order=bc_order)
             else:
                 oapi.post_bc_order(cust_no=cust_no, bc_order=bc_order)
@@ -1137,7 +1137,7 @@ class OrderAPI(DocumentAPI):
             UPDATE PS_DOC_PMT
             SET AMT = {-(float(bc_order["total_inc_tax"] or 0))},
             HOME_CURNCY_AMT = {-(float(bc_order["total_inc_tax"] or 0))} 
-            WHERE DOC_ID = '{doc_id}' AND PAY_COD = 'BIG'
+            WHERE DOC_ID = '{doc_id}'
             """
         )
 
