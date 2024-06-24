@@ -1010,6 +1010,7 @@ class OrderAPI(DocumentAPI):
         # REMOVE GIFT CARD BALANCE
         if len(payload["PS_DOC_HDR"]["__PS_DOC_GFC__"]) > 0:
             for gift_card in payload["PS_DOC_HDR"]["__PS_DOC_GFC__"]:
+                card_no = gift_card["GFC_NO"]
                 def get_gfc_bal():
                     query = f"""
                     SELECT CURR_AMT FROM SY_GFC
@@ -1044,19 +1045,18 @@ class OrderAPI(DocumentAPI):
                     tkt_no = payload['PS_DOC_HDR']['TKT_NUM']
 
                     if self.is_pr():
-                        refund_index = self.get_refund_index(tkt_num=payload["PS_DOC_HDR"]["TKT_NUM"], suffix=PARTIAL_REFUND_SUFFIX)
+                        refund_index = int(self.get_refund_index(tkt_num=payload["PS_DOC_HDR"]["TKT_NUM"], suffix=PARTIAL_REFUND_SUFFIX)) - 1
                         tkt_no = f"{payload['PS_DOC_HDR']['TKT_NUM']}{PARTIAL_REFUND_SUFFIX}{refund_index}"
                     else:
-                        refund_index = self.get_refund_index(tkt_num=payload["PS_DOC_HDR"]["TKT_NUM"], suffix=REFUND_SUFFIX)
+                        refund_index = int(self.get_refund_index(tkt_num=payload["PS_DOC_HDR"]["TKT_NUM"], suffix=REFUND_SUFFIX)) - 1
                         tkt_no = f"{payload['PS_DOC_HDR']['TKT_NUM']}{REFUND_SUFFIX}{refund_index}"
 
                     r = commit_query(
                         f"""
-
-                        INSERT INTO SY_GFC
-                        (GFC_NO, DESCR, DESCR_UPR, ORIG_DAT, ORIG_STR_ID, ORIG_STA_ID, ORIG_DOC_NO, ORIG_CUST_NO, GFC_COD, NO_EXP_DAT, ORIG_AMT, CURR_AMT, CREATE_METH, LIAB_ACCT_NO, RDM_ACCT_NO, RDM_METH, FORF_ACCT_NO, IS_VOID, LST_ACTIV_DAT, LST_MAINT_DT, LST_MAINT_USR_ID, ORIG_DOC_ID, ORIG_BUS_DAT, RS_STAT)
+                        INSERT INTO SY_GFC_ACTIV
+                        (GFC_NO, SEQ_NO, DAT, STR_ID, STA_ID, DOC_NO, ACTIV_TYP, AMT, LST_MAINT_DT, LST_MAINT_USR_ID, DOC_ID)
                         VALUES
-                        ('{gift_card["GFC_NO"]}', 'Gift Certificate', 'GIFT CERTIFICATE', '{current_date}', 'WEB', 'WEB', '{tkt_no}', '{payload["PS_DOC_HDR"]["CUST_NO"]}', 'GC', 'Y', {amt}, {amt}, 'G', 2090, 2090, '!', 8510, 'N', '{current_date}', GETDATE(), 'POS', '{doc_id}', '{current_date}', 0)
+                        ('{card_no}', {get_next_seq_no()}, '{current_date}', 'WEB', 'WEB', '{tkt_no}', 'R', {amt}, GETDATE(), 'POS', '{doc_id}')
                         """
                     )
 
@@ -1070,10 +1070,9 @@ class OrderAPI(DocumentAPI):
 
                     r = commit_query(
                         f"""
-                        INSERT INTO SY_GFC_ACTIV
-                        (GFC_NO, SEQ_NO, DAT, STR_ID, STA_ID, DOC_NO, ACTIV_TYP, AMT, LST_MAINT_DT, LST_MAINT_USR_ID, DOC_ID)
-                        VALUES
-                        ('{gift_card["GFC_NO"]}', {get_next_seq_no()}, '{current_date}', 'WEB', 'WEB', '{tkt_no}', 'R', {0}, GETDATE(), 'POS', '{doc_id}')
+                        UPDATE SY_GFC
+                        SET CURR_AMT = {0}
+                        WHERE GFC_NO = '{card_no}'
                         """
                     )
 
