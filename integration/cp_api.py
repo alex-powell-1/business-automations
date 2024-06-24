@@ -931,7 +931,7 @@ class OrderAPI(DocumentAPI):
                         f"""
                         INSERT INTO SY_GFC_ACTIV
                         (GFC_NO, SEQ_NO, DAT, STR_ID, STA_ID, DOC_NO, ACTIV_TYP, AMT, LST_MAINT_DT, LST_MAINT_USR_ID, DOC_ID)
-                        VALUESg
+                        VALUES
                         ('{gift_card["GFC_NO"]}', {get_next_seq_no()}, '{current_date}', 'WEB', 'WEB', '{tkt_no}', 'I', {amt}, GETDATE(), 'POS', '{doc_id}')
                         """
                     )
