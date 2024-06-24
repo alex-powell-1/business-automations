@@ -209,8 +209,7 @@ class RabbitMQConsumer:
                     f"Skipping Order #{order_id}: Payment Status: {order.payment_status}"
                 )
 
-            # bc_order = BCOrder(order_id)
-            # bc_order.process()
+            # BCOrder(order_id).process()
 
         except Exception as err:
             error_type = "General Catch"
