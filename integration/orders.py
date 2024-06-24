@@ -58,11 +58,9 @@ class OrderProcessor:
 
     def process(self):
         orders = [Order(order_id) for order_id in self.order_ids]
-        ObjectProcessor(orders).process()
+        for order in orders:
+            order.process()
 
 
 if __name__ == "__main__":
-    orders = [1150, 1151, 1152]
-
-    for order in orders:
-        Order(order).process()
+    OrderProcessor([1150, 1151, 1152]).process()
