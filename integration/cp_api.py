@@ -614,7 +614,7 @@ class OrderAPI(DocumentAPI):
                 self.error_handler.add_error_v(response["message"])
 
 
-        if (bc_order["shipping_address_count"] or 0) > 0:
+        if (len(bc_order["shipping_addresses"]["url"]) or 0) > 0:
             write_shipping_adr()
 
     # Update an existing customer from a BigCommerce order.
@@ -686,7 +686,7 @@ class OrderAPI(DocumentAPI):
                 self.error_handler.add_error_v(response["message"])
 
         write_cust()
-        if (bc_order["shipping_address_count"] or 0) > 0:
+        if (len(bc_order["shipping_addresses"]["url"]) or 0) > 0:
             write_shipping_adr()
 
     # This function will run the whole ordeal using the provided BigCommerce order_id.
@@ -1738,13 +1738,16 @@ class JsonTools:
             elif isinstance(value, str) and value.startswith("http"):
                 try:
                     myjson = JsonTools.get_json(value)
+                    print(myjson)
                     if isinstance(myjson, list):
-                        JsonTools.unpack_list(myjson)
+                        myjson = JsonTools.unpack_list(myjson)
                     if isinstance(myjson, dict):
-                        JsonTools.unpack(myjson)
+                        myjson = JsonTools.unpack(myjson)
                     obj[key] = myjson
                 except:
                     if value.endswith("coupons"):
+                        obj[key] = []
+                    if value.endswith("shipping_addresses"):
                         obj[key] = []
                     pass
             elif key == "gift_certificate_id" and value is not None:
