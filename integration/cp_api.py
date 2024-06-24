@@ -729,6 +729,9 @@ class OrderAPI(DocumentAPI):
                 raise Exception("Valid customer number is required")
         else:
             cust_no = cust_no_override
+            if not oapi.has_cust(cust_no):
+                oapi.error_handler.add_error_v("Valid customer number is required")
+                raise Exception("Valid customer number is required")
 
         try:
             if bc_order["status"] == "Partially Refunded":
