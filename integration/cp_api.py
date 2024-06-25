@@ -1338,7 +1338,7 @@ class OrderAPI(DocumentAPI):
                     self.error_handler.add_error_v(r["message"])
 
             total = get_total()
-            total = total + abs(self.get_shipping_cost(bc_order))
+            total = total + abs(self.get_shipping_cost(bc_order)) - abs(self.total_discount_amount or 0)
 
             big_payment = get_big_payment()
 
@@ -1348,10 +1348,11 @@ class OrderAPI(DocumentAPI):
                 remaining = total - big_payment
 
             big = total if total < big_payment else big_payment
-            gc = remaining / 2 if has_loy() else remaining
-            loy = remaining / 2 if has_gc() else remaining
+            gc = (remaining / 2 if has_loy() else remaining) if has_gc() else 0
+            loy = (remaining / 2 if has_gc() else remaining) if has_loy() else 0
 
-            write_big_payment(big)
+            if big_payment > 0:
+                write_big_payment(big)
             if has_gc():
                 write_gc_payment(gc)
             if has_loy():
