@@ -13,6 +13,7 @@ ORDER_PREFIX = ""
 REFUND_SUFFIX = "R"
 PARTIAL_REFUND_SUFFIX = "PR"
 
+
 # This class is primarily used to interact with the NCR Counterpoint API
 # If you need documentation on the API, good luck.
 # https://github.com/NCRCounterpointAPI/APIGuide/blob/master/Endpoints/POST_Document.md
@@ -99,8 +100,7 @@ class OrderAPI(DocumentAPI):
         if self.refund is not None:
             return self.refund
         elif bc_order is not None:
-            print(bc_order)
-            self.refund = (bc_order["status"] == "Refunded")
+            self.refund = bc_order["status"] == "Refunded"
             # self.refund = False
             return self.refund
         else:
@@ -615,7 +615,6 @@ class OrderAPI(DocumentAPI):
                 self.error_handler.add_error_v("Shipping address could not be updated")
                 self.error_handler.add_error_v(response["message"])
 
-
         if (len(bc_order["shipping_addresses"]["url"]) or 0) > 0:
             write_shipping_adr()
 
@@ -849,7 +848,10 @@ class OrderAPI(DocumentAPI):
                 payload["PS_DOC_HDR"]["TKT_NUM"]
                 and payload["PS_DOC_HDR"]["TKT_NUM"] != ""
             ):
-                refund_index = self.get_refund_index(tkt_num=payload["PS_DOC_HDR"]["TKT_NUM"], suffix=PARTIAL_REFUND_SUFFIX)
+                refund_index = self.get_refund_index(
+                    tkt_num=payload["PS_DOC_HDR"]["TKT_NUM"],
+                    suffix=PARTIAL_REFUND_SUFFIX,
+                )
                 self.write_ticket_no(
                     doc_id,
                     f"{payload["PS_DOC_HDR"]["TKT_NUM"]}{PARTIAL_REFUND_SUFFIX}{refund_index}",
@@ -904,7 +906,9 @@ class OrderAPI(DocumentAPI):
                 and payload["PS_DOC_HDR"]["TKT_NUM"] != ""
             ):
                 if self.is_refund(bc_order):
-                    refund_index = self.get_refund_index(tkt_num=payload["PS_DOC_HDR"]["TKT_NUM"], suffix=REFUND_SUFFIX)
+                    refund_index = self.get_refund_index(
+                        tkt_num=payload["PS_DOC_HDR"]["TKT_NUM"], suffix=REFUND_SUFFIX
+                    )
                     self.write_ticket_no(
                         doc_id,
                         f"{payload["PS_DOC_HDR"]["TKT_NUM"]}{REFUND_SUFFIX}{refund_index}",
@@ -919,7 +923,9 @@ class OrderAPI(DocumentAPI):
 
         # WRITE PS_DOC_GFC
 
-        if len(payload["PS_DOC_HDR"]["__PS_DOC_GFC__"]) > 0 and not self.is_refund(bc_order):
+        if len(payload["PS_DOC_HDR"]["__PS_DOC_GFC__"]) > 0 and not self.is_refund(
+            bc_order
+        ):
             for gift_card in payload["PS_DOC_HDR"]["__PS_DOC_GFC__"]:
                 query = f"""
                 INSERT INTO PS_DOC_GFC
@@ -956,7 +962,7 @@ class OrderAPI(DocumentAPI):
                 def add_gfc_bal(amt: float | int):
                     current_date = datetime.now().strftime("%Y-%m-%d")
 
-                    tkt_no = payload['PS_DOC_HDR']['TKT_NUM']
+                    tkt_no = payload["PS_DOC_HDR"]["TKT_NUM"]
 
                     # if self.is_refund():
                     #     refund_index = self.get_refund_index(tkt_num=payload["PS_DOC_HDR"]["TKT_NUM"], suffix=REFUND_SUFFIX)
@@ -997,7 +1003,7 @@ class OrderAPI(DocumentAPI):
                             "Gift card balance could not be updated"
                         )
                         self.error_handler.add_error_v(r["message"])
-        
+
                 add_gfc_bal(gift_card["AMT"])
 
         self.write_loyalty(doc_id, cust_no, payload["PS_DOC_HDR"]["PS_DOC_LIN"])
@@ -1063,12 +1069,11 @@ class OrderAPI(DocumentAPI):
 
             return response
 
-
-
         # REMOVE GIFT CARD BALANCE
         if len(payload["PS_DOC_HDR"]["__PS_DOC_GFC__"]) > 0:
             for gift_card in payload["PS_DOC_HDR"]["__PS_DOC_GFC__"]:
                 card_no = gift_card["GFC_NO"]
+
                 def get_gfc_bal():
                     query = f"""
                     SELECT CURR_AMT FROM SY_GFC
@@ -1100,13 +1105,23 @@ class OrderAPI(DocumentAPI):
                 def add_gfc_bal(amt: float | int):
                     current_date = datetime.now().strftime("%Y-%m-%d")
 
-                    tkt_no = payload['PS_DOC_HDR']['TKT_NUM']
+                    tkt_no = payload["PS_DOC_HDR"]["TKT_NUM"]
 
                     if self.is_pr():
-                        refund_index = int(self.get_refund_index(tkt_num=payload["PS_DOC_HDR"]["TKT_NUM"], suffix=PARTIAL_REFUND_SUFFIX))
+                        refund_index = int(
+                            self.get_refund_index(
+                                tkt_num=payload["PS_DOC_HDR"]["TKT_NUM"],
+                                suffix=PARTIAL_REFUND_SUFFIX,
+                            )
+                        )
                         tkt_no = f"{payload['PS_DOC_HDR']['TKT_NUM']}{PARTIAL_REFUND_SUFFIX}{refund_index}"
                     else:
-                        refund_index = int(self.get_refund_index(tkt_num=payload["PS_DOC_HDR"]["TKT_NUM"], suffix=REFUND_SUFFIX))
+                        refund_index = int(
+                            self.get_refund_index(
+                                tkt_num=payload["PS_DOC_HDR"]["TKT_NUM"],
+                                suffix=REFUND_SUFFIX,
+                            )
+                        )
                         tkt_no = f"{payload['PS_DOC_HDR']['TKT_NUM']}{REFUND_SUFFIX}{refund_index}"
 
                     r = commit_query(
@@ -1144,7 +1159,6 @@ class OrderAPI(DocumentAPI):
 
                 add_gfc_bal(get_bal_diff(0))
 
-
         r = commit_query(
             f"""
             UPDATE PS_DOC_PMT
@@ -1165,13 +1179,23 @@ class OrderAPI(DocumentAPI):
                 amt_spent = float(payment["AMT"])
                 card_no = payment["CARD_NO"]
 
-                tkt_no = payload['PS_DOC_HDR']['TKT_NUM']
+                tkt_no = payload["PS_DOC_HDR"]["TKT_NUM"]
 
                 if self.is_pr():
-                    refund_index = int(self.get_refund_index(tkt_num=payload["PS_DOC_HDR"]["TKT_NUM"], suffix=PARTIAL_REFUND_SUFFIX))
+                    refund_index = int(
+                        self.get_refund_index(
+                            tkt_num=payload["PS_DOC_HDR"]["TKT_NUM"],
+                            suffix=PARTIAL_REFUND_SUFFIX,
+                        )
+                    )
                     tkt_no = f"{payload['PS_DOC_HDR']['TKT_NUM']}{PARTIAL_REFUND_SUFFIX}{refund_index}"
                 else:
-                    refund_index = int(self.get_refund_index(tkt_num=payload["PS_DOC_HDR"]["TKT_NUM"], suffix=REFUND_SUFFIX))
+                    refund_index = int(
+                        self.get_refund_index(
+                            tkt_num=payload["PS_DOC_HDR"]["TKT_NUM"],
+                            suffix=REFUND_SUFFIX,
+                        )
+                    )
                     tkt_no = f"{payload['PS_DOC_HDR']['TKT_NUM']}{REFUND_SUFFIX}{refund_index}"
 
                 def get_last_gfc_activity_index():
@@ -1186,7 +1210,7 @@ class OrderAPI(DocumentAPI):
                         return int(response[0][0])
                     except:
                         return 1
-                    
+
                 query = f"""
                 UPDATE SY_GFC_ACTIV
                 SET AMT = {abs(amt_spent)},
@@ -1199,7 +1223,9 @@ class OrderAPI(DocumentAPI):
                 if response["code"] == 200:
                     self.logger.success("Gift card activity updated")
                 else:
-                    self.error_handler.add_error_v("Gift card activity could not be updated")
+                    self.error_handler.add_error_v(
+                        "Gift card activity could not be updated"
+                    )
                     self.error_handler.add_error_v(response["message"])
 
                 query = f"""
@@ -1213,9 +1239,10 @@ class OrderAPI(DocumentAPI):
                 if response["code"] == 200:
                     self.logger.success("Gift card balance updated")
                 else:
-                    self.error_handler.add_error_v("Gift card balance could not be updated")
+                    self.error_handler.add_error_v(
+                        "Gift card balance could not be updated"
+                    )
                     self.error_handler.add_error_v(response["message"])
-
 
             if payment["PAY_COD"] == "LOYALTY":
                 query = f"""
@@ -1724,7 +1751,6 @@ class JsonTools:
             elif isinstance(value, str) and value.startswith("http"):
                 try:
                     myjson = JsonTools.get_json(value)
-                    print(myjson)
                     if isinstance(myjson, list):
                         myjson = JsonTools.unpack_list(myjson)
                     if isinstance(myjson, dict):
