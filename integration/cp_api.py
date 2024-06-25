@@ -1338,7 +1338,7 @@ class OrderAPI(DocumentAPI):
                     self.error_handler.add_error_v(r["message"])
 
             total = get_total()
-            total = total + abs(self.get_shipping_cost(bc_order))
+            total = total + abs(self.get_shipping_cost(bc_order)) - abs(self.total_discount_amount or 0)
 
             big_payment = get_big_payment()
 
