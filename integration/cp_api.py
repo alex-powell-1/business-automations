@@ -713,7 +713,7 @@ class OrderAPI(DocumentAPI):
 
         cust_no = ""
 
-        if cust_no_override is not None:
+        if cust_no_override is None:
             try:
                 if not oapi.has_cust_info(bc_order):
                     CounterPointAPI.logger.info("Creating new customer")
