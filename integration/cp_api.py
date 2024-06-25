@@ -1174,107 +1174,281 @@ class OrderAPI(DocumentAPI):
             self.error_handler.add_error_v("Payment could not be updated")
             self.error_handler.add_error_v(r["message"])
 
-        for payment in payload["PS_DOC_HDR"]["PS_DOC_PMT"]:
-            if payment["PAY_COD"] == "GC":
-                amt_spent = float(payment["AMT"])
-                card_no = payment["CARD_NO"]
+        total_paid = -(float(bc_order["total_inc_tax"] or 0))
 
-                tkt_no = payload["PS_DOC_HDR"]["TKT_NUM"]
+        # PARTIAL REFUND PAYMENT WRITES
+        if self.is_pr():
+            def get_total():
+                query = f"""
+                SELECT SUM(EXT_PRC) FROM PS_DOC_LIN
+                WHERE DOC_ID = '{doc_id}'
+                """
 
-                if self.is_pr():
-                    refund_index = int(
-                        self.get_refund_index(
-                            tkt_num=payload["PS_DOC_HDR"]["TKT_NUM"],
-                            suffix=PARTIAL_REFUND_SUFFIX,
-                        )
-                    )
-                    tkt_no = f"{payload['PS_DOC_HDR']['TKT_NUM']}{PARTIAL_REFUND_SUFFIX}{refund_index}"
+                response = Database.db.query_db(query)
+
+                try:
+                    return abs(float(response[0][0]))
+                except:
+                    return 0
+            def get_big_payment():
+                query = f"""
+                SELECT AMT FROM PS_DOC_PMT
+                WHERE DOC_ID = '{doc_id}' AND PAY_COD = 'BIG'
+                """
+
+                response = Database.db.query_db(query)
+
+                try:
+                    return abs(float(response[0][0]))
+                except:
+                    return 0
+            def has_loy():
+                query = f"""
+                SELECT COUNT(*) FROM PS_DOC_PMT
+                WHERE DOC_ID = '{doc_id}' AND PAY_COD = 'LOYALTY'
+                """
+
+                response = Database.db.query_db(query)
+
+                try:
+                    return int(response[0][0]) > 0
+                except:
+                    return False
+            def has_gc():
+                query = f"""
+                SELECT COUNT(*) FROM PS_DOC_PMT
+                WHERE DOC_ID = '{doc_id}' AND PAY_COD = 'GC'
+                """
+
+                response = Database.db.query_db(query)
+
+                try:
+                    return int(response[0][0]) > 0
+                except:
+                    return False
+            def write_big_payment(amt: float | int):
+                query = f"""
+                UPDATE PS_DOC_PMT
+                SET AMT = {-amt},
+                HOME_CURNCY_AMT = {-amt}
+                WHERE DOC_ID = '{doc_id}' AND PAY_COD = 'BIG'
+                """
+
+                response = Database.db.query_db(query, commit=True)
+
+                if response["code"] == 200:
+                    self.logger.success("Big payment updated")
                 else:
-                    refund_index = int(
-                        self.get_refund_index(
-                            tkt_num=payload["PS_DOC_HDR"]["TKT_NUM"],
-                            suffix=REFUND_SUFFIX,
-                        )
-                    )
-                    tkt_no = f"{payload['PS_DOC_HDR']['TKT_NUM']}{REFUND_SUFFIX}{refund_index}"
+                    self.error_handler.add_error_v("Big payment could not be updated")
+                    self.error_handler.add_error_v(response["message"])
 
-                def get_last_gfc_activity_index():
+                r = commit_query(
+                    f"""
+                    UPDATE PS_DOC_PMT_APPLY
+                    SET AMT = {-amt},
+                    HOME_CURNCY_AMT = {-amt}
+                    WHERE DOC_ID = '{doc_id}' AND PMT_SEQ_NO in (
+                        SELECT PMT_SEQ_NO FROM PS_DOC_PMT WHERE DOC_ID = '{doc_id}' AND PAY_COD = 'BIG'
+                    )
+                    """
+                )
+
+                if r["code"] == 200:
+                    self.logger.success("Payment applied")
+                else:
+                    self.error_handler.add_error_v("Payment could not be applied")
+                    self.error_handler.add_error_v(r["message"])
+            def write_loy_payment(amt: float | int):
+                query = f"""
+                UPDATE PS_DOC_PMT
+                SET AMT = {-amt},
+                HOME_CURNCY_AMT = {-amt}
+                WHERE DOC_ID = '{doc_id}' AND PAY_COD = 'LOYALTY'
+                """
+
+                response = Database.db.query_db(query, commit=True)
+
+                if response["code"] == 200:
+                    self.logger.success("Loyalty payment updated")
+                else:
+                    self.error_handler.add_error_v("Loyalty payment could not be updated")
+                    self.error_handler.add_error_v(response["message"])
+
+                r = commit_query(
+                    f"""
+                    UPDATE PS_DOC_PMT_APPLY
+                    SET AMT = {-amt},
+                    HOME_CURNCY_AMT = {-amt}
+                    WHERE DOC_ID = '{doc_id}' AND PMT_SEQ_NO in (
+                        SELECT PMT_SEQ_NO FROM PS_DOC_PMT WHERE DOC_ID = '{doc_id}' AND PAY_COD = 'LOYALTY'
+                    )
+                    """
+                )
+
+                if r["code"] == 200:
+                    self.logger.success("Payment applied")
+                else:
+                    self.error_handler.add_error_v("Payment could not be applied")
+                    self.error_handler.add_error_v(r["message"])
+            def write_gc_payment(amt: float | int):
+                query = f"""
+                UPDATE PS_DOC_PMT
+                SET AMT = {-amt},
+                HOME_CURNCY_AMT = {-amt}
+                WHERE DOC_ID = '{doc_id}' AND PAY_COD = 'GC'
+                """
+
+                response = Database.db.query_db(query, commit=True)
+
+                if response["code"] == 200:
+                    self.logger.success("Gift card payment updated")
+                else:
+                    self.error_handler.add_error_v("Gift card payment could not be updated")
+                    self.error_handler.add_error_v(response["message"])
+
+                r = commit_query(
+                    f"""
+                    UPDATE PS_DOC_PMT_APPLY
+                    SET AMT = {-amt},
+                    HOME_CURNCY_AMT = {-amt}
+                    WHERE DOC_ID = '{doc_id}' AND PMT_SEQ_NO in (
+                        SELECT PMT_SEQ_NO FROM PS_DOC_PMT WHERE DOC_ID = '{doc_id}' AND PAY_COD = 'GC'
+                    )
+                    """
+                )
+
+                if r["code"] == 200:
+                    self.logger.success("Payment applied")
+                else:
+                    self.error_handler.add_error_v("Payment could not be applied")
+                    self.error_handler.add_error_v(r["message"])
+
+            total = get_total()
+            total = total + abs(self.get_shipping_cost(bc_order))
+
+            big_payment = get_big_payment()
+
+            remaining = 0
+
+            if total > big_payment:
+                remaining = total - big_payment
+
+            big = total if total < big_payment else big_payment
+            gc = remaining / 2 if has_loy() else remaining
+            loy = remaining / 2 if has_gc() else remaining
+
+            write_big_payment(big)
+            if has_gc():
+                write_gc_payment(gc)
+            if has_loy():
+                write_loy_payment(loy)
+
+            total_paid = big + gc + loy
+        else:
+            # PAYMENT REFUND WRITES
+            for payment in payload["PS_DOC_HDR"]["PS_DOC_PMT"]:
+                if payment["PAY_COD"] == "GC":
+                    amt_spent = float(payment["AMT"])
+                    card_no = payment["CARD_NO"]
+
+                    tkt_no = payload["PS_DOC_HDR"]["TKT_NUM"]
+
+                    if self.is_pr():
+                        refund_index = int(
+                            self.get_refund_index(
+                                tkt_num=payload["PS_DOC_HDR"]["TKT_NUM"],
+                                suffix=PARTIAL_REFUND_SUFFIX,
+                            )
+                        )
+                        tkt_no = f"{payload['PS_DOC_HDR']['TKT_NUM']}{PARTIAL_REFUND_SUFFIX}{refund_index}"
+                    else:
+                        refund_index = int(
+                            self.get_refund_index(
+                                tkt_num=payload["PS_DOC_HDR"]["TKT_NUM"],
+                                suffix=REFUND_SUFFIX,
+                            )
+                        )
+                        tkt_no = f"{payload['PS_DOC_HDR']['TKT_NUM']}{REFUND_SUFFIX}{refund_index}"
+
+                    def get_last_gfc_activity_index():
+                        query = f"""
+                        SELECT MAX(SEQ_NO) FROM SY_GFC_ACTIV
+                        WHERE GFC_NO = '{card_no}'
+                        """
+
+                        response = Database.db.query_db(query)
+
+                        try:
+                            return int(response[0][0])
+                        except:
+                            return 1
+
                     query = f"""
-                    SELECT MAX(SEQ_NO) FROM SY_GFC_ACTIV
+                    UPDATE SY_GFC_ACTIV
+                    SET AMT = {abs(amt_spent)},
+                    DOC_NO = '{tkt_no}'
+                    WHERE GFC_NO = '{card_no}' AND SEQ_NO = {get_last_gfc_activity_index()}
+                    """
+
+                    response = Database.db.query_db(query, commit=True)
+
+                    if response["code"] == 200:
+                        self.logger.success("Gift card activity updated")
+                    else:
+                        self.error_handler.add_error_v(
+                            "Gift card activity could not be updated"
+                        )
+                        self.error_handler.add_error_v(response["message"])
+
+                    query = f"""
+                    UPDATE SY_GFC
+                    SET CURR_AMT = CURR_AMT + {abs(amt_spent) * 2}
                     WHERE GFC_NO = '{card_no}'
                     """
 
-                    response = Database.db.query_db(query)
+                    response = Database.db.query_db(query, commit=True)
 
-                    try:
-                        return int(response[0][0])
-                    except:
-                        return 1
+                    if response["code"] == 200:
+                        self.logger.success("Gift card balance updated")
+                    else:
+                        self.error_handler.add_error_v(
+                            "Gift card balance could not be updated"
+                        )
+                        self.error_handler.add_error_v(response["message"])
 
-                query = f"""
-                UPDATE SY_GFC_ACTIV
-                SET AMT = {abs(amt_spent)},
-                DOC_NO = '{tkt_no}'
-                WHERE GFC_NO = '{card_no}' AND SEQ_NO = {get_last_gfc_activity_index()}
+                if payment["PAY_COD"] == "LOYALTY":
+                    query = f"""
+                    UPDATE {creds.ar_cust_table}
+                    SET LOY_PTS_BAL = LOY_PTS_BAL + {abs(math.floor(float(payment["AMT"])))}
+                    WHERE CUST_NO = '{payload["PS_DOC_HDR"]["CUST_NO"]}'
+                    """
+
+                    response = Database.db.query_db(query, commit=True)
+
+                    if response["code"] == 200:
+                        self.logger.success("Loyalty points added")
+                    else:
+                        self.error_handler.add_error_v("Loyalty points could not be added")
+                        self.error_handler.add_error_v(response["message"])
+
+        # PAYMENT APPLY REFUND
+        if not self.is_pr():
+            r = commit_query(
+                f"""
+                UPDATE PS_DOC_PMT_APPLY
+                SET AMT = {total_paid},
+                HOME_CURNCY_AMT = {total_paid}
+                WHERE DOC_ID = '{doc_id}' AND PMT_SEQ_NO in (
+                    SELECT PMT_SEQ_NO FROM PS_DOC_PMT WHERE DOC_ID = '{doc_id}' AND PAY_COD = 'BIG'
+                )
                 """
-
-                response = Database.db.query_db(query, commit=True)
-
-                if response["code"] == 200:
-                    self.logger.success("Gift card activity updated")
-                else:
-                    self.error_handler.add_error_v(
-                        "Gift card activity could not be updated"
-                    )
-                    self.error_handler.add_error_v(response["message"])
-
-                query = f"""
-                UPDATE SY_GFC
-                SET CURR_AMT = CURR_AMT + {abs(amt_spent) * 2}
-                WHERE GFC_NO = '{card_no}'
-                """
-
-                response = Database.db.query_db(query, commit=True)
-
-                if response["code"] == 200:
-                    self.logger.success("Gift card balance updated")
-                else:
-                    self.error_handler.add_error_v(
-                        "Gift card balance could not be updated"
-                    )
-                    self.error_handler.add_error_v(response["message"])
-
-            if payment["PAY_COD"] == "LOYALTY":
-                query = f"""
-                UPDATE {creds.ar_cust_table}
-                SET LOY_PTS_BAL = LOY_PTS_BAL + {abs(math.floor(float(payment["AMT"])))}
-                WHERE CUST_NO = '{payload["PS_DOC_HDR"]["CUST_NO"]}'
-                """
-
-                response = Database.db.query_db(query, commit=True)
-
-                if response["code"] == 200:
-                    self.logger.success("Loyalty points added")
-                else:
-                    self.error_handler.add_error_v("Loyalty points could not be added")
-                    self.error_handler.add_error_v(response["message"])
-
-        r = commit_query(
-            f"""
-            UPDATE PS_DOC_PMT_APPLY
-            SET AMT = {-(float(bc_order["total_inc_tax"] or 0))},
-            HOME_CURNCY_AMT = {-(float(bc_order["total_inc_tax"] or 0))}
-            WHERE DOC_ID = '{doc_id}' AND PMT_SEQ_NO in (
-                SELECT PMT_SEQ_NO FROM PS_DOC_PMT WHERE DOC_ID = '{doc_id}' AND PAY_COD = 'BIG'
             )
-            """
-        )
 
-        if r["code"] == 200:
-            self.logger.success("Updated payment application")
-        else:
-            self.error_handler.add_error_v("Payment application could not be updated")
-            self.error_handler.add_error_v(r["message"])
+            if r["code"] == 200:
+                self.logger.success("Updated payment application")
+            else:
+                self.error_handler.add_error_v("Payment application could not be updated")
+                self.error_handler.add_error_v(r["message"])
 
         def invert_line_qty(line_item: dict, index: int):
             qty = -line_item["QTY_SOLD"]
