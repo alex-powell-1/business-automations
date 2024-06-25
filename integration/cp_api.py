@@ -713,17 +713,18 @@ class OrderAPI(DocumentAPI):
 
         cust_no = ""
 
-        try:
-            if not oapi.has_cust_info(bc_order):
-                CounterPointAPI.logger.info("Creating new customer")
-                oapi.create_new_customer(bc_order)
-                cust_no = OrderAPI.get_cust_no(bc_order)
-            else:
-                CounterPointAPI.logger.info("Updating existing customer")
-                cust_no = OrderAPI.get_cust_no(bc_order)
-                oapi.update_cust(bc_order, cust_no)
-        except:
-            raise Exception("Customer could not be created/updated")
+        if cust_no_override is not None:
+            try:
+                if not oapi.has_cust_info(bc_order):
+                    CounterPointAPI.logger.info("Creating new customer")
+                    oapi.create_new_customer(bc_order)
+                    cust_no = OrderAPI.get_cust_no(bc_order)
+                else:
+                    CounterPointAPI.logger.info("Updating existing customer")
+                    cust_no = OrderAPI.get_cust_no(bc_order)
+                    oapi.update_cust(bc_order, cust_no)
+            except:
+                raise Exception("Customer could not be created/updated")
 
         if cust_no_override is None:
             if cust_no is None or cust_no == "" or not oapi.has_cust(cust_no):
