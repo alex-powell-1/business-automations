@@ -1178,6 +1178,14 @@ class OrderAPI(DocumentAPI):
 
         # PARTIAL REFUND PAYMENT WRITES
         if self.is_pr():
+            def get_ps_doc_pmt_index(pay_cod: str):
+                index = 0
+
+                for i, pmt in enumerate(payload["PS_DOC_HDR"]["PS_DOC_PMT"]):
+                    if pmt["PAY_COD"] == pay_cod:
+                        index = i
+                
+                return index
             def get_total():
                 query = f"""
                 SELECT SUM(EXT_PRC) FROM PS_DOC_LIN
@@ -1234,6 +1242,8 @@ class OrderAPI(DocumentAPI):
                 WHERE DOC_ID = '{doc_id}' AND PAY_COD = 'BIG'
                 """
 
+                payload["PS_DOC_HDR"]["PS_DOC_PMT"][get_ps_doc_pmt_index("BIG")]["AMT"] = -amt
+
                 response = Database.db.query_db(query, commit=True)
 
                 if response["code"] == 200:
@@ -1266,6 +1276,8 @@ class OrderAPI(DocumentAPI):
                 WHERE DOC_ID = '{doc_id}' AND PAY_COD = 'LOYALTY'
                 """
 
+                payload["PS_DOC_HDR"]["PS_DOC_PMT"][get_ps_doc_pmt_index("LOYALTY")]["AMT"] = -amt
+
                 response = Database.db.query_db(query, commit=True)
 
                 if response["code"] == 200:
@@ -1297,6 +1309,8 @@ class OrderAPI(DocumentAPI):
                 HOME_CURNCY_AMT = {-amt}
                 WHERE DOC_ID = '{doc_id}' AND PAY_COD = 'GC'
                 """
+
+                payload["PS_DOC_HDR"]["PS_DOC_PMT"][get_ps_doc_pmt_index("GC")]["AMT"] = -amt
 
                 response = Database.db.query_db(query, commit=True)
 
