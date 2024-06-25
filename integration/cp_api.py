@@ -92,6 +92,7 @@ class OrderAPI(DocumentAPI):
         self.total_lin_disc = 0
         self.refund = None
         self.pr = None
+        self.refund_index = None
 
     # Returns true if the provided BigCommerce order is a refund
     def is_refund(self, bc_order: dict = None):
@@ -459,6 +460,7 @@ class OrderAPI(DocumentAPI):
         self.total_hdr_disc = 0
         self.total_lin_disc = 0
         self.total_lin_items = 0
+        self.refund_index = None
 
         is_refund = self.is_refund(bc_order)
 
@@ -711,17 +713,18 @@ class OrderAPI(DocumentAPI):
 
         cust_no = ""
 
-        try:
-            if not oapi.has_cust_info(bc_order):
-                CounterPointAPI.logger.info("Creating new customer")
-                oapi.create_new_customer(bc_order)
-                cust_no = OrderAPI.get_cust_no(bc_order)
-            else:
-                CounterPointAPI.logger.info("Updating existing customer")
-                cust_no = OrderAPI.get_cust_no(bc_order)
-                oapi.update_cust(bc_order, cust_no)
-        except:
-            raise Exception("Customer could not be created/updated")
+        if cust_no_override is not None:
+            try:
+                if not oapi.has_cust_info(bc_order):
+                    CounterPointAPI.logger.info("Creating new customer")
+                    oapi.create_new_customer(bc_order)
+                    cust_no = OrderAPI.get_cust_no(bc_order)
+                else:
+                    CounterPointAPI.logger.info("Updating existing customer")
+                    cust_no = OrderAPI.get_cust_no(bc_order)
+                    oapi.update_cust(bc_order, cust_no)
+            except:
+                raise Exception("Customer could not be created/updated")
 
         if cust_no_override is None:
             if cust_no is None or cust_no == "" or not oapi.has_cust(cust_no):
@@ -798,6 +801,9 @@ class OrderAPI(DocumentAPI):
     # Refund index is the number at the end of the ticket number on a refund or partial refund.
     # Ex. 1151R1, 1151R2, 1150PR1, 1150PR2, etc.
     def get_refund_index(self, tkt_num: str, suffix: str = ""):
+        if self.refund_index is not None:
+            return self.refund_index
+
         index = 1
         found = False
         while not found:
@@ -806,6 +812,7 @@ class OrderAPI(DocumentAPI):
             else:
                 found = True
 
+        self.refund_index = index
         return index
 
     # Post a partial refund to Counterpoint.
@@ -1096,10 +1103,10 @@ class OrderAPI(DocumentAPI):
                     tkt_no = payload['PS_DOC_HDR']['TKT_NUM']
 
                     if self.is_pr():
-                        refund_index = int(self.get_refund_index(tkt_num=payload["PS_DOC_HDR"]["TKT_NUM"], suffix=PARTIAL_REFUND_SUFFIX)) - 1
+                        refund_index = int(self.get_refund_index(tkt_num=payload["PS_DOC_HDR"]["TKT_NUM"], suffix=PARTIAL_REFUND_SUFFIX))
                         tkt_no = f"{payload['PS_DOC_HDR']['TKT_NUM']}{PARTIAL_REFUND_SUFFIX}{refund_index}"
                     else:
-                        refund_index = int(self.get_refund_index(tkt_num=payload["PS_DOC_HDR"]["TKT_NUM"], suffix=REFUND_SUFFIX)) - 1
+                        refund_index = int(self.get_refund_index(tkt_num=payload["PS_DOC_HDR"]["TKT_NUM"], suffix=REFUND_SUFFIX))
                         tkt_no = f"{payload['PS_DOC_HDR']['TKT_NUM']}{REFUND_SUFFIX}{refund_index}"
 
                     r = commit_query(
@@ -1155,25 +1162,19 @@ class OrderAPI(DocumentAPI):
 
         for payment in payload["PS_DOC_HDR"]["PS_DOC_PMT"]:
             if payment["PAY_COD"] == "GC":
-                remaining_bal = float(payment["REMAINING_BAL"])
+                amt_spent = float(payment["AMT"])
                 card_no = payment["CARD_NO"]
 
-                def get_gfc_bal():
-                    query = f"""
-                    SELECT CURR_AMT FROM SY_GFC
-                    WHERE GFC_NO = '{card_no}'
-                    """
+                tkt_no = payload['PS_DOC_HDR']['TKT_NUM']
 
-                    response = Database.db.query_db(query)
-                    try:
-                        return float(response[0][0])
-                    except:
-                        return 0
+                if self.is_pr():
+                    refund_index = int(self.get_refund_index(tkt_num=payload["PS_DOC_HDR"]["TKT_NUM"], suffix=PARTIAL_REFUND_SUFFIX))
+                    tkt_no = f"{payload['PS_DOC_HDR']['TKT_NUM']}{PARTIAL_REFUND_SUFFIX}{refund_index}"
+                else:
+                    refund_index = int(self.get_refund_index(tkt_num=payload["PS_DOC_HDR"]["TKT_NUM"], suffix=REFUND_SUFFIX))
+                    tkt_no = f"{payload['PS_DOC_HDR']['TKT_NUM']}{REFUND_SUFFIX}{refund_index}"
 
-                def get_bal_diff():
-                    return remaining_bal - get_gfc_bal()
-
-                def get_next_seq_no():
+                def get_last_gfc_activity_index():
                     query = f"""
                     SELECT MAX(SEQ_NO) FROM SY_GFC_ACTIV
                     WHERE GFC_NO = '{card_no}'
@@ -1182,56 +1183,39 @@ class OrderAPI(DocumentAPI):
                     response = Database.db.query_db(query)
 
                     try:
-                        return int(response[0][0]) + 1
+                        return int(response[0][0])
                     except:
                         return 1
+                    
+                query = f"""
+                UPDATE SY_GFC_ACTIV
+                SET AMT = {abs(amt_spent)},
+                DOC_NO = '{tkt_no}'
+                WHERE GFC_NO = '{card_no}' AND SEQ_NO = {get_last_gfc_activity_index()}
+                """
 
-                def add_gfc_bal(amt: float | int):
-                    current_date = datetime.now().strftime("%Y-%m-%d")
+                response = Database.db.query_db(query, commit=True)
 
-                    tkt_no = ""
+                if response["code"] == 200:
+                    self.logger.success("Gift card activity updated")
+                else:
+                    self.error_handler.add_error_v("Gift card activity could not be updated")
+                    self.error_handler.add_error_v(response["message"])
 
-                    if self.is_pr():
-                        refund_index = self.get_refund_index(tkt_num=payload["PS_DOC_HDR"]["TKT_NUM"], suffix=PARTIAL_REFUND_SUFFIX)
-                        tkt_no = f"{payload['PS_DOC_HDR']['TKT_NUM']}{PARTIAL_REFUND_SUFFIX}{refund_index}"
-                    else:
-                        refund_index = self.get_refund_index(tkt_num=payload["PS_DOC_HDR"]["TKT_NUM"], suffix=REFUND_SUFFIX)
-                        tkt_no = f"{payload['PS_DOC_HDR']['TKT_NUM']}{REFUND_SUFFIX}{refund_index}"
+                query = f"""
+                UPDATE SY_GFC
+                SET CURR_AMT = CURR_AMT + {abs(amt_spent) * 2}
+                WHERE GFC_NO = '{card_no}'
+                """
 
-                    r = commit_query(
-                        f"""
-                        INSERT INTO SY_GFC_ACTIV
-                        (GFC_NO, SEQ_NO, DAT, STR_ID, STA_ID, DOC_NO, ACTIV_TYP, AMT, LST_MAINT_DT, LST_MAINT_USR_ID, DOC_ID)
-                        VALUES
-                        ('{card_no}', {get_next_seq_no()}, '{current_date}', 'WEB', 'WEB', '{tkt_no}', 'R', {amt}, GETDATE(), 'POS', '{doc_id}')
-                        """
-                    )
+                response = Database.db.query_db(query, commit=True)
 
-                    if r["code"] == 200:
-                        self.logger.success(f"Gift card balance updated")
-                    else:
-                        self.error_handler.add_error_v(
-                            "Gift card balance could not be updated"
-                        )
-                        self.error_handler.add_error_v(r["message"])
+                if response["code"] == 200:
+                    self.logger.success("Gift card balance updated")
+                else:
+                    self.error_handler.add_error_v("Gift card balance could not be updated")
+                    self.error_handler.add_error_v(response["message"])
 
-                    r = commit_query(
-                        f"""
-                        UPDATE SY_GFC
-                        SET CURR_AMT = {remaining_bal}
-                        WHERE GFC_NO = '{card_no}'
-                        """
-                    )
-
-                    if r["code"] == 200:
-                        self.logger.success(f"Gift card balance updated")
-                    else:
-                        self.error_handler.add_error_v(
-                            "Gift card balance could not be updated"
-                        )
-                        self.error_handler.add_error_v(r["message"])
-
-                add_gfc_bal(get_bal_diff())
 
             if payment["PAY_COD"] == "LOYALTY":
                 query = f"""
@@ -1373,6 +1357,8 @@ class OrderAPI(DocumentAPI):
                 else:
                     self.error_handler.add_error_v("Loyalty points could not be added")
                     self.error_handler.add_error_v(response["message"])
+
+    # def earn_loyalty_points(self, payload, )
 
     # Writes to several tables in Counterpoint.
     def more_writes(self, doc_id, payload, bc_order):
