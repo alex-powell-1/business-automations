@@ -4,8 +4,7 @@ import json
 import math
 from datetime import datetime, timezone
 from integration.database import Database
-from integration.error_handler import GlobalErrorHandler, Logger, ErrorHandler
-import uuid
+from integration.error_handler import Logger, ErrorHandler
 from customer_tools import customers
 
 
@@ -412,7 +411,7 @@ class OrderAPI(DocumentAPI):
         response = Database.db.query_db(wquery, commit=True)
 
         if response["code"] == 200:
-            self.logger.success(f"Loyalty points written")
+            self.logger.success("Loyalty points written")
         else:
             self.error_handler.add_error_v("Loyalty points could not be written")
 
@@ -981,7 +980,7 @@ class OrderAPI(DocumentAPI):
                     )
 
                     if r["code"] == 200:
-                        self.logger.success(f"Gift card balance updated")
+                        self.logger.success("Gift card balance updated")
                     else:
                         self.error_handler.add_error_v(
                             "Gift card balance could not be updated"
@@ -998,7 +997,7 @@ class OrderAPI(DocumentAPI):
                     )
 
                     if r["code"] == 200:
-                        self.logger.success(f"Gift card balance updated")
+                        self.logger.success("Gift card balance updated")
                     else:
                         self.error_handler.add_error_v(
                             "Gift card balance could not be updated"
@@ -1034,7 +1033,7 @@ class OrderAPI(DocumentAPI):
             response = Database.db.query_db(query, commit=True)
 
             if response["code"] == 200:
-                self.logger.success(f"Ticket number updated.")
+                self.logger.success("Ticket number updated.")
             else:
                 self.error_handler.add_error_v("Ticket number could not be updated")
                 self.error_handler.add_error_v(response["message"])
@@ -1135,7 +1134,7 @@ class OrderAPI(DocumentAPI):
                     )
 
                     if r["code"] == 200:
-                        self.logger.success(f"Gift card balance updated")
+                        self.logger.success("Gift card balance updated")
                     else:
                         self.error_handler.add_error_v(
                             "Gift card balance could not be updated"
@@ -1151,7 +1150,7 @@ class OrderAPI(DocumentAPI):
                     )
 
                     if r["code"] == 200:
-                        self.logger.success(f"Gift card balance updated")
+                        self.logger.success("Gift card balance updated")
                     else:
                         self.error_handler.add_error_v(
                             "Gift card balance could not be updated"
@@ -1179,14 +1178,16 @@ class OrderAPI(DocumentAPI):
 
         # PARTIAL REFUND PAYMENT WRITES
         if self.is_pr():
+
             def get_ps_doc_pmt_index(pay_cod: str):
                 index = 0
 
                 for i, pmt in enumerate(payload["PS_DOC_HDR"]["PS_DOC_PMT"]):
                     if pmt["PAY_COD"] == pay_cod:
                         index = i
-                
+
                 return index
+
             def get_total():
                 query = f"""
                 SELECT SUM(EXT_PRC) FROM PS_DOC_LIN
@@ -1199,6 +1200,7 @@ class OrderAPI(DocumentAPI):
                     return abs(float(response[0][0]))
                 except:
                     return 0
+
             def get_big_payment():
                 query = f"""
                 SELECT AMT FROM PS_DOC_PMT
@@ -1211,6 +1213,7 @@ class OrderAPI(DocumentAPI):
                     return abs(float(response[0][0]))
                 except:
                     return 0
+
             def has_loy():
                 query = f"""
                 SELECT COUNT(*) FROM PS_DOC_PMT
@@ -1223,6 +1226,7 @@ class OrderAPI(DocumentAPI):
                     return int(response[0][0]) > 0
                 except:
                     return False
+
             def has_gc():
                 query = f"""
                 SELECT COUNT(*) FROM PS_DOC_PMT
@@ -1235,6 +1239,7 @@ class OrderAPI(DocumentAPI):
                     return int(response[0][0]) > 0
                 except:
                     return False
+
             def write_big_payment(amt: float | int):
                 query = f"""
                 UPDATE PS_DOC_PMT
@@ -1243,7 +1248,9 @@ class OrderAPI(DocumentAPI):
                 WHERE DOC_ID = '{doc_id}' AND PAY_COD = 'BIG'
                 """
 
-                payload["PS_DOC_HDR"]["PS_DOC_PMT"][get_ps_doc_pmt_index("BIG")]["AMT"] = -amt
+                payload["PS_DOC_HDR"]["PS_DOC_PMT"][get_ps_doc_pmt_index("BIG")][
+                    "AMT"
+                ] = -amt
 
                 response = Database.db.query_db(query, commit=True)
 
@@ -1269,6 +1276,7 @@ class OrderAPI(DocumentAPI):
                 else:
                     self.error_handler.add_error_v("Payment could not be applied")
                     self.error_handler.add_error_v(r["message"])
+
             def write_loy_payment(amt: float | int):
                 query = f"""
                 UPDATE PS_DOC_PMT
@@ -1277,14 +1285,18 @@ class OrderAPI(DocumentAPI):
                 WHERE DOC_ID = '{doc_id}' AND PAY_COD = 'LOYALTY'
                 """
 
-                payload["PS_DOC_HDR"]["PS_DOC_PMT"][get_ps_doc_pmt_index("LOYALTY")]["AMT"] = -amt
+                payload["PS_DOC_HDR"]["PS_DOC_PMT"][get_ps_doc_pmt_index("LOYALTY")][
+                    "AMT"
+                ] = -amt
 
                 response = Database.db.query_db(query, commit=True)
 
                 if response["code"] == 200:
                     self.logger.success("Loyalty payment updated")
                 else:
-                    self.error_handler.add_error_v("Loyalty payment could not be updated")
+                    self.error_handler.add_error_v(
+                        "Loyalty payment could not be updated"
+                    )
                     self.error_handler.add_error_v(response["message"])
 
                 r = commit_query(
@@ -1303,6 +1315,7 @@ class OrderAPI(DocumentAPI):
                 else:
                     self.error_handler.add_error_v("Payment could not be applied")
                     self.error_handler.add_error_v(r["message"])
+
             def write_gc_payment(amt: float | int):
                 query = f"""
                 UPDATE PS_DOC_PMT
@@ -1311,14 +1324,18 @@ class OrderAPI(DocumentAPI):
                 WHERE DOC_ID = '{doc_id}' AND PAY_COD = 'GC'
                 """
 
-                payload["PS_DOC_HDR"]["PS_DOC_PMT"][get_ps_doc_pmt_index("GC")]["AMT"] = -amt
+                payload["PS_DOC_HDR"]["PS_DOC_PMT"][get_ps_doc_pmt_index("GC")][
+                    "AMT"
+                ] = -amt
 
                 response = Database.db.query_db(query, commit=True)
 
                 if response["code"] == 200:
                     self.logger.success("Gift card payment updated")
                 else:
-                    self.error_handler.add_error_v("Gift card payment could not be updated")
+                    self.error_handler.add_error_v(
+                        "Gift card payment could not be updated"
+                    )
                     self.error_handler.add_error_v(response["message"])
 
                 r = commit_query(
@@ -1339,7 +1356,11 @@ class OrderAPI(DocumentAPI):
                     self.error_handler.add_error_v(r["message"])
 
             total = get_total()
-            total = total + abs(self.get_shipping_cost(bc_order)) - abs(self.total_discount_amount or 0)
+            total = (
+                total
+                + abs(self.get_shipping_cost(bc_order))
+                - abs(self.total_discount_amount or 0)
+            )
 
             big_payment = get_big_payment()
 
@@ -1463,7 +1484,9 @@ class OrderAPI(DocumentAPI):
             if r["code"] == 200:
                 self.logger.success("Updated payment application")
             else:
-                self.error_handler.add_error_v("Payment application could not be updated")
+                self.error_handler.add_error_v(
+                    "Payment application could not be updated"
+                )
                 self.error_handler.add_error_v(r["message"])
 
         def invert_line_qty(line_item: dict, index: int):

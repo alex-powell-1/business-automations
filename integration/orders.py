@@ -1,5 +1,4 @@
 from integration.cp_api import OrderAPI
-from integration.object_processor import ObjectProcessor
 
 from integration.error_handler import GlobalErrorHandler
 
