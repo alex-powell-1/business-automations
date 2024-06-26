@@ -1,6 +1,7 @@
 setup/creds.py
 sandbox.py
-.vscode/*
+.vscode/
+.ruff_cache/
 */__pycache__/
 
 */*.pyc
