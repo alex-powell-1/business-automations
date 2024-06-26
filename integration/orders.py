@@ -39,8 +39,7 @@ class Order:
 			OrderAPI.post_order(self.order_id, cust_no_override=cust_no_override)
 		except Exception as e:
 			GlobalErrorHandler.error_handler.add_error_v(
-				error=f'Error processing order {self.order_id}',
-				origin='integration.orders',
+				error=f'Error processing order {self.order_id}', origin='integration.orders'
 			)
 
 			GlobalErrorHandler.error_handler.add_error_v(error=str(e), origin='integration.orders')

@@ -477,19 +477,14 @@ class OrderAPI(DocumentAPI):
 						'TAX_AMT': '0',
 						'TOT_TXBL_AMT': float(bc_order['total_inc_tax'] or 0)
 						- float(bc_order['base_shipping_cost'] or 0),  # not shipping
-					},
+					}
 				],
 			}
 		}
 
 		if is_shipping:
 			payload['PS_DOC_HDR']['PS_DOC_HDR_MISC_CHRG'] = [
-				{
-					'TOT_TYP': 'O',
-					'MISC_CHRG_NO': '1',
-					'MISC_TYP': 'A',
-					'MISC_AMT': shipping_cost,
-				}
+				{'TOT_TYP': 'O', 'MISC_CHRG_NO': '1', 'MISC_TYP': 'A', 'MISC_AMT': shipping_cost}
 			]
 
 		if is_refund:
@@ -817,8 +812,7 @@ class OrderAPI(DocumentAPI):
 		try:
 			if payload['PS_DOC_HDR']['TKT_NUM'] and payload['PS_DOC_HDR']['TKT_NUM'] != '':
 				refund_index = self.get_refund_index(
-					tkt_num=payload['PS_DOC_HDR']['TKT_NUM'],
-					suffix=PARTIAL_REFUND_SUFFIX,
+					tkt_num=payload['PS_DOC_HDR']['TKT_NUM'], suffix=PARTIAL_REFUND_SUFFIX
 				)
 				self.write_ticket_no(
 					doc_id,
@@ -873,14 +867,10 @@ class OrderAPI(DocumentAPI):
 						tkt_num=payload['PS_DOC_HDR']['TKT_NUM'], suffix=REFUND_SUFFIX
 					)
 					self.write_ticket_no(
-						doc_id,
-						f"{payload["PS_DOC_HDR"]["TKT_NUM"]}{REFUND_SUFFIX}{refund_index}",
+						doc_id, f"{payload["PS_DOC_HDR"]["TKT_NUM"]}{REFUND_SUFFIX}{refund_index}"
 					)
 				else:
-					self.write_ticket_no(
-						doc_id,
-						f"{payload["PS_DOC_HDR"]["TKT_NUM"]}",
-					)
+					self.write_ticket_no(doc_id, f"{payload["PS_DOC_HDR"]["TKT_NUM"]}")
 		except:
 			pass
 
@@ -1071,8 +1061,7 @@ class OrderAPI(DocumentAPI):
 					else:
 						refund_index = int(
 							self.get_refund_index(
-								tkt_num=payload['PS_DOC_HDR']['TKT_NUM'],
-								suffix=REFUND_SUFFIX,
+								tkt_num=payload['PS_DOC_HDR']['TKT_NUM'], suffix=REFUND_SUFFIX
 							)
 						)
 						tkt_no = f"{payload['PS_DOC_HDR']['TKT_NUM']}{REFUND_SUFFIX}{refund_index}"
@@ -1330,8 +1319,7 @@ class OrderAPI(DocumentAPI):
 				if self.is_pr():
 					refund_index = int(
 						self.get_refund_index(
-							tkt_num=payload['PS_DOC_HDR']['TKT_NUM'],
-							suffix=PARTIAL_REFUND_SUFFIX,
+							tkt_num=payload['PS_DOC_HDR']['TKT_NUM'], suffix=PARTIAL_REFUND_SUFFIX
 						)
 					)
 					tkt_no = (
@@ -1340,8 +1328,7 @@ class OrderAPI(DocumentAPI):
 				else:
 					refund_index = int(
 						self.get_refund_index(
-							tkt_num=payload['PS_DOC_HDR']['TKT_NUM'],
-							suffix=REFUND_SUFFIX,
+							tkt_num=payload['PS_DOC_HDR']['TKT_NUM'], suffix=REFUND_SUFFIX
 						)
 					)
 					tkt_no = f"{payload['PS_DOC_HDR']['TKT_NUM']}{REFUND_SUFFIX}{refund_index}"
