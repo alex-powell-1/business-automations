@@ -4,13 +4,12 @@ from time import sleep
 from datetime import datetime
 from email import utils
 
-import pandas
 import pika
 from docx.shared import Mm
 from docxtpl import DocxTemplate, InlineImage
 
 from setup import barcode_engine
-from setup import creds, product_engine, log_engine
+from setup import creds, product_engine
 from setup.order_engine import Order, utc_to_local
 from integration.error_handler import GlobalErrorHandler, Logger, ErrorHandler
 
