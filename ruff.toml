@@ -1,0 +1,9 @@
+line-length = 100
+
+[lint]
+ignore = ["E722"]
+
+[format]
+quote-style = "single"
+indent-style = "tab"
+skip-magic-trailing-comma = true
