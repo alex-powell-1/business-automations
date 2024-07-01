@@ -1,12 +1,13 @@
 from integration.catalog import Catalog
 from integration.customers import Customers
+from integration.gift_certificates import GiftCertificates
 from integration.database import Database
 from integration import interface
 
 from setup import date_presets
 from datetime import datetime
 
-from integration.error_handler import ProcessOutErrorHandler
+from setup.error_handler import ProcessOutErrorHandler
 
 import sys
 import time
@@ -21,7 +22,7 @@ class Integrator:
 		self.db = Database()
 		self.catalog = Catalog(last_sync=self.last_sync)
 		self.customers = Customers(last_sync=self.last_sync)
-		self.gift_certificates = None
+		self.gift_certificates = GiftCertificates(last_sync=self.last_sync)
 
 	def __str__(self):
 		return f'Integrator\n' f'Last Sync: {self.last_sync}\n'
@@ -55,6 +56,7 @@ class Integrator:
 		start_sync_time = datetime.now()
 		self.logger.header('Sync Starting')
 		self.customers.sync()
+		self.gift_certificates.sync()
 		self.catalog.sync(initial=initial)
 		self.set_last_sync(start_sync_time)
 		completion_time = (datetime.now() - start_sync_time).seconds
@@ -131,7 +133,7 @@ def main_menu():
 				print(f'Are you sure you want to delete product {sku}? (y/n)')
 				choice = input('Enter choice: ')
 				if choice.lower() == 'y':
-					integrator.catalog.delete_product(sku=sku)
+					integrator.catalog.delete_product(sku=sku, update_timestamp=True)
 					main_menu()
 				else:
 					print('Aborted.')

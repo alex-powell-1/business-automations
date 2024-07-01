@@ -11,7 +11,7 @@ from docxtpl import DocxTemplate, InlineImage
 from setup import barcode_engine
 from setup import creds, product_engine
 from setup.order_engine import Order, utc_to_local
-from integration.error_handler import Logger, ErrorHandler, ProcessInErrorHandler
+from setup.error_handler import ProcessInErrorHandler
 
 from integration.orders import Order as BCOrder
 
@@ -91,7 +91,7 @@ class RabbitMQConsumer:
 					self.logger.info('Creating Word Document')
 					# Create the Word document
 					try:
-						doc = DocxTemplate('./templates/ticket_template.docx')
+						doc = DocxTemplate('./templates/order_print_template.docx')
 						barcode = InlineImage(
 							doc, f'./{barcode_filename}.png', height=Mm(15)
 						)  # width in mm

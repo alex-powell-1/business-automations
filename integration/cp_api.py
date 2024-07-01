@@ -4,7 +4,7 @@ import json
 import math
 from datetime import datetime, timezone
 from integration.database import Database
-from integration.error_handler import ProcessInErrorHandler
+from setup.error_handler import ProcessInErrorHandler
 from customer_tools import customers
 
 

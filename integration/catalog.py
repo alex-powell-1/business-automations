@@ -15,10 +15,10 @@ from integration.database import Database
 
 from setup import creds
 from setup import query_engine
-from integration.utilities import get_all_binding_ids, convert_to_utc
-from integration.utilities import VirtualRateLimiter
+from setup.utilities import get_all_binding_ids, convert_to_utc
+from setup.utilities import VirtualRateLimiter
 
-from integration.error_handler import ProcessOutErrorHandler
+from setup.error_handler import ProcessOutErrorHandler
 
 
 class Catalog:
@@ -459,7 +459,7 @@ class Catalog:
 				f'Fail Count: {fail_count}\n'
 			)
 
-	def delete_product(self, sku):
+	def delete_product(self, sku, update_timestamp=False):
 		delete_payload = {'sku': sku}
 		binding_id = Catalog.get_binding_id_from_sku(sku, middleware=True)
 		if binding_id is not None:
@@ -476,9 +476,29 @@ class Catalog:
 			Catalog.logger.info(f'Deleting Product: {sku}')
 			product.delete_product(sku=sku)
 
+		if update_timestamp:
+			Catalog.update_timestamp(sku=sku)
+
 	@staticmethod
 	def parse_custom_url_string(string: str):
+		"""Uses regular expression to parse a string into a URL-friendly format."""
 		return '-'.join(str(re.sub('[^A-Za-z0-9 ]+', '', string)).lower().split(' '))
+
+	@staticmethod
+	def update_timestamp(sku):
+		"""Updates the LST_MAINT_DT field in Counterpoint for a given SKU."""
+		query = f"""
+		UPDATE IM_ITEM
+		SET LST_MAINT_DT = GETDATE()
+		WHERE ITEM_NO = '{sku}'
+		"""
+		response = Database.db.query_db(query, commit=True)
+		if response['code'] == 200:
+			Catalog.logger.success(f'Timestamp updated for {sku}.')
+		else:
+			Catalog.error_handler.add_error_v(
+				error=f'Error updating timestamp for {sku}. Response: {response}'
+			)
 
 	@staticmethod
 	def get_product(item_no):
@@ -498,6 +518,7 @@ class Catalog:
 	def get_family_members(binding_id, count=False, price=False, counterpoint=False):
 		db = Database.db
 		"""Get all items associated with a binding_id. If count is True, return the count."""
+		# return a count of items in family
 		if count:
 			query = f"""
             SELECT COUNT(ITEM_NO)
@@ -509,6 +530,7 @@ class Catalog:
 
 		else:
 			if price:
+				# include retail price for each item
 				query = f"""
                 SELECT ITEM_NO, PRC_1
                 FROM IM_ITEM

@@ -1,17 +1,17 @@
 import requests
 
-import integration.utilities as utilities
+import setup.utilities as utilities
 from integration.database import Database
 from setup import creds
 import setup.date_presets as date_presets
 
 import integration.object_processor as object_processor
 
-from integration.error_handler import ErrorHandler, Logger, ProcessOutErrorHandler
+from setup.error_handler import ErrorHandler, Logger, ProcessOutErrorHandler
 
 import time
 
-from integration.utilities import VirtualRateLimiter
+from setup.utilities import VirtualRateLimiter
 
 
 class GiftCertificates:
@@ -27,38 +27,73 @@ class GiftCertificates:
 
 	def get_cp_certificates(self):
 		query = f"""
-        SELECT GFC_NO, ORIG_AMT, CURR_AMT, ORIG_DAT, ORIG_CUST_NO
-        FROM {creds.sy_gfc_table}
-        WHERE LST_MAINT_DT > '{self.last_sync}'
+        SELECT CP.GFC_NO, ORIG_AMT, CURR_AMT, ORIG_DAT, ORIG_CUST_NO, MW.BC_GFC_ID
+		FROM SY_GFC CP
+		FULL OUTER JOIN SN_GIFT MW on MW.GFC_NO = CP.GFC_NO
+		WHERE CP.LST_MAINT_DT > '{self.last_sync}'
         """
 
 		response = self.db.query_db(query)
-		if response is not None:
-			result = []
-			for x in response:
-				if x is not None:
-					result.append(self.Certificate(x, error_handler=self.error_handler))
-			return result
+		return (
+			[self.Certificate(x, error_handler=self.error_handler) for x in response]
+			if response is not None
+			else []
+		)
 
 	def get_bc_certificates(self):
+		"""Get all gift certificates from BigCommerce.
+		Returns a list of dictionaries."""
 		gift_certificates = []
 		page = 1
 		more_pages = True
-		# while more_pages:
-		url = f' https://api.bigcommerce.com/stores/{creds.big_store_hash}/v2/gift_certificates?limit=250&page={page}'
-		response = requests.get(url, headers=creds.bc_api_headers)
-		for certificate in response.json():
-			gift_certificates.append(certificate)
-			# count = response.json()['meta']['pagination']['count']
-			# if count == 0:
-			# 	more_pages = False
-			# page += 1
+		while more_pages:
+			url = f' https://api.bigcommerce.com/stores/{creds.big_store_hash}/v2/gift_certificates?limit=250&page={page}'
+			response = requests.get(url, headers=creds.bc_api_headers)
+
+			for certificate in response.json():
+				gift_certificates.append(certificate)
+
+			page += 1
+
+			if len(response.json()) < 250:
+				more_pages = False
+
 		return gift_certificates
 
-	def sync(self):
-		self.processor.process()
+	def get_bc_certificate(self, certificate_id):
+		"""Get a single gift certificate from BigCommerce by ID."""
+		url = f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v2/gift_certificates/{certificate_id}'
+		response = requests.get(url, headers=creds.bc_api_headers)
 
-		self.error_handler.print_errors()
+		if response.status_code == 200:
+			return response.json()
+		else:
+			return
+
+	def backfill_certificates(self):
+		bc_certs = self.get_bc_certificates()
+		for cert in bc_certs:
+			certificate_code = cert['code']
+			certificate_id = cert['id']
+
+			query = f"""
+				INSERT INTO {creds.bc_gift_cert_table}
+				(GFC_NO, BC_GFC_ID)
+				VALUES ('{certificate_code}', {certificate_id})
+				"""
+			response = self.db.query_db(query, commit=True)
+			if response['code'] == 200:
+				self.logger.success(f'Backfilled certificate {certificate_code}')
+			else:
+				self.error_handler.add_error_v(
+					f'Error backfilling certificate {certificate_code}, \nQuery: {query}\nResponse: {response}'
+				)
+
+	def sync(self):
+		if self.certificates:
+			self.processor.process()
+
+			self.error_handler.print_errors()
 
 	class Certificate:
 		def __init__(self, cert_result, error_handler: ErrorHandler = None):
@@ -67,6 +102,7 @@ class GiftCertificates:
 			self.current_amount = cert_result[2]
 			self.original_date = cert_result[3]
 			self.cust_no = cert_result[4]
+			self.bc_id = cert_result[5] if cert_result[5] is not None else None
 			self.user_info = self.get_user_info()
 
 			self.error_handler: ErrorHandler = error_handler
@@ -133,7 +169,7 @@ class GiftCertificates:
 			return SQLSync(self.gift_card_no)
 
 		def process(self, session: requests.Session):
-			def write_payload(bc_id: int = None):
+			def write_payload():
 				payload = {
 					'code': self.gift_card_no,
 					'amount': str(self.original_amount),
@@ -146,31 +182,15 @@ class GiftCertificates:
 					'status': 'active' if self.current_amount > 0 else 'disabled',
 				}
 
-				if bc_id is not None:
-					payload['id'] = bc_id
-
 				return payload
-
-			def get_bc_id():
-				query = f"""
-                SELECT BC_GFC_ID
-                FROM {creds.bc_gift_table}
-                WHERE GFC_NO = '{self.gift_card_no}'
-                """
-
-				response = Database.db.query_db(query)
-				if response is not None:
-					return response[0][0]
-				else:
-					return None
 
 			def create():
 				self.logger.info(f'Creating gift certificate {self.gift_card_no}')
 				payload = write_payload()
 				response = session.post(
-					f'https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v2/gift_certificates',
+					f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v2/gift_certificates',
 					json=payload,
-					headers=creds.test_bc_api_headers,
+					headers=creds.bc_api_headers,
 				)
 
 				if response.status_code == 429:
@@ -180,9 +200,9 @@ class GiftCertificates:
 					time.sleep(seconds_to_wait)
 
 					response = session.post(
-						f'https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v2/gift_certificates',
+						f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v2/gift_certificates',
 						json=payload,
-						headers=creds.test_bc_api_headers,
+						headers=creds.bc_api_headers,
 					)
 
 				if response.status_code == 201:
@@ -197,10 +217,7 @@ class GiftCertificates:
 
 			def update():
 				self.logger.info(f'Updating gift certificate {self.gift_card_no}')
-
-				bc_id = get_bc_id()
-
-				if bc_id is None:
+				if self.bc_id is None:
 					self.error_handler.add_error_v(
 						f'Gift certificate {self.gift_card_no} not found.'
 					)
@@ -208,9 +225,9 @@ class GiftCertificates:
 
 				payload = write_payload()
 				response = session.put(
-					f'https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v2/gift_certificates/{bc_id}',
+					f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v2/gift_certificates/{self.bc_id}',
 					json=payload,
-					headers=creds.test_bc_api_headers,
+					headers=creds.bc_api_headers,
 				)
 
 				if response.status_code == 429:
@@ -220,24 +237,26 @@ class GiftCertificates:
 					time.sleep(seconds_to_wait)
 
 					response = session.put(
-						f'https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v2/gift_certificates/{bc_id}',
+						f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v2/gift_certificates/{self.bc_id}',
 						json=payload,
-						headers=creds.test_bc_api_headers,
+						headers=creds.bc_api_headers,
 					)
 
 				if response.status_code == 200:
 					self.logger.success(
 						f'Gift certificate {self.gift_card_no} updated successfully'
 					)
-					self.sync().update(bc_id)
+					self.sync().update()
 				else:
 					self.error_handler.add_error_v(
-						f'Error updating gift certificate {self.gift_card_no}'
+						f'Error updating gift certificate {self.gift_card_no}\n\n'
+						f'URL: {response.url}\n\n'
+						f'Payload: {payload}\n\n'
+						f'Response: {response.json()}\n'
 					)
 
 			def get_processing_method():
-				bc_id = get_bc_id()
-				if bc_id is None:
+				if self.bc_id is None:
 					return create()
 				else:
 					return update()
@@ -247,7 +266,4 @@ class GiftCertificates:
 
 if __name__ == '__main__':
 	certs = GiftCertificates(last_sync=date_presets.business_start_date)
-	certificates = certs.get_bc_certificates()
-	for x in certificates:
-		print(x)
-		print()
+	# print(certs.get_bc_certificate(1356))

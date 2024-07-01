@@ -1086,7 +1086,7 @@ def administrative_report(recipients, log_file):
 	)
 	html_contents = boiler_plate + css + body_start + report_data + body_end
 	try:
-		email_engine.send_staff_email(
+		email_engine.send_html_email(
 			from_name=creds.company_name,
 			from_address=creds.sales_email,
 			from_pw=creds.sales_password,
@@ -1096,6 +1096,7 @@ def administrative_report(recipients, log_file):
 			logo=True,
 			mode='related',
 			product_photo=None,
+			staff=True,
 		)
 	except Exception as err:
 		error_type = 'Sending Email'

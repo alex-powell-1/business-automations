@@ -6,7 +6,7 @@ from setup import creds
 from datetime import datetime
 from email.utils import formatdate
 import base64
-from integration.error_handler import ErrorHandler, Logger, ProcessOutErrorHandler
+from setup.error_handler import ProcessOutErrorHandler
 
 
 def timer(func):

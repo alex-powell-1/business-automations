@@ -1,6 +1,6 @@
 import requests
 
-import integration.utilities as utilities
+import setup.utilities as utilities
 from integration.database import Database
 from setup import creds
 import setup.date_presets as date_presets
@@ -8,12 +8,12 @@ from customer_tools.customers import lookup_customer
 
 import integration.object_processor as object_processor
 
-from integration.error_handler import ErrorHandler, Logger, ProcessOutErrorHandler
+from setup.error_handler import ErrorHandler, Logger, ProcessOutErrorHandler
 
 import time
 import json
 
-from integration.utilities import VirtualRateLimiter
+from setup.utilities import VirtualRateLimiter
 
 
 class Customers:
@@ -22,9 +22,38 @@ class Customers:
 		self.db = Database.db
 		self.logger = ProcessOutErrorHandler.logger
 		self.error_handler = ProcessOutErrorHandler.error_handler
-
+		self.update_customer_timestamps()
 		self.customers = self.get_cp_customers()
 		self.processor = object_processor.ObjectProcessor(objects=self.customers)
+
+	def update_customer_timestamps(self):
+		"""Update the last maintenance date for all customers in the Middleware who have been updated in
+		the AR_LOY_PT_ADJ_HIST table since the last sync."""
+		query = (
+			f"""SELECT CUST_NO FROM AR_LOY_PT_ADJ_HIST WHERE LST_MAINT_DT > '{self.last_sync}'"""
+		)
+		response = self.db.query_db(query)
+		customer_list = [x[0] for x in response] if response is not None else []
+		if customer_list:
+			if len(customer_list) == 1:
+				customer_list = f"('{customer_list[0]}')"
+			else:
+				customer_list = str(tuple(customer_list))
+
+			query = f"""
+			UPDATE {creds.ar_cust_table}
+			SET LST_MAINT_DT = GETDATE()
+			WHERE CUST_NO IN {customer_list}"""
+
+			response = self.db.query_db(query, commit=True)
+
+			if response['code'] == 200:
+				self.logger.success('Customer timestamps updated.')
+			else:
+				self.error_handler.add_error_v(
+					error=f'Error updating customer timestamps.\n\nQuery: {query}\n\nResponse: {response}',
+					origin='update_customer_timestamps',
+				)
 
 	def get_cp_customers(self):
 		query = f"""
@@ -32,17 +61,12 @@ class Customers:
         FROM {creds.ar_cust_table}
         WHERE
         LST_MAINT_DT > '{self.last_sync}' and
-        CUST_NAM_TYP = 'P' AND
-        LOY_PTS_BAL > 0
+        CUST_NAM_TYP = 'P'
         """
-
 		response = self.db.query_db(query)
-		if response is not None:
-			result = []
-			for x in response:
-				if x is not None:
-					result.append(self.Customer(x, self.error_handler))
-			return result
+		return (
+			[self.Customer(x, self.error_handler) for x in response] if response is not None else []
+		)
 
 	def get_bc_customer(self, bc_cust_id):
 		url = f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/customers?id:in={bc_cust_id}'
@@ -80,9 +104,10 @@ class Customers:
 		return customer_id_list
 
 	def sync(self):
-		self.processor.process()
+		if self.customers:
+			self.processor.process()
 
-		self.error_handler.print_errors()
+			self.error_handler.print_errors()
 
 	def delete_customers(self, middleware=True):
 		"""Deletes all customers from BigCommerce and Middleware in 250 count batch."""
@@ -186,6 +211,10 @@ class Customers:
 
 			self.error_handler: ErrorHandler = error_handler
 			self.logger: Logger = error_handler.logger
+
+			if self.loyalty_points < 0:
+				self.set_loyalty_points_to_zero()
+				self.loyalty_points = 0
 
 		def has_phone(self):
 			return self.phone is not None or self.phone != ''
@@ -474,6 +503,20 @@ class Customers:
 				update()
 			elif get_processing_method() == 'delete':
 				delete()
+
+		def set_loyalty_points_to_zero(self):
+			query = f"""
+			UPDATE AR_CUST
+			SET LOY_PTS_BAL = 0, LST_MAINT_DT = GETDATE()
+			WHERE CUST_NO = '{self.cust_no}'
+			"""
+			response = self.db.query_db(query, commit=True)
+			if response['code'] == 200:
+				self.logger.success(f'Customer {self.cust_no} loyalty points set to 0.')
+			else:
+				self.error_handler.add_error_v(
+					error=f'Error setting customer {self.cust_no} loyalty points to 0.'
+				)
 
 
 if __name__ == '__main__':

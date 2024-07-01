@@ -165,9 +165,6 @@ class Customer:
 		)
 
 
-# --------------------------------------------
-
-
 def export_retail_customer_csv(log_file):
 	retail_query = """
     SELECT CUST_NO, FST_NAM, LST_NAM, EMAIL_ADRS_1, PHONE_1, PROF_COD_2, LOY_PTS_BAL 

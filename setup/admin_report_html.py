@@ -1,4 +1,3 @@
-from setup import creds
 from reporting import product_reports
 
 font = 'Lora'
@@ -86,8 +85,3 @@ body_end = f"""
   </body>
 </html>
 """
-
-
-def create_email_html():
-    contents = product_reports.report_generator()
-    return boiler_plate + css + body_start + contents + body_end

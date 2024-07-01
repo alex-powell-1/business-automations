@@ -18,7 +18,7 @@ from twilio.twiml.messaging_response import MessagingResponse
 from waitress import serve
 
 from setup import creds, email_engine, sms_engine, authorization
-from integration.error_handler import ProcessInErrorHandler, LeadFormErrorHandler
+from setup.error_handler import ProcessInErrorHandler, LeadFormErrorHandler
 from setup import log_engine
 
 app = flask.Flask(__name__)
@@ -170,21 +170,27 @@ def newsletter_signup():
 
 		email_content = jinja_template.render(email_data)
 
-		email_engine.send_html_email(
-			from_name=creds.company_name,
-			from_address=creds.gmail_user,
-			recipients_list=recipient,
-			subject=f'Welcome to {creds.company_name}! Coupon Inside!',
-			content=email_content,
-			mode='related',
-			logo=True,
-			attachment=False,
-		)
-
-		newsletter_data = [[str(datetime.now())[:-7], email]]
-		df = pandas.DataFrame(newsletter_data, columns=['date', 'email'])
-		log_engine.write_log(df, creds.newsletter_log)
-		return 'OK', 200
+		try:
+			email_engine.send_html_email(
+				from_name=creds.company_name,
+				from_address=creds.gmail_user,
+				from_pw=creds.gmail_pw,
+				recipients_list=recipient,
+				subject=f'Welcome to {creds.company_name}! Coupon Inside!',
+				content=email_content,
+				mode='related',
+				logo=True,
+			)
+		except Exception as e:
+			LeadFormErrorHandler.error_handler.add_error_v(
+				error=f'Error sending welcome email: {e}', origin='newsletter'
+			)
+			return 'Error sending welcome email.', 500
+		else:
+			newsletter_data = [[f'{datetime.now():%Y-%m-%d %H:%M:%S}', email]]
+			df = pandas.DataFrame(newsletter_data, columns=['date', 'email'])
+			log_engine.write_log(df, creds.newsletter_log)
+			return 'OK', 200
 
 
 @app.route('/sms', methods=['POST'])

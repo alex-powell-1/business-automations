@@ -1,6 +1,6 @@
 from integration.cp_api import OrderAPI
 
-from integration.error_handler import ProcessInErrorHandler
+from setup.error_handler import ProcessInErrorHandler
 
 
 class Order:

@@ -9,10 +9,10 @@ import pika
 import requests
 from docxtpl import DocxTemplate
 
-from setup import creds, email_engine_flask as email_engine, sms_engine_flask as sms_engine
+from setup import creds, email_engine, sms_engine_flask as sms_engine
 from setup import log_engine
 
-from integration.error_handler import LeadFormErrorHandler
+from setup.error_handler import LeadFormErrorHandler
 
 test_mode = False
 
@@ -142,7 +142,7 @@ class RabbitMQConsumer:
 		# Create the Word document
 		self.logger.info('Rendering Word Document')
 		try:
-			doc = DocxTemplate('./templates/lead_template.docx')
+			doc = DocxTemplate('./templates/design_lead/lead_print_template.docx')
 
 			context = {
 				# Product Details
@@ -162,7 +162,8 @@ class RabbitMQConsumer:
 			doc.save(f'./{ticket_name}')
 			# Print the file to default printer
 			self.logger.info('Printing Word Document')
-			os.startfile(ticket_name, 'print')
+			if not test_mode:
+				os.startfile(ticket_name, 'print')
 			# Delay while print job executes
 			time.sleep(4)
 			# Delete the unneeded Word document
