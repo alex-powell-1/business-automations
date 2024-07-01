@@ -4,7 +4,7 @@ import json
 import math
 from datetime import datetime, timezone
 from integration.database import Database
-from integration.error_handler import Logger, ErrorHandler
+from integration.error_handler import ProcessInErrorHandler
 from customer_tools import customers
 
 
@@ -17,10 +17,8 @@ PARTIAL_REFUND_SUFFIX = 'PR'
 # If you need documentation on the API, good luck.
 # https://github.com/NCRCounterpointAPI/APIGuide/blob/master/Endpoints/POST_Document.md
 class CounterPointAPI:
-	logger = Logger(
-		f"//MAINSERVER/Share/logs/integration/orders/orders_{datetime.now().strftime("%m_%d_%y")}.log"
-	)
-	error_handler = ErrorHandler(logger)
+	logger = ProcessInErrorHandler.logger
+	error_handler = ProcessInErrorHandler.error_handler
 
 	def __init__(self, session: requests.Session = requests.Session()):
 		self.base_url = creds.cp_api_server
@@ -115,9 +113,10 @@ class OrderAPI(DocumentAPI):
 		else:
 			return False
 
-	# Returns a list of line items from a BigCommerce order.
-	# products is a list of products from a BigCommerce order.
 	def get_line_items_from_bc_products(self, products: list):
+		"""Returns a list of line items from a BigCommerce order.
+		Products is a list of products from a BigCommerce order."""
+
 		line_items = []
 
 		for product in products:
@@ -167,7 +166,9 @@ class OrderAPI(DocumentAPI):
 				}
 
 				line_items.append(line_item)
-				self.total_lin_items += 1
+				# Luke, this is where the error originates from. This property is not defined.
+				# self.total_lin_items += 1
+				# I have replaced references to self.total_lin_items with self.line_item_length
 
 		self.line_item_length = len(line_items)
 
@@ -1666,13 +1667,13 @@ class OrderAPI(DocumentAPI):
 		if self.is_refund(bc_order):
 			query = f"""
             UPDATE PS_DOC_HDR
-            SET RET_LINS = {self.total_lin_items}
+            SET RET_LINS = {self.line_item_length}
             WHERE DOC_ID = '{doc_id}'
             """
 		else:
 			query = f"""
             UPDATE PS_DOC_HDR
-            SET SAL_LINS = {self.total_lin_items}
+            SET SAL_LINS = {self.line_item_length}
             WHERE DOC_ID = '{doc_id}'
             """
 
@@ -1689,7 +1690,7 @@ class OrderAPI(DocumentAPI):
 		else:
 			query = f"""
             UPDATE PS_DOC_HDR
-            SET TO_REL_LINS = {self.total_lin_items}
+            SET TO_REL_LINS = {self.line_item_length}
             WHERE DOC_ID = '{doc_id}'
             """
 
