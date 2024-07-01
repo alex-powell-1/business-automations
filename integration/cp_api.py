@@ -89,6 +89,8 @@ class OrderAPI(DocumentAPI):
 		self.refund = None
 		self.pr = None
 		self.refund_index = None
+		self.total_lin_items = 0
+		self.line_item_length = 0
 
 	# Returns true if the provided BigCommerce order is a refund
 	def is_refund(self, bc_order: dict = None):
@@ -166,11 +168,7 @@ class OrderAPI(DocumentAPI):
 				}
 
 				line_items.append(line_item)
-				# Luke, this is where the error originates from. This property is not defined.
-				# self.total_lin_items += 1
-				# I have replaced references to self.total_lin_items with self.line_item_length
-
-		self.line_item_length = len(line_items)
+				self.total_lin_items += 1
 
 		return line_items
 
@@ -444,6 +442,8 @@ class OrderAPI(DocumentAPI):
 		self.refund = None
 		self.pr = None
 		self.refund_index = None
+		self.total_lin_items = 0
+		self.line_item_length = 0
 
 		is_refund = self.is_refund(bc_order)
 
