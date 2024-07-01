@@ -22,21 +22,15 @@ class GiftCertificates:
 		self.logger = ProcessOutErrorHandler.logger
 		self.error_handler = ProcessOutErrorHandler.error_handler
 
-		self.certificates = self.get_certificates()
+		self.certificates = self.get_cp_certificates()
 		self.processor = object_processor.ObjectProcessor(objects=self.certificates)
 
-	def get_certificates(self):
+	def get_cp_certificates(self):
 		query = f"""
         SELECT GFC_NO, ORIG_AMT, CURR_AMT, ORIG_DAT, ORIG_CUST_NO
         FROM {creds.sy_gfc_table}
         WHERE LST_MAINT_DT > '{self.last_sync}'
         """
-
-		# query = f"""
-		# SELECT TOP 200 GFC_NO, ORIG_AMT, CURR_AMT, ORIG_DAT, ORIG_CUST_NO
-		# FROM {creds.sy_gfc_table}
-		# WHERE LST_MAINT_DT > '{self.last_sync}'
-		# """
 
 		response = self.db.query_db(query)
 		if response is not None:
@@ -45,6 +39,21 @@ class GiftCertificates:
 				if x is not None:
 					result.append(self.Certificate(x, error_handler=self.error_handler))
 			return result
+
+	def get_bc_certificates(self):
+		gift_certificates = []
+		page = 1
+		more_pages = True
+		# while more_pages:
+		url = f' https://api.bigcommerce.com/stores/{creds.big_store_hash}/v2/gift_certificates?limit=250&page={page}'
+		response = requests.get(url, headers=creds.bc_api_headers)
+		for certificate in response.json():
+			gift_certificates.append(certificate)
+			# count = response.json()['meta']['pagination']['count']
+			# if count == 0:
+			# 	more_pages = False
+			# page += 1
+		return gift_certificates
 
 	def sync(self):
 		self.processor.process()
@@ -238,4 +247,7 @@ class GiftCertificates:
 
 if __name__ == '__main__':
 	certs = GiftCertificates(last_sync=date_presets.business_start_date)
-	certs.sync()
+	certificates = certs.get_bc_certificates()
+	for x in certificates:
+		print(x)
+		print()

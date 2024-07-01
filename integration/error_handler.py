@@ -100,27 +100,34 @@ class ErrorHandler:
 
 class ProcessInErrorHandler:
 	logger = Logger(
-		f"\\mainserver\Share\logs\integration\process_in\log_{datetime.datetime.now().strftime("%m_%d_%y")}.log"
+		f"//mainserver/Share/logs/integration/process_in/log_{datetime.datetime.now().strftime("%m_%d_%y")}.log"
 	)
 	error_handler = ErrorHandler(logger)
 
 
 class ProcessOutErrorHandler:
 	logger = Logger(
-		f"\\mainserver\Share\logs\integration\process_out\log_{datetime.datetime.now().strftime("%m_%d_%y")}.log"
+		f"//mainserver/Share/logs/integration/process_out/log_{datetime.datetime.now().strftime("%m_%d_%y")}.log"
 	)
 	error_handler = ErrorHandler(logger)
 
 
-if __name__ == '__main__':
-	logger = GlobalErrorHandler.logger
-	error_handler = GlobalErrorHandler.error_handler
+class LeadFormErrorHandler:
+	logger = Logger(
+		rf"//mainserver/Share/logs/flask/design/log_{datetime.datetime.now().strftime("%m_%d_%y")}.log"
+	)
+	error_handler = ErrorHandler(logger)
 
-	error_handler.add_error_v('This is an error message')
-	error_handler.add_error_v('This is a warning message', type='WARNING')
 
-	logger.success('This is a success message')
-	logger.warn('This is a warning message')
-	logger.info('This is an info message')
+# if __name__ == '__main__':
+# 	logger = GlobalErrorHandler.logger
+# 	error_handler = GlobalErrorHandler.error_handler
 
-	error_handler.print_errors()
+# 	error_handler.add_error_v('This is an error message')
+# 	error_handler.add_error_v('This is a warning message', type='WARNING')
+
+# 	logger.success('This is a success message')
+# 	logger.warn('This is a warning message')
+# 	logger.info('This is an info message')
+
+# 	error_handler.print_errors()

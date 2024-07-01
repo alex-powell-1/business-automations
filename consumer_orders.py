@@ -11,17 +11,15 @@ from docxtpl import DocxTemplate, InlineImage
 from setup import barcode_engine
 from setup import creds, product_engine
 from setup.order_engine import Order, utc_to_local
-from integration.error_handler import Logger, ErrorHandler
+from integration.error_handler import Logger, ErrorHandler, ProcessInErrorHandler
 
 from integration.orders import Order as BCOrder
 
 
 class RabbitMQConsumer:
 	def __init__(self, queue_name, host='localhost'):
-		self.logger = Logger(
-			f"//MAINSERVER/Share/logs/integration/orders/orders_{datetime.now().strftime("%m_%d_%y")}.log"
-		)
-		self.error_handler = ErrorHandler(self.logger)
+		self.logger = ProcessInErrorHandler.logger
+		self.error_handler = ProcessInErrorHandler.error_handler
 		self.queue_name = queue_name
 		self.host = host
 		self.connection = None
