@@ -89,6 +89,7 @@ class OrderAPI(DocumentAPI):
 		self.refund = None
 		self.pr = None
 		self.refund_index = None
+		self.total_lin_items = 0
 
 	# Returns true if the provided BigCommerce order is a refund
 	def is_refund(self, bc_order: dict = None):
@@ -444,6 +445,7 @@ class OrderAPI(DocumentAPI):
 		self.refund = None
 		self.pr = None
 		self.refund_index = None
+		self.total_lin_items = 0
 
 		is_refund = self.is_refund(bc_order)
 
