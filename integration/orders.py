@@ -1,6 +1,6 @@
 from integration.cp_api import OrderAPI
 
-from integration.error_handler import GlobalErrorHandler
+from integration.error_handler import ProcessInErrorHandler
 
 
 class Order:
@@ -38,11 +38,13 @@ class Order:
 		try:
 			OrderAPI.post_order(self.order_id, cust_no_override=cust_no_override)
 		except Exception as e:
-			GlobalErrorHandler.error_handler.add_error_v(
+			ProcessInErrorHandler.error_handler.add_error_v(
 				error=f'Error processing order {self.order_id}', origin='integration.orders'
 			)
 
-			GlobalErrorHandler.error_handler.add_error_v(error=str(e), origin='integration.orders')
+			ProcessInErrorHandler.error_handler.add_error_v(
+				error=str(e), origin='integration.orders'
+			)
 
 	def process(self, session=None):
 		self.post_order()
@@ -59,4 +61,4 @@ class OrderProcessor:
 
 
 if __name__ == '__main__':
-	OrderProcessor([1150, 1151, 1152]).process()
+	OrderProcessor([1173]).process()

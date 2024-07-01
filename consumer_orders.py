@@ -11,7 +11,7 @@ from docxtpl import DocxTemplate, InlineImage
 from setup import barcode_engine
 from setup import creds, product_engine
 from setup.order_engine import Order, utc_to_local
-from integration.error_handler import GlobalErrorHandler, Logger, ErrorHandler
+from integration.error_handler import Logger, ErrorHandler
 
 from integration.orders import Order as BCOrder
 
@@ -36,12 +36,13 @@ class RabbitMQConsumer:
 	def callback(self, ch, method, properties, body):
 		order_id = body.decode()
 		# Create order object
-		GlobalErrorHandler.logger.info(f'Beginning processing for Order #{order_id}')
+		self.logger.info(f'Beginning processing for Order #{order_id}')
 
 		# Give CC Processor time to complete capture of CC info and process
 		sleep(5)  # <---- This is to give payment processor time to complete
 
-		GlobalErrorHandler.logger.info('Getting Order Details for Order #{}'.format(order_id))
+		self.logger.info('Getting Order Details for Order #{}'.format(order_id))
+
 		try:
 			order = Order(order_id)
 
@@ -76,20 +77,20 @@ class RabbitMQConsumer:
 				if not gift_card_only:
 					# Create Barcode
 					barcode_filename = 'barcode'
-					GlobalErrorHandler.logger.info('Creating barcode')
+					self.logger.info('Creating barcode')
 					try:
 						barcode_engine.generate_barcode(data=order_id, filename=barcode_filename)
 					except Exception as err:
 						error_type = 'barcode'
-						GlobalErrorHandler.error_handler.add_error_v(
+						self.error_handler.add_error_v(
 							error=f'Error ({error_type}): {err}', origin='Design - Barcode'
 						)
 					else:
-						GlobalErrorHandler.logger.success(
+						self.logger.success(
 							f'Creating barcode - Success at {datetime.now():%H:%M:%S}'
 						)
 
-					GlobalErrorHandler.logger.info('Creating Word Document')
+					self.logger.info('Creating Word Document')
 					# Create the Word document
 					try:
 						doc = DocxTemplate('./templates/ticket_template.docx')
@@ -144,11 +145,11 @@ class RabbitMQConsumer:
 						doc.save(file_path)
 					except Exception as err:
 						error_type = 'Word Document'
-						GlobalErrorHandler.error_handler.add_error_v(
+						self.error_handler.add_error_v(
 							error=f'Error ({error_type}): {err}', origin='Design - Word Document'
 						)
 					else:
-						GlobalErrorHandler.logger.success(
+						self.logger.success(
 							f'Creating Word Document - Success at {datetime.now():%H:%M:%S}'
 						)
 						try:
@@ -156,15 +157,13 @@ class RabbitMQConsumer:
 							os.startfile(file_path, 'print')
 						except Exception as err:
 							error_type = 'Printing'
-							GlobalErrorHandler.error_handler.add_error_v(
+							self.error_handler.add_error_v(
 								f'Error ({error_type}): {err}', origin='Design - Printing'
 							)
 						else:
-							GlobalErrorHandler.logger.success(
-								f'Printing - Success at {datetime.now():%H:%M:%S}'
-							)
+							self.logger.success(f'Printing - Success at {datetime.now():%H:%M:%S}')
 
-						GlobalErrorHandler.logger.info('Deleting barcode files')
+						self.logger.info('Deleting barcode files')
 
 						# Delete barcode files
 						try:
@@ -172,28 +171,28 @@ class RabbitMQConsumer:
 							# os.remove(f"./{order_id}.svg")
 						except Exception as err:
 							error_type = 'Deleting Barcode'
-							GlobalErrorHandler.error_handler.add_error_v(
+							self.error_handler.add_error_v(
 								error=f'Error ({error_type}): {err}',
 								origin='Design - Deleting Barcode',
 							)
 						else:
-							GlobalErrorHandler.logger.success(
+							self.logger.success(
 								f'Deleting Barcode - Success at {datetime.now():%H:%M:%S}'
 							)
 				# Gift Card Only
 				else:
-					GlobalErrorHandler.logger.info(f'Skipping Order #{order_id}: Gift Card Only')
+					self.logger.info(f'Skipping Order #{order_id}: Gift Card Only')
 			# Declined Payments
 			elif order.status_id == 4:
-				GlobalErrorHandler.logger.info(
+				self.logger.info(
 					f'Skipping Order #{order_id}: Order Refunded. Status: {order.payment_status}'
 				)
 			elif order.status_id == 6:
-				GlobalErrorHandler.logger.info(
+				self.logger.info(
 					f'Skipping Order #{order_id}: Payment Declined. Status: {order.payment_status}'
 				)
 			else:
-				GlobalErrorHandler.logger.info(
+				self.logger.info(
 					f'Skipping Order #{order_id}: Payment Status: {order.payment_status}'
 				)
 
@@ -201,14 +200,14 @@ class RabbitMQConsumer:
 
 		except Exception as err:
 			error_type = 'General Catch'
-			GlobalErrorHandler.error_handler.add_error_v(
+			self.error_handler.add_error_v(
 				error=f'Error ({error_type}): {err}', origin='General Catch'
 			)
 		else:
 			ch.basic_ack(delivery_tag=method.delivery_tag)
 		finally:
-			GlobalErrorHandler.logger.success(f'Processing Finished at {datetime.now():%H:%M:%S}\n')
-			GlobalErrorHandler.error_handler.print_errors()
+			self.logger.success(f'Processing Finished at {datetime.now():%H:%M:%S}\n')
+			self.error_handler.print_errors()
 
 	def start_consuming(self):
 		while True:
@@ -220,12 +219,12 @@ class RabbitMQConsumer:
 			except KeyboardInterrupt:
 				sys.exit(0)
 			except pika.exceptions.AMQPConnectionError:
-				GlobalErrorHandler.error_handler.add_error_v(
+				self.error_handler.add_error_v(
 					error='Connection lost. Reconnecting...', origin='Design Consumer'
 				)
 				sleep(5)  # Wait before attempting reconnection
 			except Exception as err:
-				GlobalErrorHandler.error_handler.add_error_v(error=err, origin='Design Consumer')
+				self.error_handler.add_error_v(error=err, origin='Design Consumer')
 				sleep(5)  # Wait before attempting reconnection
 
 
