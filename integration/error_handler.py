@@ -113,8 +113,8 @@ class ProcessOutErrorHandler:
 
 
 if __name__ == '__main__':
-	logger = GlobalErrorHandler.logger
-	error_handler = GlobalErrorHandler.error_handler
+	logger = Logger('test.log')
+	error_handler = ErrorHandler(logger)
 
 	error_handler.add_error_v('This is an error message')
 	error_handler.add_error_v('This is a warning message', type='WARNING')
