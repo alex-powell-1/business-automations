@@ -95,7 +95,16 @@ class GlobalErrorHandler:
 	"""General Logging for the entire application"""
 
 	logger = Logger(
-		f"//MAINSERVER/Share/logs/business_automations/log_{datetime.datetime.now().strftime("%m_%d_%y")}.log"
+		f"//MAINSERVER/Share/logs/business_automations/global/log_{datetime.datetime.now().strftime("%m_%d_%y")}.log"
+	)
+	error_handler = ErrorHandler(logger)
+
+
+class ScheduledTasksErrorHandler:
+	"""General Logging for the entire application"""
+
+	logger = Logger(
+		f"//MAINSERVER/Share/logs/business_automations/scheduled_tasks/log_{datetime.datetime.now().strftime("%m_%d_%y")}.log"
 	)
 	error_handler = ErrorHandler(logger)
 
@@ -104,7 +113,7 @@ class ProcessInErrorHandler:
 	"""Logging for the Process In Integration"""
 
 	logger = Logger(
-		f"//mainserver/Share/logs/integration/process_in/log_{datetime.datetime.now().strftime("%m_%d_%y")}.log"
+		f"//mainserver/Share/logs/business_automations/integration/process_in/log_{datetime.datetime.now().strftime("%m_%d_%y")}.log"
 	)
 	error_handler = ErrorHandler(logger)
 
@@ -113,7 +122,7 @@ class ProcessOutErrorHandler:
 	"""Logging for the Process Out Integration"""
 
 	logger = Logger(
-		f"//mainserver/Share/logs/integration/process_out/log_{datetime.datetime.now().strftime("%m_%d_%y")}.log"
+		f"//mainserver/Share/logs/business_automations/integration/process_out/log_{datetime.datetime.now().strftime("%m_%d_%y")}.log"
 	)
 	error_handler = ErrorHandler(logger)
 
@@ -122,7 +131,7 @@ class LeadFormErrorHandler:
 	"""Logging for the Design Lead Form"""
 
 	logger = Logger(
-		rf"//mainserver/Share/logs/flask/design/log_{datetime.datetime.now().strftime("%m_%d_%y")}.log"
+		rf"//mainserver/Share/logs/business_automations/design_leads/log_{datetime.datetime.now().strftime("%m_%d_%y")}.log"
 	)
 	error_handler = ErrorHandler(logger)
 

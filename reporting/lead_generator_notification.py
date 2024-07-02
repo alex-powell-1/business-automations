@@ -6,13 +6,14 @@ import customer_tools.customers
 from setup import create_log
 from setup import creds
 from setup.date_presets import *
-from setup.email_engine import send_html_email
+from setup.email_engine import Email
+from setup.error_handler import ScheduledTasksErrorHandler as error_handler
 
 
-def lead_notification_email(recipients, log_file):
+def lead_notification_email(recipients):
 	"""Renders Jinja2 template and sends HTML email to sales team with leads from yesterday
 	for follow-up"""
-	print(f'Lead Notification Email: Starting at {datetime.now():%H:%M:%S}', file=log_file)
+	error_handler.logger.info(f'Lead Notification Email: Starting at {datetime.now():%H:%M:%S}')
 	with open(creds.design_lead_log, encoding='utf-8') as lead_file:
 		# Dataframe for Log
 		df = pandas.read_csv(lead_file)
@@ -26,12 +27,10 @@ def lead_notification_email(recipients, log_file):
 				yesterday_entries.append(x)
 
 		if len(yesterday_entries) < 1:
-			print('No entries to send.', file=log_file)
+			error_handler.logger.info('No entries to send.')
 		else:
-			print(
-				f'{len(yesterday_entries)} leads from yesterday. Constructing Email', file=log_file
-			)
-			with open('./reporting/templates/follow_up.html', 'r') as template_file:
+			error_handler.logger.info(f'{len(yesterday_entries)} leads from yesterday. Constructing Email')
+			with open('./templates/design_lead/follow_up.html', 'r') as template_file:
 				template_str = template_file.read()
 
 			jinja_template = Template(template_str)
@@ -47,7 +46,7 @@ def lead_notification_email(recipients, log_file):
 			email_content = jinja_template.render(email_data)
 
 			try:
-				send_html_email(
+				Email(
 					from_name=creds.company_name,
 					from_address=creds.sales_email,
 					from_pw=creds.sales_password,
@@ -60,20 +59,20 @@ def lead_notification_email(recipients, log_file):
 				)
 
 			except Exception as err:
-				print('Error: Sending Email', file=log_file)
-				print(err, file=log_file)
+				error_handler.error_handler.add_error_v(error=err, origin='lead_notification_email')
 
 			else:
-				print('Email Sent.', file=log_file)
+				error_handler.logger.success('Email Sent.')
 
-	print(f'Lead Notification Email: Finished at {datetime.now():%H:%M:%S}', file=log_file)
-	print('-----------------------', file=log_file)
+	error_handler.logger.info(f'Lead Notification Email: Finished at {datetime.now():%H:%M:%S}')
 
 
-def create_new_customers(log_file):
+def create_new_customers():
 	"""Send yesterday's entry's to Counterpoint as new customer_tools for further marketing.
 	Will skip customer if email or phone is already in our system."""
-	print('Create New Customers: Starting', file=log_file)
+
+	error_handler.logger.info('Create New Customers: Starting')
+
 	with open(creds.design_lead_log, encoding='utf-8') as lead_file:
 		# Dataframe for Log
 		df = pandas.read_csv(lead_file)
@@ -98,9 +97,7 @@ def create_new_customers(log_file):
 				city = x['city']
 				state = x['state']
 				zip_code = x['zip_code']
-				if not customer_tools.customers.is_customer(
-					email_address=x['email'], phone_number=x['phone']
-				):
+				if not customer_tools.customers.is_customer(email_address=x['email'], phone_number=x['phone']):
 					# Add new customer via NCR Counterpoint API
 					customer_number = customer_tools.customers.add_new_customer(
 						first_name=first_name,
@@ -143,17 +140,12 @@ def create_new_customers(log_file):
 						],
 					)
 					create_log.write_log(df, creds.new_customer_log)
-					print(
-						f'Created customer: {customer_number}: {first_name} {last_name}',
-						file=log_file,
-					)
+					error_handler.logger.info(f'Created customer: {customer_number}: {first_name} {last_name}')
 				else:
-					print(
-						f'{first_name} {last_name} is already a customer. Skipping customer creation.',
-						file=log_file,
+					error_handler.logger.info(
+						f'{first_name} {last_name} is already a customer. Skipping customer creation.'
 					)
 		else:
-			print('No new customer_tools to add', file=log_file)
+			error_handler.logger.info('No new customer_tools to add')
 
-	print(f'Create New Customers: Finished at {datetime.now():%H:%M:%S}', file=log_file)
-	print('-----------------------', file=log_file)
+	error_handler.logger.info(f'Create New Customers: Finished at {datetime.now():%H:%M:%S}')

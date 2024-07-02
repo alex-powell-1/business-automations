@@ -7,6 +7,7 @@ from setup import creds
 from setup import date_presets
 from setup.create_log import create_customer_log
 from setup.query_engine import QueryEngine
+from setup.error_handler import ScheduledTasksErrorHandler as error_handler
 
 db = QueryEngine()
 
@@ -97,11 +98,7 @@ class Customer:
 			payload = {
 				'email': self.email_1,
 				'groups': [creds.retail_all_mailing_list],
-				'fields': {
-					'name': self.first_name,
-					'last_name': self.last_name,
-					'phone': self.phone_1,
-				},
+				'fields': {'name': self.first_name, 'last_name': self.last_name, 'phone': self.phone_1},
 			}
 
 		response = requests.post(url, headers=headers, json=payload)
@@ -150,7 +147,7 @@ class Customer:
 			tier = None
 		return tier
 
-	def set_pricing_tier(self, target_tier, log_file):
+	def set_pricing_tier(self, target_tier):
 		current_tier = self.get_pricing_tier()
 		# Set New Pricing Level
 		query = f"""
@@ -158,11 +155,13 @@ class Customer:
                 SET PROF_ALPHA_1 = {int(target_tier)}
                 WHERE CUST_NO = '{self.number}'
                 """
-		db.query_db(query, commit=True)
-		print(
-			f'{self.name}({self.number}) pricing tier updated from {current_tier} to {target_tier}',
-			file=log_file,
-		)
+		response = db.query_db(query, commit=True)
+		if response['code'] == 200:
+			error_handler.logger.success(
+				f'{self.name}({self.number}) pricing tier updated from {current_tier} to {target_tier}'
+			)
+		else:
+			error_handler.error_handler.add_error_v(error=response['message'], origin='set_pricing_tier')
 
 
 def export_retail_customer_csv(log_file):
@@ -210,17 +209,7 @@ def export_retail_customer_csv(log_file):
 				# Change nulls to 0. Change Negative Numbers to 0
 				point_balance = int(x[6]) if x[6] is not None or int(x[6]) >= 0 else 0
 
-				w.writerow(
-					[
-						customer_number,
-						first_name,
-						last_name,
-						email_address,
-						phone,
-						birth_month,
-						point_balance,
-					]
-				)
+				w.writerow([customer_number, first_name, last_name, email_address, phone, birth_month, point_balance])
 
 			export_file.close()
 	finally:
@@ -245,13 +234,7 @@ def export_wholesale_customer_csv(log_file):
 		if response is None:
 			print('No Wholesale Data', file=log_file)
 		else:
-			header_list = [
-				'Customer Number',
-				'First Name',
-				'Last Name',
-				'Email Address',
-				'Phone Number',
-			]
+			header_list = ['Customer Number', 'First Name', 'Last Name', 'Email Address', 'Phone Number']
 
 			open(creds.wholesale_customer_backup, 'w')
 			export_file = open(creds.wholesale_customer_backup, 'a')
@@ -379,15 +362,10 @@ def lookup_customer(email_address, phone_number):
 
 def is_customer(email_address, phone_number):
 	"""Checks to see if an email or phone number belongs to a current customer"""
-	return (
-		lookup_customer_by_email(email_address) is not None
-		or lookup_customer_by_phone(phone_number) is not None
-	)
+	return lookup_customer_by_email(email_address) is not None or lookup_customer_by_phone(phone_number) is not None
 
 
-def add_new_customer(
-	first_name, last_name, phone_number, email_address, street_address, city, state, zip_code
-):
+def add_new_customer(first_name, last_name, phone_number, email_address, street_address, city, state, zip_code):
 	states = {
 		'Alabama': 'AL',
 		'Alaska': 'AK',
@@ -749,14 +727,14 @@ def set_negative_loyalty_points_to_zero(log_file):
 	print('-----------------------', file=log_file)
 
 
-def set_contact_1(log_file):
+def set_contact_1():
 	"""Takes first name and last name and updates contact 1 field in counterpoint"""
-	print(f'Set Contact 1: Starting at {datetime.now():%H:%M:%S}', file=log_file)
+	error_handler.logger.info(f'Set Contact 1: Starting at {datetime.now():%H:%M:%S}')
 	target_customers = get_customers_with_no_contact_1()
 	if target_customers is None:
-		print('No customer_tools to set at this time.', file=log_file)
+		error_handler.logger.info('No customer_tools to set at this time.')
 	else:
-		print(f'{len(target_customers)} Customers to Update', file=log_file)
+		error_handler.logger.info(f'{len(target_customers)} Customers to Update')
 		for x in target_customers:
 			query = f"""
             SELECT FST_NAM, LST_NAM
@@ -780,19 +758,15 @@ def set_contact_1(log_file):
                     SET CONTCT_1 = '{full_name}'
                     WHERE CUST_NO = '{x}'
                     """
-					try:
-						db.query_db(query, commit=True)
-					except Exception as err:
-						print(f'Error: {x} - {err}', file=log_file)
-					else:
-						print(
-							f"Customer {x}: "
-							f"Contact 1 updated to: {full_name.replace("''", "'")}",
-							file=log_file,
+					response = db.query_db(query, commit=True)
+					if response['code'] == 200:
+						error_handler.logger.info(
+							f"Customer {x}: " f"Contact 1 updated to: {full_name.replace("''", "'")}"
 						)
+					else:
+						error_handler.error_handler.add_error_v(error=response['message'], origin='set_contact_1')
 
-	print(f'Set Contact 1: Finished at {datetime.now():%H:%M:%S}', file=log_file)
-	print('-----------------------', file=log_file)
+	error_handler.logger.info(f'Set Contact 1: Finished at {datetime.now():%H:%M:%S}')
 
 
 if __name__ == '__main__':

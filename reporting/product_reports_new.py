@@ -74,14 +74,7 @@ def revenue(start_date, stop_date):
 			extended_total = float(sales - (valid_returns_amt + nonvalid_returns_amt))
 
 			result.update(
-				{
-					store_name: {
-						'revenue': extended_total,
-						'tickets': ticket_count,
-						'returns': returns_qty,
-						'cost': cost,
-					}
-				}
+				{store_name: {'revenue': extended_total, 'tickets': ticket_count, 'returns': returns_qty, 'cost': cost}}
 			)
 		return result
 
@@ -493,11 +486,7 @@ def get_missing_image_list():
 				if item_number not in all_current_photos:
 					# Add item objects to either list
 					missing_image_list_child.append(item)
-				if (
-					binding_key != ''
-					and binding_key not in all_current_photos
-					and binding_key not in check_list
-				):
+				if binding_key != '' and binding_key not in all_current_photos and binding_key not in check_list:
 					missing_image_list_parent.append(item)
 					check_list.append(binding_key)
 				else:
@@ -509,9 +498,7 @@ def get_missing_image_list():
 		return '\n<p>No E-Comm Items</p>'
 
 	# Section Header
-	contents = (
-		f'\n<p><u>Total products with no image</u>: <b>{len(missing_image_list_child)}</b></p>'
-	)
+	contents = f'\n<p><u>Total products with no image</u>: <b>{len(missing_image_list_child)}</b></p>'
 
 	# Get Missing Child Images
 	if len(missing_image_list_child) > 0:
@@ -551,9 +538,7 @@ def get_missing_image_list():
 					f'{item.variant_name}, Current Stock: {item.buffered_quantity_available}</p>'
 				)
 			else:
-				contents += (
-					f'\n<p>{item.binding_key}, <a href="{item.item_url}">{item.web_title}</a></p>'
-				)
+				contents += f'\n<p>{item.binding_key}, <a href="{item.item_url}">{item.web_title}</a></p>'
 
 		return contents
 	else:
@@ -880,18 +865,8 @@ def report_generator(
 			report += section_header
 			for x in range(years_to_show):
 				report += revenue_sales_report(
-					start_date=str(
-						(
-							datetime.strptime(last_month_start, '%Y-%m-%d')
-							+ relativedelta(years=(x * -1))
-						)
-					),
-					stop_date=str(
-						(
-							datetime.strptime(last_month_end, '%Y-%m-%d')
-							+ relativedelta(years=(x * -1))
-						)
-					),
+					start_date=str((datetime.strptime(last_month_start, '%Y-%m-%d') + relativedelta(years=(x * -1)))),
+					stop_date=str((datetime.strptime(last_month_end, '%Y-%m-%d') + relativedelta(years=(x * -1)))),
 					split=False,
 					short=True,
 				)
@@ -905,18 +880,12 @@ def report_generator(
                 split=False, anna_mode=True)}"
 
 			report += get_total_tickets(
-				start_day=str(
-					(datetime.strptime(last_week_start, '%Y-%m-%d') + relativedelta(weeks=(x * -1)))
-				),
-				end_day=str(
-					(datetime.strptime(last_week_end, '%Y-%m-%d') + relativedelta(weeks=(x * -1)))
-				),
+				start_day=str((datetime.strptime(last_week_start, '%Y-%m-%d') + relativedelta(weeks=(x * -1)))),
+				end_day=str((datetime.strptime(last_week_end, '%Y-%m-%d') + relativedelta(weeks=(x * -1)))),
 			)
 
 		report += '\n<h4><strong>Last Month Total</strong></h4>'
-		report += (
-			f'\n{revenue_sales_report(last_month_start, last_month_end, split=False, short=True)}'
-		)
+		report += f'\n{revenue_sales_report(last_month_start, last_month_end, split=False, short=True)}'
 
 		# Add Month-to-Date Revenue Data
 		report += '<h4><strong>Month to Date</strong></h4>'
@@ -990,9 +959,7 @@ def report_generator(
 			f'\n<h5>{reformat_time(last_week_start)} - {reformat_time(last_week_end)}</h5>'
 		)
 		report += section_header
-		report += top_customer_report(
-			last_week_start, last_week_end, category='WHOLESALE', number=10
-		)
+		report += top_customer_report(last_week_start, last_week_end, category='WHOLESALE', number=10)
 
 	if last_week_report:
 		section_header = (
@@ -1001,9 +968,7 @@ def report_generator(
 		)
 		report += section_header
 		forecast_top_10_by_sales = create_top_items_report(last_week_start, last_week_end, 'sales')
-		forecast_top_10_by_quantity = create_top_items_report(
-			last_week_start, last_week_end, 'quantity'
-		)
+		forecast_top_10_by_quantity = create_top_items_report(last_week_start, last_week_end, 'quantity')
 		report += forecast_top_10_by_sales
 		report += forecast_top_10_by_quantity
 
@@ -1024,12 +989,8 @@ def report_generator(
 			f'\n<h5>{reformat_time(month_start_last_year)} - {reformat_time(one_year_ago)}</h5>'
 		)
 		report += section_header
-		forecast_top_10_by_sales = create_top_items_report(
-			month_start_last_year, one_year_ago, 'sales'
-		)
-		forecast_top_10_by_quantity = create_top_items_report(
-			month_start_last_year, one_year_ago, 'quantity'
-		)
+		forecast_top_10_by_sales = create_top_items_report(month_start_last_year, one_year_ago, 'sales')
+		forecast_top_10_by_quantity = create_top_items_report(month_start_last_year, one_year_ago, 'quantity')
 		report += forecast_top_10_by_sales
 		report += forecast_top_10_by_quantity
 
@@ -1039,12 +1000,8 @@ def report_generator(
 			f'\n<h5>{reformat_time(one_year_ago)} - {reformat_time(last_year_forecast)}</h5>'
 		)
 		report += section_header
-		forecast_top_10_by_sales = create_top_items_report(
-			one_year_ago, last_year_forecast, 'sales'
-		)
-		forecast_top_10_by_quantity = create_top_items_report(
-			one_year_ago, last_year_forecast, 'quantity'
-		)
+		forecast_top_10_by_sales = create_top_items_report(one_year_ago, last_year_forecast, 'sales')
+		forecast_top_10_by_quantity = create_top_items_report(one_year_ago, last_year_forecast, 'quantity')
 		report += forecast_top_10_by_sales
 		report += forecast_top_10_by_quantity
 
@@ -1112,7 +1069,7 @@ def administrative_report(recipients, log_file):
 		missing_descriptions_report=True,
 	)
 	html_contents = boiler_plate + css + body_start + report_data + body_end
-	email_engine.send_html_email(
+	email_engine.Email(
 		from_name=creds.company_name,
 		from_address=creds.gmail_alex_user,
 		from_pw=creds.gmail_alex_pw,
@@ -1132,7 +1089,7 @@ def revenue_report(recipients, log_file):
 	subject = f'Revenue Report - {today:%x}'
 	report_data = report_generator(revenue=True, cogs_report=True, title='Revenue Report')
 	html_contents = boiler_plate + css + body_start + report_data + body_end
-	email_engine.send_html_email(
+	email_engine.Email(
 		from_name=creds.company_name,
 		from_address=creds.gmail_alex_user,
 		from_pw=creds.gmail_alex_pw,

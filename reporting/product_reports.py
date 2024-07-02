@@ -7,6 +7,7 @@ from setup import email_engine
 from setup.admin_report_html import boiler_plate, css, body_start, body_end
 from setup.date_presets import *
 from setup.query_engine import QueryEngine
+from setup.error_handler import ScheduledTasksErrorHandler
 
 db = QueryEngine()
 
@@ -444,11 +445,7 @@ def get_missing_image_list():
 				if item_number not in all_current_photos:
 					# Add item objects to either list
 					missing_image_list_child.append(item)
-				if (
-					binding_key != ''
-					and binding_key not in all_current_photos
-					and binding_key not in check_list
-				):
+				if binding_key != '' and binding_key not in all_current_photos and binding_key not in check_list:
 					missing_image_list_parent.append(item)
 					check_list.append(binding_key)
 				else:
@@ -460,9 +457,7 @@ def get_missing_image_list():
 		return '\n<p>No E-Comm Items</p>'
 
 	# Section Header
-	contents = (
-		f'\n<p><u>Total products with no image</u>: <b>{len(missing_image_list_child)}</b></p>'
-	)
+	contents = f'\n<p><u>Total products with no image</u>: <b>{len(missing_image_list_child)}</b></p>'
 
 	# Get Missing Child Images
 	if len(missing_image_list_child) > 0:
@@ -502,9 +497,7 @@ def get_missing_image_list():
 					f'{item.variant_name}, Current Stock: {item.buffered_quantity_available}</p>'
 				)
 			else:
-				contents += (
-					f'\n<p>{item.binding_key}, <a href="{item.item_url}">{item.web_title}</a></p>'
-				)
+				contents += f'\n<p>{item.binding_key}, <a href="{item.item_url}">{item.web_title}</a></p>'
 
 		return contents
 	else:
@@ -799,17 +792,13 @@ def report_generator(
 		try:
 			if day_of_week > 1:
 				report += "\n<h4><strong>Yesterday's Total Revenue</strong></h4>"
-				report += revenue_sales_report(
-					start_date=yesterday, stop_date=yesterday, split=False, anna_mode=True
-				)
+				report += revenue_sales_report(start_date=yesterday, stop_date=yesterday, split=False, anna_mode=True)
 
 			# For Monday. This will send Saturday's data instead of closed day, Sunday.
 			elif day_of_week == 1:
 				saturday = yesterday + relativedelta(days=-1)
 				report += "\n<h4><strong>Saturday's Total Revenue</strong></h4>"
-				report += revenue_sales_report(
-					start_date=saturday, stop_date=saturday, split=False, anna_mode=True
-				)
+				report += revenue_sales_report(start_date=saturday, stop_date=saturday, split=False, anna_mode=True)
 		except Exception as err:
 			report += f'<p>Error! Message: {err}</p>'
 
@@ -854,9 +843,7 @@ def report_generator(
 				# Create Dynamic Header
 				report += f'<h5>{dynamic_month_start:%b %y}</h5>'
 				# Get Data from SQL
-				report += (
-					f'\n{revenue_sales_report(dynamic_month_start, dynamic_today, split=True)} \n'
-				)
+				report += f'\n{revenue_sales_report(dynamic_month_start, dynamic_today, split=True)} \n'
 
 		except Exception as err:
 			report += f'<p>Error! Message: {err}</p>'
@@ -929,9 +916,7 @@ def report_generator(
 				f'\n<h5>{last_week_start:{date_format}} - {last_week_start:{last_week_end}}</h5>'
 			)
 			report += section_header
-			report += top_customer_report(
-				last_week_start, last_week_end, category='WHOLESALE', number=10
-			)
+			report += top_customer_report(last_week_start, last_week_end, category='WHOLESALE', number=10)
 		except Exception as err:
 			report += f'<p>Error! Message: {err}</p>'
 
@@ -942,12 +927,8 @@ def report_generator(
 		)
 		report += section_header
 		try:
-			forecast_top_10_by_sales = create_top_items_report(
-				last_week_start, last_week_end, 'sales'
-			)
-			forecast_top_10_by_quantity = create_top_items_report(
-				last_week_start, last_week_end, 'quantity'
-			)
+			forecast_top_10_by_sales = create_top_items_report(last_week_start, last_week_end, 'sales')
+			forecast_top_10_by_quantity = create_top_items_report(last_week_start, last_week_end, 'quantity')
 			report += forecast_top_10_by_sales
 			report += forecast_top_10_by_quantity
 
@@ -976,12 +957,8 @@ def report_generator(
 		)
 		report += section_header
 		try:
-			forecast_top_10_by_sales = create_top_items_report(
-				month_start_last_year, one_year_ago, 'sales'
-			)
-			forecast_top_10_by_quantity = create_top_items_report(
-				month_start_last_year, one_year_ago, 'quantity'
-			)
+			forecast_top_10_by_sales = create_top_items_report(month_start_last_year, one_year_ago, 'sales')
+			forecast_top_10_by_quantity = create_top_items_report(month_start_last_year, one_year_ago, 'quantity')
 			report += forecast_top_10_by_sales
 			report += forecast_top_10_by_quantity
 
@@ -995,12 +972,8 @@ def report_generator(
 		)
 		report += section_header
 		try:
-			forecast_top_10_by_sales = create_top_items_report(
-				one_year_ago, last_year_forecast, 'sales'
-			)
-			forecast_top_10_by_quantity = create_top_items_report(
-				one_year_ago, last_year_forecast, 'quantity'
-			)
+			forecast_top_10_by_sales = create_top_items_report(one_year_ago, last_year_forecast, 'sales')
+			forecast_top_10_by_quantity = create_top_items_report(one_year_ago, last_year_forecast, 'quantity')
 			report += forecast_top_10_by_sales
 			report += forecast_top_10_by_quantity
 
@@ -1038,11 +1011,7 @@ def report_generator(
 					last_week_start, last_week_end, number_of_items=10, mode='sales', category=x[0]
 				)
 				report += create_top_items_report(
-					last_week_start,
-					last_week_end,
-					number_of_items=10,
-					mode='quantity',
-					category=x[0],
+					last_week_start, last_week_end, number_of_items=10, mode='quantity', category=x[0]
 				)
 				counter += 1
 
@@ -1062,9 +1031,10 @@ def report_generator(
 	return report
 
 
-def administrative_report(recipients, log_file):
-	print(f'Generating Admin Report Data - Starting at {datetime.now():%H:%M:%S}', file=log_file)
+def administrative_report(recipients):
+	ScheduledTasksErrorHandler.logger.info(f'Generating Admin Report Data - Starting at {datetime.now():%H:%M:%S}')
 	subject = f'Administrative Report - {today:%x}'
+
 	report_data = report_generator(
 		title='Administrative Report',
 		revenue=True,
@@ -1085,25 +1055,21 @@ def administrative_report(recipients, log_file):
 		missing_descriptions_report=True,
 	)
 	html_contents = boiler_plate + css + body_start + report_data + body_end
-	try:
-		email_engine.send_html_email(
-			from_name=creds.company_name,
-			from_address=creds.sales_email,
-			from_pw=creds.sales_password,
-			recipients_list=recipients,
-			subject=subject,
-			content=html_contents,
-			logo=True,
-			mode='related',
-			product_photo=None,
-			staff=True,
-		)
-	except Exception as err:
-		error_type = 'Sending Email'
-		print(f'Error({error_type}): {err})', file=log_file)
 
-	print(f'Administrative Report: Completed at {datetime.now():%H:%M:%S}', file=log_file)
-	print('-----------------------', file=log_file)
+	email_engine.Email(
+		from_name=creds.company_name,
+		from_address=creds.sales_email,
+		from_pw=creds.sales_password,
+		recipients_list=recipients,
+		subject=subject,
+		content=html_contents,
+		logo=True,
+		mode='related',
+		product_photo=None,
+		staff=True,
+	)
+
+	ScheduledTasksErrorHandler.logger.info(f'Administrative Report: Completed at {datetime.now():%H:%M:%S}')
 
 
 def revenue_report(recipients, log_file):
@@ -1112,7 +1078,7 @@ def revenue_report(recipients, log_file):
 	report_data = report_generator(revenue=True, cogs_report=True, title='Revenue Report')
 	html_contents = boiler_plate + css + body_start + report_data + body_end
 	try:
-		email_engine.send_html_email(
+		email_engine.Email(
 			from_name=creds.company_name,
 			from_address=creds.sales_email,
 			from_pw=creds.sales_password,

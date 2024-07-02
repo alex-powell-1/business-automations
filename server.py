@@ -156,7 +156,7 @@ def newsletter_signup():
 
 		email_data = {
 			'title': f'Welcome to {creds.company_name}',
-			'greeting': f'Hi!',
+			'greeting': 'Hi!',
 			'service': creds.service,
 			'coupon': 'NEW10',
 			'company': creds.company_name,
@@ -171,7 +171,7 @@ def newsletter_signup():
 		email_content = jinja_template.render(email_data)
 
 		try:
-			email_engine.send_html_email(
+			email_engine.Email(
 				from_name=creds.company_name,
 				from_address=creds.gmail_user,
 				from_pw=creds.gmail_pw,

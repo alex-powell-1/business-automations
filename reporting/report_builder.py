@@ -5,10 +5,11 @@ from jinja2 import Template
 from product_tools import products
 from reporting import product_reports
 from setup import creds, email_engine
+from setup.error_handler import ScheduledTasksErrorHandler
 
 
-def item_report(recipients, log_file):
-	print(f'Items Report: Starting at {datetime.now():%H:%M:%S}', file=log_file)
+def item_report(recipients):
+	ScheduledTasksErrorHandler.logger.info(f'Items Report: Starting at {datetime.now():%H:%M:%S}')
 
 	with open('./reporting/templates/item_report.html', 'r') as file:
 		template_str = file.read()
@@ -27,7 +28,7 @@ def item_report(recipients, log_file):
 
 	email_content = jinja_template.render(data)
 
-	email_engine.send_html_email(
+	email_engine.Email(
 		from_name=creds.company_name,
 		from_address=creds.sales_email,
 		from_pw=creds.sales_password,
@@ -39,5 +40,5 @@ def item_report(recipients, log_file):
 		logo=True,
 		staff=True,
 	)
-	print(f'Items Report: Completed at {datetime.now():%H:%M:%S}', file=log_file)
-	print('-----------------------', file=log_file)
+
+	ScheduledTasksErrorHandler.logger.info(f'Items Report: Completed at {datetime.now():%H:%M:%S}')

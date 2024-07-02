@@ -12,7 +12,7 @@ from big_commerce.coupons import generate_random_code, bc_create_coupon, cp_crea
 import customer_tools.customers
 from product_tools.products import Product
 from setup import creds
-from setup.email_engine import send_html_email
+from setup.email_engine import Email
 
 from setup import barcode_engine as barcode_engine
 
@@ -57,7 +57,7 @@ def send_email(greeting, email, item_number, coupon_code, photo):
 
 	email_content = jinja_template.render(email_data)
 
-	send_html_email(
+	Email(
 		from_name=creds.company_name,
 		from_address=creds.sales_email,
 		from_pw=creds.sales_password,
