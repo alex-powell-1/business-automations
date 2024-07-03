@@ -1674,13 +1674,13 @@ class OrderAPI(DocumentAPI):
 		if self.is_refund(bc_order):
 			query = f"""
             UPDATE PS_DOC_HDR
-            SET RET_LIN_TOT = {-(float(bc_order["subtotal_ex_tax"] or 0))}
+            SET RET_LIN_TOT = {-(float(bc_order["subtotal_ex_tax"] or 0) - float(self.total_discount_amount or 0))}
             WHERE DOC_ID = '{doc_id}'
             """
 		else:
 			query = f"""
             UPDATE PS_DOC_HDR
-            SET SAL_LIN_TOT = {float(bc_order["subtotal_ex_tax"] or 0)}
+            SET SAL_LIN_TOT = {float(bc_order["subtotal_ex_tax"] or 0) - float(self.total_discount_amount or 0)}
             WHERE DOC_ID = '{doc_id}'
             """
 
