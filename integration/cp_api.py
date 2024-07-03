@@ -1774,7 +1774,6 @@ class OrderAPI(DocumentAPI):
 				set_value_lin('QTY_ENTD', 0)
 				set_value_lin('QTY_TO_REL', get_value_lin('QTY_SOLD'))
 				set_value_lin('QTY_TO_LEAVE', 0)
-				set_value_lin('HAS_ENTD_LINS', 'N')
 
 		self.cleanup(doc_id)
 
