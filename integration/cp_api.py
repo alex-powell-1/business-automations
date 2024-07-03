@@ -146,11 +146,7 @@ class OrderAPI(DocumentAPI):
 					pass
 
 				try:
-					qty = (
-						float(product['quantity_refunded'])
-						if self.is_pr()
-						else float(product['quantity'])
-					)
+					qty = float(product['quantity_refunded']) if self.is_pr() else float(product['quantity'])
 				except:
 					qty = float(product['quantity'])
 
@@ -205,11 +201,7 @@ class OrderAPI(DocumentAPI):
 		for gift_card in bc_order['transactions']['data']:
 			if gift_card['method'] == 'gift_certificate':
 				_gift_card = {
-					'AMT': (
-						(float(gift_card['amount']))
-						if self.is_refund()
-						else float(gift_card['amount'])
-					),
+					'AMT': ((float(gift_card['amount'])) if self.is_refund() else float(gift_card['amount'])),
 					'PAY_COD': 'GC',
 					'FINAL_PMT': 'N',
 					'CARD_NO': gift_card['gift_certificate']['code'],
@@ -310,9 +302,7 @@ class OrderAPI(DocumentAPI):
 			amt = float(line_item['DSC_AMT'])
 
 			if amt > 0:
-				self.write_one_doc_disc(
-					doc_id, disc_seq_no=self.discount_seq_no, disc_amt=amt, lin_seq_no=i
-				)
+				self.write_one_doc_disc(doc_id, disc_seq_no=self.discount_seq_no, disc_amt=amt, lin_seq_no=i)
 
 				self.discount_seq_no += 1
 
@@ -368,9 +358,7 @@ class OrderAPI(DocumentAPI):
 		return points
 
 	# Write entry into PS_DOC_HDR_LOY_PGM
-	def write_ps_doc_hdr_loy_pgm(
-		self, doc_id, cust_no, points_earned: float, points_redeemed: float
-	):
+	def write_ps_doc_hdr_loy_pgm(self, doc_id, cust_no, points_earned: float, points_redeemed: float):
 		query = f"""
         SELECT LOY_PTS_BAL FROM {creds.ar_cust_table}
         WHERE CUST_NO = '{cust_no}'
@@ -462,6 +450,7 @@ class OrderAPI(DocumentAPI):
 				'TKT_TYP': 'T',
 				'DOC_TYP': 'O',
 				'USR_ID': 'POS',
+				'HAS_ENTD_LINS': 'N',
 				'TAX_COD': 'EXEMPT',
 				'NORM_TAX_COD': 'EXEMPT',
 				'SHIP_VIA_COD': ('CPC_FLAT' if is_refund else ('T' if is_shipping else 'C')),
@@ -491,9 +480,7 @@ class OrderAPI(DocumentAPI):
 		if is_refund:
 			payload['PS_DOC_HDR']['TAX_OVRD_REAS'] = 'Y'
 
-		self.sub_tot = sum(
-			[float(line_item['EXT_PRC']) for line_item in payload['PS_DOC_HDR']['PS_DOC_LIN']]
-		)
+		self.sub_tot = sum([float(line_item['EXT_PRC']) for line_item in payload['PS_DOC_HDR']['PS_DOC_LIN']])
 
 		return payload
 
@@ -667,11 +654,7 @@ class OrderAPI(DocumentAPI):
 	# cust_no_override is used to override the customer number for the order when posted to Counterpoint.
 	# Session can be provided to use the same http session for all requests.
 	@staticmethod
-	def post_order(
-		order_id: str | int,
-		cust_no_override: str = None,
-		session: requests.Session = requests.Session(),
-	):
+	def post_order(order_id: str | int, cust_no_override: str = None, session: requests.Session = requests.Session()):
 		oapi = OrderAPI(session=session)
 
 		bc_order = OrderAPI.get_order(order_id)
@@ -815,10 +798,7 @@ class OrderAPI(DocumentAPI):
 				refund_index = self.get_refund_index(
 					tkt_num=payload['PS_DOC_HDR']['TKT_NUM'], suffix=PARTIAL_REFUND_SUFFIX
 				)
-				self.write_ticket_no(
-					doc_id,
-					f"{payload["PS_DOC_HDR"]["TKT_NUM"]}{PARTIAL_REFUND_SUFFIX}{refund_index}",
-				)
+				self.write_ticket_no(doc_id, f"{payload["PS_DOC_HDR"]["TKT_NUM"]}{PARTIAL_REFUND_SUFFIX}{refund_index}")
 		except:
 			pass
 
@@ -864,12 +844,8 @@ class OrderAPI(DocumentAPI):
 		try:
 			if payload['PS_DOC_HDR']['TKT_NUM'] and payload['PS_DOC_HDR']['TKT_NUM'] != '':
 				if self.is_refund(bc_order):
-					refund_index = self.get_refund_index(
-						tkt_num=payload['PS_DOC_HDR']['TKT_NUM'], suffix=REFUND_SUFFIX
-					)
-					self.write_ticket_no(
-						doc_id, f"{payload["PS_DOC_HDR"]["TKT_NUM"]}{REFUND_SUFFIX}{refund_index}"
-					)
+					refund_index = self.get_refund_index(tkt_num=payload['PS_DOC_HDR']['TKT_NUM'], suffix=REFUND_SUFFIX)
+					self.write_ticket_no(doc_id, f"{payload["PS_DOC_HDR"]["TKT_NUM"]}{REFUND_SUFFIX}{refund_index}")
 				else:
 					self.write_ticket_no(doc_id, f"{payload["PS_DOC_HDR"]["TKT_NUM"]}")
 		except:
@@ -1054,16 +1030,13 @@ class OrderAPI(DocumentAPI):
 					if self.is_pr():
 						refund_index = int(
 							self.get_refund_index(
-								tkt_num=payload['PS_DOC_HDR']['TKT_NUM'],
-								suffix=PARTIAL_REFUND_SUFFIX,
+								tkt_num=payload['PS_DOC_HDR']['TKT_NUM'], suffix=PARTIAL_REFUND_SUFFIX
 							)
 						)
 						tkt_no = f"{payload['PS_DOC_HDR']['TKT_NUM']}{PARTIAL_REFUND_SUFFIX}{refund_index}"
 					else:
 						refund_index = int(
-							self.get_refund_index(
-								tkt_num=payload['PS_DOC_HDR']['TKT_NUM'], suffix=REFUND_SUFFIX
-							)
+							self.get_refund_index(tkt_num=payload['PS_DOC_HDR']['TKT_NUM'], suffix=REFUND_SUFFIX)
 						)
 						tkt_no = f"{payload['PS_DOC_HDR']['TKT_NUM']}{REFUND_SUFFIX}{refund_index}"
 
@@ -1285,9 +1258,7 @@ class OrderAPI(DocumentAPI):
 					self.error_handler.add_error_v(r['message'])
 
 			total = get_total()
-			total = (
-				total + abs(self.get_shipping_cost(bc_order)) - abs(self.total_discount_amount or 0)
-			)
+			total = total + abs(self.get_shipping_cost(bc_order)) - abs(self.total_discount_amount or 0)
 
 			big_payment = get_big_payment()
 
@@ -1319,18 +1290,12 @@ class OrderAPI(DocumentAPI):
 
 				if self.is_pr():
 					refund_index = int(
-						self.get_refund_index(
-							tkt_num=payload['PS_DOC_HDR']['TKT_NUM'], suffix=PARTIAL_REFUND_SUFFIX
-						)
+						self.get_refund_index(tkt_num=payload['PS_DOC_HDR']['TKT_NUM'], suffix=PARTIAL_REFUND_SUFFIX)
 					)
-					tkt_no = (
-						f"{payload['PS_DOC_HDR']['TKT_NUM']}{PARTIAL_REFUND_SUFFIX}{refund_index}"
-					)
+					tkt_no = f"{payload['PS_DOC_HDR']['TKT_NUM']}{PARTIAL_REFUND_SUFFIX}{refund_index}"
 				else:
 					refund_index = int(
-						self.get_refund_index(
-							tkt_num=payload['PS_DOC_HDR']['TKT_NUM'], suffix=REFUND_SUFFIX
-						)
+						self.get_refund_index(tkt_num=payload['PS_DOC_HDR']['TKT_NUM'], suffix=REFUND_SUFFIX)
 					)
 					tkt_no = f"{payload['PS_DOC_HDR']['TKT_NUM']}{REFUND_SUFFIX}{refund_index}"
 
@@ -1443,9 +1408,7 @@ class OrderAPI(DocumentAPI):
 			try:
 				return float(response[0][0]) if response else None
 			except Exception as e:
-				self.error_handler.add_error_v(
-					f'[{table}] Line {index} {column} could not be retrieved'
-				)
+				self.error_handler.add_error_v(f'[{table}] Line {index} {column} could not be retrieved')
 				raise e
 
 		def set_value(table, column, value, index):
@@ -1460,22 +1423,14 @@ class OrderAPI(DocumentAPI):
 			if r['code'] == 200:
 				self.logger.success(f'[{table}] Line {index} {column} set to {value}')
 			else:
-				self.error_handler.add_error_v(
-					f'[{table}] Line {index} {column} could not be set to {value}'
-				)
+				self.error_handler.add_error_v(f'[{table}] Line {index} {column} could not be set to {value}')
 				self.error_handler.add_error_v(r['message'])
 
 		def negative_column(table: str, column: str, index: int):
 			set_value(table, column, -get_value(table, column, index), index)
 
 		for i, line_item in enumerate(payload['PS_DOC_HDR']['PS_DOC_LIN'], start=1):
-			for column in [
-				'EXT_COST',
-				'ORIG_QTY',
-				'GROSS_EXT_PRC',
-				'GROSS_DISP_EXT_PRC',
-				'CALC_EXT_PRC',
-			]:
+			for column in ['EXT_COST', 'ORIG_QTY', 'GROSS_EXT_PRC', 'GROSS_DISP_EXT_PRC', 'CALC_EXT_PRC']:
 				negative_column('PS_DOC_LIN', column, i)
 
 			def set_value_lin(column, value):
@@ -1582,6 +1537,20 @@ class OrderAPI(DocumentAPI):
 			self.error_handler.add_error_v('Total could not be removed')
 			self.error_handler.add_error_v(response['message'])
 
+		query = f"""
+		UPDATE PS_DOC_HDR
+		SET LOY_PGM_COD = 'BASIC'
+		WHERE DOC_ID = '{doc_id}'
+		"""
+
+		response = Database.db.query_db(query, commit=True)
+
+		if response['code'] == 200:
+			self.logger.success('Loyalty program code updated')
+		else:
+			self.error_handler.add_error_v('Loyalty program code could not be updated')
+			self.error_handler.add_error_v(response['message'])
+
 		sub_tot = float(bc_order['subtotal_ex_tax'] or 0)
 		document_discount = float(self.total_discount_amount or 0)
 		gfc_amount = float(self.total_gfc_amount)
@@ -1667,13 +1636,13 @@ class OrderAPI(DocumentAPI):
 		if self.is_refund(bc_order):
 			query = f"""
             UPDATE PS_DOC_HDR
-            SET RET_LINS = {self.line_item_length}
+            SET RET_LINS = {self.total_lin_items}
             WHERE DOC_ID = '{doc_id}'
             """
 		else:
 			query = f"""
             UPDATE PS_DOC_HDR
-            SET SAL_LINS = {self.line_item_length}
+            SET SAL_LINS = {self.total_lin_items}
             WHERE DOC_ID = '{doc_id}'
             """
 
@@ -1690,7 +1659,7 @@ class OrderAPI(DocumentAPI):
 		else:
 			query = f"""
             UPDATE PS_DOC_HDR
-            SET TO_REL_LINS = {self.line_item_length}
+            SET TO_REL_LINS = {self.total_lin_items}
             WHERE DOC_ID = '{doc_id}'
             """
 
@@ -1759,6 +1728,54 @@ class OrderAPI(DocumentAPI):
 			self.error_handler.add_error_v('Shipping charge could not be updated')
 			self.error_handler.add_error_v(response['message'])
 
+		if not self.is_refund(bc_order):
+
+			def commit_query(query):
+				response = Database.db.query_db(query, commit=True)
+				return response
+
+			def get_value(table, column, index):
+				query = f"""
+				SELECT {column} FROM {table}
+				WHERE DOC_ID = '{doc_id}' AND LIN_SEQ_NO = {index}
+				"""
+
+				response = Database.db.query_db(query)
+
+				try:
+					return float(response[0][0]) if response else None
+				except Exception as e:
+					self.error_handler.add_error_v(f'[{table}] Line {index} {column} could not be retrieved')
+					raise e
+
+			def set_value(table, column, value, index):
+				r = commit_query(
+					f"""
+					UPDATE {table}
+					SET {column} = {value}
+					WHERE DOC_ID = '{doc_id}' AND LIN_SEQ_NO = {index}
+					"""
+				)
+
+				if r['code'] == 200:
+					self.logger.success(f'[{table}] Line {index} {column} set to {value}')
+				else:
+					self.error_handler.add_error_v(f'[{table}] Line {index} {column} could not be set to {value}')
+					self.error_handler.add_error_v(r['message'])
+
+			for i, line_item in enumerate(payload['PS_DOC_HDR']['PS_DOC_LIN'], start=1):
+
+				def set_value_lin(column, value):
+					set_value('PS_DOC_LIN', column, value, i)
+
+				def get_value_lin(column):
+					return get_value('PS_DOC_LIN', column, i)
+
+				set_value_lin('QTY_ENTD', 0)
+				set_value_lin('QTY_TO_REL', get_value_lin('QTY_SOLD'))
+				set_value_lin('QTY_TO_LEAVE', 0)
+				set_value_lin('HAS_ENTD_LINS', 'N')
+
 		self.cleanup(doc_id)
 
 	# Remove the original document and the reference to the original document
@@ -1799,9 +1816,7 @@ class OrderAPI(DocumentAPI):
 	# Get customer from email and phone number
 	@staticmethod
 	def get_customer_from_info(user_info):
-		return customers.lookup_customer(
-			email_address=user_info['email'], phone_number=user_info['phone']
-		)
+		return customers.lookup_customer(email_address=user_info['email'], phone_number=user_info['phone'])
 
 	# Get the customer's phone number from the BigCommerce order
 	@staticmethod
@@ -1832,10 +1847,7 @@ class OrderAPI(DocumentAPI):
 	# Get the customer's number from the BigCommerce order
 	@staticmethod
 	def get_cust_no(bc_order: dict):
-		user_info = {
-			'email': OrderAPI.get_cust_email(bc_order),
-			'phone': OrderAPI.get_cust_phone(bc_order),
-		}
+		user_info = {'email': OrderAPI.get_cust_email(bc_order), 'phone': OrderAPI.get_cust_phone(bc_order)}
 
 		cust_no = OrderAPI.get_customer_from_info(user_info)
 
