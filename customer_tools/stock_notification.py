@@ -13,6 +13,7 @@ import customer_tools.customers
 from product_tools.products import Product
 from setup import creds
 from setup.email_engine import Email
+from setup.error_handler import ScheduledTasksErrorHandler as error_handler
 
 from setup import barcode_engine as barcode_engine
 
@@ -29,7 +30,7 @@ def send_email(greeting, email, item_number, coupon_code, photo):
 	# Create Subject
 	email_subject = f'{item.web_title.title()} is back in stock!'
 
-	with open('./customer_tools/templates/stock_notification.html', 'r') as file:
+	with open('./templates/stock_notification.html', 'r') as file:
 		template_str = file.read()
 
 	jinja_template = Template(template_str)
@@ -73,13 +74,10 @@ def send_email(greeting, email, item_number, coupon_code, photo):
 	os.remove(f'./{coupon_code}.png')
 
 
-def send_stock_notification_emails(log_file):
+def send_stock_notification_emails():
 	"""Sends stock notification email updates for items that were out of stock
 	but now have stock > 0. Cleans csv so contacts are only notified once"""
-	print(
-		f'Send Stock Notification Emails: Starting at {datetime.datetime.now():%H:%M:%S}',
-		file=log_file,
-	)
+	error_handler.logger.info(f'Send Stock Notification Emails: Starting at {datetime.datetime.now():%H:%M:%S}')
 	with open(creds.stock_notification_log, encoding='utf-8') as file:
 		# Dataframe for Stock Notification Log
 		df = pandas.read_csv(file)
@@ -95,9 +93,7 @@ def send_stock_notification_emails(log_file):
 			# Create a Product object to get product details
 			item = Product(sku)
 			if item.buffered_quantity_available > 0:
-				print(
-					f'Item No: {sku} - now has stock! Creating message for {email}', file=log_file
-				)
+				error_handler.logger.info(f'Item No: {sku} - now has stock! Creating message for {email}')
 				# Get Customer Details
 				customer_number = customer_tools.customers.get_customer_number_by_email(email)
 				first_name = ''
@@ -120,24 +116,20 @@ def send_stock_notification_emails(log_file):
 					# Create CounterPoint Coupons
 					try:
 						cp_create_coupon(
-							description=f'{customer.first_name.title()} '
-							f'{customer.last_name.title()}-Stock:{sku}',
+							description=f'{customer.first_name.title()} ' f'{customer.last_name.title()}-Stock:{sku}',
 							code=random_coupon_code,
 							amount=10,
 							min_purchase=100,
-							log_file=log_file,
 						)
 					except Exception as e:
-						print(f'CP Coupon Creation Error: {e}', file=log_file)
-					else:
-						print(
-							f'CP Coupon Creation Success! Code: {random_coupon_code}', file=log_file
+						error_handler.error_handler.add_error_v(
+							f'CP Coupon Creation Error: {e}', origin='stock_notification.py'
 						)
+					else:
+						error_handler.logger.info(f'CP Coupon Creation Success! Code: {random_coupon_code}')
 
 					# Create Coupon Expiration Date
-					expiration_date = utils.format_datetime(
-						datetime.datetime.now() + relativedelta(days=+5)
-					)
+					expiration_date = utils.format_datetime(datetime.datetime.now() + relativedelta(days=+5))
 
 					# Send to BigCommerce. Create Coupon.
 					response = bc_create_coupon(
@@ -156,10 +148,10 @@ def send_stock_notification_emails(log_file):
 						coupon_id = response['id']
 					# will throw a type error if same email already has a coupon for this SKU
 					except TypeError:
-						print('Coupon with this email and sku already exists', file=log_file)
+						error_handler.logger.info('Coupon with this email and sku already exists')
 						# Delete from CSV and then continue to next iteration
 						df = df.drop(df.index[counter])
-						print('Failed: incrementing counter', file=log_file)
+						error_handler.logger.info('Failed: incrementing counter')
 						continue
 					else:
 						# Create New Log for new coupons
@@ -186,14 +178,10 @@ def send_stock_notification_emails(log_file):
 						)
 
 				# Send Email to User about their desired SKU
-				print(f'Sending email to {email} with code: {random_coupon_code}.', file=log_file)
+				error_handler.logger.info(f'Sending email to {email} with code: {random_coupon_code}.')
 
 				send_email(
-					greeting=greeting,
-					email=email,
-					item_number=sku,
-					coupon_code=random_coupon_code,
-					photo=product_photo,
+					greeting=greeting, email=email, item_number=sku, coupon_code=random_coupon_code, photo=product_photo
 				)
 
 				# Delete Row from
@@ -205,16 +193,7 @@ def send_stock_notification_emails(log_file):
 				# Item is out of stock. Will Skip
 				counter += 1
 
-		df.to_csv(
-			creds.stock_notification_log,
-			header=True,
-			columns=['date', 'email', 'item_no'],
-			index=False,
-		)
+		df.to_csv(creds.stock_notification_log, header=True, columns=['date', 'email', 'item_no'], index=False)
 
-	print(
-		f'Send Stock Notification Emails: Completed at {datetime.datetime.now():%H:%M:%S}',
-		file=log_file,
-	)
-	print(f'Total Messages Sent: {sent_messages}', file=log_file)
-	print('-----------------------', file=log_file)
+	error_handler.logger.info(f'Send Stock Notification Emails: Completed at {datetime.datetime.now():%H:%M:%S}')
+	error_handler.logger.info(f'Total Messages Sent: {sent_messages}')

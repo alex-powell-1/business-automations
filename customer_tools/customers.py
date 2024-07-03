@@ -164,7 +164,7 @@ class Customer:
 			error_handler.error_handler.add_error_v(error=response['message'], origin='set_pricing_tier')
 
 
-def export_retail_customer_csv(log_file):
+def export_retail_customer_csv():
 	retail_query = """
     SELECT CUST_NO, FST_NAM, LST_NAM, EMAIL_ADRS_1, PHONE_1, PROF_COD_2, LOY_PTS_BAL 
     FROM AR_CUST 
@@ -172,15 +172,13 @@ def export_retail_customer_csv(log_file):
     """
 
 	try:
-		print('Getting retail customer data from SQL', file=log_file)
+		error_handler.logger.info('Getting retail customer data from SQL')
 		response = db.query_db(retail_query)
 	except Exception as err:
-		print('Error: Retail Customer SQL Query', file=log_file)
-		print(err, file=log_file)
-		print('-----------------------\n', file=log_file)
+		error_handler.error_handler.add_error_v(error=err, origin='Retail Customer SQL Query')
 	else:
 		if response is None:
-			print('No Retail Data', file=log_file)
+			error_handler.logger.info('No Retail Data')
 		else:
 			header_list = [
 				'Customer Number',
@@ -192,7 +190,7 @@ def export_retail_customer_csv(log_file):
 				'Point Balance',
 			]
 
-			open(creds.retail_customer_backup, 'w')
+			open(creds.retail_customer_backup, 'w', encoding='utf-8')
 			export_file = open(creds.retail_customer_backup, 'a')
 			w = csv.writer(export_file)
 
@@ -212,11 +210,12 @@ def export_retail_customer_csv(log_file):
 				w.writerow([customer_number, first_name, last_name, email_address, phone, birth_month, point_balance])
 
 			export_file.close()
+			print('HERE')
 	finally:
-		print('Retail Export Complete')
+		error_handler.logger.info('Retail Export Complete')
 
 
-def export_wholesale_customer_csv(log_file):
+def export_wholesale_customer_csv():
 	retail_query = """
     SELECT CUST_NO, FST_NAM, LST_NAM, EMAIL_ADRS_1, PHONE_1
     FROM AR_CUST 
@@ -224,20 +223,18 @@ def export_wholesale_customer_csv(log_file):
     """
 
 	try:
-		print('Getting wholesale customer data from SQL', file=log_file)
+		error_handler.logger.info('Getting wholesale customer data from SQL')
 		response = db.query_db(retail_query)
 	except Exception as err:
-		print('Error: Retail Customer SQL Query', file=log_file)
-		print(err, file=log_file)
-		print('-----------------------\n', file=log_file)
+		error_handler.error_handler.add_error_v(error=err, origin='Wholesale Customer SQL Query')
 	else:
 		if response is None:
-			print('No Wholesale Data', file=log_file)
+			error_handler.logger.info('No Wholesale Data')
 		else:
 			header_list = ['Customer Number', 'First Name', 'Last Name', 'Email Address', 'Phone Number']
 
 			open(creds.wholesale_customer_backup, 'w')
-			export_file = open(creds.wholesale_customer_backup, 'a')
+			export_file = open(creds.wholesale_customer_backup, 'a', encoding='utf-8')
 			w = csv.writer(export_file)
 
 			w.writerow(header_list)
@@ -253,15 +250,14 @@ def export_wholesale_customer_csv(log_file):
 
 			export_file.close()
 	finally:
-		print('Wholesale Export Complete')
+		error_handler.logger.info('Wholesale Export Complete')
 
 
-def export_customers_to_csv(log_file):
-	print(f'Customer Export: Starting at {datetime.now():%H:%M:%S}', file=log_file)
-	export_retail_customer_csv(log_file)
-	export_wholesale_customer_csv(log_file)
-	print(f'Customer Export: Finished at {datetime.now():%H:%M:%S}', file=log_file)
-	print('-----------------------', file=log_file)
+def export_customers_to_csv():
+	error_handler.logger.info(f'Customer Export: Starting at {datetime.now():%H:%M:%S}')
+	export_retail_customer_csv()
+	export_wholesale_customer_csv()
+	error_handler.logger.info(f'Customer Export: Finished at {datetime.now():%H:%M:%S}')
 
 
 def is_current_customer(customer_number):
@@ -721,7 +717,7 @@ def set_negative_loyalty_points_to_zero(log_file):
 			else:
 				print(f'Customer {x} Updated to Loyalty Points: 0')
 	else:
-		print(f'No Customers to Update', file=log_file)
+		print('No Customers to Update', file=log_file)
 
 	print(f'Set Contact 1: Finished at {datetime.now():%H:%M:%S}', file=log_file)
 	print('-----------------------', file=log_file)

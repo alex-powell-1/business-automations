@@ -11,7 +11,7 @@ from setup.error_handler import ScheduledTasksErrorHandler
 def item_report(recipients):
 	ScheduledTasksErrorHandler.logger.info(f'Items Report: Starting at {datetime.now():%H:%M:%S}')
 
-	with open('./reporting/templates/item_report.html', 'r') as file:
+	with open('./templates/reporting/item_report.html', 'r') as file:
 		template_str = file.read()
 
 	jinja_template = Template(template_str)

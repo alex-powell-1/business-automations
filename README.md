@@ -11,6 +11,10 @@ product management, reporting, and more.
 At the core of this application, there are four "engines" (database engine, sms engine, WebDav engine, and email engine)
 for getting, setting, and distributing data. These modules are found within the setup folder.
 
+## Server
+
+The server (`server.py`) handles incoming requests, and sends incoming orders to a RabbitMQ async queue consumer (`consumer_orders.py`) for order processing. Incoming marketing leaders are sent to another RabbitMQ consumer (`consumer_leads.py`) for logging, auto printing, and sms related tasks.
+
 ## Modules
 
 The application uses several modules, each responsible for a specific set of tasks:
@@ -19,20 +23,13 @@ The application uses several modules, each responsible for a specific set of tas
 - `customers`: Manages customer-related tasks, such as creating new customers from marketing leads, setting contact information, and exporting customer data.
 - `product_tools`: Handles various tasks related to product management, such as managing inventory, resizing product photos, setting product status, and more.
 - `reporting`: Generates various reports for administrative and accounting purposes.
-- `setup`: Contains setup information such as credentials and date presets.
+- `setup`: Contains setup information, attachments, utilities and date presets.
 - `sms`: Handles tasks related to SMS automation, such as sending automated text messages to customers.
-- `utilities`: Contains utility functions such as off-site backups.
 
-## Logging
 
-When the application runs for the first time each day, it will create a log file:
-log_directory/business_automations/automations_month_day_year.txt
-This log file will be passed into each of the automation functions as an argument and error and success messages will
-be written to the file before finally closing after all functions have concluded.
+## Scheduled Task Functionality
 
-## Main Functionality
-
-The main script (`main.py`) runs different tasks based on the current time. Here's a brief overview of what it does at different times:
+The main script (`scheduled_tasks.py`) runs tasks based on the current time. 
 
 - Every half hour: Creates new customers from marketing leads, sets contact information, and fixes missing product thumbnails.
 - Every hour: Checks server for internet connection, uploads current inventory stock levels, resizes and reformats product photos.
@@ -41,7 +38,7 @@ The main script (`main.py`) runs different tasks based on the current time. Here
 
 ## Error Handling
 
-The application logs all tasks and any errors that occur during their execution. If an error occurs, it is logged and the application continues with the next task.
+Logging and Error handling are handled by the error_handler classes in `setup/error_handler.py`.
 
 
 # Automations Detailed:

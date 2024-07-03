@@ -109,6 +109,15 @@ class ScheduledTasksErrorHandler:
 	error_handler = ErrorHandler(logger)
 
 
+class SMSErrorHandler:
+	"""Logging for sms texts"""
+
+	logger = Logger(
+		f"//MAINSERVER/Share/logs/business_automations/sms/log_{datetime.datetime.now().strftime("%m_%d_%y")}.log"
+	)
+	error_handler = ErrorHandler(logger)
+
+
 class ProcessInErrorHandler:
 	"""Logging for the Process In Integration"""
 

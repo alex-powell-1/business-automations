@@ -7,6 +7,7 @@ from setup import query_engine
 import requests
 
 from setup import creds
+from setup.error_handler import ScheduledTasksErrorHandler as error_handler
 
 
 class Coupon:
@@ -58,11 +59,7 @@ class Coupon:
 def bc_get_all_coupons(pretty=False):
 	url = f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v2/coupons'
 
-	headers = {
-		'X-Auth-Token': creds.big_access_token,
-		'Content-Type': 'application/json',
-		'Accept': 'application/json',
-	}
+	headers = {'X-Auth-Token': creds.big_access_token, 'Content-Type': 'application/json', 'Accept': 'application/json'}
 
 	response = requests.get(url=url, headers=headers)
 	json_response = response.json()
@@ -75,23 +72,11 @@ def bc_get_all_coupons(pretty=False):
 
 
 def bc_create_coupon(
-	name,
-	coupon_type,
-	amount,
-	min_purchase,
-	code,
-	max_uses_per_customer,
-	max_uses,
-	expiration,
-	enabled=True,
+	name, coupon_type, amount, min_purchase, code, max_uses_per_customer, max_uses, expiration, enabled=True
 ):
 	url = f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v2/coupons'
 
-	headers = {
-		'X-Auth-Token': creds.big_access_token,
-		'Content-Type': 'application/json',
-		'Accept': 'application/json',
-	}
+	headers = {'X-Auth-Token': creds.big_access_token, 'Content-Type': 'application/json', 'Accept': 'application/json'}
 
 	payload = {
 		'name': name,
@@ -109,9 +94,7 @@ def bc_create_coupon(
 	return response.json()
 
 
-def cp_create_coupon(
-	code, description, amount, min_purchase, log_file, coupon_type='A', apply_to='H', store='B'
-):
+def cp_create_coupon(code, description, amount, min_purchase, coupon_type='A', apply_to='H', store='B'):
 	"""Will create a coupon code in SQL Database.
 	Code is the coupon code, Description is the description of the coupon, Coupon Type is the type of coupon,
 	Coupon Types: Amount ('A'), Prompted Amount ('B'), Percentage ('P'), Prompted Percent ('Q')
@@ -132,15 +115,15 @@ def cp_create_coupon(
 		try:
 			db.query_db(query, commit=True)
 		except Exception as e:
-			print(f'CP Coupon Insertion Error: {e}', file=log_file)
+			error_handler.error_handler.add_error_v(error=f'CP Coupon Insertion Error: {e}', origin='coupons.py')
 		else:
-			print('CP Coupon Insertion Success!', file=log_file)
+			error_handler.logger.success('CP Coupon Insertion Success!')
 
 	else:
-		print('Error: Could not create coupon', file=log_file)
+		error_handler.logger.info('Error: Could not create coupon')
 
 
-def cp_delete_coupon(code, log_file):
+def cp_delete_coupon(code):
 	query = f"""
     DELETE FROM PS_DISC_COD WHERE DISC_COD = '{code}'
     """
@@ -148,18 +131,14 @@ def cp_delete_coupon(code, log_file):
 	try:
 		db.query_db(query, commit=True)
 	except Exception as e:
-		print(f'CP Coupon Deletion Error: {e}', file=log_file)
+		error_handler.error_handler.add_error_v(error=f'CP Coupon Deletion Error: {e}', origin='cp_delete_coupon')
 	else:
-		print(f'Deleted Coupon: {code}', file=log_file)
+		error_handler.logger.success(f'Deleted Coupon: {code}')
 
 
 def bc_delete_coupon(coupon_id):
 	url = f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v2/coupons/{coupon_id}'
-	headers = {
-		'X-Auth-Token': creds.big_access_token,
-		'Content-Type': 'application/json',
-		'Accept': 'application/json',
-	}
+	headers = {'X-Auth-Token': creds.big_access_token, 'Content-Type': 'application/json', 'Accept': 'application/json'}
 	return requests.delete(url=url, headers=headers)
 
 
@@ -172,8 +151,8 @@ def utc_to_local(utc_dt):
 	return utc_dt.replace(tzinfo=timezone.utc).astimezone(tz=None)
 
 
-def delete_expired_coupons(log_file):
-	print(f'Deleting Expired Coupons: Starting at {datetime.now():%H:%M:%S}', file=log_file)
+def delete_expired_coupons():
+	error_handler.logger.info(f'Deleting Expired Coupons: Starting at {datetime.now():%H:%M:%S}')
 	total = 0
 	coupons = bc_get_all_coupons(pretty=False)
 	current_time = datetime.now(timezone.utc)
@@ -186,15 +165,14 @@ def delete_expired_coupons(log_file):
 			if expiration_date < current_time:
 				# Target Coupon for Deletion Found
 				# Delete from Counterpoint
-				cp_delete_coupon(coupon.code, log_file)
+				cp_delete_coupon(coupon.code)
 				# Delete from BigCommerce
 				bc_delete_coupon(coupon.id)
 				total += 1
 				deleted_coupon_log_file = open(creds.deleted_coupon_log, 'a')
 				for y, z in x.items():
 					print(str(y), ': ', z, file=deleted_coupon_log_file)
-					print(str(y), ': ', z, file=log_file)
+					print(str(y), ': ', z)
 
-	print(f'Deleting Expired Coupons: Finished at {datetime.now():%H:%M:%S}', file=log_file)
-	print(f'Total Coupons Deleted: {total}', file=log_file)
-	print('-----------------------', file=log_file)
+	error_handler.logger.info(f'Deleting Expired Coupons: Finished at {datetime.now():%H:%M:%S}')
+	error_handler.logger.info(f'Total Coupons Deleted: {total}')

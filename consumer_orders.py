@@ -80,21 +80,15 @@ class RabbitMQConsumer:
 						barcode_engine.generate_barcode(data=order_id, filename=barcode_filename)
 					except Exception as err:
 						error_type = 'barcode'
-						self.error_handler.add_error_v(
-							error=f'Error ({error_type}): {err}', origin='Design - Barcode'
-						)
+						self.error_handler.add_error_v(error=f'Error ({error_type}): {err}', origin='Design - Barcode')
 					else:
-						self.logger.success(
-							f'Creating barcode - Success at {datetime.now():%H:%M:%S}'
-						)
+						self.logger.success(f'Creating barcode - Success at {datetime.now():%H:%M:%S}')
 
 					self.logger.info('Creating Word Document')
 					# Create the Word document
 					try:
 						doc = DocxTemplate('./templates/order_print_template.docx')
-						barcode = InlineImage(
-							doc, f'./{barcode_filename}.png', height=Mm(15)
-						)  # width in mm
+						barcode = InlineImage(doc, f'./{barcode_filename}.png', height=Mm(15))  # width in mm
 						context = {
 							# Company Details
 							'company_name': creds.company_name,
@@ -136,9 +130,7 @@ class RabbitMQConsumer:
 						}
 
 						doc.render(context)
-						ticket_name = (
-							f"ticket_{order_id}_{datetime.now().strftime("%m_%d_%y_%H_%M_%S")}.docx"
-						)
+						ticket_name = f"ticket_{order_id}_{datetime.now().strftime("%m_%d_%y_%H_%M_%S")}.docx"
 						file_path = creds.ticket_location + ticket_name
 						doc.save(file_path)
 					except Exception as err:
@@ -147,17 +139,13 @@ class RabbitMQConsumer:
 							error=f'Error ({error_type}): {err}', origin='Design - Word Document'
 						)
 					else:
-						self.logger.success(
-							f'Creating Word Document - Success at {datetime.now():%H:%M:%S}'
-						)
+						self.logger.success(f'Creating Word Document - Success at {datetime.now():%H:%M:%S}')
 						try:
 							# Print the file to default printer
 							os.startfile(file_path, 'print')
 						except Exception as err:
 							error_type = 'Printing'
-							self.error_handler.add_error_v(
-								f'Error ({error_type}): {err}', origin='Design - Printing'
-							)
+							self.error_handler.add_error_v(f'Error ({error_type}): {err}', origin='Design - Printing')
 						else:
 							self.logger.success(f'Printing - Success at {datetime.now():%H:%M:%S}')
 
@@ -170,37 +158,28 @@ class RabbitMQConsumer:
 						except Exception as err:
 							error_type = 'Deleting Barcode'
 							self.error_handler.add_error_v(
-								error=f'Error ({error_type}): {err}',
-								origin='Design - Deleting Barcode',
+								error=f'Error ({error_type}): {err}', origin='Design - Deleting Barcode'
 							)
 						else:
-							self.logger.success(
-								f'Deleting Barcode - Success at {datetime.now():%H:%M:%S}'
-							)
+							self.logger.success(f'Deleting Barcode - Success at {datetime.now():%H:%M:%S}')
 				# Gift Card Only
 				else:
 					self.logger.info(f'Skipping Order #{order_id}: Gift Card Only')
 			# Declined Payments
 			elif order.status_id == 4:
-				self.logger.info(
-					f'Skipping Order #{order_id}: Order Refunded. Status: {order.payment_status}'
-				)
+				self.logger.info(f'Skipping Order #{order_id}: Order Refunded. Payment Status: {order.payment_status}')
 			elif order.status_id == 6:
 				self.logger.info(
-					f'Skipping Order #{order_id}: Payment Declined. Status: {order.payment_status}'
+					f'Skipping Order #{order_id}: Payment Declined. Pyament Status: {order.payment_status}'
 				)
 			else:
-				self.logger.info(
-					f'Skipping Order #{order_id}: Payment Status: {order.payment_status}'
-				)
+				self.logger.info(f'Skipping Order #{order_id}: Payment Status: {order.payment_status}')
 
 			BCOrder(order_id).process()
 
 		except Exception as err:
 			error_type = 'General Catch'
-			self.error_handler.add_error_v(
-				error=f'Error ({error_type}): {err}', origin='General Catch'
-			)
+			self.error_handler.add_error_v(error=f'Error ({error_type}): {err}', origin='General Catch')
 		else:
 			ch.basic_ack(delivery_tag=method.delivery_tag)
 		finally:
@@ -217,9 +196,7 @@ class RabbitMQConsumer:
 			except KeyboardInterrupt:
 				sys.exit(0)
 			except pika.exceptions.AMQPConnectionError:
-				self.error_handler.add_error_v(
-					error='Connection lost. Reconnecting...', origin='Design Consumer'
-				)
+				self.error_handler.add_error_v(error='Connection lost. Reconnecting...', origin='Design Consumer')
 				sleep(5)  # Wait before attempting reconnection
 			except Exception as err:
 				self.error_handler.add_error_v(error=err, origin='Design Consumer')

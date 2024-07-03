@@ -1,19 +1,7 @@
 import requests
-import json
 from setup import creds
 from requests.auth import HTTPDigestAuth
 from setup.error_handler import ScheduledTasksErrorHandler as error_handler
-
-
-def upload_file(file, server_url):
-	data = open(file, 'rb')
-	file_name = file.split('/')[-1]
-	url = server_url + file_name
-	response = requests.put(url, data=data, auth=HTTPDigestAuth(creds.web_dav_user, creds.web_dav_pw))
-	if response.status_code == 201:
-		error_handler.logger.success(f'Inventory upload successful. Status Code: {response.status_code}')
-	else:
-		error_handler.error_handler.add_error_v(f'Inventory upload failed. Status Code: {response.status_code}')
 
 
 class WebDAVClient:
@@ -38,15 +26,15 @@ class WebDAVClient:
 			)
 			return success, response.text
 
-	def upload_file(self, file_path, json_data=None):
-		url = f'{self.server_url}/{file_path}'
-		print(url)
-		if json_data:
-			response = requests.put(url, json=json_data, auth=self.auth)
+	def upload_file(self, file):
+		data = open(file, 'rb')
+		file_name = file.split('/')[-1]
+		url = self.server_url + '/content/' + file_name
+		response = requests.put(url, data=data, auth=HTTPDigestAuth(creds.web_dav_user, creds.web_dav_pw))
+		if 200 <= response.status_code < 300:
+			error_handler.logger.success(f'Inventory upload successful. Status Code: {response.status_code}')
 		else:
-			with open(file_path, 'rb') as data:
-				response = requests.put(url, data=data, auth=self.auth)
-		return response
+			error_handler.error_handler.add_error_v(f'Inventory upload failed. Status Code: {response.status_code}')
 
 	def update_file(self, file_path):
 		return self.upload_file(file_path)  # Re-uploading a file can be used for updating

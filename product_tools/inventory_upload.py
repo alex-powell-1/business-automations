@@ -4,7 +4,7 @@ import pandas as pd
 
 from setup import creds
 from setup.query_engine import QueryEngine
-from setup.webDAV_engine import upload_file
+from setup.webDAV_engine import WebDAVClient
 from setup.error_handler import ScheduledTasksErrorHandler as error_handler
 
 
@@ -52,18 +52,19 @@ def create_inventory_csv(retail=True):
 
 def upload_inventory():
 	"""Uploads csv of inventory for retail and wholesale availability data tables"""
+	client = WebDAVClient()
 	# Retail Segment
 	error_handler.logger.info(f'Inventory upload starting at {datetime.now():%H:%M:%S}')
 	error_handler.logger.info('Creating inventory csv for upload to Retail Availability')
 	create_inventory_csv(retail=True)
 	error_handler.logger.info('Uploading to WebDav Server')
-	upload_file(file=creds.retail_inventory_csv, server_url=f'{creds.web_dav_server}/content/')
+	client.upload_file(file=creds.retail_inventory_csv)
 	error_handler.logger.info('Retail Inventory Uploaded to WebDav Server')
 
 	# Wholesale Segment
 	error_handler.logger.info('Creating inventory csv for upload to Wholesale Availability')
 	create_inventory_csv(retail=False)
 	error_handler.logger.info('Uploading to WebDav Server')
-	upload_file(file=creds.wholesale_inventory_csv, server_url=f'{creds.web_dav_server}/content/')
+	client.upload_file(file=creds.wholesale_inventory_csv)
 	error_handler.logger.info('Wholesale Inventory Uploaded to WebDav Server')
 	error_handler.logger.info(f'Inventory Upload: Finished at {datetime.now():%H:%M:%S}')

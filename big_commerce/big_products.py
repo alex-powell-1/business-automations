@@ -6,6 +6,7 @@ import requests
 from product_tools import products
 from setup import creds
 from setup.utilities import pretty_print
+from setup.error_handler import ScheduledTasksErrorHandler as error_handler
 
 
 def bc_create_product(name, product_type, sku, weight, price):
@@ -21,13 +22,13 @@ def bc_get_custom_fields(product_id):
 	return response.json()
 
 
-def bc_update_product(product_id, payload, log_file, pretty=False):
+def bc_update_product(product_id, payload, pretty=False):
 	url = f' https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/products/{product_id}'
 	response = requests.put(url, headers=creds.bc_api_headers, json=payload)
 	if response.status_code == 200:
 		return response.json()
 	else:
-		print(f'Error: {response.content}')
+		error_handler.logger.info(f'Error: {response.content}')
 		return response.content
 
 
@@ -83,11 +84,7 @@ def bc_update_product_image(product_id, image_id, payload):
 		f' https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/products/'
 		f'{product_id}/images/{image_id}'
 	)
-	headers = {
-		'X-Auth-Token': creds.big_access_token,
-		'Content-Type': 'application/json',
-		'Accept': 'application/json',
-	}
+	headers = {'X-Auth-Token': creds.big_access_token, 'Content-Type': 'application/json', 'Accept': 'application/json'}
 
 	response = requests.put(headers=headers, url=url, json=payload)
 	if response == 404:
@@ -228,11 +225,7 @@ def bc_get_variant(product_id, variant_id, pretty=False):
 		f'products/{product_id}/variants/{variant_id}'
 	)
 
-	headers = {
-		'X-Auth-Token': creds.big_access_token,
-		'Content-Type': 'application/json',
-		'Accept': 'application/json',
-	}
+	headers = {'X-Auth-Token': creds.big_access_token, 'Content-Type': 'application/json', 'Accept': 'application/json'}
 
 	response = requests.get(url, headers=headers)
 	json_response = response.json()
@@ -267,10 +260,7 @@ def fix_missing_thumbnails(log_file):
 			if product_id is not None:
 				# Step 3: Check if product has a thumbnail image
 				if not bc_has_product_thumbnail(product_id):
-					print(
-						f'Missing Thumbnail Found for Binding Key: {key} / Product ID: {product_id}!',
-						file=log_file,
-					)
+					print(f'Missing Thumbnail Found for Binding Key: {key} / Product ID: {product_id}!', file=log_file)
 					# Step 4: Assign photo to thumbnail status
 					# # 4a. Get Top Child SKU from revenue data
 					top_child = products.get_top_child_product(key)
@@ -282,9 +272,7 @@ def fix_missing_thumbnails(log_file):
 							# 4c. Find the image that is associated with binding key (base image, no carrot)
 							if key == str(image['image_file']).split('/')[2].split('__')[0]:
 								# 4d. Set this image to thumbnail flag: True
-								bc_update_product_image(
-									product_id, image['id'], {'is_thumbnail': True}
-								)
+								bc_update_product_image(product_id, image['id'], {'is_thumbnail': True})
 								print(
 									f"Assigning thumbnail flag to base image for binding ID:"
 									f"Image ID: {image['id']} Filename: {image['image_file']}\n\n",
@@ -294,9 +282,7 @@ def fix_missing_thumbnails(log_file):
 								break
 							# 4d. If this doesn't exist set it to the top child
 							elif top_child == str(image['image_file']).split('/')[2].split('__')[0]:
-								bc_update_product_image(
-									product_id, image['id'], {'is_thumbnail': True}
-								)
+								bc_update_product_image(product_id, image['id'], {'is_thumbnail': True})
 								print(
 									f"Binding Key Image Not Found on BigCommerce!\n"
 									f"Assigning thumbnail flag to base image for top-performing child:"
@@ -307,9 +293,7 @@ def fix_missing_thumbnails(log_file):
 								break
 							# 4e. If neither exist, set the first image to the thumbnail
 							else:
-								bc_update_product_image(
-									product_id, image['id'], {'is_thumbnail': True}
-								)
+								bc_update_product_image(product_id, image['id'], {'is_thumbnail': True})
 								print(
 									f"Binding Key Image Not Found on BigCommerce!\n"
 									f"Base Image for Top Performing Child Not Found on BigCommerce!\n"
