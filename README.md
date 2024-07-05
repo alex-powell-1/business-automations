@@ -1,30 +1,13 @@
 # Business Automations
 
 #### Author: Alex Powell
+#### Contributor: Luke Barrier
 
-This Python application is designed to automate various business tasks for a retail and e-commerce store. 
-It is scheduled to run at different times throughout the day, performing tasks such as customer management, 
-product management, reporting, and more.
-
-## Engines
-
-At the core of this application, there are four "engines" (database engine, sms engine, WebDav engine, and email engine)
-for getting, setting, and distributing data. These modules are found within the setup folder.
+Business Automations is a data integration solution and collection of scheduled tasks built to enhance productivity, increase revenue, and reduce manual data manipulation at a retail store location using BigCommerce and Counterpoint Point of Sale
 
 ## Server
 
-The server (`server.py`) handles incoming requests, and sends incoming orders to a RabbitMQ async queue consumer (`consumer_orders.py`) for order processing. Incoming marketing leaders are sent to another RabbitMQ consumer (`consumer_leads.py`) for logging, auto printing, and sms related tasks.
-
-## Modules
-
-The application uses several modules, each responsible for a specific set of tasks:
-
-- `big_commerce`: Handles tasks related to the BigCommerce platform, such as managing products and coupons.
-- `customers`: Manages customer-related tasks, such as creating new customers from marketing leads, setting contact information, and exporting customer data.
-- `product_tools`: Handles various tasks related to product management, such as managing inventory, resizing product photos, setting product status, and more.
-- `reporting`: Generates various reports for administrative and accounting purposes.
-- `setup`: Contains setup information, attachments, utilities and date presets.
-- `sms`: Handles tasks related to SMS automation, such as sending automated text messages to customers.
+The server (`server.py`) handles incoming requests, and sends incoming orders to a RabbitMQ async queue consumer (`consumer_orders.py`) for order processing. Incoming marketing leaders are sent to another RabbitMQ consumer (`consumer_leads.py`) for logging, auto printing, and email/sms marketing related tasks.
 
 
 ## Scheduled Task Functionality
@@ -40,12 +23,11 @@ The main script (`scheduled_tasks.py`) runs tasks based on the current time.
 
 Logging and Error handling are handled by the error_handler classes in `setup/error_handler.py`.
 
-
 # Automations Detailed:
 
 ## Twice Per Hour Tasks
 
-### 1) Create New Counterpoint Customers
+### 1) Create New Customers Accounts
 
 Parse data from a csv of marketing leads. Find leads from today and check if they are already
 counterpoint customers. If they are not, create a new customer in counterpoint with the info supplied
@@ -60,6 +42,13 @@ filters
 out any customers whose first name is 'Change' and last name is 'Name'. These disregarded edge cases are the result of
 employee error when inputting new customers at the point of sale. This function then title cases the result and updates
 the SQL database with the new value for CONTCT_1
+
+### Network Health Check
+Performs health check on server and notifies admin if server is unreachable
+
+### Reassess Tiered Pricing
+Calculate sales totals for wholesale accounts and puts wholesale customers into appropriate tiers
+
 
 ## Hourly Tasks
 
