@@ -12,55 +12,7 @@ db = QueryEngine()
 class Product:
 	def __init__(self, item_number):
 		self.item_no = item_number
-		# self.binding_key = ""
-		# self.variant_name = ""
-		# self.product_id = ""
-		# self.variant_id = ""
-		# self.is_parent = ""
-		# self.descr = ""
-		# self.long_descr = ""
-		# self.brand = ""
-		# self.price_1 = 0
-		# self.price_2 = 0
-		# self.reg_price = 0
-		# self.quantity_available = 0
-		# self.buffer = 0
-		# self.buffered_quantity_available = self.quantity_available - self.buffer
-		# self.web_enabled = ""
-		# self.web_visible = ""
-		# self.always_online = ""
-		# self.gift_wrap = ""
-		# self.in_store_only = ""
-		# self.web_title = ""
-		# self.meta_title = ""
-		# self.meta_description = ""
-		# self.item_type = ""
-		# self.parent_category = ""
-		# self.sub_category = ""
-		# self.status = ""
-		# self.vendor = ""
-		# self.custom_field_bontanical_name = ""
-		# self.custom_field_climate_zone = ""
-		# self.custom_field_plant_type = ""
-		# self.custom_field_type = ""
-		# self.custom_field_height = ""
-		# self.custom_field_width = ""
-		# self.custom_field_sun_exposure = ""
-		# self.custom_field_bloom_time = ""
-		# self.custom_field_flower_color = ""
-		# self.custom_field_attracts_pollinators = ""
-		# self.custom_field_growth_rate = ""
-		# self.custom_field_deer_resistant = ""
-		# self.custom_field_soil_type = ""
-		# self.custom_field_color = ""
-		# self.custom_field_size = ""
-		# self.search_key = ""
-		# self.sort_order = 0
-		# self.preorder_message = ""
-		# self.availability_description = ""
-		# self.e_comm_category = ""
-		# self.web_description = ""
-		# self.featured = ""
+
 		self.get_product_details()
 
 	def get_product_details(self):
