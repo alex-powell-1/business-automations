@@ -4,6 +4,8 @@ from integration.database import Database
 from setup.error_handler import ProcessOutErrorHandler
 import requests
 from setup import creds
+from setup.utilities import convert_to_utc
+from integration.catalog import Catalog
 
 
 class Promotions:
@@ -50,6 +52,7 @@ class Promotions:
 			url = f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/promotions/{id}'
 		else:
 			url = f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/promotions'
+
 		response = requests.get(url, headers=creds.bc_api_headers)
 		if response.status_code == 200:
 			return response.json()['data']
@@ -98,6 +101,18 @@ class Promotions:
 						self.price_rules.append(self.PriceRule(rule))
 						counter += 1
 
+		def get_rule_items(self, rul_seq_no):
+			"""Takes in a rule sequence number and returns a list of Associated Item BC Product IDs."""
+			items = []
+			for rule in self.price_rules:
+				if rul_seq_no == rule.rul_seq_no:
+					items = rule.items
+			# Get BC Product IDs
+			bc_prod_ids = []
+			for item in items:
+				bc_prod_ids.append(Catalog.get_product_id_from_sku(item))
+			return bc_prod_ids
+
 		def bc_create_promotion(self):
 			payload = self.create_payload()
 			url = f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/promotions'
@@ -109,8 +124,9 @@ class Promotions:
 					error=f'Error: {response.status_code}\n' f'{response.text}', origin='Promotion Creation'
 				)
 
-		def create_payload(self):
-			"""C"""
+		def create_payload(self, price_rule):
+			"""Creates the payload for the BigCommerce API Promotion."""
+			items = self.get_rule_items(price_rule.rul_seq_no)
 			response = {
 				'name': self.descr,
 				'rules': [
@@ -120,15 +136,17 @@ class Promotions:
 						'add_free_item': False,
 						'include_items_considered_by_condition': False,
 						'exclude_items_on_sale': False,
-						'items': {'products': [1, 2, 3]},
+						'items': {'products': items},
 						'apply_once': False,
 						'stop': False,
-						'condition': {'cart': {'items': {'products': [1, 2, 3]}, 'minimum_quantity': 1}},
+						'condition': {
+							'cart': {'items': {'products': self.get_rule_items(items)}, 'minimum_quantity': 1}
+						},
 					}
 				],
 				'status': 'ENABLED' if self.enabled == 'Y' else 'DISABLED',
-				'start_date': '2005-12-30T01:02:03+00:00',
-				'end_date': '2025-12-30T01:02:03+00:00',
+				'start_date': convert_to_utc(self.beg_dat),
+				'end_date': convert_to_utc(self.end_dat),
 				'stop': False,
 				'can_be_used_with_other_promotions': False,
 				'currency_code': 'USD',
