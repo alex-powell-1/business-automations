@@ -27,10 +27,9 @@ class Promotions:
 			for promo in promotions:
 				query = f"""
                 SELECT TOP 1 GRP.GRP_TYP, GRP.GRP_COD, GRP.GRP_SEQ_NO, GRP.DESCR, GRP.CUST_FILT, GRP.BEG_DAT, 
-                GRP.END_DAT, GRP.LST_MAINT_DT, GRP.ENABLED, GRP.MIX_MATCH_COD, RUL.RUL_SEQ_NO
+                GRP.END_DAT, GRP.LST_MAINT_DT, GRP.ENABLED, GRP.MIX_MATCH_COD
                 FROM IM_PRC_GRP GRP INNER JOIN IM_PRC_RUL RUL ON GRP.GRP_COD = RUL.GRP_COD
                 WHERE GRP.GRP_COD = '{promo}' and GRP.GRP_TYP = 'P'
-                ORDER BY RUL.RUL_SEQ_NO DESC
                 """
 				response = self.db.query_db(query=query)
 				promo_data = [x for x in response] if response else []
@@ -41,9 +40,9 @@ class Promotions:
 	def sync(self):
 		for promotion in self.promotions:
 			if promotion.lst_maint_dt > self.last_sync:
-				self.logger.info(
-					f'Promotion {promotion.grp_cod} has been updated since last sync. Getting updated data.'
-				)
+				# self.logger.info(
+				# 	f'Promotion {promotion.grp_cod} has been updated since last sync. Getting updated data.'
+				# )
 				promotion.get_price_rules()
 
 	@staticmethod
@@ -59,6 +58,8 @@ class Promotions:
 
 	class Promotion:
 		def __init__(self, promo):
+			self.error_handler = ProcessOutErrorHandler.error_handler
+			self.logger = ProcessOutErrorHandler.logger
 			self.grp_typ = promo[0]
 			self.grp_cod = promo[1]
 			self.group_seq_no = promo[2]
@@ -69,7 +70,7 @@ class Promotions:
 			self.lst_maint_dt = promo[7]
 			self.enabled = promo[8]
 			self.mix_match_code = promo[9]
-			self.price_rule_count = promo[10]
+			# self.price_rule_count = promo[10]
 			self.max_uses = None
 			self.price_rules = []
 
@@ -82,7 +83,7 @@ class Promotions:
 			result += f'Last Maintenance Date: {self.lst_maint_dt}\n'
 			result += f'Enabled: {self.enabled}\n'
 			result += f'Mix Match Code: {self.mix_match_code}\n'
-			result += f'Price Rule Count: {self.price_rule_count}\n'
+			# result += f'Price Rule Count: {self.price_rule_count}\n'
 			return result
 
 		def get_price_rules(self):
@@ -96,10 +97,8 @@ class Promotions:
                 """
 				response = Database.db.query_db(query)
 				if response:
-					counter = 1
 					for rule in response:
 						self.price_rules.append(self.PriceRule(rule))
-						counter += 1
 
 		def get_rule_items(self, rul_seq_no):
 			"""Takes in a rule sequence number and returns a list of Associated Item BC Product IDs."""
@@ -110,11 +109,22 @@ class Promotions:
 			# Get BC Product IDs
 			bc_prod_ids = []
 			for item in items:
-				bc_prod_ids.append(Catalog.get_product_id_from_sku(item))
+				bc_prod_id = Catalog.get_product_id_from_sku(item)
+				if bc_prod_id:
+					bc_prod_ids.append(bc_prod_id)
 			return bc_prod_ids
 
-		def bc_create_promotion(self):
-			payload = self.create_payload()
+		def get_price_breaks(self, rul_seq_no):
+			"""Takes in a rule sequence number and returns a list of Price Breaks."""
+			breaks = []
+			for rule in self.price_rules:
+				if rul_seq_no == rule.rul_seq_no:
+					breaks = rule.price_breaks
+			return breaks
+
+		def bc_create_promotion(self, rule):
+			payload = self.create_payload(rule)
+
 			url = f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/promotions'
 			response = requests.post(url, headers=creds.bc_api_headers, json=payload)
 			if response.status_code == 201:
@@ -124,14 +134,21 @@ class Promotions:
 					error=f'Error: {response.status_code}\n' f'{response.text}', origin='Promotion Creation'
 				)
 
+		def get_discount_amount(self, price_rule):
+			"""Get the discount amount of the final price break."""
+			return float(price_rule.price_breaks[-1].amt_or_pct)
+
 		def create_payload(self, price_rule):
 			"""Creates the payload for the BigCommerce API Promotion."""
 			items = self.get_rule_items(price_rule.rul_seq_no)
-			response = {
+
+			payload = {
 				'name': self.descr,
 				'rules': [
 					{
-						'action': {'cart_value': {'discount': {'percentage_amount': '100'}}},
+						'action': {
+							'cart_value': {'discount': {'percentage_amount': self.get_discount_amount(price_rule)}}
+						},
 						'strategy': 'LEAST_EXPENSIVE',
 						'add_free_item': False,
 						'include_items_considered_by_condition': False,
@@ -139,14 +156,10 @@ class Promotions:
 						'items': {'products': items},
 						'apply_once': False,
 						'stop': False,
-						'condition': {
-							'cart': {'items': {'products': self.get_rule_items(items)}, 'minimum_quantity': 1}
-						},
+						'condition': {'cart': {'items': {'products': items}, 'minimum_quantity': 1}},
 					}
 				],
 				'status': 'ENABLED' if self.enabled == 'Y' else 'DISABLED',
-				'start_date': convert_to_utc(self.beg_dat),
-				'end_date': convert_to_utc(self.end_dat),
 				'stop': False,
 				'can_be_used_with_other_promotions': False,
 				'currency_code': 'USD',
@@ -154,12 +167,30 @@ class Promotions:
 				'redemption_type': 'COUPON',
 			}
 			if self.max_uses:
-				response['max_uses'] = self.max_uses
+				payload['max_uses'] = self.max_uses
 
-			return response
+			if self.beg_dat:
+				payload['start_date'] = convert_to_utc(self.beg_dat)
+			if self.end_dat:
+				payload['end_date'] = convert_to_utc(self.end_dat)
+			print(payload)
+			return payload
+
+		def process_promotion(self):
+			for rule in promotion.price_rules:
+				if rule.isBogoTwoofer(rule):
+					if rule.db_id:
+						# Update Promotion
+						self.bc_update_promotion(rule)
+					else:
+						# Create Promotion
+						self.bc_create_promotion(rule)
 
 		class PriceRule:
 			def __init__(self, rule):
+				self.error_handler = ProcessOutErrorHandler.error_handler
+				self.logger = ProcessOutErrorHandler.logger
+				self.db_id = None
 				self.grp_typ = rule[0]
 				self.grp_cod = rule[1]
 				self.rul_seq_no = rule[2]
@@ -185,6 +216,9 @@ class Promotions:
 				result += f'Use BOGO Twoofer: {self.use_bogo_twoofer}\n'
 				result += f'Require Full Group for BOGO Twoofer: {self.req_full_group_for_bogo}\n'
 				return result
+
+			def isBogoTwoofer(self, price_rule):
+				return price_rule.use_bogo_twoofer == 'Y' and price_rule.req_full_group_for_bogo == 'Y'
 
 			def get_price_breaks(self):
 				query = f"""
@@ -220,5 +254,7 @@ class Promotions:
 
 
 if __name__ == '__main__':
-	promo = Promotions(last_sync=datetime(2024, 6, 1))
+	promo = Promotions(last_sync=datetime(2024, 7, 5))
 	promo.sync()
+	for promotion in promo.promotions:
+		promotion.process_promotion()
