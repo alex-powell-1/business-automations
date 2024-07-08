@@ -1,4 +1,5 @@
 from datetime import datetime
+from time import sleep
 from setup.webDAV_engine import WebDAVJsonClient
 from integration.database import Database
 from setup.error_handler import ProcessOutErrorHandler
@@ -6,6 +7,8 @@ import requests
 from setup import creds
 from setup.utilities import convert_to_utc
 from integration.catalog import Catalog
+from product_tools.products import Product
+from setup.utilities import VirtualRateLimiter
 
 
 class Promotions:
@@ -16,7 +19,6 @@ class Promotions:
 		self.logger = ProcessOutErrorHandler.logger
 
 		self.promotions = []
-		self.get_promotions()
 
 	def get_promotions(self):
 		# Get list of promotions from IM_PRC_GRP
@@ -27,8 +29,8 @@ class Promotions:
 			for promo in promotions:
 				query = f"""
                 SELECT TOP 1 GRP.GRP_TYP, GRP.GRP_COD, GRP.GRP_SEQ_NO, GRP.DESCR, GRP.CUST_FILT, GRP.BEG_DAT, 
-                GRP.END_DAT, GRP.LST_MAINT_DT, GRP.ENABLED, GRP.MIX_MATCH_COD
-                FROM IM_PRC_GRP GRP INNER JOIN IM_PRC_RUL RUL ON GRP.GRP_COD = RUL.GRP_COD
+                GRP.END_DAT, GRP.LST_MAINT_DT, GRP.ENABLED, GRP.MIX_MATCH_COD, MW.ID, MW.BC_ID
+                FROM IM_PRC_GRP GRP FULL OUTER JOIN {creds.bc_promo_table} MW ON GRP.GRP_COD = MW.GRP_COD
                 WHERE GRP.GRP_COD = '{promo}' and GRP.GRP_TYP = 'P'
                 """
 				response = self.db.query_db(query=query)
@@ -38,12 +40,12 @@ class Promotions:
 						self.promotions.append(self.Promotion(promo=data))
 
 	def sync(self):
+		self.get_promotions()
 		for promotion in self.promotions:
 			if promotion.lst_maint_dt > self.last_sync:
-				# self.logger.info(
-				# 	f'Promotion {promotion.grp_cod} has been updated since last sync. Getting updated data.'
-				# )
 				promotion.get_price_rules()
+				promotion.has_bogo_twoofer = promotion.has_bogo()
+				promotion.process_promotion()
 
 	@staticmethod
 	def bc_get_promotions(id=None):
@@ -58,6 +60,7 @@ class Promotions:
 
 	class Promotion:
 		def __init__(self, promo):
+			self.db = Database.db
 			self.error_handler = ProcessOutErrorHandler.error_handler
 			self.logger = ProcessOutErrorHandler.logger
 			self.grp_typ = promo[0]
@@ -68,9 +71,10 @@ class Promotions:
 			self.beg_dat = promo[5]
 			self.end_dat = promo[6]
 			self.lst_maint_dt = promo[7]
-			self.enabled = promo[8]
+			self.enabled = True if promo[8] == 'Y' else False
 			self.mix_match_code = promo[9]
-			# self.price_rule_count = promo[10]
+			self.db_id = promo[10]
+			self.bc_id = promo[11]
 			self.max_uses = None
 			self.price_rules = []
 
@@ -87,32 +91,38 @@ class Promotions:
 			return result
 
 		def get_price_rules(self):
-			if self.enabled == 'Y':
-				print('Getting Price Rules')
-				query = f"""
-                SELECT RUL.GRP_TYP, RUL.GRP_COD, RUL.RUL_SEQ_NO, RUL.DESCR, RUL.CUST_FILT, RUL.ITEM_FILT, 
-                RUL.SAL_FILT, RUL.IS_CUSTOM, RUL.USE_BOGO_TWOFER, RUL.REQ_FULL_GRP_FOR_BOGO_TWOFER
-                FROM IM_PRC_RUL RUL
-                WHERE RUL.GRP_COD = '{self.grp_cod}'
-                """
-				response = Database.db.query_db(query)
-				if response:
-					for rule in response:
-						self.price_rules.append(self.PriceRule(rule))
+			print(f'Getting Price Rules for {self.grp_cod}')
+			query = f"""
+			SELECT RUL.GRP_TYP, RUL.GRP_COD, RUL.RUL_SEQ_NO, RUL.DESCR, RUL.CUST_FILT, RUL.ITEM_FILT, 
+			RUL.SAL_FILT, RUL.IS_CUSTOM, RUL.USE_BOGO_TWOFER, RUL.REQ_FULL_GRP_FOR_BOGO_TWOFER, MW.ID, MW.BC_ID
+			FROM IM_PRC_RUL RUL
+            FULL OUTER JOIN SN_PROMO MW on rul.GRP_COD = MW.GRP_COD
+			WHERE RUL.GRP_COD = '{self.grp_cod}'
+			"""
+			response = Database.db.query_db(query)
+			self.price_rules = [self.PriceRule(rule) for rule in response] if response else []
 
-		def get_rule_items(self, rul_seq_no):
+		def has_bogo(self):
+			for rule in self.price_rules:
+				if rule.use_bogo_twoofer == 'Y' and rule.req_full_group_for_bogo == 'Y':
+					return True
+
+		def get_rule_items(self, rul_seq_no, bc=True):
 			"""Takes in a rule sequence number and returns a list of Associated Item BC Product IDs."""
 			items = []
 			for rule in self.price_rules:
 				if rul_seq_no == rule.rul_seq_no:
 					items = rule.items
-			# Get BC Product IDs
-			bc_prod_ids = []
-			for item in items:
-				bc_prod_id = Catalog.get_product_id_from_sku(item)
-				if bc_prod_id:
-					bc_prod_ids.append(bc_prod_id)
-			return bc_prod_ids
+			if bc:
+				# Get BC Product IDs
+				bc_prod_ids = []
+				for item in items:
+					bc_prod_id = Catalog.get_product_id_from_sku(item)
+					if bc_prod_id:
+						bc_prod_ids.append(bc_prod_id)
+				return bc_prod_ids
+			else:
+				return items
 
 		def get_price_breaks(self, rul_seq_no):
 			"""Takes in a rule sequence number and returns a list of Price Breaks."""
@@ -122,50 +132,133 @@ class Promotions:
 					breaks = rule.price_breaks
 			return breaks
 
-		def bc_create_promotion(self, rule):
-			payload = self.create_payload(rule)
+		def bc_create_bogo_promotion(self):
+			if self.has_bogo_twoofer:
+				payload = self.create_payload()
+				url = f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/promotions'
+				response = requests.post(url, headers=creds.bc_api_headers, json=payload)
+				if response.status_code == 201:
+					self.logger.success(f'Promotion {self.grp_cod} created successfully.')
+					self.bc_id = response.json()['data']['id']
+					return True
 
-			url = f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/promotions'
-			response = requests.post(url, headers=creds.bc_api_headers, json=payload)
-			if response.status_code == 201:
-				self.logger.success(f'Promotion {self.grp_cod} created successfully.')
+				elif response.status_code == 429:
+					ms_to_wait = int(response.headers['X-Rate-Limit-Time-Reset-Ms'])
+					seconds_to_wait = (ms_to_wait / 1000) + 1
+					VirtualRateLimiter.pause_requests(seconds_to_wait)
+					sleep(seconds_to_wait)
+					response = requests.post(url, headers=creds.bc_api_headers, json=payload)
+					if response.status_code == 201:
+						self.logger.success(f'Promotion {self.grp_cod} created successfully.')
+						self.bc_id = response.json()['data']['id']
+						return True
+					else:
+						self.error_handler.add_error_v(
+							error=f'Error: {response.status_code}\n' f'{response.text}', origin='Promotion creation'
+						)
+						return False
+				else:
+					self.error_handler.add_error_v(
+						error=f'Error: {response.status_code}\n' f'{response.text}', origin='Promotion Creation'
+					)
+					return False
+
+		def bc_update_bogo_promotion(self):
+			payload = self.create_payload()
+			url = f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/promotions/{self.bc_id}'
+			response = requests.put(url, headers=creds.bc_api_headers, json=payload)
+			print(response)
+			if response.status_code == 200:
+				self.logger.success(f'Promotion {self.grp_cod} updated successfully.')
+				return True
+
+			elif response.status_code == 429:
+				ms_to_wait = int(response.headers['X-Rate-Limit-Time-Reset-Ms'])
+				seconds_to_wait = (ms_to_wait / 1000) + 1
+				VirtualRateLimiter.pause_requests(seconds_to_wait)
+				sleep(seconds_to_wait)
+				response = requests.put(url, headers=creds.bc_api_headers, json=payload)
+				if response.status_code in [200]:
+					self.logger.success(f'Promotion {self.grp_cod} updated successfully.')
+					return True
+				else:
+					self.error_handler.add_error_v(
+						error=f'Error: {response.status_code}\n' f'{response.text}', origin='Promotion Update'
+					)
+					return False
 			else:
 				self.error_handler.add_error_v(
-					error=f'Error: {response.status_code}\n' f'{response.text}', origin='Promotion Creation'
+					error=f'Error: {response.status_code}\n' f'{response.text}', origin='Promotion Update'
 				)
+				return False
+
+		def bc_delete_bogo_promotion(self):
+			url = f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/promotions/{self.bc_id}'
+			response = requests.delete(url, headers=creds.bc_api_headers)
+			if response.status_code == 204:
+				self.logger.success(f'Promotion {self.grp_cod} deleted successfully.')
+				return True
+			else:
+				self.error_handler.add_error_v(
+					error=f'Error: {response.status_code}\n' f'{response.text}', origin='Promotion Deletion'
+				)
+				return False
 
 		def get_discount_amount(self, price_rule):
 			"""Get the discount amount of the final price break."""
 			return float(price_rule.price_breaks[-1].amt_or_pct)
 
-		def create_payload(self, price_rule):
-			"""Creates the payload for the BigCommerce API Promotion."""
-			items = self.get_rule_items(price_rule.rul_seq_no)
+		def get_promotion_rules(self):
+			"""Creates the line item rules payload for the promotion API"""
+			result = []
+			for rule in self.price_rules:
+				items = self.get_rule_items(rule.rul_seq_no)
 
+				minimum_quantity = int(rule.price_breaks[0].min_qty)
+				print(f'Rule: {rule.rul_seq_no} Items: {items} Min Qty: {minimum_quantity}')
+
+				rule_payload = {
+					'action': {
+						'cart_items': {
+							'discount': {'percentage_amount': self.get_discount_amount(rule)},
+							'strategy': 'LEAST_EXPENSIVE',
+							'add_free_item': False,
+							'as_total': False,
+							'include_items_considered_by_condition': False,
+							'exclude_items_on_sale': False,
+							'items': {'products': items},
+							'quantity': self.get_reward_quantity(rule),
+						}
+					},
+					'apply_once': False,
+					'stop': False,
+					# Condition is the rule that must be met for the discount to be applied
+					'condition': {'cart': {'items': {'products': items}, 'minimum_quantity': minimum_quantity}},
+				}
+
+				result.append(rule_payload)
+			print(result)
+			return result
+
+		def get_reward_quantity(self, rule):
+			first_rule_qty = rule.price_breaks[0].min_qty
+			second_rule_qty = rule.price_breaks[1].min_qty
+			reward = int(second_rule_qty - first_rule_qty)
+			return reward
+
+		def create_payload(self):
+			"""Creates the payload for the BigCommerce API Promotion."""
 			payload = {
 				'name': self.descr,
-				'rules': [
-					{
-						'action': {
-							'cart_value': {'discount': {'percentage_amount': self.get_discount_amount(price_rule)}}
-						},
-						'strategy': 'LEAST_EXPENSIVE',
-						'add_free_item': False,
-						'include_items_considered_by_condition': False,
-						'exclude_items_on_sale': False,
-						'items': {'products': items},
-						'apply_once': False,
-						'stop': False,
-						'condition': {'cart': {'items': {'products': items}, 'minimum_quantity': 1}},
-					}
-				],
-				'status': 'ENABLED' if self.enabled == 'Y' else 'DISABLED',
+				'rules': self.get_promotion_rules(),
+				'notifications': [],
 				'stop': False,
-				'can_be_used_with_other_promotions': False,
 				'currency_code': 'USD',
-				'coupon_overrides_automatic_when_offering_higher_discounts': True,
-				'redemption_type': 'COUPON',
+				'redemption_type': 'AUTOMATIC',
+				'status': 'ENABLED' if self.enabled else 'DISABLED',
+				'can_be_used_with_other_promotions': True,
 			}
+
 			if self.max_uses:
 				payload['max_uses'] = self.max_uses
 
@@ -173,24 +266,176 @@ class Promotions:
 				payload['start_date'] = convert_to_utc(self.beg_dat)
 			if self.end_dat:
 				payload['end_date'] = convert_to_utc(self.end_dat)
-			print(payload)
+
 			return payload
 
 		def process_promotion(self):
-			for rule in promotion.price_rules:
-				if rule.isBogoTwoofer(rule):
-					if rule.db_id:
+			if self.enabled:
+				if self.has_bogo_twoofer:
+					# process BOGO Twoofers
+					if self.db_id:
+						print('Updating Promotion')
 						# Update Promotion
-						self.bc_update_promotion(rule)
+						if self.bc_update_bogo_promotion():
+							if self.mw_update_bogo_promotion():
+								self.logger.success(f'Promotion {self.grp_cod} processed successfully.')
 					else:
 						# Create Promotion
-						self.bc_create_promotion(rule)
+						print('Creating Promotion')
+						if self.bc_create_bogo_promotion():
+							if self.mw_insert_bogo_promotion():
+								self.logger.success(f'Promotion {self.grp_cod} processed successfully.')
+
+				# Process Regular Fixed Price Promotions
+				self.add_sale_price()
+
+			else:
+				if self.has_bogo_twoofer:
+					# Check if Promotion exists in MW
+					if self.db_id is not None:
+						# Delete Promotion
+						if self.bc_delete_bogo_promotion():
+							if self.mw_delete_bogo_promotion():
+								self.logger.success(f'Promotion {self.grp_cod} processed successfully.')
+				# Process Regular Fixed Price Promotions
+				self.remove_sale_price()
+
+		def add_sale_price(self):
+			"""Updates the sale price for non-bogo items in the promotion."""
+
+			def get_target_price(item, target_method, target_amount):
+				if target_method == 'P':
+					# pick price. Do nothing
+					pass
+				if target_method == 'D':
+					# Percentage Discount
+					print(f'Item: {item.item_no} Price 1: {item.price_1} Target Amount: {target_amount}')
+					item_sale_price = float(item.price_1 * ((100 - target_amount) / 100))
+				elif target_method == 'F':
+					# Fixed Price Adjustment
+					item_sale_price = target_amount
+				elif target_method == 'A':
+					# Amount Discount
+					item_sale_price = round(float(item.price_1) - target_amount, 2)
+
+				return item_sale_price
+
+			for rule in self.price_rules:
+				if rule.use_bogo_twoofer == 'N':
+					self.logger.info(f'GRP_COD: {self.grp_cod}: Processing Rule: {rule.rul_seq_no}')
+					# Get CP SKU list of items for the rule.
+					items = self.get_rule_items(rule.rul_seq_no, bc=False)
+					target = rule.price_breaks[0]
+					target_method = target.prc_meth
+					target_amount = target.amt_or_pct
+
+					if items:
+						for i in items:
+							item = Product(i)
+							sale_price = get_target_price(item, target_method, target_amount)
+							query = f"""
+							UPDATE IM_PRC
+							SET PRC_2 = {sale_price}, LST_MAINT_DT = GETDATE()
+							WHERE ITEM_NO = '{i}'				
+							
+							UPDATE IM_ITEM
+							SET LST_MAINT_DT = GETDATE()
+							WHERE ITEM_NO = '{i}'"""
+
+							response = self.db.query_db(query, commit=True)
+
+							if response['code'] == 200:
+								self.logger.success(
+									f'Item: {i} Price 1: {item.price_1} adjusted to Sale Price: {sale_price}'
+								)
+							else:
+								self.error_handler.add_error_v(
+									error=f'Error: {response["code"]}\n {response["message"]}, origin="Sale Price Addition")'
+								)
+					else:
+						self.error_handler.add_error_v(
+							error=f'Error: No Items Found for Rule {rule.rul_seq_no}', origin='Sale Price Addition'
+						)
+
+		def remove_sale_price(self):
+			for rule in self.price_rules:
+				if rule.use_bogo_twoofer == 'N':
+					# Fixed Price Promotion
+					items = self.get_rule_items(rule.rul_seq_no, bc=False)
+
+					if items:
+						if len(items) > 1:
+							where_filter = f'WHERE ITEM_NO IN {tuple(items)}'
+						else:
+							where_filter = f"WHERE ITEM_NO = '{items[0]}'"
+
+						query = f"""
+						UPDATE IM_PRC
+						SET PRC_2 = NULL, LST_MAINT_DT = GETDATE()
+						{where_filter}
+				
+						UPDATE IM_ITEM
+						SET LST_MAINT_DT = GETDATE()
+						{where_filter}"""
+						print(query)
+						response = self.db.query_db(query, commit=True)
+						if response['code'] == 200:
+							self.logger.success(f'Sale Price {self.grp_cod} removed successfully from {items}.')
+						else:
+							self.error_handler.add_error_v(
+								error=f'Error: {response["code"]}\n {response["message"]}, origin="Sale Price Removal")'
+							)
+
+		def mw_insert_bogo_promotion(self):
+			query = f"""
+			INSERT INTO SN_PROMO(GRP_COD, BC_ID, ENABLED)
+			VALUES('{self.grp_cod}', {self.bc_id}, {1 if self.enabled else 0})
+			"""
+			response = self.db.query_db(query, commit=True)
+			if response['code'] == 200:
+				self.logger.success(f'Promotion {self.grp_cod} inserted successfully.')
+				return True
+			else:
+				self.error_handler.add_error_v(
+					error=f'Error: {response["code"]}\n' f'{response["message"]}', origin='Promotion Insertion'
+				)
+				return False
+
+		def mw_update_bogo_promotion(self):
+			query = f"""
+			UPDATE SN_PROMO
+			SET BC_ID = {self.bc_id}, ENABLED = {1 if self.enabled else 0}, LST_MAINT_DT = GETDATE()
+			WHERE GRP_COD = '{self.grp_cod}'
+			"""
+			response = self.db.query_db(query, commit=True)
+			if response['code'] == 200:
+				self.logger.success(f'Promotion {self.grp_cod} updated successfully.')
+				return True
+			else:
+				self.error_handler.add_error_v(
+					error=f'Error: {response["code"]}\n' f'{response["message"]}', origin='Promotion Update'
+				)
+				return False
+
+		def mw_delete_bogo_promotion(self):
+			query = f"""
+			DELETE FROM SN_PROMO
+			WHERE BC_ID = {self.bc_id}
+			"""
+			response = self.db.query_db(query, commit=True)
+			if response['code'] == 200:
+				self.logger.success(f'Promotion {self.grp_cod} deleted successfully.')
+				return True
+			else:
+				self.error_handler.add_error_v(
+					error=f'Error: {response["code"]}\n' f'{response["message"]}', origin='Promotion Deletion'
+				)
+				return False
 
 		class PriceRule:
 			def __init__(self, rule):
 				self.error_handler = ProcessOutErrorHandler.error_handler
 				self.logger = ProcessOutErrorHandler.logger
-				self.db_id = None
 				self.grp_typ = rule[0]
 				self.grp_cod = rule[1]
 				self.rul_seq_no = rule[2]
@@ -201,6 +446,8 @@ class Promotions:
 				self.is_custom = rule[7]
 				self.use_bogo_twoofer = rule[8]
 				self.req_full_group_for_bogo = rule[9]
+				self.db_id = rule[10]
+				self.bc_id = rule[11]
 				self.price_breaks = []
 				self.items = []
 				self.get_price_breaks()
@@ -208,6 +455,9 @@ class Promotions:
 
 			def __str__(self) -> str:
 				result = f'Rule Sequence Number: {self.rul_seq_no}\n'
+				result += f'Group Code: {self.grp_cod}\n'
+				result += f'db_id: {self.db_id}\n'
+				result += f'BC ID: {self.bc_id}\n'
 				result += f'Description: {self.descr}\n'
 				result += f'Customer Filter: {self.cust_filt}\n'
 				result += f'Item Filter: {self.item_filt}\n'
@@ -254,7 +504,12 @@ class Promotions:
 
 
 if __name__ == '__main__':
-	promo = Promotions(last_sync=datetime(2024, 7, 5))
+	promo = Promotions(last_sync=datetime(2024, 7, 7))
 	promo.sync()
-	for promotion in promo.promotions:
-		promotion.process_promotion()
+	# for promotion in promo.promotions:
+	# 	promotion.process_promotion()
+	# for rule in promotion.price_rules:
+	# print(rule)
+	# import json
+
+	# print(json.dumps(Promotions.bc_get_promotions(39), indent=4))

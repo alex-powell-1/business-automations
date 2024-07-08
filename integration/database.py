@@ -3,12 +3,12 @@ from setup import query_engine
 
 
 class Database:
-    db = query_engine.QueryEngine()
+	db = query_engine.QueryEngine()
 
-    def rebuild_tables(self):
-        def create_tables():
-            tables = {
-                "categories": f"""
+	def rebuild_tables(self):
+		def create_tables():
+			tables = {
+				'categories': f"""
                                         CREATE TABLE {creds.bc_category_table} (
                                         CATEG_ID int IDENTITY(1,1) PRIMARY KEY,
                                         BC_CATEG_ID int,
@@ -21,7 +21,7 @@ class Database:
                                         LST_MAINT_DT datetime NOT NULL DEFAULT(current_timestamp)
                                         );
                                         """,
-                "brands": f"""
+				'brands': f"""
                                         CREATE TABLE {creds.bc_brands_table} (
                                         ID int IDENTITY(1,1) PRIMARY KEY,
                                         CP_BRAND_ID nvarchar(50) NOT NULL,
@@ -40,7 +40,7 @@ class Database:
                                         LST_MAINT_DT datetime NOT NULL DEFAULT(current_timestamp)
                                         );
                                         """,
-                "products": f"""
+				'products': f"""
                                         CREATE TABLE {creds.bc_product_table} (
                                         ID int IDENTITY(1,1) PRIMARY KEY,
                                         ITEM_NO varchar(50) NOT NULL,
@@ -56,7 +56,7 @@ class Database:
                                         LST_MAINT_DT datetime NOT NULL DEFAULT(current_timestamp)
                                         );
                                         """,
-                "images": f"""
+				'images': f"""
                                         CREATE TABLE {creds.bc_image_table} (
                                         ID int IDENTITY(1,1) PRIMARY KEY,
                                         IMAGE_NAME nvarchar(255) NOT NULL,
@@ -76,7 +76,7 @@ class Database:
                                         LST_MAINT_DT datetime NOT NULL DEFAULT(current_timestamp)
                                         );
                                         """,
-                "customers": f"""
+				'customers': f"""
                                         CREATE TABLE {creds.bc_customer_table} (
                                         ID int IDENTITY(1,1) PRIMARY KEY,
                                         CUST_NO varchar(50) NOT NULL,
@@ -84,43 +84,51 @@ class Database:
                                         LST_MAINT_DT datetime NOT NULL DEFAULT(current_timestamp)
                                         );
                                         """,
-                "orders": f"""
+				'orders': f"""
                                         CREATE TABLE {creds.bc_order_table} (
                                         ID int IDENTITY(1, 1) PRIMARY KEY,
                                         ORDER_NO int NOT NULL,
                                         DOC_ID bigint,
                                         STATUS bit DEFAULT(0)
                                         )""",
-                "gift": f"""
+				'gift': f"""
                                         CREATE TABLE {creds.bc_gift_cert_table} (
                                         ID int IDENTITY(1, 1) PRIMARY KEY,
                                         GFC_NO varchar(30) NOT NULL,
                                         BC_GFC_ID int NOT NULL,
                                         LST_MAINT_DT datetime NOT NULL DEFAULT(current_timestamp)
                                         )""",
-            }
+				'promo': f""" 
+                                        CREATE TABLE {creds.bc_promo_table}(
+                                        ID int IDENTITY(1,1) PRIMARY KEY,
+                                        GRP_COD nvarchar(50) NOT NULL,
+                                        RUL_SEQ_NO int,
+                                        BC_ID int,
+                                        LST_MAINT_DT datetime NOT NULL DEFAULT(current_timestamp)
+                                        );""",
+			}
 
-            for table in tables:
-                self.db.query_db(tables[table], commit=True)
+			for table in tables:
+				self.db.query_db(tables[table], commit=True)
 
-        # Drop Tables
-        def drop_tables():
-            tables = [
-                creds.bc_customer_table,
-                creds.bc_image_table,
-                creds.bc_product_table,
-                creds.bc_brands_table,
-                creds.bc_category_table,
-                creds.bc_gift_cert_table,
-                creds.bc_order_table,
-            ]
+		# Drop Tables
+		def drop_tables():
+			tables = [
+				creds.bc_customer_table,
+				creds.bc_image_table,
+				creds.bc_product_table,
+				creds.bc_brands_table,
+				creds.bc_category_table,
+				creds.bc_gift_cert_table,
+				creds.bc_order_table,
+			]
 
-            def drop_table(table_name):
-                self.db.query_db(f"DROP TABLE {table_name}", commit=True)
+			def drop_table(table_name):
+				self.db.query_db(f'DROP TABLE {table_name}', commit=True)
 
-            for table in tables:
-                drop_table(table)
+			for table in tables:
+				drop_table(table)
 
-        # Recreate Tables
-        drop_tables()
-        create_tables()
+		# Recreate Tables
+		drop_tables()
+		create_tables()
