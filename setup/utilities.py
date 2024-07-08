@@ -71,6 +71,19 @@ def encode_base64(input_string):
 	return encoded_string.decode()
 
 
+def get_last_sync():
+	"""Read the last sync time from a file for use in sync operations."""
+	with open('last_sync.txt', 'r+') as file:
+		last_sync = datetime.strptime(file.read(), '%Y-%m-%d %H:%M:%S')
+		return last_sync
+
+
+def set_last_sync(start_time):
+	"""Write the last sync time to a file for future use."""
+	with open('last_sync.txt', 'w') as file:
+		file.write(start_time.strftime('%Y-%m-%d %H:%M:%S'))
+
+
 class VirtualRateLimiter:
 	is_rate_limited = False
 	limited_until = None
@@ -84,9 +97,7 @@ class VirtualRateLimiter:
 		VirtualRateLimiter.is_rate_limited = True
 		VirtualRateLimiter.limited_until = time.time() + seconds_to_wait
 		if not silent:
-			ProcessOutErrorHandler.logger.warn(
-				f'Rate limit reached. Pausing requests for {seconds_to_wait} seconds.'
-			)
+			ProcessOutErrorHandler.logger.warn(f'Rate limit reached. Pausing requests for {seconds_to_wait} seconds.')
 
 	@staticmethod
 	def is_paused():

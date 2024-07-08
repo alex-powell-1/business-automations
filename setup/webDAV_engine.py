@@ -110,18 +110,18 @@ class WebDAVJsonClient:
 if __name__ == '__main__':
 	dav = WebDAVJsonClient()
 	response = dav.get_json_file(creds.promotion_config)
-	print(response)
+	print(response[1]['promotions']['bogo'] == 'Buy one, get one free!')
 
-	response = dav.remove_property(creds.promotion_config, property_name='promotions', sub_property='Promo 4')
-	print(response)
-
-	# response = dav.get_json_file(creds.promotion_config)
+	# response = dav.remove_property(creds.promotion_config, property_name='promotions', sub_property='Promo 4')
 	# print(response)
 
-	response = dav.add_property(
-		creds.promotion_config, property_name='promotions', sub_property='Promo 5', property_value='Promo 5 Test'
-	)
-	print()
-	print()
-	response = dav.get_json_file(creds.promotion_config)
-	print(response)
+	# # response = dav.get_json_file(creds.promotion_config)
+	# # print(response)
+
+	# response = dav.add_property(
+	# 	creds.promotion_config, property_name='promotions', sub_property='Promo 5', property_value='Promo 5 Test'
+	# )
+	# print()
+	# print()
+	# response = dav.get_json_file(creds.promotion_config)
+	# print(response)

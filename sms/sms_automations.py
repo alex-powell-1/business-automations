@@ -3,7 +3,6 @@ from datetime import datetime
 
 from customer_tools.customers import Customer
 from setup import creds
-from setup.create_log import create_sms_log
 from setup.query_engine import QueryEngine
 from setup.sms_engine import SMSEngine
 from sms import sms_queries
@@ -69,7 +68,7 @@ def create_customer_text(
 
 		# Send Text
 		engine = SMSEngine()
-		engine.send_text(cust_no, to_phone, message, url=image_url, test_mode=test_mode)
+		engine.send_text(cust_no=cust_no, to_phone=to_phone, message=message, url=image_url, test_mode=test_mode)
 
 
 def remove_wholesale_from_loyalty(log_file):

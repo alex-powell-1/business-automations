@@ -47,6 +47,8 @@ class SMSEngine:
 				if err.code in [21614, 30003, 30005, 30006]:
 					self.error_handler.add_error_v(f'Code: {err.code} - Error sending SMS to {name}: {err.msg}')
 					self.move_phone_1_to_landline(cust_no, to_phone)
+			except Exception as e:
+				self.error_handler.add_error_v(f'Error sending SMS to {name}: {e}')
 
 			else:
 				self.logger.success(message=f'{twilio_message.to}, {twilio_message.body}, {twilio_message.sid}')

@@ -8,7 +8,7 @@ from setup import creds
 from setup.utilities import convert_to_utc
 from integration.catalog import Catalog
 from product_tools.products import Product
-from setup.utilities import VirtualRateLimiter
+from setup.utilities import VirtualRateLimiter, set_last_sync
 
 
 class Promotions:
@@ -61,6 +61,7 @@ class Promotions:
 	class Promotion:
 		def __init__(self, promo):
 			self.db = Database.db
+			self.dav = WebDAVJsonClient()
 			self.error_handler = ProcessOutErrorHandler.error_handler
 			self.logger = ProcessOutErrorHandler.logger
 			self.grp_typ = promo[0]
@@ -214,8 +215,7 @@ class Promotions:
 			for rule in self.price_rules:
 				items = self.get_rule_items(rule.rul_seq_no)
 
-				minimum_quantity = int(rule.price_breaks[0].min_qty)
-				print(f'Rule: {rule.rul_seq_no} Items: {items} Min Qty: {minimum_quantity}')
+				required_qty, reward_qty = self.get_reward_quantity(rule)
 
 				rule_payload = {
 					'action': {
@@ -227,24 +227,26 @@ class Promotions:
 							'include_items_considered_by_condition': False,
 							'exclude_items_on_sale': False,
 							'items': {'products': items},
-							'quantity': self.get_reward_quantity(rule),
+							'quantity': reward_qty,
 						}
 					},
 					'apply_once': False,
 					'stop': False,
 					# Condition is the rule that must be met for the discount to be applied
-					'condition': {'cart': {'items': {'products': items}, 'minimum_quantity': minimum_quantity}},
+					'condition': {'cart': {'items': {'products': items}, 'minimum_quantity': required_qty}},
 				}
 
 				result.append(rule_payload)
-			print(result)
 			return result
 
 		def get_reward_quantity(self, rule):
-			first_rule_qty = rule.price_breaks[0].min_qty
-			second_rule_qty = rule.price_breaks[1].min_qty
-			reward = int(second_rule_qty - first_rule_qty)
-			return reward
+			"""Calculates the number of reward products given to a customer after a condition is met.
+			Example: Buy 1 Get 1 Free = 1 reward product, Buy 2 Get 1 Free = 1 reward product, etc.
+			"""
+			first_rule_qty = int(rule.price_breaks[0].min_qty)
+			second_rule_qty = int(rule.price_breaks[1].min_qty)
+			reward = second_rule_qty - first_rule_qty
+			return {'required_quantity': first_rule_qty, 'reward_quantity': reward}
 
 		def create_payload(self):
 			"""Creates the payload for the BigCommerce API Promotion."""
@@ -274,20 +276,22 @@ class Promotions:
 				if self.has_bogo_twoofer:
 					# process BOGO Twoofers
 					if self.db_id:
-						print('Updating Promotion')
 						# Update Promotion
 						if self.bc_update_bogo_promotion():
 							if self.mw_update_bogo_promotion():
 								self.logger.success(f'Promotion {self.grp_cod} processed successfully.')
 					else:
 						# Create Promotion
-						print('Creating Promotion')
 						if self.bc_create_bogo_promotion():
 							if self.mw_insert_bogo_promotion():
-								self.logger.success(f'Promotion {self.grp_cod} processed successfully.')
+								# Create Sale Badges
+								self.create_sale_badges()
+								# Add Sale Badges to Items
+								self.add_sale_badges()
+								self.logger.success(f'BOGO Promotions for {self.grp_cod} processed successfully.')
 
 				# Process Regular Fixed Price Promotions
-				self.add_sale_price()
+				new_timestamp = self.add_sale_price()
 
 			else:
 				if self.has_bogo_twoofer:
@@ -296,9 +300,12 @@ class Promotions:
 						# Delete Promotion
 						if self.bc_delete_bogo_promotion():
 							if self.mw_delete_bogo_promotion():
-								self.logger.success(f'Promotion {self.grp_cod} processed successfully.')
+								self.logger.success(f'BOGO Promotions for {self.grp_cod} processed successfully.')
 				# Process Regular Fixed Price Promotions
-				self.remove_sale_price()
+				new_timestamp = self.remove_sale_price()
+
+			# if new_timestamp:
+			# 	set_last_sync(new_timestamp)
 
 		def add_sale_price(self):
 			"""Updates the sale price for non-bogo items in the promotion."""
@@ -330,28 +337,38 @@ class Promotions:
 					target_amount = target.amt_or_pct
 
 					if items:
+						new_timestamp = f'{datetime.now():%Y-%m-%d %H:%M:%S}'
 						for i in items:
+							counter = 1
+							# Create Product Object
 							item = Product(i)
 							sale_price = get_target_price(item, target_method, target_amount)
 							query = f"""
 							UPDATE IM_PRC
-							SET PRC_2 = {sale_price}, LST_MAINT_DT = GETDATE()
+							SET PRC_2 = {sale_price}, LST_MAINT_DT = '{new_timestamp}'
 							WHERE ITEM_NO = '{i}'				
 							
 							UPDATE IM_ITEM
-							SET LST_MAINT_DT = GETDATE()
-							WHERE ITEM_NO = '{i}'"""
-
+							SET LST_MAINT_DT = '{new_timestamp}'
+							WHERE ITEM_NO = '{i}'
+							
+							INSERT INTO EC_CATEG_ITEM(ITEM_NO, CATEG_ID, ENTRY_SEQ_NO, LST_MAINT_DT, LST_MAINT_USR_ID)
+            				VALUES('{i}', '{creds.on_sale_category}', '{counter}', '{new_timestamp}', 'POS')
+							"""
+							# Updating Sale Price, Last Maintenance Date, and Adding to On Sale Category
 							response = self.db.query_db(query, commit=True)
 
 							if response['code'] == 200:
 								self.logger.success(
 									f'Item: {i} Price 1: {item.price_1} adjusted to Sale Price: {sale_price}'
 								)
+								# return completed timestamp for use in updating last_sync_time
+								return new_timestamp
 							else:
 								self.error_handler.add_error_v(
 									error=f'Error: {response["code"]}\n {response["message"]}, origin="Sale Price Addition")'
 								)
+							counter += 1
 					else:
 						self.error_handler.add_error_v(
 							error=f'Error: No Items Found for Rule {rule.rul_seq_no}', origin='Sale Price Addition'
@@ -364,6 +381,7 @@ class Promotions:
 					items = self.get_rule_items(rule.rul_seq_no, bc=False)
 
 					if items:
+						new_timestamp = f'{datetime.now():%Y-%m-%d %H:%M:%S}'
 						if len(items) > 1:
 							where_filter = f'WHERE ITEM_NO IN {tuple(items)}'
 						else:
@@ -371,16 +389,21 @@ class Promotions:
 
 						query = f"""
 						UPDATE IM_PRC
-						SET PRC_2 = NULL, LST_MAINT_DT = GETDATE()
+						SET PRC_2 = NULL, LST_MAINT_DT = '{new_timestamp}'
 						{where_filter}
 				
 						UPDATE IM_ITEM
-						SET LST_MAINT_DT = GETDATE()
-						{where_filter}"""
-						print(query)
+						SET LST_MAINT_DT = '{new_timestamp}'
+						{where_filter}
+
+						DELETE FROM EC_CATEG_ITEM
+            			{where_filter} AND CATEG_ID = '{creds.on_sale_category}'"""
+						# Removing Sale Price, Last Maintenance Date, and Removing from On Sale Category
 						response = self.db.query_db(query, commit=True)
+
 						if response['code'] == 200:
 							self.logger.success(f'Sale Price {self.grp_cod} removed successfully from {items}.')
+							return new_timestamp
 						else:
 							self.error_handler.add_error_v(
 								error=f'Error: {response["code"]}\n {response["message"]}, origin="Sale Price Removal")'
@@ -431,6 +454,84 @@ class Promotions:
 					error=f'Error: {response["code"]}\n' f'{response["message"]}', origin='Promotion Deletion'
 				)
 				return False
+
+		def create_promotion_message(self, rule):
+			required_qty, reward_qty = self.get_reward_quantity(rule)
+			if required_qty and reward_qty:
+				message = f'Buy {required_qty}, Get {reward_qty}'
+				amount = self.get_discount_amount(rule)
+				price_method = rule.price_breaks[-1].prc_meth
+				if price_method == 'D':
+					if amount < 100:
+						message += f' {amount}% Off'
+					elif amount == 100:
+						message += ' FREE'
+				elif rule.price_breaks[-1].prc_meth == 'A':
+					message += f' ${amount} Off!'
+				# add message to rule
+				promo_key = (
+					''.join([x[0] for x in message.replace('$', '').replace('%', '').split(' ')]).upper()
+					+ '-'
+					+ price_method
+				)
+				rule.message = message
+				rule.message_key = promo_key
+
+		def create_sale_badge_promotions(self):
+			"""Creates the Sale Badge Promotions for BOGO Twoofers and other offers.
+			example: Buy 1 Get 1 Free, Buy 2 Get 1 Free, etc."""
+			for rule in self.price_rules:
+				if rule.use_bogo_twoofer == 'Y' and rule.req_full_group_for_bogo == 'Y':
+					try:
+						response = self.dav.get_json_file(creds.promotion_config)
+						if response[1]['promotions'][rule.message_key]:
+							# Promotion already exists, return.
+							return
+					except KeyError:
+						# Create Sale Badge for BOGO Twoofer
+						self.create_promotion_message()
+						response = self.dav.add_property(
+							creds.promotion_config,
+							property_name='promotions',
+							sub_property=rule.message_key,
+							property_value=rule.message,
+						)
+		
+		def get_sale_badge_promotions(self):
+			try:
+				response = self.dav.get_json_file(creds.promotion_config)
+				return response[1]['promotions']
+			except KeyError:
+				return {}
+			
+		def get_sale_badge_promotion_items(self):
+			try:
+				response = self.dav.get_json_file(creds.promotion_config)
+				return response[1]['promotion_products']
+			except KeyError:
+				return {}
+
+
+		def add_sale_badges(self):
+			sale_badges = self.get_sale_badges()
+			current_sync_badges = []
+			for rule in self.price_rules:
+				if rule.use_bogo_twoofer == 'Y' and rule.req_full_group_for_bogo == 'Y':
+					for item in rule.items:
+						# Add Sale Badge to Item
+						self.dav.add_property(
+							creds.promotion_config,
+							property_name='promotion_products',
+							property_value={'product_id': item, 'promotion': rule.message_key},
+						)
+
+		def remove_sale_badges(self):
+			for rule in self.price_rules:
+				if rule.use_bogo_twoofer == 'Y' and rule.req_full_group_for_bogo == 'Y':
+					for item in rule.items:
+						# Remove Sale Badge from Item
+						self.dav.remove_property(
+							creds.promotion_config, property_name='promotion_products', sub_property=item
 
 		class PriceRule:
 			def __init__(self, rule):
