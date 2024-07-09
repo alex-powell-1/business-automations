@@ -43,6 +43,13 @@ def country_to_country_code(country):
 	return country_codes[country] if country in country_codes else country
 
 
+def convert_timezone(timestamp, from_zone, to_zone):
+	"""Convert from UTC to Local Time"""
+	start_time = timestamp.replace(tzinfo=from_zone)
+	result_time = start_time.astimezone(to_zone).strftime('%Y-%m-%d %H:%M:%S')
+	return result_time
+
+
 def pretty_print(response):
 	"""Takes in a JSON object and returns an indented"""
 	print(json.dumps(response, indent=4))

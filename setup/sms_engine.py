@@ -6,7 +6,8 @@ from twilio.rest import Client
 
 from setup import creds
 from setup.query_engine import QueryEngine
-from setup.error_handler import SMSErrorHandler
+from setup.error_handler import SMSErrorHandler, SMSEventHandler
+from setup.utilities import convert_timezone
 
 est = pytz.timezone('US/Eastern')
 utc = pytz.utc
@@ -24,7 +25,7 @@ class SMSEngine:
 	token = creds.twilio_auth_token
 
 	@staticmethod
-	def send_text(self, to_phone, message, name=None, cust_no=None, url=None, test_mode=False):
+	def send_text(to_phone, message, name=None, cust_no=None, url=None, test_mode=False):
 		# Format phone for Twilio API
 		formatted_phone = SMSEngine.format_phone(to_phone, mode='twilio')
 
@@ -46,27 +47,12 @@ class SMSEngine:
 			except TwilioRestException as err:
 				if err.code in [21614, 30003, 30005, 30006]:
 					SMSEngine.error_handler.add_error_v(f'Code: {err.code} - Error sending SMS to {name}: {err.msg}')
-					self.move_phone_1_to_landline(cust_no, to_phone)
+					SMSEngine.move_phone_1_to_landline(cust_no, to_phone)
 			except Exception as e:
 				SMSEngine.error_handler.add_error_v(f'Error sending SMS to {name}: {e}')
 
 			else:
 				SMSEngine.logger.success(message=f'{twilio_message.to}, {twilio_message.body}, {twilio_message.sid}')
-
-	@staticmethod
-	def move_phone_1_to_landline(cust_no, phone_number):
-		cp_phone = SMSEngine.format_phone(phone_number, mode='counterpoint')
-		move_landline_query = f"""
-            UPDATE AR_CUST
-            SET MBL_PHONE_1 = '{cp_phone}', SET PHONE_1 = NULL
-            WHERE PHONE_1 = '{cp_phone}'
-        """
-		response = SMSEngine.db.query_db(move_landline_query, commit=True)
-
-		if response['code'] == 200:
-			SMSEngine.logger.success(f'Moved {phone_number} to landline for customer {cust_no}')
-		else:
-			SMSEngine.error_handler.add_error_v(f'Error moving {phone_number} to landline')
 
 	@staticmethod
 	def format_phone(phone_number, mode='clickable'):
@@ -94,6 +80,23 @@ class SMSEngine:
 		return formatted_phone
 
 	@staticmethod
+	def move_phone_1_to_landline(cust_no, phone_number):
+		cp_phone = SMSEngine.format_phone(phone_number, mode='counterpoint')
+		move_landline_query = f"""
+            UPDATE AR_CUST
+            SET MBL_PHONE_1 = '{cp_phone}', SET PHONE_1 = NULL
+            WHERE PHONE_1 = '{cp_phone}'
+        """
+		response = SMSEngine.db.query_db(move_landline_query, commit=True)
+
+		if response['code'] == 200:
+			SMSEngine.logger.success(f'Moved {phone_number} to landline for customer {cust_no}')
+			SMSEventHandler.logger.log(f'Moved {phone_number} to landline for customer {cust_no}')
+		else:
+			SMSEngine.error_handler.add_error_v(f'Error moving {phone_number} to landline')
+			SMSEventHandler.error_handler.add_error_v(f'Error moving {phone_number} to landline')
+
+	@staticmethod
 	def unsubscribe_from_sms(phone_number):
 		query = f"""
         UPDATE AR_CUST
@@ -102,9 +105,9 @@ class SMSEngine:
         """
 		response = SMSEngine.db.query_db(query=query, commit=True)
 		if response['code'] == 200:
-			SMSEngine.logger.success(f'Unsubscribed {phone_number} from SMS')
+			SMSEventHandler.logger.success(f'Unsubscribed {phone_number} from SMS')
 		else:
-			SMSEngine.error_handler.add_error_v(f'Error unsubscribing {phone_number} from SMS')
+			SMSEventHandler.error_handler.add_error_v(f'Error unsubscribing {phone_number} from SMS')
 
 	@staticmethod
 	def lookup_customer_data(phone):
@@ -151,56 +154,51 @@ class SMSEngine:
 			for k, v in creds.lead_recipient.items():
 				sms.send_text(name=name, to_phone=v, message=message)
 
+	@staticmethod
+	def write_all_twilio_messages_to_share():
+		"""Gets all messages from twilio API and writes to .csv on share drive"""
+		client = Client(creds.twilio_account_sid, creds.twilio_auth_token)
+		messages = client.messages.list(to=creds.twilio_phone_number)
 
-def write_all_twilio_messages_to_share():
-	"""Gets all messages from twilio API and writes to .csv on share drive"""
-	client = Client(creds.twilio_account_sid, creds.twilio_auth_token)
-	messages = client.messages.list(to=creds.twilio_phone_number)
+		# Empty List
+		message_list = []
 
-	# Empty List
-	message_list = []
+		# Loop through message response in reverse order and format data
+		for record in messages[-1::-1]:
+			customer_name, customer_category = SMSEngine.lookup_customer_data(record.from_)
+			# [-1::-1] Twilio supplies data newest to oldest. This reverses that.
+			if record.date_sent is not None:
+				local_datetime = convert_timezone(timestamp=record.date_sent, from_zone=FROM_ZONE, to_zone=TO_ZONE)
+			else:
+				continue
+			# get rid of extra whitespace
+			while '  ' in record.body:
+				record.body = record.body.replace('  ', ' ')
 
-	# Loop through message response in reverse order and format data
-	for record in messages[-1::-1]:
-		customer_name, customer_category = SMSEngine.lookup_customer_data(record.from_)
-		# [-1::-1] Twilio supplies data newest to oldest. This reverses that.
-		if record.date_sent is not None:
-			local_datetime = convert_timezone(timestamp=record.date_sent, from_zone=FROM_ZONE, to_zone=TO_ZONE)
-		else:
-			continue
-		# get rid of extra whitespace
-		while '  ' in record.body:
-			record.body = record.body.replace('  ', ' ')
+			media_url = 'No Media'
 
-		media_url = 'No Media'
+			if int(record.num_media) > 0:
+				for media in record.media.list():
+					media_url = 'https://api.twilio.com' + media.uri[:-5]  # Strip off the '.json'
+					# Add authorization header
+					media_url = (
+						media_url[0:8] + creds.twilio_account_sid + ':' + creds.twilio_auth_token + '@' + media_url[8:]
+					)
 
-		if int(record.num_media) > 0:
-			for media in record.media.list():
-				media_url = 'https://api.twilio.com' + media.uri[:-5]  # Strip off the '.json'
-				# Add authorization header
-				media_url = (
-					media_url[0:8] + creds.twilio_account_sid + ':' + creds.twilio_auth_token + '@' + media_url[8:]
-				)
+			message_list.append(
+				[
+					local_datetime,
+					creds.twilio_phone_number,
+					record.from_,
+					record.body.strip().replace('\n', ' ').replace('\r', ''),
+					customer_name.title(),
+					customer_category.title(),
+					media_url,
+				]
+			)
 
-		message_list.append(
-			[
-				local_datetime,
-				creds.twilio_phone_number,
-				record.from_,
-				record.body.strip().replace('\n', ' ').replace('\r', ''),
-				customer_name.title(),
-				customer_category.title(),
-				media_url,
-			]
+		# Write dataframe to csv
+		df = pandas.DataFrame(
+			message_list, columns=['date', 'to_phone', 'from_phone', 'body', 'name', 'category', 'media']
 		)
-
-	# Write dataframe to csv
-	df = pandas.DataFrame(message_list, columns=['date', 'to_phone', 'from_phone', 'body', 'name', 'category', 'media'])
-	df.to_csv(creds.incoming_sms_log, index=False)
-
-
-def convert_timezone(timestamp, from_zone, to_zone):
-	"""Convert from UTC to Local Time"""
-	start_time = timestamp.replace(tzinfo=from_zone)
-	result_time = start_time.astimezone(to_zone).strftime('%Y-%m-%d %H:%M:%S')
-	return result_time
+		df.to_csv(creds.incoming_sms_log, index=False)

@@ -118,6 +118,13 @@ class SMSErrorHandler:
 	error_handler = ErrorHandler(logger)
 
 
+class SMSEventHandler:
+	"""Logging for SMS Unsubscribes, Landline Handling, and other SMS Events"""
+
+	logger = Logger('//mainserver/Share/logs/business_automations/sms/events.log')
+	error_handler = ErrorHandler(logger)
+
+
 class ProcessInErrorHandler:
 	"""Logging for the Process In Integration"""
 

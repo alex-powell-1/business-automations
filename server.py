@@ -17,7 +17,7 @@ from jsonschema import validate, ValidationError
 from twilio.twiml.messaging_response import MessagingResponse
 from waitress import serve
 
-from setup import creds, email_engine, sms_engine, authorization
+from setup import creds, email_engine, authorization
 from setup.sms_engine import SMSEngine
 from setup.error_handler import ProcessInErrorHandler, LeadFormErrorHandler
 from setup import log_engine
@@ -195,7 +195,7 @@ def newsletter_signup():
 
 
 @app.route('/sms', methods=['POST'])
-@limiter.limit('40/minute')  # 10 requests per minute
+@limiter.limit('40/minute')  # rate limiter
 def incoming_sms():
 	"""Webhook route for incoming SMS/MMS messages to be used with client messenger application.
 	Saves all incoming SMS/MMS messages to share drive csv file."""
