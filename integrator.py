@@ -8,6 +8,7 @@ from setup import date_presets
 from datetime import datetime
 
 from setup.error_handler import ProcessOutErrorHandler
+from setup.utilities import get_last_sync, set_last_sync
 
 import sys
 import time
@@ -18,7 +19,7 @@ class Integrator:
 	logger = ProcessOutErrorHandler.logger
 
 	def __init__(self):
-		self.last_sync = self.get_last_sync()
+		self.last_sync = get_last_sync()
 		self.db = Database()
 		self.catalog = Catalog(last_sync=self.last_sync)
 		self.customers = Customers(last_sync=self.last_sync)
@@ -26,18 +27,6 @@ class Integrator:
 
 	def __str__(self):
 		return f'Integrator\n' f'Last Sync: {self.last_sync}\n'
-
-	def get_last_sync(self):
-		"""Read the last sync time from a file for use in sync operations."""
-		with open('last_sync.txt', 'r+') as file:
-			last_sync = datetime.strptime(file.read(), '%Y-%m-%d %H:%M:%S')
-			Integrator.logger.info(message=f'Last Sync: {last_sync}')
-			return last_sync
-
-	def set_last_sync(self, start_time):
-		"""Write the last sync time to a file for future use."""
-		with open('last_sync.txt', 'w') as file:
-			file.write(start_time.strftime('%Y-%m-%d %H:%M:%S'))
 
 	def initialize(self):
 		"""Initialize the integrator by deleting the catalog, rebuilding the tables, and syncing the catalog."""
@@ -48,9 +37,7 @@ class Integrator:
 		self.catalog = Catalog(last_sync=date_presets.business_start_date)
 		self.sync(initial=True)
 		# self.customers = Customers(last_sync=business_start)
-		Integrator.logger.info(
-			message=f'Initialization Complete. ' f'Total time: {time.time() - start_time}'
-		)
+		Integrator.logger.info(message=f'Initialization Complete. ' f'Total time: {time.time() - start_time}')
 
 	def sync(self, initial=False):
 		start_sync_time = datetime.now()
@@ -58,7 +45,7 @@ class Integrator:
 		self.customers.sync()
 		self.gift_certificates.sync()
 		self.catalog.sync(initial=initial)
-		self.set_last_sync(start_sync_time)
+		set_last_sync(start_sync_time)
 		completion_time = (datetime.now() - start_sync_time).seconds
 		Integrator.logger.info(f'Sync completion time: {completion_time} seconds')
 		if Integrator.error_handler.errors:
@@ -86,15 +73,11 @@ def main_menu():
 			integrator.initialize()
 		# Get information about a product, brand, category, or customer
 		elif input_command == 'get':
-			command = input(
-				'\nEnter command: \n' '- product\n' '- brands\n' '- categories\n' '- customer\n\n'
-			)
+			command = input('\nEnter command: \n' '- product\n' '- brands\n' '- categories\n' '- customer\n\n')
 			if command == 'product':
 				sku = input('Enter product sku: ')
 				payload = Catalog.get_product(item_no=sku)
-				product = integrator.catalog.Product(
-					product_data=payload, last_sync=integrator.last_sync
-				)
+				product = integrator.catalog.Product(product_data=payload, last_sync=integrator.last_sync)
 				product.get_product_details(last_sync=integrator.last_sync)
 				print(product)
 
@@ -117,14 +100,7 @@ def main_menu():
 
 		elif input_command.startswith('delete'):
 			command = (
-				input(
-					'\nEnter command: \n'
-					'- product\n'
-					'- catalog\n'
-					'- brands\n'
-					'- categories\n'
-					'- products\n\n'
-				)
+				input('\nEnter command: \n' '- product\n' '- catalog\n' '- brands\n' '- categories\n' '- products\n\n')
 				.lower()
 				.strip()
 			)

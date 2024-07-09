@@ -70,7 +70,7 @@ class WebDAVJsonClient:
 		url = f'{self.server_url}/{file_path}'
 		response = requests.put(url, json=json_data, auth=self.auth)
 		if 200 <= response.status_code < 300:
-			return True, 'JSON file updated successfully.'
+			return True, f'JSON file updated successfully. Code: {response.status_code}'
 		else:
 			return False, f'Failed to update JSON file. Status Code: {response.status_code}, Response: {response.text}'
 
@@ -85,6 +85,14 @@ class WebDAVJsonClient:
 			else:
 				data[property_name] = property_value
 
+			return self.update_json_file(file_path, data)
+		else:
+			return False, data
+
+	def add_object(self, file_path, object_name, object_data):
+		success, data = self.get_json_file(file_path)
+		if success:
+			data[object_name] = object_data
 			return self.update_json_file(file_path, data)
 		else:
 			return False, data

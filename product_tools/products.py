@@ -187,25 +187,17 @@ class Product:
 			return 'Not a bound product'
 
 	def get_product_id(self):
-		if self.binding_key is not None:
-			query = f"""
-            SELECT TOP 1 PRODUCT_ID FROM CPI_BC_PRODUCTS
-            WHERE ITEM_NO = '{self.binding_key}' AND WEB_ID = '1'
-            ORDER BY CREATE_DATE DESC"""
-		else:
-			query = f"""
-            SELECT TOP 1 PRODUCT_ID FROM CPI_BC_PRODUCTS
-            WHERE ITEM_NO = '{self.item_no}' AND WEB_ID = '1'
-            ORDER BY CREATE_DATE DESC"""
+		query = f"""
+		SELECT PRODUCT_ID FROM {creds.bc_product_table}
+		WHERE ITEM_NO = '{self.binding_key}'"""
 		response = db.query_db(query)
-		if response is not None:
-			return response[0][0]
+		return response[0][0] if response is not None else None
 
 	def get_variant_id(self):
 		query = f"""
         SELECT VARIANT_ID
-        FROM CPI_BC_PROD
-        WHERE SKU = '{self.item_no}' AND WEB_ID = '1'
+        FROM {creds.bc_product_table}
+        WHERE SKU = '{self.item_no}'
         """
 		if self.binding_key is not None:
 			response = db.query_db(query)
@@ -467,21 +459,12 @@ def get_ecomm_items(mode=1):
 
 	# Mode 3 returns a list of skus and bc product ID of single e-comm items, and unique binding keys
 	if mode == 3:
-		query = """
+		query = f"""
             SELECT ITEM_NO, PRODUCT_ID
-            FROM CPI_BC_PRODUCTS
-            WHERE WEB_ID = '1'
+            FROM {creds.bc_product_table}
             """
 		response = db.query_db(query)
-		if response is not None:
-			result = []
-			for x in response:
-				sku = x[0]
-				product_id = int(x[1])
-				result.append([sku, product_id])
-			return result
-		else:
-			return None
+		return [[x[0], x[1]] for x in response] if response is not None else []
 
 
 def get_zero_stock_ecomm_products():
@@ -535,9 +518,8 @@ def get_variant_names(binding_id):
 def get_variant_info_from_big(sku):
 	query = f"""
     SELECT PRODUCT_ID, VARIANT_ID
-    FROM CPI_BC_PROD
-    WHERE WEB_ID = '1' AND SKU = '{sku}'
-    ORDER BY PRODUCT_ID
+    FROM {creds.bc_product_table}
+    AND ITEM_NO = '{sku}'
     """
 	response = db.query_db(query)
 	if response is not None:
@@ -588,11 +570,7 @@ def get_all_child_products(binding_id):
     WHERE USR_PROF_ALPHA_16 = '{binding_id}'    
     """
 	response = db.query_db(query)
-	if response is not None:
-		child_products = []
-		for x in response:
-			child_products.append(x[0])
-		return child_products
+	return [x[0] for x in response] if response is not None else []
 
 
 def get_merged_product_combined_stock(binding_id):
@@ -697,12 +675,7 @@ def update_total_sold():
 					error_handler.logger.info(
 						f'#{count}/{len(ecomm_items)} Updated Item: {sku} to ' f'Total Sold: {total_sold_all_children}'
 					)
-
-					error_handler.logger.info(
-						f'#{count}/{len(ecomm_items)} Updated Item: {sku} to ' f'Total Sold: {total_sold_all_children}'
-					)
 				else:
-					error_handler.logger.info(f'#{count}/{len(ecomm_items)} Skipping Item: {sku} - Never Sold!')
 					error_handler.logger.info(f'#{count}/{len(ecomm_items)} Skipping Item: {sku} - Never Sold!')
 
 			# This is for items without a valid binding key, i.e. Single Products
@@ -755,14 +728,12 @@ def get_products(query):
 
 def get_bc_product_id(sku):
 	query = f"""
-    SELECT TOP 1 PRODUCT_ID
-    FROM CPI_BC_PROD
-    WHERE WEB_ID = '1' AND SKU = '{sku}'
-    ORDER BY LAST_MODIFIED DESC
+    SELECT PRODUCT_ID
+    FROM {creds.bc_product_table}
+    WHERE ITEM_NO = '{sku}'
     """
 	response = db.query_db(query)
-	if response is not None:
-		return int(response[0][0])
+	return response[0][0] if response is not None else None
 
 
 def get_pottery_for_workshop(mode):
@@ -900,3 +871,7 @@ def get_binding_id_issues():
 		result = '<p>No Items</p>'
 
 	return result
+
+
+if __name__ == '__main__':
+	update_total_sold()

@@ -18,6 +18,7 @@ from twilio.twiml.messaging_response import MessagingResponse
 from waitress import serve
 
 from setup import creds, email_engine, sms_engine, authorization
+from setup.sms_engine import SMSEngine
 from setup.error_handler import ProcessInErrorHandler, LeadFormErrorHandler
 from setup import log_engine
 
@@ -215,16 +216,8 @@ def incoming_sms():
 		body = ''
 
 	# Unsubscribe user from SMS marketing
-	if body.lower() in [
-		'stop',
-		'unsubscribe',
-		'stop please',
-		'please stop',
-		'cancel',
-		'opt out',
-		'remove me',
-	]:
-		sms_engine.unsubscribe_from_sms(from_phone)
+	if body.lower() in ['stop', 'unsubscribe', 'stop please', 'please stop', 'cancel', 'opt out', 'remove me']:
+		SMSEngine.unsubscribe_from_sms(from_phone)
 		# Return Response to Twilio
 		resp = MessagingResponse()
 		return str(resp)
@@ -246,17 +239,12 @@ def incoming_sms():
 			media_url = 'No Media'
 
 		# Get Customer Name and Category from SQL
-		full_name, category = sms_engine.lookup_customer_data(
-			sms_engine.format_phone(from_phone, mode='counterpoint')
-		)
+		full_name, category = SMSEngine.lookup_customer_data(from_phone)
 
 		log_data = [[date, to_phone, from_phone, body, full_name, category.title(), media_url]]
 
 		# Write dataframe to CSV file
-		df = pandas.DataFrame(
-			log_data,
-			columns=['date', 'to_phone', 'from_phone', 'body', 'name', 'category', 'media'],
-		)
+		df = pandas.DataFrame(log_data, columns=['date', 'to_phone', 'from_phone', 'body', 'name', 'category', 'media'])
 		log_engine.write_log(df, creds.incoming_sms_log)
 
 		# Return Response to Twilio

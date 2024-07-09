@@ -12,13 +12,20 @@ from setup.utilities import VirtualRateLimiter, set_last_sync
 
 
 class Promotions:
+	dav = WebDAVJsonClient()
+
 	def __init__(self, last_sync=None):
 		self.last_sync = last_sync
 		self.db = Database.db
 		self.error_handler = ProcessOutErrorHandler.error_handler
 		self.logger = ProcessOutErrorHandler.logger
-
 		self.promotions = []
+		self.sale_badges = {
+			'bogo': 'Buy one, get one free!',
+			'b1g2': 'Buy one, get two free!',
+			'b2g1': 'Buy two, get one free!',
+		}
+		self.sale_badge_items = [{'product_id': '6087', 'promotion': 'b1g2'}]
 
 	def get_promotions(self):
 		# Get list of promotions from IM_PRC_GRP
@@ -57,6 +64,51 @@ class Promotions:
 		response = requests.get(url, headers=creds.bc_api_headers)
 		if response.status_code == 200:
 			return response.json()['data']
+
+	@staticmethod
+	def get_sale_badge_promotions():
+		"""Get Sale Badge Promotions from WebDAV. These are promotion badges that are displayed on the website
+		for promotions like Buy 1 Get 1 Free, Buy 2 Get 1 Free, etc."""
+		try:
+			response = Promotions.dav.get_json_file(creds.promotion_config)
+			return response[1]['promotions']
+		except KeyError:
+			return {}
+
+	@staticmethod
+	def get_sale_badge_promotion_items():
+		"""Get Sale Badge Promotion Items from WebDAV. These are the items that have a Sale Badge Promotion"""
+		try:
+			response = Promotions.dav.get_json_file(creds.promotion_config)
+			return response[1]['promotion_products']
+		except KeyError:
+			return {}
+
+	def create_sale_badge_promotions(self):
+		"""Creates the Sale Badge Promotions for BOGO Twoofers and other offers.
+		example: Buy 1 Get 1 Free, Buy 2 Get 1 Free, etc."""
+		response = Promotions.dav.add_property(
+			file_path=creds.promotion_config, property_name='promotions', property_value=self.sale_badges
+		)
+		if response[0]:
+			self.logger.success(f'Sale Badge Promotion added successfully. {response[1]}')
+
+	def create_sale_badge_promotion_items(self):
+		"""Creates the updated list of items that should have a promotional badge. Replaces the property on each sync."""
+		response = Promotions.dav.add_property(
+			file_path=creds.promotion_config, property_name='promotion_products', property_value=self.sale_badge_items
+		)
+		if response[0]:
+			self.logger.success(f'Sale Badge Promotion Items added successfully. {response[1]}')
+
+	def update_promo_config(self):
+		"""Updates the promotion config file with the new Sale Badge Promotions and Items."""
+		response = Promotions.dav.update_json_file(
+			file_path=creds.promotion_config,
+			json_data={'promotions': self.sale_badges, 'promotion_products': self.sale_badge_items},
+		)
+		if response[0]:
+			self.logger.success(f'Promotion Config updated successfully. {response[1]}')
 
 	class Promotion:
 		def __init__(self, promo):
@@ -284,15 +336,10 @@ class Promotions:
 						# Create Promotion
 						if self.bc_create_bogo_promotion():
 							if self.mw_insert_bogo_promotion():
-								# Create Sale Badges
-								self.create_sale_badges()
-								# Add Sale Badges to Items
-								self.add_sale_badges()
 								self.logger.success(f'BOGO Promotions for {self.grp_cod} processed successfully.')
 
 				# Process Regular Fixed Price Promotions
-				new_timestamp = self.add_sale_price()
-
+				self.add_sale_price()
 			else:
 				if self.has_bogo_twoofer:
 					# Check if Promotion exists in MW
@@ -302,10 +349,9 @@ class Promotions:
 							if self.mw_delete_bogo_promotion():
 								self.logger.success(f'BOGO Promotions for {self.grp_cod} processed successfully.')
 				# Process Regular Fixed Price Promotions
-				new_timestamp = self.remove_sale_price()
+				self.remove_sale_price()
 
-			# if new_timestamp:
-			# 	set_last_sync(new_timestamp)
+			self.process_sale_badges()
 
 		def add_sale_price(self):
 			"""Updates the sale price for non-bogo items in the promotion."""
@@ -477,40 +523,12 @@ class Promotions:
 				rule.message = message
 				rule.message_key = promo_key
 
-		def create_sale_badge_promotions(self):
-			"""Creates the Sale Badge Promotions for BOGO Twoofers and other offers.
-			example: Buy 1 Get 1 Free, Buy 2 Get 1 Free, etc."""
+		def process_sale_badges(self):
 			for rule in self.price_rules:
 				if rule.use_bogo_twoofer == 'Y' and rule.req_full_group_for_bogo == 'Y':
-					try:
-						response = self.dav.get_json_file(creds.promotion_config)
-						if response[1]['promotions'][rule.message_key]:
-							# Promotion already exists, return.
-							return
-					except KeyError:
-						# Create Sale Badge for BOGO Twoofer
-						self.create_promotion_message()
-						response = self.dav.add_property(
-							creds.promotion_config,
-							property_name='promotions',
-							sub_property=rule.message_key,
-							property_value=rule.message,
-						)
-		
-		def get_sale_badge_promotions(self):
-			try:
-				response = self.dav.get_json_file(creds.promotion_config)
-				return response[1]['promotions']
-			except KeyError:
-				return {}
-			
-		def get_sale_badge_promotion_items(self):
-			try:
-				response = self.dav.get_json_file(creds.promotion_config)
-				return response[1]['promotion_products']
-			except KeyError:
-				return {}
-
+					self.create_promotion_message(rule)
+					if rule.message_key not in Promotions.sale_badges:
+						self.create_sale_badge_promotions(rule)
 
 		def add_sale_badges(self):
 			sale_badges = self.get_sale_badges()
@@ -532,6 +550,7 @@ class Promotions:
 						# Remove Sale Badge from Item
 						self.dav.remove_property(
 							creds.promotion_config, property_name='promotion_products', sub_property=item
+						)
 
 		class PriceRule:
 			def __init__(self, rule):
@@ -573,10 +592,10 @@ class Promotions:
 
 			def get_price_breaks(self):
 				query = f"""
-                    SELECT MIN_QTY, PRC_METH, PRC_BASIS, AMT_OR_PCT
-                    FROM IM_PRC_RUL_BRK
-                    WHERE GRP_COD = '{self.grp_cod}' AND RUL_SEQ_NO = {self.rul_seq_no}
-                    """
+						SELECT MIN_QTY, PRC_METH, PRC_BASIS, AMT_OR_PCT
+						FROM IM_PRC_RUL_BRK
+						WHERE GRP_COD = '{self.grp_cod}' AND RUL_SEQ_NO = {self.rul_seq_no}
+						"""
 				response = Database.db.query_db(query)
 				if response:
 					for break_data in response:
@@ -605,8 +624,8 @@ class Promotions:
 
 
 if __name__ == '__main__':
-	promo = Promotions(last_sync=datetime(2024, 7, 7))
-	promo.sync()
+	# promo = Promotions(last_sync=datetime(2024, 7, 7))
+	# promo.sync()
 	# for promotion in promo.promotions:
 	# 	promotion.process_promotion()
 	# for rule in promotion.price_rules:
@@ -614,3 +633,9 @@ if __name__ == '__main__':
 	# import json
 
 	# print(json.dumps(Promotions.bc_get_promotions(39), indent=4))
+
+	promo = Promotions()
+	print(promo.sale_badges)
+	print(promo.sale_badge_items)
+
+	promo.update_promo_config()

@@ -9,7 +9,8 @@ import pika
 import requests
 from docxtpl import DocxTemplate
 
-from setup import creds, email_engine, sms_engine
+from setup import creds, email_engine
+from setup.sms_engine import SMSEngine
 from setup import log_engine
 
 from setup.error_handler import LeadFormErrorHandler
@@ -37,7 +38,7 @@ class RabbitMQConsumer:
 		first_name = json_body['first_name']
 		last_name = json_body['last_name']
 		email = json_body['email']
-		phone = sms_engine.format_phone(json_body['phone'], mode='counterpoint')
+		phone = SMSEngine.format_phone(json_body['phone'], mode='counterpoint')
 		timeline = json_body['timeline']
 		interested_in = json_body['interested_in']
 		street = str(json_body['street']).replace(',', '')
@@ -103,7 +104,7 @@ class RabbitMQConsumer:
 		# Send text notification To sales team manager
 		self.logger.info('Sending SMS Message to Sales Team')
 		try:
-			sms_engine.design_text(
+			SMSEngine.design_text(
 				first_name, last_name, email, phone, interests, timeline, address, comments, test_mode=test_mode
 			)
 		except Exception as err:
