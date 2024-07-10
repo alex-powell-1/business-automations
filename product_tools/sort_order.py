@@ -1,7 +1,8 @@
 from pyodbc import Error
-
+from setup import creds
 from product_tools import products
 from product_tools.products import Product
+from big_commerce.big_products import bc_update_product_batch
 from reporting.product_reports import create_top_items_report
 from setup.date_presets import *
 from setup.error_handler import ScheduledTasksErrorHandler as error_handler
@@ -192,5 +193,19 @@ def sort_order_engine():
 	else:
 		error_handler.logger.info('\nSetting sort order for items with no stock -- Completed!')
 
+	# Update sort order for all ecommerce items
+	query = f"""
+	SELECT MW.PRODUCT_ID, {creds.cp_sort_order} 
+	FROM IM_ITEM CP
+	INNER JOIN {creds.bc_product_table} MW on CP.ITEM_NO = MW.ITEM_NO
+	WHERE {creds.cp_sort_order} IS NOT NULL"""
+	response = db.query_db(query)
+	queue = [{'id': x[0], 'sort_order': x[1]} for x in response] if response else []
+	bc_update_product_batch(queue)
+
 	error_handler.logger.info(f'Sort Order: Finished at {datetime.now():%H:%M:%S}')
 	error_handler.logger.info('-----------------------')
+
+
+if __name__ == '__main__':
+	sort_order_engine()

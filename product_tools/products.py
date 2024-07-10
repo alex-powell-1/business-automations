@@ -197,7 +197,7 @@ class Product:
 		query = f"""
         SELECT VARIANT_ID
         FROM {creds.bc_product_table}
-        WHERE SKU = '{self.item_no}'
+        WHERE ITEM_NO = '{self.item_no}'
         """
 		if self.binding_key is not None:
 			response = db.query_db(query)
@@ -275,11 +275,13 @@ class Product:
 				f'{self.item_no}: {self.long_descr} sort order unchanged. Current Order: {self.sort_order}'
 			)
 			return
-		# If not, change sort order to the target sort order
+		# If not, change sort order to the target sort order.
+		# Timestamp is not updated here, as sort order update will be handled in sort order engine
+		# with a batch update.
 		else:
 			query = f"""
             UPDATE IM_ITEM
-            SET USR_PROF_ALPHA_27 = '{target_sort_order}', LST_MAINT_DT = GETDATE()
+            SET {creds.cp_sort_order} = '{target_sort_order}'
             WHERE ITEM_NO = '{self.item_no}'
             """
 			try:
@@ -648,7 +650,7 @@ def get_qty_sold_all_items():
 		return item_dict
 
 
-def update_total_sold():
+def update_total_sold(batch_update=False):
 	"""Update Big Commerce with 'total_sold' amounts"""
 	error_handler.logger.info(f'Update Total Sold on Big Commerce: Starting at {datetime.now():%H:%M:%S}')
 	ecomm_items = get_ecomm_items(mode=3)
@@ -656,6 +658,7 @@ def update_total_sold():
 	qty_sold_all_items = get_qty_sold_all_items()
 	if ecomm_items is not None:
 		count = 0
+		queue = []
 		for x in ecomm_items:
 			count += 1
 			sku = x[0]
@@ -671,10 +674,14 @@ def update_total_sold():
 						total_sold_all_children += qty_sold_all_items[y]
 
 				if total_sold_all_children > 0:
-					big_products.bc_update_product(product_id, {'total_sold': total_sold_all_children})
-					error_handler.logger.info(
-						f'#{count}/{len(ecomm_items)} Updated Item: {sku} to ' f'Total Sold: {total_sold_all_children}'
-					)
+					if batch_update:
+						queue.append({'id': product_id, 'total_sold': total_sold_all_children})
+					else:
+						big_products.bc_update_product(product_id, {'total_sold': total_sold_all_children})
+						error_handler.logger.info(
+							f'#{count}/{len(ecomm_items)} Updated Item: {sku} to '
+							f'Total Sold: {total_sold_all_children}'
+						)
 				else:
 					error_handler.logger.info(f'#{count}/{len(ecomm_items)} Skipping Item: {sku} - Never Sold!')
 
@@ -683,15 +690,20 @@ def update_total_sold():
 				if sku in qty_sold_all_items:
 					total_sold = qty_sold_all_items[sku]
 					if total_sold > 0:
-						big_products.bc_update_product(product_id, {'total_sold': total_sold})
-						error_handler.logger.info(
-							f'#{count}/{len(ecomm_items)} Updated Item: {sku} to Total Sold: {total_sold}'
-						)
-						error_handler.logger.info(
-							f'#{count}/{len(ecomm_items)} Updated Item: {sku} to Total Sold: {total_sold}'
-						)
+						if batch_update:
+							queue.append({'id': product_id, 'total_sold': total_sold})
+						else:
+							big_products.bc_update_product(product_id, {'total_sold': total_sold})
+							error_handler.logger.info(
+								f'#{count}/{len(ecomm_items)} Updated Item: {sku} to Total Sold: {total_sold}'
+							)
+							error_handler.logger.info(
+								f'#{count}/{len(ecomm_items)} Updated Item: {sku} to Total Sold: {total_sold}'
+							)
 					else:
 						error_handler.logger.info(f'Skipping {sku}: Never Sold')
+		if batch_update:
+			big_products.bc_update_product_batch(queue)
 
 	error_handler.logger.info(f'Update Total Sold on Big Commerce: Completed at {datetime.now():%H:%M:%S}')
 
@@ -874,4 +886,4 @@ def get_binding_id_issues():
 
 
 if __name__ == '__main__':
-	update_total_sold()
+	update_total_sold(batch_update=True)

@@ -74,6 +74,14 @@ class WebDAVJsonClient:
 		else:
 			return False, f'Failed to update JSON file. Status Code: {response.status_code}, Response: {response.text}'
 
+	def delete_json_file(self, file_path):
+		url = f'{self.server_url}/{file_path}'
+		response = requests.delete(url, auth=self.auth)
+		if 200 <= response.status_code < 300:
+			return True, f'JSON file deleted successfully. Code: {response.status_code}'
+		else:
+			return False, f'Failed to delete JSON file. Status Code: {response.status_code}, Response: {response.text}'
+
 	def add_property(self, file_path, property_name, property_value, sub_property=None):
 		success, data = self.get_json_file(file_path)
 		if success:

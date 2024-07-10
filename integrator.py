@@ -1,6 +1,7 @@
 from integration.catalog import Catalog
 from integration.customers import Customers
 from integration.gift_certificates import GiftCertificates
+from integration.promotions import Promotions
 from integration.database import Database
 from integration import interface
 
@@ -24,6 +25,7 @@ class Integrator:
 		self.catalog = Catalog(last_sync=self.last_sync)
 		self.customers = Customers(last_sync=self.last_sync)
 		self.gift_certificates = GiftCertificates(last_sync=self.last_sync)
+		self.promotions = Promotions(last_sync=self.last_sync)
 
 	def __str__(self):
 		return f'Integrator\n' f'Last Sync: {self.last_sync}\n'
@@ -44,6 +46,7 @@ class Integrator:
 		self.logger.header('Sync Starting')
 		self.customers.sync()
 		self.gift_certificates.sync()
+		self.promotions.sync()
 		self.catalog.sync(initial=initial)
 		set_last_sync(start_sync_time)
 		completion_time = (datetime.now() - start_sync_time).seconds

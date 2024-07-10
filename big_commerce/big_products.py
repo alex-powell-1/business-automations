@@ -1,12 +1,13 @@
 import json
 from datetime import datetime
-
+from time import sleep
 import requests
 
 from product_tools import products
 from setup import creds
 from setup.utilities import pretty_print
 from setup.error_handler import ScheduledTasksErrorHandler as error_handler
+from setup.utilities import VirtualRateLimiter
 
 
 def bc_create_product(name, product_type, sku, weight, price):
@@ -30,6 +31,49 @@ def bc_update_product(product_id, payload, pretty=False):
 	else:
 		error_handler.logger.info(f'Error: {response.content}')
 		return response.content
+
+
+def bc_update_product_batch(queue):
+	batch_count = 0
+	success_count = 0
+	queue_length = len(queue)
+	while queue:
+		batch_count += 1
+		# get 10 items from the queue
+		batch = []
+		while len(batch) < 10:
+			if not queue:
+				break
+			batch.append(queue.pop(0))
+
+		rate_limited = True
+		while rate_limited:
+			rate_limited = False
+			url = f' https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/products'
+			response = requests.put(url, headers=creds.bc_api_headers, json=batch)
+
+			if response.status_code == 200:
+				error_handler.logger.success(
+					f'Updated {len(batch)} products: {",".join([str(x['id']) for x in batch])}'
+				)
+				success_count += len(batch)
+				print(f'Success Count: {success_count}/{queue_length}')
+			elif response.status_code == 429:
+				rate_limited = True
+				ms_to_wait = int(response.headers['X-Rate-Limit-Time-Reset-Ms'])
+				seconds_to_wait = (ms_to_wait / 1000) + 1
+				VirtualRateLimiter.pause_requests(seconds_to_wait)
+				sleep(seconds_to_wait)
+			else:
+				error_handler.error_handler.add_error_v(
+					error=f'Error updating product batch.\n'
+					f'Response: {response.status_code}\n'
+					f'Content: {response.content}\n'
+					f'URL: {url}',
+					origin='bc_update_product_batch',
+				)
+
+	error_handler.logger.success(f'Updated {success_count} products in {batch_count} batches.')
 
 
 def bc_create_image(product_id):

@@ -6,7 +6,8 @@ from datetime import datetime
 
 import time
 import aiohttp
-import requests
+
+from integration.requests_handler import BCRequests as requests
 from PIL import Image, ImageOps
 from requests.auth import HTTPDigestAuth
 import random
@@ -270,7 +271,7 @@ class Catalog:
 						f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/'
 						f'products/{product_id}/variants/{variant_id}/images/'
 					)
-					response = requests.post(url=url, headers=creds.bc_api_headers, json={'image_url': ''})
+					response = requests.post(url=url, json={'image_url': ''})
 					if response.status_code == 200:
 						Catalog.logger.success(f'Primary Variant Image {image_name} deleted from BigCommerce.')
 					else:
@@ -282,29 +283,30 @@ class Catalog:
 
 			delete_img_url = f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/products/{product_id}/images/{image_id}'
 
-			img_del_res = requests.delete(url=delete_img_url, headers=creds.bc_api_headers, timeout=10)
+			img_del_res = requests.delete(url=delete_img_url, timeout=10)
 
 			if img_del_res.status_code == 204:
 				Catalog.logger.success(f'Image {image_name} deleted from BigCommerce.')
 			else:
-				Catalog.error_handler.add_error_v(error=f'Error deleting image {image_name} from BigCommerce.')
-				Catalog.logger.warn(f'Error deleting image {image_name} from BigCommerce. {img_del_res.json()}')
-
+				Catalog.error_handler.add_error_v(
+					error=f'Error deleting image {image_name} from BigCommerce.', origin='Catalog.delete_image()'
+				)
 			delete_images_query = f'DELETE FROM {creds.bc_image_table} ' f"WHERE IMAGE_ID = '{image_id}'"
 			response = self.db.query_db(delete_images_query, commit=True)
 			if response['code'] == 200:
 				Catalog.logger.success(f'Image {image_name} deleted from SQL.')
 			else:
-				Catalog.error_handler.add_error_v(error=f'Error deleting image {image_name} from SQL.')
-				Catalog.logger.warn(f'Error deleting image {image_name} from SQL. {response}')
-
+				Catalog.error_handler.add_error_v(
+					error=f'Error deleting image {image_name} from SQL.', origin='Catalog.delete_image()'
+				)
 			# Delete image from WebDav directory
 			web_dav_response = Catalog.delete_image_from_webdav(image_name)
 			if web_dav_response.status_code == 204:
 				Catalog.logger.success(f'Image {image_name} deleted from WebDav.')
 			else:
 				Catalog.error_handler.add_error_v(
-					error=f'Error deleting image {image_name} from WebDav. {web_dav_response.text}'
+					error=f'Error deleting image {image_name} from WebDav. {web_dav_response.text}',
+					origin='Catalog.delete_image()',
 				)
 
 		Catalog.logger.info('Processing Image Updates.')
@@ -570,7 +572,7 @@ class Catalog:
 
 				url = f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/trees/categories?category_id:in={batch_string}'
 
-				bc_response = requests.delete(url=url, headers=creds.bc_api_headers, timeout=120)
+				bc_response = requests.delete(url=url)
 
 				if bc_response.status_code == 204:
 					Catalog.logger.success(f'Products {batch_string} deleted from BigCommerce.')
@@ -618,7 +620,7 @@ class Catalog:
 			url = (
 				f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/categories?limit=250&page={page}'
 			)
-			response = requests.get(url, headers=creds.bc_api_headers)
+			response = requests.get(url)
 			for category in response.json()['data']:
 				category_id_list.append(category['id'])
 			count = response.json()['meta']['pagination']['count']
@@ -648,7 +650,7 @@ class Catalog:
 
 				url = f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/products?id:in={batch_string}'
 
-				bc_response = requests.delete(url=url, headers=creds.bc_api_headers, timeout=120)
+				bc_response = requests.delete(url=url)
 
 				if bc_response.status_code == 204:
 					Catalog.logger.success(f'Products {batch_string} deleted from BigCommerce.')
@@ -684,7 +686,7 @@ class Catalog:
 		more_pages = True
 		while more_pages:
 			url = f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/products?limit=250&page={page}'
-			response = requests.get(url, headers=creds.bc_api_headers)
+			response = requests.get(url)
 			for product in response.json()['data']:
 				product_id_list.append(product['id'])
 			count = response.json()['meta']['pagination']['count']
@@ -713,7 +715,7 @@ class Catalog:
 				url = (
 					f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/brands?id:in={batch_string}'
 				)
-				bc_response = requests.delete(url=url, headers=creds.bc_api_headers, timeout=120)
+				bc_response = requests.delete(url=url)
 				if bc_response.status_code == 204:
 					Catalog.logger.success(f'Brand:\n{batch_string}\ndeleted from BigCommerce.')
 					query = f'DELETE FROM {creds.bc_brands_table} WHERE BC_BRAND_ID in ({batch_string})'
@@ -742,7 +744,7 @@ class Catalog:
 		more_pages = True
 		while more_pages:
 			url = f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/brands?limit=250&page={page}'
-			response = requests.get(url, headers=creds.bc_api_headers)
+			response = requests.get(url)
 			for brand in response.json()['data']:
 				brand_id_list.append(brand['id'])
 			count = response.json()['meta']['pagination']['count']
@@ -888,7 +890,8 @@ class Catalog:
 		def sync(self):
 			def build_tree(category):
 				# Get BC Category ID and Parent ID
-				if category.lst_maint_dt > self.last_sync:
+				# if category.lst_maint_dt > self.last_sync:
+				if category.lst_maint_dt > datetime(2021, 1, 1):
 					print(f'Updating: {category.category_name}')
 					if category.bc_categ_id is None:
 						category.get_bc_id()
@@ -921,7 +924,7 @@ class Catalog:
 						f'https://api.bigcommerce.com/stores/{creds.big_store_hash}'
 						f'/v3/catalog/trees/categories?category_id:in={bc_category_id}'
 					)
-					response = requests.delete(url=url, headers=creds.bc_api_headers)
+					response = requests.delete(url=url)
 					if 207 >= response.status_code >= 200:
 						print(response.status_code)  # figure what code they are actually returning
 						print(f'Category {bc_category_id} deleted from BigCommerce.')
@@ -1045,52 +1048,7 @@ class Catalog:
 						break
 				return f"/{"/".join(url_path[::-1])}/"
 
-			def bc_create_category(self):
-				url = f' https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/trees/categories'
-				payload = [
-					{
-						'name': self.category_name,
-						'url': {
-							'path': '-'.join(str(re.sub('[^A-Za-z0-9 ]+', '', self.category_name)).split(' ').lower()),
-							'is_customized': False,
-						},
-						'parent_id': self.bc_parent_id,
-						'tree_id': 1,
-						'description': self.description,
-						'sort_order': self.sort_order,
-						'page_title': self.category_name,
-						'is_visible': self.is_visible,
-						'default_product_sort': 'use_store_settings',
-					}
-				]
-
-				response = requests.post(url=url, headers=creds.bc_api_headers, json=payload)
-				if response.status_code in [201, 207]:
-					print(f'BigCommerce: POST: {self.category_name}: SUCCESS Code: {response.status_code}')
-					category_id = response.json()['data'][0]['category_id']
-					return category_id
-
-				elif response.status_code == 429:
-					ms_to_wait = int(response.headers['X-Rate-Limit-Time-Reset-Ms'])
-					seconds_to_wait = (ms_to_wait / 1000) + 1
-					VirtualRateLimiter.pause_requests(seconds_to_wait)
-					time.sleep(seconds_to_wait)
-
-					response = requests.post(url=url, headers=creds.bc_api_headers, json=payload)
-					if response.status_code in [201, 207]:
-						print(f'BigCommerce: POST: {self.category_name}: SUCCESS Code: {response.status_code}')
-						category_id = response.json()['data'][0]['category_id']
-						return category_id
-					else:
-						print(f'BigCommerce: POST: {self.category_name}: Failure Code: {response.status_code}')
-						print(response.json())
-
-				else:
-					print(f'BigCommerce: POST: {self.category_name}: Failure Code: {response.status_code}')
-					print(response.json())
-
-			def bc_update_category(self):
-				url = f' https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/trees/categories'
+			def get_category_payload(self):
 				payload = [
 					{
 						'category_id': self.bc_categ_id,
@@ -1098,35 +1056,35 @@ class Catalog:
 						'parent_id': self.bc_parent_id,
 						'tree_id': 1,
 						'page_title': self.category_name,
+						'description': self.description,
 						'is_visible': self.is_visible,
 						'sort_order': self.sort_order,
 						'url': {'path': self.get_full_custom_url_path(), 'is_customized': False},
 					}
 				]
+				return payload
 
-				print(self.get_full_custom_url_path())
+			def bc_create_category(self):
+				url = f' https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/trees/categories'
+				payload = self.get_category_payload()
 
-				response = requests.put(url=url, headers=creds.bc_api_headers, json=payload, timeout=10)
+				response = requests.post(url=url, json=payload)
+				if response.status_code in [201, 207]:
+					print(f'BigCommerce: POST: {self.category_name}: SUCCESS Code: {response.status_code}')
+					category_id = response.json()['data'][0]['category_id']
+					return category_id
+
+				else:
+					print(f'BigCommerce: POST: {self.category_name}: Failure Code: {response.status_code}')
+					print(response.json())
+
+			def bc_update_category(self):
+				url = f' https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/trees/categories'
+				payload = self.get_category_payload()
+
+				response = requests.put(url=url, json=payload)
 				if response.status_code in [200, 207]:
 					print(f'BigCommerce: UPDATE: {self.category_name} Category: SUCCESS Code: {response.status_code}\n')
-
-				elif response.status_code == 429:
-					ms_to_wait = int(response.headers['X-Rate-Limit-Time-Reset-Ms'])
-					seconds_to_wait = (ms_to_wait / 1000) + 1
-					VirtualRateLimiter.pause_requests(seconds_to_wait)
-					time.sleep(seconds_to_wait)
-
-					response = requests.put(url=url, headers=creds.bc_api_headers, json=payload, timeout=10)
-					if response.status_code == 200:
-						print(
-							f'BigCommerce: UPDATE: {self.category_name} Category: SUCCESS Code: {response.status_code}\n'
-						)
-					else:
-						print(
-							f'BigCommerce: UPDATE: {self.category_name} Category: FAILED Status: {response.status_code} '
-							f'Payload: {payload}\n'
-							f'Response: {response.text}\n'
-						)
 
 				else:
 					print(
@@ -1174,7 +1132,7 @@ class Catalog:
 					f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/'
 					f'catalog/trees/categories/{self.bc_categ_id}'
 				)
-				response = requests.delete(url=url, headers=creds.bc_api_headers)
+				response = requests.delete(url=url)
 				if response.status_code == 204:
 					print(f'Category {self.category_name} deleted from BigCommerce.')
 				else:
@@ -1331,7 +1289,7 @@ class Catalog:
 
 			def bc_delete_brand(target):
 				url = f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/' f'catalog/brands/{target}'
-				response = requests.delete(url=url, headers=creds.bc_api_headers)
+				response = requests.delete(url=url)
 				if response.status_code == 204:
 					print(f'BigCommerce: Brand {x} DELETE: SUCCESS. Code: {response.status_code}')
 				elif response.status_code == 404:
@@ -1460,7 +1418,7 @@ class Catalog:
 			def create(self):
 				def create_bc_brand():
 					url = f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/brands'
-					response = requests.post(url=url, headers=creds.bc_api_headers, json=self.construct_payload())
+					response = requests.post(url=url, json=self.construct_payload())
 					if response.status_code in [200, 207]:
 						print(f'BigCommerce: Brand {self.name} POST: SUCCESS. Code: {response.status_code}')
 						return response.json()['data']['id']
@@ -1510,7 +1468,7 @@ class Catalog:
 						f'/catalog/brands/{self.bc_brand_id}'
 					)
 
-					response = requests.put(url=url, headers=creds.bc_api_headers, json=self.construct_payload())
+					response = requests.put(url=url, json=self.construct_payload())
 					if response.status_code in [200, 207]:
 						print(f'BigCommerce: Brand {self.name} PUT: SUCCESS. Code: {response.status_code}')
 					else:
@@ -2516,7 +2474,7 @@ class Catalog:
 			variants"""
 			url = f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/products?include=custom_fields,options,variants,images'
 			payload = self.construct_product_payload()
-			bc_response = requests.post(url=url, headers=creds.bc_api_headers, json=payload, timeout=120)
+			bc_response = requests.post(url=url, json=payload)
 			if bc_response.status_code in [200, 201, 207]:
 				if self.is_bound:
 					message = f'POST Code: {bc_response.status_code}. Product: {self.sku} Binding ID: {self.binding_id} Create Success'
@@ -2524,24 +2482,14 @@ class Catalog:
 					message = f'POST Code: {bc_response.status_code}. POST Product: {self.sku} Create Success'
 				Catalog.logger.success(message)
 
-			elif bc_response.status_code == 429:
-				ms_to_wait = int(bc_response.headers['X-Rate-Limit-Time-Reset-Ms'])
-				seconds_to_wait = (ms_to_wait / 1000) + 1
-				VirtualRateLimiter.pause_requests(seconds_to_wait)
-				time.sleep(seconds_to_wait)
-
-				bc_response = requests.post(url=url, headers=creds.bc_api_headers, json=payload, timeout=120)
-
 			else:
 				Catalog.error_handler.add_error_v(
-					error=f'POST SKU: {self.sku} Binding ID: {self.binding_id} to BigCommerce. Response Code: {bc_response.status_code}'
+					error=f'POST SKU: {self.sku} Binding ID: {self.binding_id} to BigCommerce. Response Code: {bc_response.status_code}\n'
+					f'Code {bc_response.status_code}: POST SKU: {self.sku} Binding ID: {self.binding_id}\n'
+					f'Payload: {payload}\n'
+					f'Response: {json.dumps(bc_response.json(), indent=4)}',
+					origin='Catalog --> bc_post_product',
 				)
-				Catalog.logger.warn(
-					f'Code {bc_response.status_code}: POST SKU: {self.sku} Binding ID: {self.binding_id}'
-				)
-				Catalog.logger.info(f'Payload: {payload}')
-				Catalog.logger.info(f'Response: {json.dumps(bc_response.json(), indent=4)}')
-
 			return bc_response
 
 		def bc_post_image(self, image):
@@ -2559,35 +2507,18 @@ class Catalog:
 
 			url = f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/products/{self.product_id}/images'
 
-			bc_response = requests.post(url=url, headers=creds.bc_api_headers, json=image_payload, timeout=120)
+			bc_response = requests.post(url=url, json=image_payload)
 
 			if bc_response.status_code == 200:
 				Catalog.logger.success(f'Image: {image.image_name} Posted to BigCommerce')
-
-			elif bc_response.status_code == 429:
-				ms_to_wait = int(bc_response.headers['X-Rate-Limit-Time-Reset-Ms'])
-				seconds_to_wait = (ms_to_wait / 1000) + 1
-				time.sleep(seconds_to_wait)
-
-				bc_response = requests.post(url=url, headers=creds.bc_api_headers, json=image_payload, timeout=120)
-
-				if bc_response.status_code == 200:
-					Catalog.logger.success(f'Image: {image.image_name} Posted to BigCommerce')
-				else:
-					Catalog.error_handler.add_error_v(
-						error=f'POST Image: {image.image_name} to BigCommerce. Response Code: {bc_response.status_code}'
-					)
-					Catalog.logger.warn(f'Code {bc_response.status_code}: POST Image: {image.image_name}')
-					Catalog.logger.info(f'Payload: {image_payload}')
-					Catalog.logger.info(f'Response: {json.dumps(bc_response.json(), indent=4)}')
-
 			else:
 				Catalog.error_handler.add_error_v(
-					error=f'POST Image: {image.image_name} to BigCommerce. Response Code: {bc_response.status_code}'
+					error=f'POST Image: {image.image_name} to BigCommerce. Response Code: {bc_response.status_code}\n'
+					f'Code {bc_response.status_code}: POST Image: {image.image_name}\n'
+					f'Payload: {image_payload}\n'
+					f'Response: {json.dumps(bc_response.json(), indent=4)}',
+					origin='Catalog --> bc_post_image',
 				)
-				Catalog.logger.warn(f'Code {bc_response.status_code}: POST Image: {image.image_name}')
-				Catalog.logger.info(f'Payload: {image_payload}')
-				Catalog.logger.info(f'Response: {json.dumps(bc_response.json(), indent=4)}')
 			return bc_response
 
 		def bc_update_product(self, payload):
@@ -2596,7 +2527,7 @@ class Catalog:
 				f'catalog/products/{self.product_id}?include=custom_fields,options,variants,images'
 			)
 
-			bc_response = requests.put(url=url, headers=creds.bc_api_headers, json=payload, timeout=120)
+			bc_response = requests.put(url=url, json=payload)
 
 			if bc_response.status_code in [200, 201, 207]:
 				if self.is_bound:
@@ -2604,15 +2535,6 @@ class Catalog:
 				else:
 					message = f'PUT Code: {bc_response.status_code}. Product: {self.sku} Update Success'
 				Catalog.logger.success(message)
-
-			elif bc_response.status_code == 429:
-				ms_to_wait = int(bc_response.headers['X-Rate-Limit-Time-Reset-Ms'])
-				seconds_to_wait = (ms_to_wait / 1000) + 1
-				VirtualRateLimiter.pause_requests(seconds_to_wait)
-				time.sleep(seconds_to_wait)
-
-				bc_response = requests.put(url=url, headers=creds.bc_api_headers, json=payload, timeout=120)
-
 			else:
 				Catalog.error_handler.add_error_v(
 					error=f'POST SKU: {self.sku} Binding ID: {self.binding_id} to BigCommerce. Response Code: {bc_response.status_code}'
@@ -2633,27 +2555,11 @@ class Catalog:
 				f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/'
 				f'catalog/products/{self.product_id}/custom-fields'
 			)
-			cf_response = requests.get(url=cf_url, headers=creds.bc_api_headers, timeout=120)
+			cf_response = requests.get(url=cf_url)
 			if cf_response.status_code == 200:
 				custom_field_data = cf_response.json()['data']
 				for field in custom_field_data:
 					custom_fields.append(field['id'])
-
-			elif cf_response.status_code == 429:
-				ms_to_wait = int(cf_response.headers['X-Rate-Limit-Time-Reset-Ms'])
-				seconds_to_wait = (ms_to_wait / 1000) + 1
-				VirtualRateLimiter.pause_requests(seconds_to_wait)
-				time.sleep(seconds_to_wait)
-				cf_response = requests.get(url=cf_url, headers=creds.bc_api_headers, timeout=120)
-				if cf_response.status_code == 200:
-					custom_field_data = cf_response.json()['data']
-					for field in custom_field_data:
-						custom_fields.append(field['id'])
-				else:
-					Catalog.error_handler.add_error_v(
-						f'Error getting custom fields from BigCommerce. Response: {cf_response.status_code}\n{cf_response.content}'
-					)
-					return None
 			else:
 				Catalog.error_handler.add_error_v(
 					f'Error getting custom fields from BigCommerce. Response: {cf_response.status_code}\n{cf_response.content}'
@@ -2675,31 +2581,25 @@ class Catalog:
 			async def bc_delete_custom_fields_async():
 				async with aiohttp.ClientSession() as session:
 					for field_id in id_list:
-						async_url = f"""https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/products/{self.product_id}/custom-fields/{field_id}"""
-
-						async with session.delete(url=async_url, headers=creds.bc_api_headers) as resp:
-							text_response = await resp.text()
-							status_code = resp.status
-
-							if status_code == 429:
-								ms_to_wait = int(resp.headers['X-Rate-Limit-Time-Reset-Ms'])
-
-								seconds_to_wait = (ms_to_wait / 1000) + 1
-
-								VirtualRateLimiter.pause_requests(seconds_to_wait)
-
-								time.sleep(seconds_to_wait)
-
-								async with session.delete(url=async_url, headers=creds.bc_api_headers) as resp:
-									text_response = await resp.text()
-									status_code = resp.status
-
-									if status_code == 204:
-										Catalog.logger.success(f'Custom Field {field_id} Deleted from BigCommerce.')
-									else:
-										Catalog.error_handler.add_error_v(
-											f'Error deleting custom field {field_id} from BigCommerce. Response: {status_code}\n{text_response}'
-										)
+						async_url = f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/products/{self.product_id}/custom-fields/{field_id}'
+						rate_limited = True
+						while rate_limited:
+							rate_limited = False
+							async with session.delete(url=async_url, headers=creds.bc_api_headers) as resp:
+								text_response = await resp.text()
+								status_code = resp.status
+								if status_code == 204:
+									Catalog.logger.success(f'Custom Field {field_id} Deleted from BigCommerce.')
+								elif status_code == 429:
+									rate_limited = True
+									ms_to_wait = int(resp.headers['X-Rate-Limit-Time-Reset-Ms'])
+									seconds_to_wait = (ms_to_wait / 1000) + 1
+									VirtualRateLimiter.pause_requests(seconds_to_wait)
+									time.sleep(seconds_to_wait)
+								else:
+									Catalog.error_handler.add_error_v(
+										f'Error deleting custom field {field_id} from BigCommerce. Response: {status_code}\n{text_response}'
+									)
 
 			asyncio.run(bc_delete_custom_fields_async())
 
@@ -2712,13 +2612,13 @@ class Catalog:
 
 		def bc_get_option_id(self):
 			url = f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/products/{self.product_id}/options'
-			response = requests.get(url, headers=creds.bc_api_headers, timeout=120)
+			response = requests.get(url)
 			if response.status_code == 200:
 				return response.json()['data'][0]['id']
 
 		def bc_delete_product_option_value(self, product_id, option_id, value_id):
 			url = f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/products/{product_id}/options/{option_id}/values/{value_id}'
-			response = requests.delete(url, headers=creds.bc_api_headers, timeout=120)
+			response = requests.delete(url)
 			return response
 
 		def bc_create_product_variant_option_value(self, variant_name, product_id, option_id):
@@ -2729,7 +2629,7 @@ class Catalog:
 			print(f'Option Value ID URL: {url}')
 			value_payload = {'is_default': False, 'label': variant_name, 'value_data': {}, 'sort_order': 0}
 			print(f'OPTION ID Value Payload: {value_payload}')
-			response = requests.post(url=url, headers=creds.bc_api_headers, json=value_payload, timeout=120)
+			response = requests.post(url=url, json=value_payload)
 			if response.status_code == 200:
 				return response.json()['data']['id']
 
@@ -2773,7 +2673,7 @@ class Catalog:
 					f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/products?id={product_id}'
 				)
 
-			del_product_response = requests.delete(url=delete_url, headers=creds.bc_api_headers, timeout=120)
+			del_product_response = requests.delete(url=delete_url)
 			if del_product_response.status_code == 204:
 				print(f'Product {sku} deleted from BigCommerce.')
 
@@ -2831,55 +2731,59 @@ class Catalog:
 					f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/'
 					f'v3/catalog/products/{product_id}/variants/{variant_id}'
 				)
+				rate_limited = True
+				while rate_limited:
+					rate_limited = False
+					# Step 1: Delete Variant from Big Commerce
+					del_variant_response = requests.delete(url=url)
+					# print(f"Delete Variant Response: {del_variant_response.status_code}")
+					if del_variant_response.status_code == 204:
+						# print(f"Variant {sku} deleted from BigCommerce.")
 
-				# Step 1: Delete Variant from Big Commerce
-				del_variant_response = requests.delete(url=url, headers=creds.bc_api_headers, timeout=120)
-				# print(f"Delete Variant Response: {del_variant_response.status_code}")
-				if del_variant_response.status_code == 204:
-					# print(f"Variant {sku} deleted from BigCommerce.")
+						# Step 2: Delete Option Value from Big Commerce so an orphan option value isn't left behind.
+						del_option_res = self.bc_delete_product_option_value(
+							product_id, option_id, variant_option_value_id
+						)
+						# print(f"Delete Option Value Response: {del_option_res.status_code}")
+						if del_option_res.status_code == 204:
+							# print(
+							#     f"Variant Option Value {variant_option_value_id} deleted from BigCommerce."
+							# )
+							# Step 3: Get Image ID's associated with variant and delete them from parent product.
+							image_query = f"""
+							SELECT IMAGE_ID
+							FROM {creds.bc_image_table}
+							WHERE ITEM_NO = '{sku}'
+							"""
+							image_response = self.db.query_db(image_query)
+							if image_response is not None:
+								for image_id in image_response:
+									image_id = image_id[0]
+									self.delete_image(
+										# product ID is new here.
+										product_id=product_id,
+										image_id=image_id,
+									)
 
-					# Step 2: Delete Option Value from Big Commerce so an orphan option value isn't left behind.
-					del_option_res = self.bc_delete_product_option_value(product_id, option_id, variant_option_value_id)
-					# print(f"Delete Option Value Response: {del_option_res.status_code}")
-					if del_option_res.status_code == 204:
-						# print(
-						#     f"Variant Option Value {variant_option_value_id} deleted from BigCommerce."
-						# )
-						# Step 3: Get Image ID's associated with variant and delete them from parent product.
-						image_query = f"""
-                        SELECT IMAGE_ID
-                        FROM {creds.bc_image_table}
-                        WHERE ITEM_NO = '{sku}'
-                        """
-						image_response = self.db.query_db(image_query)
-						if image_response is not None:
-							for image_id in image_response:
-								image_id = image_id[0]
-								self.delete_image(
-									# product ID is new here.
-									product_id=product_id,
-									image_id=image_id,
-								)
+							# Step 4: Delete Variant from Middleware (Product and Image Tables)
+							delete_query = f"DELETE FROM {creds.bc_product_table} WHERE VARIANT_ID = '{variant_id}'"
+							response = self.db.query_db(delete_query, commit=True)
 
-						# Step 4: Delete Variant from Middleware (Product and Image Tables)
-						delete_query = f"DELETE FROM {creds.bc_product_table} WHERE VARIANT_ID = '{variant_id}'"
-						response = self.db.query_db(delete_query, commit=True)
+							if response['code'] == 200:
+								Catalog.logger.success(f'Variant {sku} deleted from Big Commerce and Middleware.')
+								return True
 
-						if response['code'] == 200:
-							Catalog.logger.success(f'Variant {sku} deleted from Big Commerce and Middleware.')
-							return True
+						else:
+							Catalog.error_handler.add_error_v(
+								error=f'Error deleting option value {variant_option_value_id} from BigCommerce. Response: {del_option_res} \n URL: {url}'
+							)
+							return False
 
 					else:
-						Catalog.error_handler.add_error_v(
-							error=f'Error deleting option value {variant_option_value_id} from BigCommerce. Response: {del_option_res} \n URL: {url}'
+						print(
+							f'Error deleting product {sku} from BigCommerce. Response: {del_variant_response} \n URL: {url}'
 						)
 						return False
-
-				else:
-					print(
-						f'Error deleting product {sku} from BigCommerce. Response: {del_variant_response} \n URL: {url}'
-					)
-					return False
 
 		def delete_image(self, image_id=None, product_id=None, image_name=None):
 			"""Delete image from BigCommerce and SQL."""
@@ -2894,17 +2798,29 @@ class Catalog:
 
 			delete_img_url = f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/products/{product_id}/images/{image_id}'
 
-			img_del_res = requests.delete(url=delete_img_url, headers=creds.bc_api_headers, timeout=120)
-			if img_del_res.status_code == 204:
-				delete_images_query = f'DELETE FROM {creds.bc_image_table} ' f"WHERE IMAGE_ID = '{image_id}'"
-				self.db.query_db(delete_images_query, commit=True)
+			rate_limited = True
+			while rate_limited:
+				rate_limited = False
+				img_del_res = requests.delete(url=delete_img_url)
+				if img_del_res.status_code == 204:
+					Catalog.logger.success(f'Image {image_id} deleted from BigCommerce.')
+					delete_images_query = f'DELETE FROM {creds.bc_image_table} ' f"WHERE IMAGE_ID = '{image_id}'"
+					sql_res = self.db.query_db(delete_images_query, commit=True)
+					if sql_res['code'] == 200:
+						Catalog.logger.success(f'Image {image_id} deleted from SQL.')
+					else:
+						Catalog.error_handler.add_error_v(
+							error=f'Error deleting image {image_id} from SQL. Response: {sql_res}'
+						)
 
-			else:
-				print(f'Error deleting image {image_id} from BigCommerce. Response: {img_del_res.status_code}')
-				print(img_del_res.content)
-				print(f'URL: {delete_img_url}')
-
-			return img_del_res
+				else:
+					Catalog.error_handler.add_error_v(
+						error=f'Error deleting image {image_id} from BigCommerce.\n'
+						f'Response: {img_del_res.status_code}\n'
+						f'Content: {img_del_res.content}\n'
+						f'URL: {delete_img_url}'
+					)
+				return img_del_res
 
 		# Middleware Methods
 		def middleware_sync_product(self):
@@ -3462,13 +3378,13 @@ class Catalog:
 				if product_id is None:
 					product_id = self.product_id
 				url = f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/products/{product_id}/options'
-				response = requests.get(url, headers=creds.bc_api_headers, timeout=120)
+				response = requests.get(url)
 				if response.status_code == 200:
 					return response.json()['data'][0]['id']
 
 			def bc_delete_product_option_value(self, product_id, option_id, value_id):
 				url = f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/products/{product_id}/options/{option_id}/values/{value_id}'
-				response = requests.delete(url, headers=creds.bc_api_headers, timeout=120)
+				response = requests.delete(url)
 				return response
 
 			def bc_create_product_variant_option_value(self, variant_name, product_id, option_id):
@@ -3480,7 +3396,7 @@ class Catalog:
 				value_payload = {'is_default': False, 'label': variant_name, 'value_data': {}, 'sort_order': 0}
 
 				print(f'OPTION ID Value Payload: {value_payload}')
-				response = requests.post(url=url, headers=creds.bc_api_headers, json=value_payload, timeout=120)
+				response = requests.post(url=url, json=value_payload)
 				if response.status_code == 200:
 					return response.json()['data']['id']
 
@@ -3538,7 +3454,7 @@ class Catalog:
 				print('Variant Payload: \n')
 				print(json.dumps(variant_payload, indent=4))
 
-				bc_response = requests.post(url=url, headers=creds.bc_api_headers, json=variant_payload, timeout=120)
+				bc_response = requests.post(url=url, json=variant_payload)
 
 				if bc_response.status_code in [200, 207]:
 					self.product_id = bc_response.json()['data']['product_id']
@@ -3632,7 +3548,7 @@ class Catalog:
 					f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/'
 					f'catalog/products/{self.product_id}/images'
 				)
-				response = requests.get(url=url, headers=creds.bc_api_headers)
+				response = requests.get(url=url)
 				if response is not None:
 					for x in response.json():
 						# Could use this to back-fill database with image id and sort order info
@@ -3670,7 +3586,7 @@ class Catalog:
 				"""Hard reset for single item (variant). Used in pathological case of single item being turned into a merged item."""
 				print('Performing hard reset on variant. Sku is ', self.sku)
 				url = f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/products?sku={self.sku}'
-				delete_response = requests.delete(url=url, headers=creds.bc_api_headers, timeout=10)
+				delete_response = requests.delete(url=url)
 
 				if delete_response.status_code == 204:
 					print(f'Product {self.sku} deleted from BigCommerce.')
@@ -3948,7 +3864,7 @@ class Catalog:
 					f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/'
 					f'products/{self.product_id}/images/{self.image_id}'
 				)
-				response = requests.get(url=url, headers=creds.bc_api_headers)
+				response = requests.get(url=url)
 				return response.content
 
 			def bc_delete_image(self):
@@ -3958,13 +3874,13 @@ class Catalog:
 						f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/'
 						f'products/{self.product_id}/variants/{self.variant_id}/images/{self.image_id}'
 					)
-					response = requests.delete(url=url, headers=creds.bc_api_headers)
+					response = requests.delete(url=url)
 
 				url = (
 					f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/'
 					f'products/{self.product_id}/images/{self.image_id}'
 				)
-				response = requests.delete(url=url, headers=creds.bc_api_headers)
+				response = requests.delete(url=url)
 
 				return response.content
 
