@@ -38,37 +38,37 @@ import requests
 
 
 class ShopifyGraphQLAPI:
-	token = creds.shopify_admin_token
+    token = creds.shopify_admin_token
 
-	def __init__(self):
-		self.headers = {'Content-Type': 'application/json', 'X-Shopify-Access-Token': ShopifyGraphQLAPI.token}
+    def __init__(self):
+        self.headers = {'Content-Type': 'application/json', 'X-Shopify-Access-Token': ShopifyGraphQLAPI.token}
 
-	def execute_query(self, query, variables=None):
-		"""
-		Executes a GraphQL query or mutation on the Shopify store.
-		:param query: The GraphQL query or mutation as a string.
-		:param variables: Optional dictionary of variables for the query.
-		:return: The JSON response from Shopify.
-		"""
-		url = f'https://{ShopifyGraphQLAPI.shop_url}/admin/api/2023-01/graphql.json'
-		payload = {'query': query, 'variables': variables} if variables else {'query': query}
-		response = requests.post(url, json=payload, headers=self.headers)
-		if response.status_code == 200:
-			return response.json()
-		else:
-			raise Exception(f'Query failed to run by returning code of {response.status_code}. {response.text}')
+    def execute_query(self, query, variables=None):
+        """
+        Executes a GraphQL query or mutation on the Shopify store.
+        :param query: The GraphQL query or mutation as a string.
+        :param variables: Optional dictionary of variables for the query.
+        :return: The JSON response from Shopify.
+        """
+        url = f'https://{ShopifyGraphQLAPI.shop_url}/admin/api/2023-01/graphql.json'
+        payload = {'query': query, 'variables': variables} if variables else {'query': query}
+        response = requests.post(url, json=payload, headers=self.headers)
+        if response.status_code == 200:
+            return response.json()
+        else:
+            raise Exception(f'Query failed to run by returning code of {response.status_code}. {response.text}')
 
 
 if __name__ == '__main__':
-	# # Example: Get all products
+    # # Example: Get all products
 
-	query = """
+    query = """
         {
         shop {
             name
         }
     }
     """
-	api = ShopifyGraphQLAPI()
-	response = api.execute_query(query)
-	print(response['data']['shop']['name'])
+    api = ShopifyGraphQLAPI()
+    response = api.execute_query(query)
+    print(response['data']['shop']['name'])
