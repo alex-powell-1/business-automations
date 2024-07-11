@@ -1,6 +1,6 @@
 from bs4 import BeautifulSoup
 from selenium import webdriver
-
+import time
 from setup import creds
 
 
@@ -18,8 +18,6 @@ def get_gift_cards():
             )
     return gift_cards
 
-
-import time
 
 if __name__ == '__main__':
     chrome_options = webdriver.ChromeOptions()

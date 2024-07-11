@@ -1,7 +1,7 @@
 import shopify
 from setup import creds
-import random
-from datetime import datetime
+from pathlib import Path
+import json
 
 
 class ShopifyGraphQL:
@@ -44,13 +44,22 @@ class ShopifySession:
     def get_product(self, product_id: str) -> shopify.Product:
         return shopify.Product.find(product_id)
 
-    def get_rand_product(self) -> shopify.Product:
-        return shopify.Product.find(random.choice(self.get_all_products()).id)
+    def create_product(self, variables):
+        document = Path('./integration/GraphQL_queries/product_queries.graphql').read_text()
+        response = session.execute_query(query=document, variables=variables, operation_name='productCreate')
+        return json.loads(response)
+
+    def update_product(self, product_id: int, payload: dict):
+        product = session.get_product(product_id=product_id)
+        return product._update(payload)
+
+    def execute_query(self, query: str, variables: dict = None, operation_name: str = None):
+        return shopify.GraphQL().execute(query=query, variables=variables, operation_name=operation_name)
 
 
 if __name__ == '__main__':
     session = ShopifySession()
-
-    print(session.get_rand_product().title)
-
-    session.close()
+    variables = {'title': 'Apple', 'productType': 'Fruit', 'vendor': 'Fruit Stand'}
+    response = session.create_product(variables={'input': variables})
+    id = response['data']['productCreate']['product']['id'].split('/')[-1]
+    print(id)

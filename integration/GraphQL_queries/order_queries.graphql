@@ -1,0 +1,19 @@
+# ./order_queries.graphql
+
+fragment OrderInfo on Order {
+  id
+  name
+  createdAt
+}
+
+query GetOneOrder($order_id: ID!) {
+  node(id: $order_id) {
+    ...OrderInfo
+  }
+}
+
+query GetManyOrders($order_ids: [ID]!) {
+  nodes(ids: $order_ids) {
+    ...OrderInfo
+  }
+}

@@ -42,28 +42,6 @@ if __name__ == '__main__':
     }
     }
     """
-    variables = None
-    # variables = {
-    # 	'input': {
-    # 		'title': 'Example Product Title',
-    # 		'descriptionHtml': '<strong>Amazing Product</strong>',
-    # 		'productType': 'Widgets',
-    # 		'vendor': 'Example Vendor',
-    # 		'variants': [
-    # 			{
-    # 				'price': '19.99',
-    # 				'sku': 'unique-sku-123',
-    # 				'inventoryQuantity': 100,
-    # 				'inventoryManagement': 'SHOPIFY',
-    # 				'options': ['Black', 'Medium'],
-    # 			}
-    # 		],
-    # 		'options': [
-    # 			{'name': 'Color', 'values': ['Black', 'White']},
-    # 			{'name': 'Size', 'values': ['Small', 'Medium', 'Large']},
-    # 		],
-    # 	}
-    # }
 
     query = """
         mutation {
