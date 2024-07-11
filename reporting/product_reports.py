@@ -138,7 +138,7 @@ def get_list_of_current_photo_sku():
 	list_of_sku = []
 	for item in list_of_files[1:]:
 		name = item.split('.')[0]
-		sku = name.split('^')[0]
+		sku = str(name.split('^')[0]).lower()  # lower case for comparison
 		list_of_sku.append(sku)
 	final_sku_list = sorted(set(list_of_sku))
 	return final_sku_list
@@ -440,7 +440,7 @@ def get_missing_image_list():
 			for x in all_ecomm_items_with_stock:
 				# Construct objects to get item details
 				item = Product(x)
-				item_number = item.item_no
+				item_number = str(item.item_no).lower()  # lower case for comparison
 				binding_key = item.binding_key
 				if item_number not in all_current_photos:
 					# Add item objects to either list
