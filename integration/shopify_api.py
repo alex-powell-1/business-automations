@@ -1,44 +1,10 @@
 from setup import creds
-import shopify
-import os
-import binascii
 import requests
-
-# shopify.Session.setup(api_key=creds.shopify_client_id, secret=creds.shopify_secret)
-
-
-# api_version = '2024-07'
-# state = binascii.b2a_hex(os.urandom(15)).decode('utf-8')
-# redirect_uri = 'http://localhost:53158/auth/shopify/callback'
-# scopes = ['read_products', 'read_orders']
-
-# newSession = shopify.Session(creds.shopify_shop_url, api_version)
-# auth_url = newSession.create_permission_url(scopes, redirect_uri, state)
-# print(auth_url)
-
-
-# session = shopify.Session(creds.shopify_shop_url, api_version)
-# access_token = session.request_token(params=request_params)  # request_token will validate hmac and timing attacks
-# # you should save the access token now for future use.
-# print(access_token)
-
-# # redirect to auth_url
-
-# # from setup import creds
-# # import requests
-# # import shopify
-
-# # class ShopifyAPI:
-# # 	shop_url = creds.shopify_shop_url
-# #     client_id = creds.shopify_client_id
-# #     secret = creds.shopify_secret
-
-# #     def __init__(self):
-# #         self.access
 
 
 class ShopifyGraphQLAPI:
     token = creds.shopify_admin_token
+    shop_url = creds.shopify_shop_url
 
     def __init__(self):
         self.headers = {'Content-Type': 'application/json', 'X-Shopify-Access-Token': ShopifyGraphQLAPI.token}
@@ -62,13 +28,59 @@ class ShopifyGraphQLAPI:
 if __name__ == '__main__':
     # # Example: Get all products
 
-    query = """
-        {
-        shop {
-            name
+    mutation = """
+    mutation productCreate($input: ProductInput!) {
+    productCreate(input: $input) {
+        product {
+        id
+        title
+        }
+        userErrors {
+        field
+        message
         }
     }
+    }
+    """
+    variables = None
+    # variables = {
+    # 	'input': {
+    # 		'title': 'Example Product Title',
+    # 		'descriptionHtml': '<strong>Amazing Product</strong>',
+    # 		'productType': 'Widgets',
+    # 		'vendor': 'Example Vendor',
+    # 		'variants': [
+    # 			{
+    # 				'price': '19.99',
+    # 				'sku': 'unique-sku-123',
+    # 				'inventoryQuantity': 100,
+    # 				'inventoryManagement': 'SHOPIFY',
+    # 				'options': ['Black', 'Medium'],
+    # 			}
+    # 		],
+    # 		'options': [
+    # 			{'name': 'Color', 'values': ['Black', 'White']},
+    # 			{'name': 'Size', 'values': ['Small', 'Medium', 'Large']},
+    # 		],
+    # 	}
+    # }
+
+    query = """
+        mutation {
+            productCreate(
+                    input: {
+                        title: "Sweet new product", 
+                        productType: "Snowboard", 
+                        vendor: "JadedPixel"
+                    }
+            ) 
+                {
+                product {
+                    id
+                }
+            }
+        }
     """
     api = ShopifyGraphQLAPI()
-    response = api.execute_query(query)
-    print(response['data']['shop']['name'])
+    response = api.execute_query(query=query)
+    print(response)
