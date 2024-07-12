@@ -1,23 +1,28 @@
-mutation productCreate($input: ProductInput!) {
+# mutation productCreate($input: ProductInput!) {
+#   productCreate(input: $input) {
+#     product {
+#       id
+#     }
+#   }
+# }
+
+mutation createProductWithVariants($input: ProductInput!) {
   productCreate(input: $input) {
     product {
       id
     }
-  }
-}
-
-mutation productUpdate($input: ProductInput!) {
-  productUpdate(input: $input) {
-    product {
-      id
+    userErrors {
+      field
+      message
     }
   }
 }
 
-mutation productDelete($id: ID!) {
-  productDelete(id: $id) {
-    product {
-      id
-    }
+
+query product($id: ID!) {
+  product(id: $id) {
+    title
+    description
+    onlineStoreUrl
   }
 }
