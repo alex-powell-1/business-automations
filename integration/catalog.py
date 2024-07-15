@@ -2588,22 +2588,12 @@ class Catalog:
                         f'Response: {json.dumps(response.json(), indent=4)}',
                         origin='Catalog --> post_product',
                     )
+                return response
 
             elif mode == 'Shopify':
                 response = Shopify.create_product(payload=self.construct_product_payload(mode='Shopify'))
-                if response.status_code in [200, 201, 207]:
-                    Catalog.logger.success(
-                        f'Shopify POST Code: {response.status_code}. Product: {self.sku} Create Success'
-                    )
-                else:
-                    Catalog.error_handler.add_error_v(
-                        error=f'Shopify POST SKU: {self.sku} to Shopify. Response Code: {response.status_code}\n'
-                        f'Code {response.status_code}: POST SKU: {self.sku}\n'
-                        f'Payload: {self.construct_product_payload(mode="Shopify")}\n'
-                        f'Response: {json.dumps(response.json(), indent=4)}',
-                        origin='Catalog --> bc_post_product --> ShopifyAPI.create_product',
-                    )
-            return response
+                if response[0]:
+                    return response[1]
 
         def bc_post_image(self, image):
             # Post New Image to Big Commerce

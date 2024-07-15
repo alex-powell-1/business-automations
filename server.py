@@ -9,6 +9,7 @@ import pandas
 import pika
 import requests
 from flask import request, jsonify, abort, send_from_directory
+from werkzeug.exceptions import NotFound, BadRequest
 from flask_cors import CORS
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
@@ -19,7 +20,7 @@ from waitress import serve
 
 from setup import creds, email_engine, authorization
 from setup.sms_engine import SMSEngine
-from setup.error_handler import ProcessInErrorHandler, LeadFormErrorHandler
+from setup.error_handler import ProcessInErrorHandler, ProcessOutErrorHandler, LeadFormErrorHandler
 from setup import log_engine
 
 app = flask.Flask(__name__)
@@ -330,12 +331,17 @@ def health_check():
     return jsonify({'status': 'Server is running'}), 200
 
 
-@app.route('/files/<path>/<filename>', methods=['GET'])
-def serve_file(path, filename):
-    print('Hello')
-    print_path = f'{path}/{filename}'
-    print(print_path)
-    return send_from_directory(creds.file_server, print_path)
+@app.route('/files/<path:path>', methods=['GET'])
+def serve_file(path):
+    try:
+        return send_from_directory(creds.file_server, path)
+    except NotFound:
+        return jsonify({'error': 'File not found'}), 404
+    except BadRequest:
+        return jsonify({'error': 'Bad request'}), 400
+    except Exception as e:
+        ProcessOutErrorHandler.error_handler.add_error_v(error=f'Error serving file: {e}', origin='serve_file')
+        return jsonify({'error': 'Internal server error'}), 500
 
 
 if __name__ == '__main__':
