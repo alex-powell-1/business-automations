@@ -1,5 +1,6 @@
 import asyncio
 import os
+import shutil
 import re
 import json
 from datetime import datetime
@@ -31,9 +32,10 @@ class Catalog:
     all_binding_ids = get_all_binding_ids()
     mw_brands = set()
 
-    def __init__(self, last_sync=datetime(1970, 1, 1)):
+    def __init__(self, last_sync=datetime(1970, 1, 1), mode='BigCommerce'):
         self.last_sync = last_sync
         self.db = Database.db
+        self.mode = mode
         self.category_tree = self.CategoryTree(last_sync=last_sync)
         self.brands = self.Brands(last_sync=last_sync)
         # Used to process preliminary deletions of products and images
@@ -47,7 +49,7 @@ class Catalog:
     def __str__(self):
         return f'Items to Process: {len(self.sync_queue)}\n'
 
-    def get_products(self):
+    def get_products(self, test_mode=False):
         # Get data for self.cp_items and self.mw_items
         counterpoint_items = self.db.query_db("SELECT ITEM_NO FROM IM_ITEM WHERE IS_ECOMM_ITEM = 'Y'")
         self.cp_items = [x[0] for x in counterpoint_items] if counterpoint_items else []
@@ -119,7 +121,8 @@ class Catalog:
             res = []
             [res.append(x) for x in result if x not in res]
             self.sync_queue = res
-            # self.sync_queue = {'sku': '10338', 'binding_id': 'B0001'}
+            if test_mode:
+                self.sync_queue = {'sku': '10338', 'binding_id': 'B0001'}
 
             Catalog.logger.info(f'Sync Queue: {self.sync_queue}')
 
@@ -220,7 +223,7 @@ class Catalog:
                 product_id = Catalog.get_product_id_from_sku(parent_sku)
 
                 if product_id is not None:
-                    variant = Catalog.Product.Variant(sku=variant_sku, last_run_date=self.last_sync)
+                    variant = Catalog.Product.Variant(sku=variant_sku, last_run_date=self.last_sync, mode=self.mode)
                     print(f'\n\nPosting new variant for {variant_sku} to product ID {product_id}.\n\n')
                     variant.bc_post_variant(product_id=product_id)
         else:
@@ -369,7 +372,7 @@ class Catalog:
 
         Catalog.logger.info(f'Image Add/Delete Processing Complete. Time: {time.time() - start_time}')
 
-    def sync(self, initial=False, mode='BigCommerce'):
+    def sync(self, initial=False):
         # Sync Category Tree
         self.category_tree.sync()
         # Sync Product Brands
@@ -396,13 +399,13 @@ class Catalog:
             while len(self.sync_queue) > 0:
                 start_time = time.time()
                 target = self.sync_queue.pop()
-                prod = self.Product(target, last_sync=self.last_sync)
+                prod = self.Product(target, last_sync=self.last_sync, mode=self.mode)
                 prod.get_product_details(last_sync=self.last_sync)
                 Catalog.logger.info(
                     f'Processing Product: {prod.sku}, Binding: {prod.binding_id}, Title: {prod.web_title}'
                 )
                 if prod.validate_inputs():
-                    if prod.process(mode=mode):
+                    if prod.process():
                         Catalog.logger.success(
                             f'Product SKU: {prod.sku} Binding ID: {prod.binding_id}, Title: {prod.web_title} processed successfully.'
                         )
@@ -435,7 +438,7 @@ class Catalog:
         else:
             Catalog.logger.warn(f'Binding ID not found for {sku}.')
 
-        product = Catalog.Product(product_data=delete_payload, last_sync=self.last_sync)
+        product = Catalog.Product(product_data=delete_payload, last_sync=self.last_sync, mode=self.mode)
 
         if binding_id:
             Catalog.logger.info(f'Deleting Product: {sku} with Binding ID: {binding_id}')
@@ -1574,8 +1577,9 @@ class Catalog:
                         )
 
     class Product:
-        def __init__(self, product_data, last_sync):
+        def __init__(self, product_data, last_sync, mode='BigCommerce'):
             self.db = Database.db
+            self.mode = mode
 
             self.sku = product_data['sku']
             self.binding_id = product_data['binding_id'] if 'binding_id' in product_data else None
@@ -1772,7 +1776,7 @@ class Catalog:
                     if total_binding_images > 0:
                         # print(f"Found {total_binding_images} binding images for Binding ID: {self.binding_id}")
                         for image in binding_images:
-                            binding_img = self.Image(image)
+                            binding_img = self.Image(image, mode=self.mode)
 
                             if binding_img.validate():
                                 self.images.append(binding_img)
@@ -2075,7 +2079,7 @@ class Catalog:
             # )
             return True
 
-        def construct_product_payload(self, mode='BigCommerce'):
+        def construct_product_payload(self):
             """Build the payload for creating a product in BigCommerce.
             This will include all variants, images, and custom fields."""
 
@@ -2127,7 +2131,7 @@ class Catalog:
                     result.append({'name': 'Size', 'value': self.custom_size})
                 return result
 
-            def construct_image_payload(mode='BigCommerce'):
+            def construct_image_payload():
                 sort_order = 0
                 for x in self.images:
                     if sort_order == 0:
@@ -2135,8 +2139,9 @@ class Catalog:
                     x.sort_order = sort_order
                     sort_order += 1
                 result = []
+
                 for image in self.images:
-                    if mode == 'BigCommerce':
+                    if self.mode == 'BigCommerce':
                         image_payload = {
                             'product_id': self.product_id,
                             'is_thumbnail': image.is_thumbnail,
@@ -2149,12 +2154,12 @@ class Catalog:
 
                         result.append(image_payload)
 
-                    elif mode == 'Shopify':
+                    elif self.mode == 'Shopify':
                         image_payload = {'position': image.sort_order, 'src': image.image_url, 'variant_ids': [{}]}
 
                         if image.image_id:
                             image_payload['id'] = image.image_id
-
+                        print(f'Image Payload: {image_payload}')
                         result.append(image_payload)
 
                 return result
@@ -2176,9 +2181,10 @@ class Catalog:
                 #     }
                 # ])
 
-            def construct_variant_payload(mode='BigCommerce'):
+            def construct_variant_payload():
                 result = []
-                if mode == 'BigCommerce':
+
+                if self.mode == 'BigCommerce':
                     if self.is_bound:
                         for child in self.variants:
                             variant_payload = {
@@ -2209,7 +2215,9 @@ class Catalog:
 
                             result.append(variant_payload)
 
-                elif mode == 'Shopify':
+                    return result
+
+                elif self.mode == 'Shopify':
                     if self.is_bound:
                         for child in self.variants:
                             variant_payload = {
@@ -2231,12 +2239,15 @@ class Catalog:
                                 'inventory_quantity': child.buffered_quantity,
                                 'requires_shipping': False,
                             }
+
                             if child.product_id:
                                 variant_payload['product_id'] = child.product_id
                             if child.variant_id:
                                 variant_payload['id'] = child.variant_id
 
                             result.append(variant_payload)
+                        return result
+
                     else:
                         variant_payload = {
                             'title': 'Default Title',
@@ -2261,10 +2272,9 @@ class Catalog:
                             variant_payload['product_id'] = self.product_id
 
                         result.append(variant_payload)
+                        return result
 
-                return result
-
-            if mode == 'BigCommerce':
+            if self.mode == 'BigCommerce':
                 payload = {
                     'name': self.web_title,
                     'type': 'physical',
@@ -2345,7 +2355,7 @@ class Catalog:
                     payload['categories'] = self.bc_ecommerce_categories
                 return payload
 
-            elif mode == 'Shopify':
+            elif self.mode == 'Shopify':
                 payload = {
                     'product': {
                         'title': self.web_title,
@@ -2356,7 +2366,8 @@ class Catalog:
                         'published_scope': 'global',
                         'tags': self.search_keywords,
                         'status': 'active' if self.visible else 'draft',
-                        'variants': construct_variant_payload(mode='Shopify'),
+                        'variants': construct_variant_payload(),
+                        'images': construct_image_payload(),
                     }
                 }
                 if self.is_bound:
@@ -2368,15 +2379,15 @@ class Catalog:
 
                 return payload
 
-        def process(self, retries=3, mode='BigCommerce'):
+        def process(self, retries=3):
             """Process Product Creation/Delete/Update in BigCommerce and Middleware."""
 
             def create(retry=1):
                 """Create new product in BigCommerce and Middleware."""
                 if retry >= 0:
-                    create_response = self.post_product(mode=mode)
+                    create_response = self.post_product()
                     if create_response.status_code in [200, 201, 207]:
-                        self.get_product_data_from_response(create_response, mode=mode)
+                        self.get_product_data_from_response(create_response)
                         if self.insert_product():
                             if self.insert_images():
                                 return True
@@ -2460,9 +2471,9 @@ class Catalog:
                     )
                     return False
 
-            if mode == 'BigCommerce':
+            if self.mode == 'BigCommerce':
                 table = creds.bc_product_table
-            elif mode == 'Shopify':
+            elif self.mode == 'Shopify':
                 table = creds.shopify_product_table
 
             query = f"""SELECT *
@@ -2515,9 +2526,9 @@ class Catalog:
 
         # BigCommerce Methods
 
-        def get_product_data_from_response(self, response, mode='BigCommerce'):
+        def get_product_data_from_response(self, response):
             # Assign PRODUCT_ID, VARIANT_ID, and CATEG_ID to product and insert into middleware
-            if mode == 'BigCommerce':
+            if self.mode == 'BigCommerce':
                 self.product_id = response.json()['data']['id']
 
                 custom_field_response = response.json()['data']['custom_fields']
@@ -2558,7 +2569,7 @@ class Catalog:
                 for image in self.images:
                     image.product_id = self.product_id
 
-            elif mode == 'Shopify':
+            elif self.mode == 'Shopify':
                 self.product_id = response.json()['product']['id']
 
                 for x, variant in enumerate(self.variants):
@@ -2567,9 +2578,9 @@ class Catalog:
 
                 self.option_id = response.json()['product']['options'][0]['id']
 
-        def post_product(self, mode='BigCommerce'):
+        def post_product(self):
             """Create product in BigCommerce or Shopify."""
-            if mode == 'BigCommerce':
+            if self.mode == 'BigCommerce':
                 url = f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/products?include=custom_fields,options,variants,images'
                 payload = self.construct_product_payload()
                 response = BCRequests.post(url=url, json=payload)
@@ -2590,8 +2601,9 @@ class Catalog:
                     )
                 return response
 
-            elif mode == 'Shopify':
-                response = Shopify.create_product(payload=self.construct_product_payload(mode='Shopify'))
+            elif self.mode == 'Shopify':
+                response = Shopify.create_product(payload=self.construct_product_payload())
+                print(f'Shopify Response: {response}')
                 if response[0]:
                     return response[1]
 
@@ -2963,7 +2975,7 @@ class Catalog:
                     status = False
             return status
 
-        def insert_variant(self, variant, mode='BigCommerce'):
+        def insert_variant(self, variant):
             custom_field_string = self.custom_field_ids
             if not variant.is_parent:
                 custom_field_string = None
@@ -2973,9 +2985,9 @@ class Catalog:
             else:
                 categories_string = None
 
-            if mode == 'BigCommerce':
+            if self.mode == 'BigCommerce':
                 table = creds.bc_product_table
-            elif mode == 'Shopify':
+            elif self.mode == 'Shopify':
                 table = creds.shopify_product_table
 
             insert_query = (
@@ -2999,7 +3011,7 @@ class Catalog:
                 pass
             else:
                 Catalog.error_handler.add_error_v(
-                    error=f'INSERT{insert_product_response}',
+                    error=f'Query: {insert_query}\n\nResponse: {insert_product_response}',
                     origin=f'SKU: {variant.sku} Bind: {variant.binding_id} - insert_variant',
                 )
             return insert_product_response
@@ -3241,8 +3253,9 @@ class Catalog:
             return list(binding_ids)
 
         class Variant:
-            def __init__(self, sku, last_run_date, get_images=True):
+            def __init__(self, sku, last_run_date, get_images=True, mode='BigCommerce'):
                 self.db = Database.db
+                self.mode = mode
                 self.sku = sku
                 self.last_run_date = last_run_date
 
@@ -3614,8 +3627,8 @@ class Catalog:
                     pass
                 else:
                     Catalog.error_handler.add_error_v(
-                        error=f'INSERT{insert_product_response}',
-                        origin=f'SKU: {variant.sku} Bind: {variant.binding_id} - insert_variant',
+                        error=f'QUERY: {insert_query}\n\nRESPONSE: {insert_product_response}',
+                        origin=f'SKU: {variant.sku} Bind: {variant.binding_id} - Variant --> insert_variant',
                     )
                 return insert_product_response
 
@@ -3639,7 +3652,7 @@ class Catalog:
                 if total_images > 0:
                     # print(f"Found {total_images} product images for item: {self.sku}")
                     for image in product_images:
-                        img = Catalog.Product.Image(image_name=image)
+                        img = Catalog.Product.Image(image_name=image, mode=self.mode)
                         if img.validate():
                             self.images.append(img)
 
@@ -3658,20 +3671,28 @@ class Catalog:
             def construct_image_payload(self):
                 result = []
                 for image in self.images:
-                    image_payload = {
-                        'is_thumbnail': image.is_thumbnail,
-                        'sort_order': image.sort_order,
-                        'description': image.alt_text_1,
-                        'image_url': f'{creds.public_web_dav_photos}/{image.image_name}',
-                        'date_modified': image.modified_date,
-                    }
+                    if self.mode == 'BigCommerce':
+                        image_payload = {
+                            'is_thumbnail': image.is_thumbnail,
+                            'sort_order': image.sort_order,
+                            'description': image.alt_text_1,
+                            'image_url': f'{creds.public_web_dav_photos}/{image.image_name}',
+                            'date_modified': image.modified_date,
+                        }
 
-                    if self.product_id is not None:
-                        image_payload['product_id'] = self.product_id
-                    if image.image_id is not None:
-                        image_payload['id'] = image.image_id
+                        if self.product_id is not None:
+                            image_payload['product_id'] = self.product_id
+                        if image.image_id is not None:
+                            image_payload['id'] = image.image_id
 
-                    result.append(image_payload)
+                        result.append(image_payload)
+                    elif self.mode == 'Shopify':
+                        image_payload = {
+                            'src': f'{creds.public_web_dav_photos}/{image.image_name}',
+                            'position': image.image_number,
+                            'alt': image.alt_text_1,
+                        }
+                        result.append(image_payload)
 
                 return result
 
@@ -3716,9 +3737,9 @@ class Catalog:
             pass
 
         class Image:
-            def __init__(self, image_name: str):
+            def __init__(self, image_name: str, mode='BigCommerce'):
                 self.db = Database.db
-
+                self.mode = mode
                 self.id = None
                 self.image_name = image_name  # This is the file name
                 self.sku = ''
@@ -3746,8 +3767,10 @@ class Catalog:
 
             def get_image_details(self):
                 """Get image details from SQL"""
-
-                query = f"SELECT * FROM SN_IMAGES WHERE IMAGE_NAME = '{self.image_name}'"
+                if self.mode == 'BigCommerce':
+                    query = f"SELECT * FROM {creds.bc_image_table} WHERE IMAGE_NAME = '{self.image_name}'"
+                elif self.mode == 'Shopify':
+                    query = f"SELECT * FROM {creds.shopify_image_table} WHERE IMAGE_NAME = '{self.image_name}'"
                 response = self.db.query_db(query)
                 if response is not None:
                     self.id = response[0][0]
@@ -3931,21 +3954,29 @@ class Catalog:
                 random_int = random.randint(1000, 9999)
                 new_name = f"{self.image_name.split(".")[0].replace("^", "-")}-{random_int}.jpg"
 
-                url = f'{creds.web_dav_product_photos}/{new_name}'
-                try:
-                    img_upload_res = requests.put(
-                        url, data=data, auth=HTTPDigestAuth(creds.web_dav_user, creds.web_dav_pw)
-                    )
-                except Exception as e:
-                    Catalog.error_handler.add_error_v(error=f'Error uploading image: {e}')
-                else:
-                    # return public url of image
-                    if img_upload_res.status_code == 201:
-                        return f'{creds.public_web_dav_photos}/{new_name}'
-                    else:
-                        Catalog.error_handler.add_error_v(
-                            error=f'Error uploading image: {img_upload_res.status_code} - {img_upload_res.text}'
+                if self.mode == 'BigCommerce':
+                    url = f'{creds.web_dav_product_photos}/{new_name}'
+                    try:
+                        img_upload_res = requests.put(
+                            url, data=data, auth=HTTPDigestAuth(creds.web_dav_user, creds.web_dav_pw)
                         )
+                    except Exception as e:
+                        Catalog.error_handler.add_error_v(error=f'Error uploading image: {e}')
+                    else:
+                        # return public url of image
+                        if img_upload_res.status_code == 201:
+                            return f'{creds.public_web_dav_photos}/{new_name}'
+                        else:
+                            Catalog.error_handler.add_error_v(
+                                error=f'Error uploading image: {img_upload_res.status_code} - {img_upload_res.text}'
+                            )
+                elif self.mode == 'Shopify':
+                    # Copy file to Shopify folder
+                    file_path = f'catalog_images/product_images/{new_name}'
+                    dest = f'{creds.file_server}/{file_path}'
+                    Catalog.logger.info(f'Copying {self.file_path} to {dest}')
+                    shutil.copy(src=self.file_path, dst=dest)
+                    return f'{creds.ngrok_domain}/{file_path}'
 
             def resize_image(self):
                 size = (1280, 1280)
@@ -4000,5 +4031,5 @@ class Catalog:
 if __name__ == '__main__':
     from datetime import datetime
 
-    cat = Catalog(datetime(2024, 7, 12))
-    cat.sync(mode='Shopify')
+    cat = Catalog(last_sync=datetime(year=2024, month=7, day=15, hour=8, minute=20), mode='Shopify')
+    cat.sync()

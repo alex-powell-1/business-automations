@@ -1,9 +1,14 @@
 from setup import creds
 import requests
 import json
+from setup.error_handler import ProcessOutErrorHandler
+import re
+from pathlib import Path
 
 
 class Shopify:
+    logger = ProcessOutErrorHandler.logger
+    error_handler = ProcessOutErrorHandler.error_handler
     token = creds.shopify_admin_token
     shop_url = creds.shopify_shop_url
     headers = {'X-Shopify-Access-Token': token, 'Content-Type': 'application/json'}
@@ -20,7 +25,20 @@ class Shopify:
 
     def create_product(payload):
         url = f'https://{Shopify.shop_url}/admin/api/2024-07/products.json'
-        return requests.post(url, headers=Shopify.headers, json=payload)
+        response = requests.post(url, headers=Shopify.headers, json=payload)
+        print(f'Shopify POST Code: {response.status_code}.')
+        print('Response:', json.dumps(response.json(), indent=4))
+        if response.status_code in [200, 201, 207]:
+            Shopify.logger.success(f'Shopify POST Code: {response.status_code}.')
+            return True, response
+        else:
+            Shopify.error_handler.add_error_v(
+                error=f'Shopify POST: Response Code: {response.status_code}\n'
+                f'Payload: {payload}\n'
+                f'Response: {json.dumps(response.json(), indent=4)}',
+                origin='shopify_api.py --> create_product()',
+            )
+            return False, response
 
     def update_product(product_id: int, payload: dict):
         url = f'https://{Shopify.shop_url}/admin/api/2024-07/products/{product_id}.json'
@@ -32,60 +50,78 @@ class Shopify:
         response = requests.delete(url, headers=Shopify.headers)
         return response.json()
 
+    def execute_query(document, variables=None, operation_name=None):
+        document = Path(document).read_text()
+        endpoint = f'https://{Shopify.shop_url}/admin/api/2024-07/graphql.json'
+        payload = {'query': document, 'variables': variables, 'operationName': operation_name}
+        response = requests.post(endpoint, headers=Shopify.headers, json=payload)
+        return response.json()
+
 
 if __name__ == '__main__':
-    # # Example: Get all products
+    variables = {
+        'input': {
+            'title': 'Banana',
+            'productType': 'Helmet',
+            'vendor': 'Nova',
+            'descriptionHtml': '<p>Protect your head with this green helmet.</p>',
+            'productOptions': [{'name': 'Option', 'values': [{'name': '9999 Gallon'}]}],
+            'seo': {'title': 'Green Helmet', 'description': 'Protect your head with this green helmet.'},
+            'status': 'ACTIVE',
+            'tags': ['Helmet', 'Green', 'Bike'],
+        },
+        'media': [
+            {
+                'originalSource': 'https://termite-enormous-hornet.ngrok-free.app/files/catalog_images/product_images/B0001-2-9407.jpg',
+                'alt': 'Gray helmet for bikers',
+                'mediaContentType': 'IMAGE',
+            },
+            {
+                'originalSource': 'https://www.youtube.com/watch?v=4L8VbGRibj8&list=PLlMkWQ65HlcEoPyG9QayqEaAu0ftj0MMz',
+                'alt': 'Testing helmet resistance against impacts',
+                'mediaContentType': 'EXTERNAL_VIDEO',
+            },
+        ],
+    }
 
-    # # Create a Product with Variants
-    # payload = {
-    #     'product': {
-    #         'title': 'Thuja Green Giant',
-    #         'body_html': '<p>"Green Giant" is a popular and well-known cultivar of Thuja standishii x plicata, commonly known as the Western Red Cedar. Here are some key features of the Green Giant Arborvitae:</p>  <ol>  <li>  <p><strong>Size:</strong> Green Giant Arborvitae is known for its rapid growth, and it can reach impressive heights. Mature specimens can grow up to 25 to 30 feet tall with a spread of about 8 to 10 feet.</p>  </li>  <li>  <p><strong>Growth Rate:</strong> This cultivar is recognized for its fast growth, making it a popular choice for those looking to establish a screen or hedge relatively quickly.</p>  </li>  <li>  <p><strong>Foliage:</strong> The foliage of the Green Giant Arborvitae is scale-like and maintains a rich green color throughout the year. The dense, layered branches provide excellent coverage.</p>  </li>  <li>  <p><strong>Shape:</strong> The tree has a naturally pyramidal shape, and its branches are held in a somewhat vertical orientation, giving it an elegant appearance.</p>  </li>  <li>  <p><strong>Versatility:</strong> Green Giant Arborvitae is often used as a privacy screen, windbreak, or as a specimen tree in larger landscapes. Its size and growth rate make it a valuable choice for creating a living wall or barrier.</p>  </li>  <li>  <p><strong>Drought Tolerance:</strong> Once established, Green Giant Arborvitae is relatively drought-tolerant. However, regular watering is recommended, especially during dry periods.</p>  </li>  <li>  <p><strong>Sunlight Requirements:</strong> It thrives in full sun to partial shade, although it generally prefers full sun for optimal growth.</p>  </li>  <li>  <p><strong>Hardiness:</strong> This arborvitae cultivar is hardy in USDA zones 5 to 8, making it suitable for a wide range of climates.</p>  </li>  </ol>  <p>When planting Green Giant Arborvitae, it\'s essential to provide adequate spacing considering its mature size and to ensure proper soil drainage. Regular pruning may be necessary to maintain a desired shape, especially if it is used as a hedge or screen. Overall, the Green Giant Arborvitae is valued for its combination of fast growth, attractive foliage, and versatility in landscaping applications.</p>',
-    #         'vendor': 'Settlemyre Nursery',
-    #         'product_type': '',
-    #         'created_at': '2024-07-11T17:04:08-04:00',
-    #         'handle': 'thuja-green-giant',
-    #         'updated_at': '2024-07-11T17:13:20-04:00',
-    #         'published_at': '2024-07-11T17:04:08-04:00',
-    #         'template_suffix': '',
-    #         'published_scope': 'global',
-    #         'tags': '',
-    #         'status': 'active',
-    #         'admin_graphql_api_id': 'gid://shopify/Product/9472317194534',
-    #         'variants': [
-    #             {
-    #                 'title': '15 Gallon',
-    #                 'compare_at_price': None,
-    #                 'price': '139.99',
-    #                 'cost': '15.00',
-    #                 'sku': '200926',
-    #                 'position': 1,
-    #                 'inventory_policy': 'deny',
-    #                 'compare_at_price': None,
-    #                 'fulfillment_service': 'manual',
-    #                 'inventory_management': 'shopify',
-    #                 'option1': '15 Gallon',
-    #                 'option2': None,
-    #                 'option3': None,
-    #                 'created_at': '2024-07-11T17:04:09-04:00',
-    #                 'updated_at': '2024-07-11T17:12:42-04:00',
-    #                 'taxable': False,
-    #                 'barcode': '',
-    #                 'grams': 0,
-    #                 'weight': 0.0,
-    #                 'weight_unit': 'lb',
-    #                 'inventory_quantity': 185,
-    #                 'old_inventory_quantity': 185,
-    #                 'requires_shipping': False,
-    #             }
-    #         ],
-    #         'options': [{'name': 'Size', 'position': 1, 'values': ['15 Gallon', '7 Gallon']}],
-    #     }
-    # }
+    file_path = './integration/queries/products.graphql'
 
-    # response = Shopify.create_product(variables=payload)
+    response = Shopify.execute_query(
+        document=file_path, operation_name='CreateProductWithNewMedia', variables=variables
+    )
+    prod_id = response['data']['productCreate']['product']['id']
+    target_del_variant_id = response['data']['productCreate']['product']['variants']['nodes'][0]['id']
 
-    # print(json.dumps(response, indent=4))
+    productVariantsBulkCreateVariables = {
+        'productId': prod_id,
+        'variants': [
+            {
+                'inventoryItem': {'cost': 50, 'tracked': True, 'requiresShipping': False, 'sku': '200926'},
+                'inventoryPolicy': 'DENY',
+                'inventoryQuantities': {'availableQuantity': 25, 'locationId': 'gid://shopify/Location/99670065446'},
+                'price': 114.99,
+                'compareAtPrice': 139.99,
+                'optionValues': {'optionName': 'Option', 'name': '3 Gallon'},
+            },
+            {
+                'inventoryItem': {'cost': 60, 'tracked': True, 'requiresShipping': False, 'sku': '234sdf'},
+                'inventoryPolicy': 'DENY',
+                'inventoryQuantities': {'availableQuantity': 25, 'locationId': 'gid://shopify/Location/99670065446'},
+                'price': 204.99,
+                'compareAtPrice': 239.99,
+                'optionValues': {'optionName': 'Option', 'name': '5 Gallon'},
+            },
+        ],
+    }
 
-    response = Shopify.get_product(9474952167718)
+    response = Shopify.execute_query(
+        document=file_path, operation_name='productVariantsBulkCreate', variables=productVariantsBulkCreateVariables
+    )
     print(json.dumps(response, indent=4))
+
+    del_variant_vars = {'id': target_del_variant_id}
+    del_response = Shopify.execute_query(
+        document=file_path, operation_name='productVariantDelete', variables=del_variant_vars
+    )
+    print('Deleted Variant:')
+    print(json.dumps(del_response, indent=4))

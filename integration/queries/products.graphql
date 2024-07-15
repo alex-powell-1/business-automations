@@ -1,0 +1,118 @@
+mutation CreateProductWithNewMedia(
+  $input: ProductInput!
+  $media: [CreateMediaInput!]
+) {
+  productCreate(input: $input, media: $media) {
+    product {
+      id
+      title
+      productType
+      vendor
+      descriptionHtml
+      options(first: 10) {
+        id
+        name
+        position
+        values
+        optionValues {
+          id
+        }
+      }
+      variants(first: 10) {
+        nodes {
+          id
+          title
+          price
+          sku
+          inventoryQuantity
+        }
+      }
+      media(first: 10) {
+        nodes {
+          id
+          alt
+          mediaContentType
+          preview {
+            status
+          }
+        }
+      }
+    }
+    userErrors {
+      field
+      message
+    }
+  }
+}
+
+mutation productVariantCreate($input: ProductVariantInput!) {
+  productVariantCreate(input: $input) {
+    product {
+      id
+      title
+    }
+    productVariant {
+      createdAt
+      displayName
+      id
+      inventoryItem {
+        unitCost {
+          amount
+        }
+        tracked
+      }
+      inventoryPolicy
+      inventoryQuantity
+      price
+      product {
+        id
+      }
+      title
+    }
+    userErrors {
+      field
+      message
+    }
+  }
+}
+
+mutation productVariantsBulkCreate(
+  $productId: ID!
+  $variants: [ProductVariantsBulkInput!]!
+) {
+  productVariantsBulkCreate(productId: $productId, variants: $variants) {
+    product {
+      id
+    }
+    productVariants {
+      id
+      metafields(first: 1) {
+        edges {
+          node {
+            namespace
+            key
+            value
+          }
+        }
+      }
+    }
+    userErrors {
+      field
+      message
+    }
+  }
+}
+
+mutation productVariantDelete($id: ID!) {
+  productVariantDelete(id: $id) {
+    deletedProductVariantId
+    product {
+      id
+      title
+    }
+    userErrors {
+      field
+      message
+    }
+  }
+}
