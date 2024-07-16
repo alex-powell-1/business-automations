@@ -3957,7 +3957,7 @@ class Catalog:
                     # Copy file to Shopify folder
                     print('\n\nUploading image to Shopify\n\n')
                     file_path = f'catalog_images/product_images/{new_name}'
-                    dest = f'{creds.file_server}/{file_path}'
+                    dest = f'{creds.public_files}/{file_path}'
                     Catalog.logger.info(f'Copying {self.file_path} to {dest}')
                     shutil.copy(src=self.file_path, dst=dest)
                     return f'{creds.ngrok_domain}/{file_path}'

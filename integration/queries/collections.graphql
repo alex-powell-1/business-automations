@@ -24,6 +24,15 @@ mutation CollectionCreate($input: CollectionInput!) {
   }
 }
 
+mutation collectionUpdate($input: CollectionInput!) {
+  collectionUpdate(input: $input) {
+    userErrors {
+      field
+      message
+    }
+  }
+}
+
 mutation collectionDelete($input: CollectionDeleteInput!) {
   collectionDelete(input: $input) {
     deletedCollectionId

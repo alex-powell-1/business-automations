@@ -334,7 +334,7 @@ def health_check():
 @app.route('/files/<path:path>', methods=['GET'])
 def serve_file(path):
     try:
-        return send_from_directory(creds.file_server, path)
+        return send_from_directory(creds.public_files, path)
     except NotFound:
         return jsonify({'error': 'File not found'}), 404
     except BadRequest:

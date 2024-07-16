@@ -91,6 +91,45 @@ mutation productVariantsBulkCreate(
   }
 }
 
+mutation productUpdate($input: ProductInput!) {
+  productUpdate(input: $input) {
+    product {
+      id
+    }
+    userErrors {
+      field
+      message
+    }
+  }
+}
+
+mutation productVariantsBulkUpdate(
+  $productId: ID!
+  $variants: [ProductVariantsBulkInput!]!
+) {
+  productVariantsBulkUpdate(productId: $productId, variants: $variants) {
+    product {
+      id
+    }
+    productVariants {
+      id
+      metafields(first: 2) {
+        edges {
+          node {
+            namespace
+            key
+            value
+          }
+        }
+      }
+    }
+    userErrors {
+      field
+      message
+    }
+  }
+}
+
 mutation productVariantDelete($id: ID!) {
   productVariantDelete(id: $id) {
     deletedProductVariantId
