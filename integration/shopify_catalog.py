@@ -32,7 +32,7 @@ class Catalog:
     all_binding_ids = get_all_binding_ids()
     mw_brands = set()
 
-    def __init__(self, last_sync=datetime(1970, 1, 1), mode='BigCommerce'):
+    def __init__(self, last_sync=datetime(1970, 1, 1), mode='Shopify'):
         self.last_sync = last_sync
         self.db = Database.db
         self.mode = mode
@@ -2083,19 +2083,6 @@ class Catalog:
             """Build the payload for creating a product in BigCommerce.
             This will include all variants, images, and custom fields."""
 
-            def get_brand_id():
-                query = f"""
-                SELECT BC_BRAND_ID
-                FROM {creds.bc_brands_table} BRANDS
-                INNER JOIN IM_ITEM_PROF_COD COD on BRANDS.CP_BRAND_ID = COD.PROF_COD
-                WHERE CP_BRAND_ID = '{self.brand}'
-                """
-                response = self.db.query_db(query)
-                if response is not None:
-                    return response[0][0]
-                else:
-                    return None
-
             def construct_custom_fields():
                 result = []
 
@@ -2140,214 +2127,63 @@ class Catalog:
                     sort_order += 1
                 result = []
 
-                if self.mode == 'BigCommerce':
-                    for image in self.images:
-                        image_payload = {
-                            'product_id': self.product_id,
-                            'is_thumbnail': image.is_thumbnail,
-                            'sort_order': image.sort_order,
-                            'description': f"""{image.description}""",
-                            'image_url': image.image_url,
-                        }
-                        if image.image_id:
-                            image_payload['id'] = image.image_id
-
-                        result.append(image_payload)
-                    return result
-
-                elif self.mode == 'Shopify':
-                    for image in self.images:
-                        image_payload = {
-                            'originalSource': image.image_url,
-                            'alt': image.description,
-                            'mediaContentType': 'IMAGE',
-                        }
-                        result.append(image_payload)
-                    return result
-
-            def construct_video_payload():
-                return []
-                # result = []
-                # for video in self.videos:
-                #     result.append([
-                #     {
-                #         "title": "Writing Great Documentation",
-                #         "description": "A video about documentation",
-                #         "sort_order": 1,
-                #         "type": "youtube",
-                #         "video_id": "z3fRu9pkuXE",
-                #         "id": 0,
-                #         "product_id": 0,
-                #         "length": "string"
-                #     }
-                # ])
+                for image in self.images:
+                    image_payload = {
+                        'originalSource': image.image_url,
+                        'alt': image.description,
+                        'mediaContentType': 'IMAGE',
+                    }
+                    result.append(image_payload)
+                return result
 
             def construct_variant_payload():
-                result = []
-
-                if self.mode == 'BigCommerce':
+                variant_payload = {'variants': []}
+                for child in self.variants:
+                    payload = {
+                        'inventoryItem': {
+                            'cost': child.cost,
+                            'tracked': True,
+                            'requiresShipping': False,
+                            'sku': child.sku,
+                        },
+                        'inventoryPolicy': 'DENY',  # Prevents overselling
+                        'inventoryQuantities': {
+                            'availableQuantity': child.buffered_quantity,
+                            'locationId': creds.shopify_location_id,
+                        },
+                        'price': min(child.price_1, child.price_2),  # Use the lower price.
+                        'compareAtPrice': child.price_1,
+                        'optionValues': {'optionName': 'Option'},
+                    }
                     if self.is_bound:
-                        for child in self.variants:
-                            variant_payload = {
-                                'cost_price': child.cost,
-                                'price': child.price_1,
-                                'image_url': child.variant_image_url,
-                                'sale_price': child.price_2,
-                                'retail_price': child.price_1,
-                                'weight': child.weight,
-                                'width': child.width,
-                                'height': child.height,
-                                'depth': child.depth,
-                                'is_free_shipping': child.is_free_shipping,
-                                'purchasing_disabled': True if child.buffered_quantity < 1 else False,
-                                'purchasing_disabled_message': child.purchasing_disabled_message,
-                                'inventory_level': child.buffered_quantity,
-                                'sku': child.sku,
-                                'option_values': [{'option_display_name': 'Option', 'label': child.variant_name}],
-                                'calculated_price': 0.1,
-                                'calculated_weight': 0.1,
-                            }
-
-                            if self.product_id:
-                                variant_payload['product_id'] = self.product_id
-
-                            if child.variant_id:
-                                variant_payload['id'] = child.variant_id
-
-                            result.append(variant_payload)
-
-                    return result
-
-                elif self.mode == 'Shopify':
-                    variant_payload = {'variants': []}
-                    for child in self.variants:
-                        payload = {
-                            'inventoryItem': {
-                                'cost': child.cost,
-                                'tracked': True,
-                                'requiresShipping': False,
-                                'sku': child.sku,
-                            },
-                            'inventoryPolicy': 'DENY',  # Prevents overselling
-                            'inventoryQuantities': {
-                                'availableQuantity': child.buffered_quantity,
-                                'locationId': creds.shopify_location_id,
-                            },
-                            'price': min(child.price_1, child.price_2),  # Use the lower price.
-                            'compareAtPrice': child.price_1,
-                            'optionValues': {'optionName': 'Option'},
-                        }
-                        if self.is_bound:
-                            payload['optionValues']['name'] = child.variant_name
+                        payload['optionValues']['name'] = child.variant_name
+                    else:
+                        if child.custom_size:
+                            payload['optionValues']['name'] = child.custom_size
                         else:
-                            if child.custom_size:
-                                payload['optionValues']['name'] = child.custom_size
-                            else:
-                                payload['optionValues']['name'] = 'Default Title'
+                            payload['optionValues']['name'] = 'Default Title'
 
-                        variant_payload['variants'].append(payload)
+                    variant_payload['variants'].append(payload)
 
-                    return variant_payload
+                return variant_payload
 
-            if self.mode == 'BigCommerce':
-                payload = {
-                    'name': self.web_title,
-                    'type': 'physical',
-                    'sku': self.binding_id if self.binding_id else self.sku,
-                    'description': f"""{self.html_description}""",
-                    'weight': self.weight,
-                    'width': self.width,
-                    'depth': self.depth,
-                    'height': self.height,
-                    'price': self.default_price,
-                    'cost_price': self.cost,
-                    'retail_price': self.default_price,
-                    'sale_price': self.sale_price,
-                    'map_price': 0,
-                    'tax_class_id': 0,
-                    'brand_id': get_brand_id(),
-                    'brand_name': self.brand,
-                    'inventory_level': self.buffered_quantity,
-                    'inventory_warning_level': 10,
-                    'inventory_tracking': 'variant' if self.is_bound else 'product',
-                    'is_free_shipping': False,
-                    'is_visible': self.visible,
-                    'is_featured': self.featured,
-                    'sort_order': self.sort_order,
-                    'search_keywords': self.search_keywords,
-                    'gift_wrapping_options_type': 'none' if not self.gift_wrap else 'any',
-                    'condition': 'New',
-                    'is_condition_shown': True,
-                    'page_title': self.meta_title,
-                    'meta_description': self.meta_description,
-                    'is_price_hidden': self.is_price_hidden,
-                    'custom_fields': construct_custom_fields(),
-                    'videos': construct_video_payload(),
-                }
+            product_payload = {
+                'input': {
+                    'title': self.web_title,
+                    'productType': self.custom_type,
+                    'vendor': self.brand,
+                    'descriptionHtml': self.html_description,
+                    # Dummy option - will be deleted.
+                    'productOptions': [{'name': 'Option', 'values': [{'name': '9999 Gallon'}]}],
+                    'seo': {'title': self.meta_title, 'description': self.meta_description},
+                    'status': 'ACTIVE' if self.visible else 'DRAFT',
+                    'tags': self.search_keywords.split(','),
+                },
+                'media': create_image_payload(),
+            }
 
-                if self.is_preorder and not self.in_store_only:
-                    payload['availability'] = 'preorder'
-                    payload['preorder_release_date'] = self.preorder_release_date
-                    payload['preorder_message'] = self.preorder_message
-                    payload['is_preorder_only'] = True
-
-                elif self.in_store_only:
-                    payload['availability'] = 'disabled'
-                    payload['purchasing_disabled_message'] = 'This product is only available in-store.'
-                else:
-                    payload['availability'] = 'available'
-
-                # If the product has a product_id, it is an update
-                if self.product_id:
-                    payload['id'] = self.product_id
-
-                # Add child products
-                if len(self.variants) >= 1:
-                    payload['variants'] = construct_variant_payload()
-
-                # Add images
-                if self.images:
-                    payload['images'] = create_image_payload()
-
-                # Add custom URL
-
-                if self.custom_url:
-                    payload['custom_url'] = {
-                        'url': f'/{self.custom_url}/',
-                        'is_customized': True,
-                        'create_redirect': True,
-                    }
-                else:
-                    fall_back_url = Catalog.parse_custom_url_string(self.web_title)
-                    payload['custom_url'] = {
-                        'url': f'/{fall_back_url}/',
-                        'is_customized': False,
-                        'create_redirect': True,
-                    }
-
-                # Add E-Commerce Categories
-                if self.bc_ecommerce_categories:
-                    payload['categories'] = self.bc_ecommerce_categories
-                return payload
-
-            elif self.mode == 'Shopify':
-                product_payload = {
-                    'input': {
-                        'title': self.web_title,
-                        'productType': self.custom_type,
-                        'vendor': self.brand,
-                        'descriptionHtml': self.html_description,
-                        # Dummy option - will be deleted.
-                        'productOptions': [{'name': 'Option', 'values': [{'name': '9999 Gallon'}]}],
-                        'seo': {'title': self.meta_title, 'description': self.meta_description},
-                        'status': 'ACTIVE' if self.visible else 'DRAFT',
-                        'tags': self.search_keywords.split(','),
-                    },
-                    'media': create_image_payload(),
-                }
-
-                variant_payload = construct_variant_payload()
-                return product_payload, variant_payload
+            variant_payload = construct_variant_payload()
+            return product_payload, variant_payload
 
         def process(self, retries=3):
             """Process Product Creation/Delete/Update in BigCommerce and Middleware."""
@@ -2366,25 +2202,8 @@ class Catalog:
                         else:
                             return False
 
-                    elif create_response.status_code == 409:
-                        # Product already exists in BigCommerce. This is a conflict. Delete from BigCommerce and try again.
-                        if self.is_bound:
-                            message = (
-                                f'Deleting Bound Product, self.sku: {self.sku}, self.binding_id: {self.binding_id}'
-                            )
-                            Catalog.logger.info(message)
-                            self.delete_product(sku=self.sku, binding_id=self.binding_id)
-                        else:
-                            message = f'Deleting Single Product, self.sku: {self.sku}'
-                            Catalog.logger.info(message)
-                            self.delete_product(sku=self.sku)
-
-                        return create(retry=retry - 1)
-
                 else:
-                    Catalog.logger.warn(
-                        f'Product {self.sku} failed to create in BigCommerce. Response: {create_response}'
-                    )
+                    Catalog.logger.warn(f'Product {self.sku} failed to create. Response: {create_response}')
                     return False
 
             def update():
@@ -2441,22 +2260,15 @@ class Catalog:
                     )
                     return False
 
-            if self.mode == 'BigCommerce':
-                table = creds.bc_product_table
-            elif self.mode == 'Shopify':
-                table = creds.shopify_product_table
-
+            # Check if product exists in Middleware, if not, create new product
             query = f"""SELECT *
-                    FROM {table}
+                    FROM {creds.shopify_product_table}
                     WHERE ITEM_NO = '{self.sku}'"""
 
             response = self.db.query_db(query)
-
             if response is None:
-                # Product Not Found, Create New Product
                 return create()
             else:
-                # Product Found, Update Product
                 return update()
 
         def replace_image(self, image) -> bool:
@@ -2549,43 +2361,21 @@ class Catalog:
                 self.option_id = response.json()['product']['options'][0]['id']
 
         def post_product(self):
-            """Create product in BigCommerce or Shopify."""
-            if self.mode == 'BigCommerce':
-                url = f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/products?include=custom_fields,options,variants,images'
-                payload = self.construct_product_payload()
-                response = BCRequests.post(url=url, json=payload)
-                if response.status_code in [200, 201, 207]:
-                    if self.is_bound:
-                        message = f'POST Code: {response.status_code}. Product: {self.sku} Binding ID: {self.binding_id} Create Success'
-                    else:
-                        message = f'POST Code: {response.status_code}. POST Product: {self.sku} Create Success'
-                    Catalog.logger.success(message)
+            product_payload, variant_payload = self.construct_product_payload()
+            print('\n\nproduct_payload:\n')
+            print(json.dumps(product_payload, indent=4))
+            print('\n\nvariant_payload: \n')
+            print(json.dumps(variant_payload, indent=4))
 
-                else:
-                    Catalog.error_handler.add_error_v(
-                        error=f'BC POST SKU: {self.sku} Binding ID: {self.binding_id} to BigCommerce. Response Code: {response.status_code}\n'
-                        f'Code {response.status_code}: POST SKU: {self.sku} Binding ID: {self.binding_id}\n'
-                        f'Payload: {payload}\n'
-                        f'Response: {json.dumps(response.json(), indent=4)}',
-                        origin='Catalog --> post_product',
-                    )
-                return response
+            product_id, media_ids, variant_ids = Shopify.create_product(product_payload, variant_payload)
+            self.product_id = product_id
+            print(f'self.variants: {self.variants}')
+            for x, variant in enumerate(self.variants):
+                variant.variant_id = variant_ids[x]
 
-            elif self.mode == 'Shopify':
-                product_payload, variant_payload = self.construct_product_payload()
-                print('\n\nproduct_payload:\n')
-                print(json.dumps(product_payload, indent=4))
-                print('\n\nvariant_payload: \n')
-                print(json.dumps(variant_payload, indent=4))
-                product_id, media_ids, variant_ids = Shopify.create_product(product_payload, variant_payload)
-                self.product_id = product_id
-                print(f'self.variants: {self.variants}')
-                for x, variant in enumerate(self.variants):
-                    variant.variant_id = variant_ids[x]
-
-                for image in self.images:
-                    image.image_id = media_ids[x]
-                return 200
+            for image in self.images:
+                image.image_id = media_ids[x]
+            return 200
 
         def bc_post_image(self, image):
             # Post New Image to Big Commerce
@@ -3148,41 +2938,6 @@ class Catalog:
                 )
 
             return update_img_response
-
-        def rollback_product(self, retries=3):
-            """Delete product from BigCommerce and Middleware."""
-            print('Skipping rollback function')
-            # print(
-            #     f"\n\n!!! Rolling back product SKU: {self.sku}, Binding: {self.binding_id}!!! \n\n"
-            # )
-
-            # if self.is_bound:
-            #     sku = self.binding_id
-
-            # else:
-            #     sku = self.sku
-            #     binding_id = self.binding_id
-            #     prod_data = {"sku": sku, "binding_id": binding_id}
-
-            # print(f"Deleting Product from BigCommerce. self.sku is {sku}")
-
-            # if self.delete_product(sku):
-            #     print("\n\nReinitializing Product!\n\n")
-            #     if self.is_bound:
-            #         prod_data = {
-            #             "sku": self.parent[0].sku,
-            #             "binding_id": self.binding_id,
-            #         }
-            #     else:
-            #         prod_data = {"sku": self.sku, "binding_id": self.binding_id}
-
-            #     self.__init__(
-            #         product_data=prod_data,
-            #         last_sync=date_presets.business_start_date,
-            #     )
-            #     self.get_product_details(last_sync=date_presets.business_start_date)
-            #     if self.validate_product_inputs:
-            #         self.process(retries)
 
         def is_parent(self, sku):
             """Check if this product is a parent product."""
@@ -3933,34 +3688,16 @@ class Catalog:
 
             def upload_product_image(self) -> str:
                 """Upload file to import folder on webDAV server and return public url"""
-                data = open(self.file_path, 'rb')
                 random_int = random.randint(1000, 9999)
                 new_name = f"{self.image_name.split(".")[0].replace("^", "-")}-{random_int}.jpg"
 
-                if self.mode == 'BigCommerce':
-                    url = f'{creds.web_dav_product_photos}/{new_name}'
-                    try:
-                        img_upload_res = requests.put(
-                            url, data=data, auth=HTTPDigestAuth(creds.web_dav_user, creds.web_dav_pw)
-                        )
-                    except Exception as e:
-                        Catalog.error_handler.add_error_v(error=f'Error uploading image: {e}')
-                    else:
-                        # return public url of image
-                        if img_upload_res.status_code == 201:
-                            return f'{creds.public_web_dav_photos}/{new_name}'
-                        else:
-                            Catalog.error_handler.add_error_v(
-                                error=f'Error uploading image: {img_upload_res.status_code} - {img_upload_res.text}'
-                            )
-                elif self.mode == 'Shopify':
-                    # Copy file to Shopify folder
-                    print('\n\nUploading image to Shopify\n\n')
-                    file_path = f'catalog_images/product_images/{new_name}'
-                    dest = f'{creds.file_server}/{file_path}'
-                    Catalog.logger.info(f'Copying {self.file_path} to {dest}')
-                    shutil.copy(src=self.file_path, dst=dest)
-                    return f'{creds.ngrok_domain}/{file_path}'
+                # Copy file to Shopify folder
+                print('\n\nUploading image to Shopify\n\n')
+                file_path = f'{creds.product_images}/{new_name}'
+                dest = f'{creds.file_server}/{file_path}'
+                Catalog.logger.info(f'Copying {self.file_path} to {dest}')
+                shutil.copy(src=self.file_path, dst=dest)
+                return f'{creds.ngrok_domain}/files/{file_path}'
 
             def resize_image(self):
                 size = (1280, 1280)

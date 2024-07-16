@@ -81,20 +81,8 @@ mutation productVariantsBulkCreate(
   $variants: [ProductVariantsBulkInput!]!
 ) {
   productVariantsBulkCreate(productId: $productId, variants: $variants) {
-    product {
-      id
-    }
     productVariants {
       id
-      metafields(first: 1) {
-        edges {
-          node {
-            namespace
-            key
-            value
-          }
-        }
-      }
     }
     userErrors {
       field
@@ -114,5 +102,120 @@ mutation productVariantDelete($id: ID!) {
       field
       message
     }
+  }
+}
+
+query product($id: ID!) {
+  product(id: $id) {
+    collections(first: 5) {
+      edges {
+        node {
+          handle
+        }
+      }
+    }
+    createdAt
+    defaultCursor
+    description
+    descriptionHtml
+    featuredImage {
+      id
+    }
+    feedback {
+      details {
+        messages {
+          message
+        }
+      }
+    }
+    giftCardTemplateSuffix
+    handle
+    hasOnlyDefaultVariant
+    hasOutOfStockVariants
+    id
+    images(first: 5) {
+      edges {
+        node {
+          id
+        }
+      }
+    }
+    inCollection(id: "gid://shopify/Collection/1007901140")
+    isGiftCard
+    legacyResourceId
+    metafield(key: "app_key", namespace: "affiliates") {
+      description
+    }
+    metafields(first: 5) {
+      edges {
+        node {
+          description
+        }
+      }
+    }
+    onlineStorePreviewUrl
+    onlineStoreUrl
+    options {
+      name
+    }
+    priceRange {
+      maxVariantPrice {
+        amount
+      }
+      minVariantPrice {
+        amount
+      }
+    }
+    productType
+    resourcePublicationsCount {
+      count
+    }
+    availablePublicationsCount {
+      count
+    }
+    publishedAt
+    resourcePublications(first: 5) {
+      edges {
+        node {
+          isPublished
+        }
+      }
+    }
+    resourcePublicationOnCurrentPublication {
+      publication {
+        name
+        id
+      }
+      publishDate
+      isPublished
+    }
+    seo {
+      title
+    }
+    storefrontId
+    tags
+    templateSuffix
+    title
+    totalInventory
+    tracksInventory
+    unpublishedPublications(first: 5) {
+      edges {
+        node {
+          name
+        }
+      }
+    }
+    updatedAt
+    variants(first: 5) {
+      edges {
+        node {
+          displayName
+        }
+      }
+    }
+    variantsCount {
+      count
+    }
+    vendor
   }
 }
