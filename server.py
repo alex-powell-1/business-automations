@@ -2,13 +2,12 @@ import json
 import time
 import urllib.parse
 from datetime import datetime
-import os
 import bleach
 import flask
 import pandas
 import pika
 import requests
-from flask import request, jsonify, abort, send_from_directory
+from flask import request, jsonify, abort, send_from_directory, redirect
 from werkzeug.exceptions import NotFound, BadRequest
 from flask_cors import CORS
 from flask_limiter import Limiter
@@ -18,10 +17,11 @@ from jsonschema import validate, ValidationError
 from twilio.twiml.messaging_response import MessagingResponse
 from waitress import serve
 
-from setup import creds, email_engine, authorization
+from setup import creds, email_engine, authorization, query_engine
 from setup.sms_engine import SMSEngine
 from setup.error_handler import ProcessInErrorHandler, ProcessOutErrorHandler, LeadFormErrorHandler
 from setup import log_engine
+from qr.qr_codes import QR
 
 app = flask.Flask(__name__)
 
@@ -342,6 +342,18 @@ def serve_file(path):
     except Exception as e:
         ProcessOutErrorHandler.error_handler.add_error_v(error=f'Error serving file: {e}', origin='serve_file')
         return jsonify({'error': 'Internal server error'}), 500
+
+
+@app.route('/qr/<qr_id>', methods=['GET'])
+def qr_tracker(qr_id):
+    """Redirects to the target URL for the given QR code ID"""
+    default_url = creds.company_url
+    target_url = QR.get_url(qr_id)
+    if not target_url:
+        return redirect(default_url)
+    else:
+        QR.visit(qr_id)  # Increment visit count, update last scan time
+        return redirect(target_url)
 
 
 if __name__ == '__main__':

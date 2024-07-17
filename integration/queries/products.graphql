@@ -5,36 +5,15 @@ mutation CreateProductWithNewMedia(
   productCreate(input: $input, media: $media) {
     product {
       id
-      title
-      productType
-      vendor
-      descriptionHtml
       options(first: 10) {
         id
-        name
-        position
-        values
         optionValues {
           id
-        }
-      }
-      variants(first: 10) {
-        nodes {
-          id
-          title
-          price
-          sku
-          inventoryQuantity
         }
       }
       media(first: 10) {
         nodes {
           id
-          alt
-          mediaContentType
-          preview {
-            status
-          }
         }
       }
     }
@@ -79,8 +58,22 @@ mutation productVariantCreate($input: ProductVariantInput!) {
 mutation productVariantsBulkCreate(
   $productId: ID!
   $variants: [ProductVariantsBulkInput!]!
+  $media: [CreateMediaInput!]
 ) {
-  productVariantsBulkCreate(productId: $productId, variants: $variants) {
+  productVariantsBulkCreate(
+    productId: $productId
+    variants: $variants
+    media: $media
+  ) {
+    product {
+      id
+      options {
+        id
+        optionValues {
+          id
+        }
+      }
+    }
     productVariants {
       id
     }
@@ -95,6 +88,17 @@ mutation productUpdate($input: ProductInput!) {
   productUpdate(input: $input) {
     product {
       id
+      options {
+        id
+        optionValues {
+          id
+        }
+      }
+      media(first: 40) {
+        nodes {
+          id
+        }
+      }
     }
     userErrors {
       field
@@ -110,18 +114,15 @@ mutation productVariantsBulkUpdate(
   productVariantsBulkUpdate(productId: $productId, variants: $variants) {
     product {
       id
+      options {
+        id
+        optionValues {
+          id
+        }
+      }
     }
     productVariants {
       id
-      metafields(first: 2) {
-        edges {
-          node {
-            namespace
-            key
-            value
-          }
-        }
-      }
     }
     userErrors {
       field

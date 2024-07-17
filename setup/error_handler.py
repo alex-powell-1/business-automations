@@ -1,166 +1,155 @@
 import datetime
+from setup import creds
 
 
 class Logger:
-	def __init__(self, log_file: str):
-		self.log_file = log_file
+    def __init__(self, log_file: str):
+        self.log_file = log_file
 
-		if not self.log_file.endswith('.log'):
-			self.log_file += '.log'
+        if not self.log_file.endswith('.log'):
+            self.log_file += '.log'
 
-	def header(self, message: str):
-		timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-		template = f'[{timestamp}] {message}'
-		self.log('------------------')
-		self.log(template)
-		self.log('------------------')
-		print(template)
+    def header(self, message: str):
+        timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        template = f'[{timestamp}] {message}'
+        self.log('------------------')
+        self.log(template)
+        self.log('------------------')
+        print(template)
 
-	def log(self, message: str):
-		with open(self.log_file, 'a') as file:
-			file.write(f'{message}\n')
+    def log(self, message: str):
+        with open(self.log_file, 'a') as file:
+            file.write(f'{message}\n')
 
-	def success(self, message: str):
-		timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-		template = f'[SUCCESS] [{timestamp}] {message}'
+    def success(self, message: str):
+        timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        template = f'[SUCCESS] [{timestamp}] {message}'
 
-		self.log(template)
-		print(template)
+        self.log(template)
+        print(template)
 
-	def info(self, message: str):
-		timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-		template = f'[INFO] [{timestamp}] {message}'
+    def info(self, message: str):
+        timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        template = f'[INFO] [{timestamp}] {message}'
 
-		self.log(template)
-		print(template)
+        self.log(template)
+        print(template)
 
-	def warn(self, message: str):
-		timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-		template = f'[WARNING] [{timestamp}] {message}'
+    def warn(self, message: str):
+        timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        template = f'[WARNING] [{timestamp}] {message}'
 
-		self.log(template)
-		print(template)
+        self.log(template)
+        print(template)
 
 
 class ErrorHandler:
-	def __init__(self, logger: Logger = None):
-		self.errors = []
-		self.logger = logger
+    def __init__(self, logger: Logger = None):
+        self.errors = []
+        self.logger = logger
 
-	def add_error(self, error: str, origin: str = None, type: str = 'ERROR'):
-		err = self.Error(message=error, origin=origin, type=type)
-		self.errors.append(err)
-		return err
+    def add_error(self, error: str, origin: str = None, type: str = 'ERROR'):
+        err = self.Error(message=error, origin=origin, type=type)
+        self.errors.append(err)
+        return err
 
-	def add_error_v(self, error: str, origin: str = None, type: str = 'ERROR'):
-		err = self.add_error(error, origin=origin, type=type)
-		print(err)
+    def add_error_v(self, error: str, origin: str = None, type: str = 'ERROR'):
+        err = self.add_error(error, origin=origin, type=type)
+        print(err)
 
-	def print_errors(self):
-		if self.logger:
-			self.logger.log('')
-			self.logger.log('ERRORS:')
-			self.logger.log('------------------------------')
+    def print_errors(self):
+        if self.logger:
+            self.logger.log('')
+            self.logger.log('ERRORS:')
+            self.logger.log('------------------------------')
 
-		if self.errors:
-			for error in self.errors:
-				print(error)
-				if self.logger:
-					self.logger.log(str(error))
-		else:
-			self.logger.log('No Sync Errors Found.')
+        if self.errors:
+            for error in self.errors:
+                print(error)
+                if self.logger:
+                    self.logger.log(str(error))
+        else:
+            self.logger.log('No Sync Errors Found.')
 
-		if self.logger:
-			self.logger.log('------------------------------')
-			self.logger.log('')
-			self.logger.log('')
+        if self.logger:
+            self.logger.log('------------------------------')
+            self.logger.log('')
+            self.logger.log('')
 
-	class Error:
-		def __init__(self, message: str, origin: str = None, type: str = 'ERROR'):
-			self.message = message
-			self.origin = origin
-			self.timestamp = datetime.datetime.now()
-			self.type = type
+    class Error:
+        def __init__(self, message: str, origin: str = None, type: str = 'ERROR'):
+            self.message = message
+            self.origin = origin
+            self.timestamp = datetime.datetime.now()
+            self.type = type
 
-		def __str__(self):
-			timestamp_str = self.timestamp.strftime('%Y-%m-%d %H:%M:%S')
-			origin_str = f' [{self.origin}] ' if self.origin else ' '
+        def __str__(self):
+            timestamp_str = self.timestamp.strftime('%Y-%m-%d %H:%M:%S')
+            origin_str = f' [{self.origin}] ' if self.origin else ' '
 
-			prefix = f'[{self.type}]{origin_str}[{timestamp_str}]'
+            prefix = f'[{self.type}]{origin_str}[{timestamp_str}]'
 
-			return f'{prefix} {self.message}'
+            return f'{prefix} {self.message}'
 
 
 class GlobalErrorHandler:
-	"""General Logging for the entire application"""
+    """General Logging for the entire application"""
 
-	logger = Logger(
-		f"//MAINSERVER/Share/logs/business_automations/global/log_{datetime.datetime.now().strftime("%m_%d_%y")}.log"
-	)
-	error_handler = ErrorHandler(logger)
+    logger = Logger(f"{creds.global_log}/log_{datetime.datetime.now().strftime("%m_%d_%y")}.log")
+    error_handler = ErrorHandler(logger)
 
 
 class ScheduledTasksErrorHandler:
-	"""General Logging for the entire application"""
+    """General Logging for the entire application"""
 
-	logger = Logger(
-		f"//MAINSERVER/Share/logs/business_automations/scheduled_tasks/log_{datetime.datetime.now().strftime("%m_%d_%y")}.log"
-	)
-	error_handler = ErrorHandler(logger)
+    logger = Logger(f"{creds.log_main}/scheduled_tasks/log_{datetime.datetime.now().strftime("%m_%d_%y")}.log")
+    error_handler = ErrorHandler(logger)
 
 
 class SMSErrorHandler:
-	"""Logging for sms texts"""
+    """Logging for sms texts"""
 
-	logger = Logger(
-		f"//MAINSERVER/Share/logs/business_automations/sms/log_{datetime.datetime.now().strftime("%m_%d_%y")}.log"
-	)
-	error_handler = ErrorHandler(logger)
+    logger = Logger(f"{creds.log_main}/sms/log_{datetime.datetime.now().strftime("%m_%d_%y")}.log")
+    error_handler = ErrorHandler(logger)
 
 
 class SMSEventHandler:
-	"""Logging for SMS Unsubscribes, Landline Handling, and other SMS Events"""
+    """Logging for SMS Unsubscribes, Landline Handling, and other SMS Events"""
 
-	logger = Logger('//mainserver/Share/logs/business_automations/sms/events.log')
-	error_handler = ErrorHandler(logger)
+    logger = Logger(f'{creds.log_main}/sms/events.log')
+    error_handler = ErrorHandler(logger)
 
 
 class ProcessInErrorHandler:
-	"""Logging for the Process In Integration"""
+    """Logging for the Process In Integration"""
 
-	logger = Logger(
-		f"//mainserver/Share/logs/business_automations/integration/process_in/log_{datetime.datetime.now().strftime("%m_%d_%y")}.log"
-	)
-	error_handler = ErrorHandler(logger)
+    logger = Logger(f"{creds.log_main}/integration/process_in/log_{datetime.datetime.now().strftime("%m_%d_%y")}.log")
+    error_handler = ErrorHandler(logger)
 
 
 class ProcessOutErrorHandler:
-	"""Logging for the Process Out Integration"""
+    """Logging for the Process Out Integration"""
 
-	logger = Logger(
-		f"//mainserver/Share/logs/business_automations/integration/process_out/log_{datetime.datetime.now().strftime("%m_%d_%y")}.log"
-	)
-	error_handler = ErrorHandler(logger)
+    logger = Logger(f"{creds.log_main}/integration/process_out/log_{datetime.datetime.now().strftime("%m_%d_%y")}.log")
+    error_handler = ErrorHandler(logger)
 
 
 class LeadFormErrorHandler:
-	"""Logging for the Design Lead Form"""
+    """Logging for the Design Lead Form"""
 
-	logger = Logger(
-		rf"//mainserver/Share/logs/business_automations/design_leads/log_{datetime.datetime.now().strftime("%m_%d_%y")}.log"
-	)
-	error_handler = ErrorHandler(logger)
+    logger = Logger(rf"{creds.log_main}/design_leads/log_{datetime.datetime.now().strftime("%m_%d_%y")}.log")
+    error_handler = ErrorHandler(logger)
 
 
 if __name__ == '__main__':
-	logger = GlobalErrorHandler.logger
-	error_handler = GlobalErrorHandler.error_handler
+    logger = GlobalErrorHandler.logger
+    error_handler = GlobalErrorHandler.error_handler
 
-	error_handler.add_error_v('This is an error message')
-	error_handler.add_error_v('This is a warning message', type='WARNING')
+    error_handler.add_error_v('This is an error message')
+    error_handler.add_error_v('This is a warning message', type='WARNING')
 
-	logger.success('This is a success message')
-	logger.warn('This is a warning message')
-	logger.info('This is an info message')
+    logger.success('This is a success message')
+    logger.warn('This is a warning message')
+    logger.info('This is an info message')
 
-	error_handler.print_errors()
+    error_handler.print_errors()

@@ -11,7 +11,7 @@ class Database:
                 'categories': f"""
                                         CREATE TABLE {creds.shopify_category_table} (
                                         CATEG_ID int IDENTITY(1,1) PRIMARY KEY,
-                                        SH_CATEG_ID varchar(50),
+                                        COLLECTION_ID bigint,
                                         CP_CATEG_ID bigint NOT NULL,
                                         CP_PARENT_ID bigint,
                                         CATEG_NAME nvarchar(255) NOT NULL,
@@ -41,17 +41,17 @@ class Database:
                                         );
                                         """,
                 'products': f"""
-                                        CREATE TABLE {creds.shopify_product_table} (
+                                        CREATE TABLE {creds.shopify_product_table} (                                        
                                         ID int IDENTITY(1,1) PRIMARY KEY,
                                         ITEM_NO varchar(50) NOT NULL,
                                         BINDING_ID varchar(10),
                                         IS_PARENT BIT,
-                                        PRODUCT_ID varchar(50) NOT NULL,
-                                        VARIANT_ID varchar(50),
+                                        PRODUCT_ID bigint NOT NULL,
+                                        VARIANT_ID bigint,
                                         VARIANT_NAME nvarchar(255),
-                                        OPTION_ID varchar(50),
-                                        OPTION_VALUE_ID varchar(50),
-                                        CATEG_ID varchar(100),
+                                        OPTION_ID bigint,
+                                        OPTION_VALUE_ID bigint,
+                                        CATEG_ID varchar(255),
                                         CUSTOM_FIELDS varchar(255),
                                         LST_MAINT_DT datetime NOT NULL DEFAULT(current_timestamp)
                                         );
@@ -63,8 +63,8 @@ class Database:
                                         ITEM_NO varchar(50),
                                         FILE_PATH nvarchar(255) NOT NULL,
                                         IMAGE_URL nvarchar(255),
-                                        PRODUCT_ID int,
-                                        IMAGE_ID int,
+                                        PRODUCT_ID bigint,
+                                        IMAGE_ID bigint,
                                         THUMBNAIL BIT DEFAULT(0),
                                         IMAGE_NUMBER int DEFAULT(1),
                                         SORT_ORDER int,
@@ -105,6 +105,19 @@ class Database:
                                         RUL_SEQ_NO int,
                                         BC_ID int,
                                         LST_MAINT_DT datetime NOT NULL DEFAULT(current_timestamp)
+                                        );""",
+                'qr': f"""
+                                        CREATE TABLE {creds.qr_table} (
+                                        CODE varchar(100) NOT NULL PRIMARY KEY,
+                                        URL varchar(100),
+                                        VISIT_COUNT int DEFAULT(0),
+                                        CREATE_DT datetime NOT NULL DEFAULT(current_timestamp),
+                                        LST_SCAN datetime
+                                        );""",
+                'qr_activ': f"""
+                                        CREATE TABLE {creds.qr_activity_table} (
+                                        SCAN_DT datetime NOT NULL DEFAULT(current_timestamp) PRIMARY KEY,
+                                        CODE varchar(100) NOT NULL FOREIGN KEY REFERENCES SN_QR(CODE),
                                         );""",
             }
 

@@ -23,76 +23,121 @@ class Shopify:
         response = requests.get(url, headers=Shopify.headers)
         return response.json()
 
+    class Response:
+        def __init__(self, response):
+            self.response = response
+            self.data = response['data'] if 'data' in response else None
+            self.errors = response['errors'] if 'errors' in response else None
+            self.user_errors = []
+            if self.data:
+                for i in self.data:
+                    for j in self.data[i]:
+                        if j == 'userErrors':
+                            for k in self.data[i][j]:
+                                self.user_errors.append(k['message'])
+
+            if self.errors:
+                Shopify.error_handler.add_error_v(f'Error: {self.errors}')
+
+            if self.user_errors:
+                Shopify.error_handler.add_error_v(
+                    f'User Error: {self.user_errors}\nResponse: {json.dumps(self.response, indent=4)}'
+                )
+
+        def __str__(self):
+            return json.dumps(self.response, indent=4)
+
     class Product:
         queries = './integration/queries/products.graphql'
 
         def create(product_payload, variant_payload) -> tuple:
             """Create product on shopify and return tuple of product ID, media IDs, and variant IDs"""
             # Step 1: Create base product and associated media. Default Variant is created.
-            response = Shopify.execute_query(
-                document=Shopify.Product.queries, operation_name='CreateProductWithNewMedia', variables=product_payload
-            )
-            if response and 'userErrors' in response:
-                Shopify.error_handler.add_error_v(f'Error creating product: {response["userErrors"]}')
-                raise Exception(f'Error creating product: {response["userErrors"]}')
 
-            print('\nProduct create')
-            print(json.dumps(response, indent=4))
-            # Product ID to be used for creating new variants and to write to the database
-            prod_id = response['data']['productCreate']['product']['id']
-            # Media IDs to be used for writing to the database
-            media_ids = [x['id'] for x in response['data']['productCreate']['product']['media']['nodes']]
-            option_ids = [x['id'] for x in response['data']['productCreate']['product']['options']]
-            # Variant ID to be deleted after creating new variants
-            base_var_id = response['data']['productCreate']['product']['variants']['nodes'][0]['id']
-            # Add product ID to the variant payload
-            variant_payload['productId'] = prod_id
+            response = Shopify.Response(
+                Shopify.execute_query(
+                    document=Shopify.Product.queries,
+                    operation_name='CreateProductWithNewMedia',
+                    variables=product_payload,
+                )
+            )
+            if response.errors or response.user_errors:
+                raise Exception(
+                    f'Error: {response.errors}\nUser Error: {response.user_errors}\n\nPayload: {product_payload}'
+                )
+
+            prod_id = response.data['productCreate']['product']['id'].split('/')[-1]
+            variant_payload['productId'] = f'gid://shopify/Product/{prod_id}'
+            prod_id = prod_id.split('/')[-1]  # cleanup for db storage
+            media_ids = [x['id'].split('/')[-1] for x in response.data['productCreate']['product']['media']['nodes']]
+            option_ids = [x['id'].split('/')[-1] for x in response.data['productCreate']['product']['options']]
 
             # Step 2: Create new variants
-            response = Shopify.execute_query(
-                document=Shopify.Product.queries, operation_name='productVariantsBulkCreate', variables=variant_payload
+            response = Shopify.Response(
+                Shopify.execute_query(
+                    document=Shopify.Product.queries,
+                    operation_name='productVariantsBulkCreate',
+                    variables=variant_payload,
+                )
             )
-            if response and 'userErrors' in response:
-                Shopify.error_handler.add_error_v(f'Error creating variants: {response["userErrors"]}')
-                raise Exception(f'Error creating variants: {response["userErrors"]}')
+            print('\nVariant create', response)
+            variant_ids = [
+                x['id'].split('/')[-1] for x in response.data['productVariantsBulkCreate']['productVariants']
+            ]
+            option_value_ids = [
+                x['id'].split('/')[-1]
+                for x in response.data['productVariantsBulkCreate']['product']['options'][0]['optionValues']
+            ]
 
-            print('\nVariant create')
-            print(json.dumps(response, indent=4))
-            variant_ids = [x['id'] for x in response['data']['productVariantsBulkCreate']['productVariants']]
-
-            # Step 3: Delete the default variant
-            del_variant_vars = {'id': base_var_id}
-            response = Shopify.execute_query(
-                document=Shopify.Product.queries, operation_name='productVariantDelete', variables=del_variant_vars
-            )
-            if response and 'userErrors' in response:
-                Shopify.error_handler.add_error_v(f'Error deleting base variant: {response["userErrors"]}')
-                raise Exception(f'Error deleting base variant: {response["userErrors"]}')
-
-            print('\nBase Variant delete', json.dumps(response, indent=4))
-            # Return the product ID, media IDs, and variant IDs
-
-            return prod_id, option_ids, media_ids, variant_ids
+            return {
+                'product_id': prod_id,
+                'option_ids': option_ids,
+                'option_value_ids': option_value_ids,
+                'media_ids': media_ids,
+                'variant_ids': variant_ids,
+            }
 
         def update(product_payload, variant_payload):
             # Step 1: Update Product
-            response = Shopify.execute_query(
-                document=Shopify.Product.queries, operation_name='productUpdate', variables=product_payload
+            operation_name = 'productUpdate'
+            response = Shopify.Response(
+                Shopify.execute_query(
+                    document=Shopify.Product.queries, operation_name=operation_name, variables=product_payload
+                )
             )
-            if response and 'userErrors' in response:
-                Shopify.error_handler.add_error_v(f'Error updating product: {response["userErrors"]}')
-                raise Exception(f'Error updating product: {response["userErrors"]}')
-            print('\nProduct update')
-            print(json.dumps(response, indent=4))
+            if response.errors or response.user_errors:
+                raise Exception(
+                    f'Error: {response.errors}\nUser Error: {response.user_errors}\nPayload: {product_payload}'
+                )
+
+            print('\nProduct update', response)
+
+            prod_id = response.data[operation_name]['product']['id'].split('/')[-1]
+            media_ids = [x['id'].split('/')[-1] for x in response.data[operation_name]['product']['media']['nodes']]
+            option_ids = [x['id'].split('/')[-1] for x in response.data[operation_name]['product']['options']]
+
             # Step 2: Update Variants
-            response = Shopify.execute_query(
-                document=Shopify.Product.queries, operation_name='productVariantsBulkUpdate', variables=product_payload
+            operation_name = 'productVariantsBulkUpdate'
+            response = Shopify.Response(
+                Shopify.execute_query(
+                    document=Shopify.Product.queries, operation_name=operation_name, variables=variant_payload
+                )
             )
-            if response and 'userErrors' in response:
-                Shopify.error_handler.add_error_v(f'Error creating product: {response["userErrors"]}')
-                raise Exception(f'Error creating product: {response["userErrors"]}')
-            print('\nVariant update')
-            print(json.dumps(response, indent=4))
+
+            print('\nVariant update', response)
+
+            variant_ids = [x['id'].split('/')[-1] for x in response.data[operation_name]['productVariants']]
+            option_value_ids = [
+                x['id'].split('/')[-1] for x in response.data[operation_name]['product']['options'][0]['optionValues']
+            ]
+
+            return {
+                'product_id': prod_id,
+                'option_ids': option_ids,
+                'option_value_ids': option_value_ids,
+                'media_ids': media_ids,
+                'variant_ids': variant_ids,
+            }
 
         def delete(product_id: int):
             url = f'https://{Shopify.shop_url}/admin/api/2024-07/products/{product_id}.json'
@@ -103,28 +148,60 @@ class Shopify:
         queries = './integration/queries/collections.graphql'
 
         def create(payload: dict):
-            response = Shopify.execute_query(
-                document=Shopify.Collection.queries, variables=payload, operation_name='CollectionCreate'
+            response = Shopify.Response(
+                Shopify.execute_query(
+                    document=Shopify.Collection.queries, variables=payload, operation_name='CollectionCreate'
+                )
             )
-            if response and 'userErrors' in response:
-                Shopify.error_handler.add_error_v(f'Error creating collection: {response["userErrors"]}')
-                raise Exception(f'Error creating collection: {response["userErrors"]}')
-            print('\nCollection create')
-            print(json.dumps(response, indent=4))
-            collection_id = response['data']['collectionCreate']['collection']['id']
+            print('\nCollection create', response)
+            collection_id = response.data['collectionCreate']['collection']['id'].split('/')[-1]
             return collection_id
 
         def update(payload: dict):
-            response = Shopify.execute_query(
-                document=Shopify.Collection.queries, variables=payload, operation_name='collectionUpdate'
+            response = Shopify.Response(
+                Shopify.execute_query(
+                    document=Shopify.Collection.queries, variables=payload, operation_name='collectionUpdate'
+                )
             )
-            if response and 'errors' in response:
-                print(payload)
-                Shopify.error_handler.add_error_v(f'Error updating collection: {response["errors"]}')
-                raise Exception(f'Error updating collection: {response["errors"]}')
-            print('\nCollection update')
-            print(json.dumps(response, indent=4))
+            print('\nCollection update', response)
             return response
+
+    class Files:
+        queries = './integration/queries/files.graphql'
+
+        class StagedMediaUploadTarget:
+            class StagedUploadParameter:
+                def __init__(self, response_data):
+                    self.name = response_data['name']
+                    self.value = response_data['value']
+
+            def __init__(self, response_data):
+                self.url = response_data['url']
+                self.resourceUrl = response_data['resourceUrl']
+                self.parameters = [
+                    Shopify.Files.StagedMediaUploadTarget.StagedUploadParameter(i) for i in response_data['parameters']
+                ]
+
+        def create(payload: dict):
+            response = Shopify.Response(
+                Shopify.execute_query(
+                    document=Shopify.Files.queries, variables=payload, operation_name='stagedUploadsCreate'
+                )
+            )
+            files = [
+                Shopify.Files.StagedMediaUploadTarget(i) for i in response.data['stagedUploadsCreate']['stagedTargets']
+            ]
+
+            # make POST requests to upload files and include all parameters in the request body
+            for file in files:
+                form_data = {}
+                for param in file.parameters:
+                    form_data[param.name] = param.value
+                file_path = Path(f'{creds.photo_path}/10240.jpg')
+                with open(file_path, 'rb') as f:
+                    response = requests.post(url=file.url, files={'file': f}, data=form_data)
+            # The file is now on google cloud storage. We can now use the resourceUrl to create a new product media
+            # use productCreateMedia mutation
 
     def execute_query(document, variables=None, operation_name=None):
         query_doc = Path(document).read_text()
@@ -135,4 +212,7 @@ class Shopify:
 
 
 if __name__ == '__main__':
-    pass
+    variables = {
+        'input': [{'filename': '10240.jpg', 'mimeType': 'image/jpg', 'httpMethod': 'POST', 'resource': 'IMAGE'}]
+    }
+    Shopify.Files.create(variables)
