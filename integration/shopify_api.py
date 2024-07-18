@@ -65,12 +65,15 @@ class Shopify:
                 raise Exception(
                     f'Error: {response.errors}\nUser Error: {response.user_errors}\n\nPayload: {product_payload}'
                 )
+            print(response)
 
             prod_id = response.data['productCreate']['product']['id'].split('/')[-1]
             variant_payload['productId'] = f'gid://shopify/Product/{prod_id}'
             prod_id = prod_id.split('/')[-1]  # cleanup for db storage
             media_ids = [x['id'].split('/')[-1] for x in response.data['productCreate']['product']['media']['nodes']]
             option_ids = [x['id'].split('/')[-1] for x in response.data['productCreate']['product']['options']]
+
+            print(variant_payload)
 
             # Step 2: Create new variants
             response = Shopify.Response(
@@ -205,7 +208,7 @@ class Shopify:
                     response = requests.post(url=file.url, files={'file': f}, data=form_data)
                     if 200 <= response.status_code < 300:
                         print(f'File {file_path.name} uploaded successfully. Code: {response.status_code}')
-                        url_list.append({file_list[i]: file.resourceUrl})
+                        url_list.append({'file_path': file_list[i], 'url': file.resourceUrl})
                         i += 1
                     else:
                         print(response.status_code, response.text)

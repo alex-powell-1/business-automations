@@ -2134,19 +2134,12 @@ class Catalog:
                         )
                 if file_list:
                     uploaded_files = Shopify.Files.create(variables=stagedUploadsCreateVariables, file_list=file_list)
-                    print()
-                    print('Uploaded Files:')
-                    print(uploaded_files)
-                    print()
                     for file in uploaded_files:
                         print(f'Uploaded File: {file}')
                         for image in self.images:
-                            for key in file:
-                                if key == image.file_path:
-                                    print(
-                                        f'Updating Image URL for {image.image_name} to {uploaded_files[image.file_path]}'
-                                    )
-                                    image.image_url = uploaded_files[image.file_path]
+                            if file['file_path'] == image.file_path:
+                                print(f'Updating Image URL for {image.image_name} to {file['url']}')
+                                image.image_url = file['url']
 
                 for image in self.images:
                     image_payload = {
