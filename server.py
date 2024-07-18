@@ -134,6 +134,14 @@ def stock_notification():
 @app.route('/newsletter', methods=['POST'])
 @limiter.limit('20 per minute')  # 20 requests per minute
 def newsletter_signup():
+    token = request.headers.get('Authorization').split(' ')[1]
+
+    url = 'https://www.google.com/recaptcha/api/siteverify'
+    payload = {'secret': creds.recaptcha_secret, 'response': token}
+    response = requests.post(url, data=payload)
+    if not response.json()['success']:
+        return 'Could not verify captcha.', 400
+
     """Route for website pop-up. Offers user a coupon and adds their information to a csv."""
     data = request.json
     print(data)
