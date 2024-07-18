@@ -182,26 +182,36 @@ class Shopify:
                     Shopify.Files.StagedMediaUploadTarget.StagedUploadParameter(i) for i in response_data['parameters']
                 ]
 
-        def create(payload: dict):
+        def create(file_list, variables: dict) -> list:
+            """Create staged media upload targets and upload files to google cloud storage. Return list of URLs"""
             response = Shopify.Response(
                 Shopify.execute_query(
-                    document=Shopify.Files.queries, variables=payload, operation_name='stagedUploadsCreate'
+                    document=Shopify.Files.queries, variables=variables, operation_name='stagedUploadsCreate'
                 )
             )
             files = [
                 Shopify.Files.StagedMediaUploadTarget(i) for i in response.data['stagedUploadsCreate']['stagedTargets']
             ]
 
+            url_list = []
+            i = 0
             # make POST requests to upload files and include all parameters in the request body
             for file in files:
                 form_data = {}
                 for param in file.parameters:
                     form_data[param.name] = param.value
-                file_path = Path(f'{creds.photo_path}/10240.jpg')
+                file_path = Path(file_list[i])
                 with open(file_path, 'rb') as f:
                     response = requests.post(url=file.url, files={'file': f}, data=form_data)
-            # The file is now on google cloud storage. We can now use the resourceUrl to create a new product media
-            # use productCreateMedia mutation
+                    if 200 <= response.status_code < 300:
+                        print(f'File {file_path.name} uploaded successfully. Code: {response.status_code}')
+                        url_list.append({file_list[i]: file.resourceUrl})
+                        i += 1
+                    else:
+                        print(response.status_code, response.text)
+                        raise Exception(f'File {file_path.name} failed to upload')
+
+            return url_list
 
     def execute_query(document, variables=None, operation_name=None):
         query_doc = Path(document).read_text()
@@ -215,4 +225,5 @@ if __name__ == '__main__':
     variables = {
         'input': [{'filename': '10240.jpg', 'mimeType': 'image/jpg', 'httpMethod': 'POST', 'resource': 'IMAGE'}]
     }
-    Shopify.Files.create(variables)
+    filepath = [f'{creds.photo_path}/10240.jpg']
+    print(Shopify.Files.create(file_path_list=filepath, variables=variables))

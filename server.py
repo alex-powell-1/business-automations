@@ -17,7 +17,7 @@ from jsonschema import validate, ValidationError
 from twilio.twiml.messaging_response import MessagingResponse
 from waitress import serve
 
-from setup import creds, email_engine, authorization, query_engine
+from setup import creds, email_engine, authorization
 from setup.sms_engine import SMSEngine
 from setup.error_handler import ProcessInErrorHandler, ProcessOutErrorHandler, LeadFormErrorHandler
 from setup import log_engine
@@ -80,6 +80,7 @@ def get_service_information():
         LeadFormErrorHandler.error_handler.add_error_v(
             error=f'Error sending design request to RabbitMQ: {e}', origin='design_info'
         )
+        return jsonify({'error': 'Internal server error'}), 500
     else:
         return 'Your information has been received. Please check your email for more information from our team.'
 

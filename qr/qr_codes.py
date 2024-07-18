@@ -75,4 +75,5 @@ class QR:
             return False
 
 
-print(QR.visit('123456'))
+if __name__ == '__main__':
+    QR.get_url('123456')

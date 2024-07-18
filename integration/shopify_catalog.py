@@ -372,7 +372,7 @@ class Catalog:
         Catalog.logger.info(f'Image Add/Delete Processing Complete. Time: {time.time() - start_time}')
 
     def sync(self, initial=False):
-        # Sync Category Tree
+        # # Sync Category Tree
         # self.category_tree.sync()
         # # Sync Product Brands
         # self.brands.sync()
@@ -384,8 +384,10 @@ class Catalog:
         #     # Process Product Deletions and Images
         #     self.process_product_deletes()
         #     self.process_images()
+
         # Sync Products
-        self.get_products()  # Get all products that have been updated since the last sync
+        # self.get_products()  # Get all products that have been updated since the last sync
+        self.sync_queue = [{'sku': '10338', 'binding_id': 'B0001'}]
         if not self.sync_queue:
             Catalog.logger.success('No products to sync.')
         else:
@@ -394,7 +396,6 @@ class Catalog:
             fail_count = 0
 
             Catalog.logger.info(f'Syncing {queue_length} products.')
-
             while len(self.sync_queue) > 0:
                 start_time = time.time()
                 target = self.sync_queue.pop()
@@ -2117,6 +2118,36 @@ class Catalog:
                     sort_order += 1
                 result = []
 
+                file_list = []
+                stagedUploadsCreateVariables = {'input': []}
+
+                for image in self.images:
+                    if not image.image_url:
+                        file_list.append(image.file_path)
+                        stagedUploadsCreateVariables['input'].append(
+                            {
+                                'filename': image.image_name,
+                                'mimeType': 'image/jpg',
+                                'httpMethod': 'POST',
+                                'resource': 'IMAGE',
+                            }
+                        )
+                if file_list:
+                    uploaded_files = Shopify.Files.create(variables=stagedUploadsCreateVariables, file_list=file_list)
+                    print()
+                    print('Uploaded Files:')
+                    print(uploaded_files)
+                    print()
+                    for file in uploaded_files:
+                        print(f'Uploaded File: {file}')
+                        for image in self.images:
+                            for key in file:
+                                if key == image.file_path:
+                                    print(
+                                        f'Updating Image URL for {image.image_name} to {uploaded_files[image.file_path]}'
+                                    )
+                                    image.image_url = uploaded_files[image.file_path]
+
                 for image in self.images:
                     image_payload = {
                         'originalSource': image.image_url,
@@ -2125,6 +2156,8 @@ class Catalog:
                     }
                     if image.image_id:
                         image_payload['id'] = f'gid://shopify/MediaImage/{image.image_id}'
+
+                    print(f'Image Payload: {image_payload}')
                     result.append(image_payload)
                 return result
 
@@ -3389,7 +3422,9 @@ class Catalog:
                     self.last_maintained_dt = response[0][15]
 
                 else:
-                    self.image_url = self.upload_product_image()
+                    # 7/18/24 - passing the upload up to the product level when payload is created.
+                    # Shopify will allow for a group upload of all images.
+                    # self.image_url = self.upload_product_image()
                     self.set_image_details()
 
             def validate(self):
@@ -3616,5 +3651,5 @@ class Catalog:
 if __name__ == '__main__':
     from datetime import datetime
 
-    cat = Catalog(last_sync=datetime(year=2024, month=7, day=16, hour=15, minute=0))
+    cat = Catalog(last_sync=datetime(year=2020, month=7, day=16, hour=15, minute=0))
     cat.sync()
