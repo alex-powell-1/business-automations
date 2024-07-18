@@ -386,7 +386,7 @@ class OrderAPI(DocumentAPI):
 
         query = f"""
         UPDATE AR_CUST
-        SET LOY_PTS_BAL = LOY_PTS_BAL + {points_earned}
+        SET LOY_PTS_BAL = MAX(LOY_PTS_BAL + {points_earned}, 0)
         WHERE CUST_NO = '{cust_no}'
         """
 
