@@ -384,6 +384,19 @@ class OrderAPI(DocumentAPI):
         else:
             self.error_handler.add_error_v('Loyalty points could not be written')
 
+        query = f"""
+        UPDATE AR_CUST
+        SET LOY_PTS_BAL = LOY_PTS_BAL + {points_earned}
+        WHERE CUST_NO = '{cust_no}'
+        """
+
+        response = Database.db.query_db(query, commit=True)
+
+        if response['code'] = 200:
+            self.logger.success('Cust Loyalty points written')
+        else:
+            self.error_handler.add_err_v('Cust Loyalty points could not be written')
+
     # Returns total number of loyalty points used.
     def get_loyalty_points_used(self, doc_id):
         query = f"""
