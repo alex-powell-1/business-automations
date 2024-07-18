@@ -51,6 +51,14 @@ def handle_exception(e):
 @app.route('/design', methods=['POST'])
 @limiter.limit('20/minute')  # 10 requests per minute
 def get_service_information():
+    token = request.headers.get('Authorization').split(' ')[1]
+
+    url = 'https://www.google.com/recaptcha/api/siteverify'
+    payload = {'secret': creds.recaptcha_secret, 'response': token}
+    response = requests.post(url, data=payload)
+    if not response.json()['success']:
+        return 'Could not verify captcha.', 400
+
     """Route for information request about company service. Sends JSON to RabbitMQ for asynchronous processing."""
     data = request.json
     # # Validate the input data
