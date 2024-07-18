@@ -5,24 +5,32 @@ mutation CreateProductWithNewMedia(
   productCreate(input: $input, media: $media) {
     product {
       id
-      options(first: 10) {
+      options(first: 20) {
         id
         optionValues {
           id
         }
       }
-      media(first: 10) {
+      media(first: 40) {
         nodes {
           id
         }
       }
+      variants(first: 20) {
+        nodes {
+          id
+          title
+        }
+      }
     }
+
     userErrors {
       field
       message
     }
   }
 }
+
 
 mutation productVariantCreate($input: ProductVariantInput!) {
   productVariantCreate(input: $input) {
@@ -98,6 +106,26 @@ mutation productUpdate($input: ProductInput!) {
         nodes {
           id
         }
+      }
+    }
+    userErrors {
+      field
+      message
+    }
+  }
+}
+
+mutation productVariantUpdate($input: ProductVariantInput!) {
+  productVariantUpdate(input: $input) {
+    productVariant {
+      id
+      title
+      inventoryPolicy
+      inventoryQuantity
+      price
+      compareAtPrice
+      inventoryItem {
+        id
       }
     }
     userErrors {
@@ -249,7 +277,11 @@ query product($id: ID!) {
     variants(first: 5) {
       edges {
         node {
+          id
           displayName
+          inventoryItem {
+            id
+          }
         }
       }
     }
@@ -257,5 +289,14 @@ query product($id: ID!) {
       count
     }
     vendor
+  }
+}
+
+query variantIventoryId($id: ID!) {
+  productVariant(id: $id) {
+    inventoryItem {
+      sku
+      id
+    }
   }
 }
