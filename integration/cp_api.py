@@ -384,9 +384,14 @@ class OrderAPI(DocumentAPI):
         else:
             self.error_handler.add_error_v('Loyalty points could not be written')
 
+        if points_balance + points_earned < 0:
+            new_bal = 0
+        else:
+            new_bal = points_balance + points_earned
+        
         query = f"""
         UPDATE AR_CUST
-        SET LOY_PTS_BAL = MAX(LOY_PTS_BAL + {points_earned}, 0)
+        SET LOY_PTS_BAL = {new_bal}
         WHERE CUST_NO = '{cust_no}'
         """
 
