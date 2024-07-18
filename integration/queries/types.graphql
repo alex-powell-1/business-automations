@@ -1,0 +1,25 @@
+type CollectionInput {
+  id: ID
+  title: String
+  descriptionHtml: String
+  handle: String
+  sortOrder: String
+  ruleSet: RuleSet
+}
+
+type RuleSet {
+  appliedDisjunctively: Boolean!
+  rules: [CollectionRuleInput!]
+}
+
+type CollectionRuleInput {
+  column: String!
+  condition: String!
+  conditionObjectId: ID
+  relation: String!
+}
+
+type SEOInput {
+  title: String
+  description: String
+}

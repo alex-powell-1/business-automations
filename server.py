@@ -2,13 +2,13 @@ import json
 import time
 import urllib.parse
 from datetime import datetime
-
 import bleach
 import flask
 import pandas
 import pika
 import requests
-from flask import request, jsonify, abort
+from flask import request, jsonify, abort, send_from_directory, redirect
+from werkzeug.exceptions import NotFound, BadRequest
 from flask_cors import CORS
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
@@ -19,8 +19,9 @@ from waitress import serve
 
 from setup import creds, email_engine, authorization
 from setup.sms_engine import SMSEngine
-from setup.error_handler import ProcessInErrorHandler, LeadFormErrorHandler
+from setup.error_handler import ProcessInErrorHandler, ProcessOutErrorHandler, LeadFormErrorHandler
 from setup import log_engine
+from qr.qr_codes import QR
 
 app = flask.Flask(__name__)
 
@@ -87,6 +88,7 @@ def get_service_information():
         LeadFormErrorHandler.error_handler.add_error_v(
             error=f'Error sending design request to RabbitMQ: {e}', origin='design_info'
         )
+        return jsonify({'error': 'Internal server error'}), 500
     else:
         return 'Your information has been received. Please check your email for more information from our team.'
 
@@ -336,6 +338,31 @@ def get_availability():
 @limiter.limit('10/minute')  # 10 requests per minute
 def health_check():
     return jsonify({'status': 'Server is running'}), 200
+
+
+@app.route('/files/<path:path>', methods=['GET'])
+def serve_file(path):
+    try:
+        return send_from_directory(creds.public_files, path)
+    except NotFound:
+        return jsonify({'error': 'File not found'}), 404
+    except BadRequest:
+        return jsonify({'error': 'Bad request'}), 400
+    except Exception as e:
+        ProcessOutErrorHandler.error_handler.add_error_v(error=f'Error serving file: {e}', origin='serve_file')
+        return jsonify({'error': 'Internal server error'}), 500
+
+
+@app.route('/qr/<qr_id>', methods=['GET'])
+def qr_tracker(qr_id):
+    """Redirects to the target URL for the given QR code ID"""
+    default_url = creds.company_url
+    target_url = QR.get_url(qr_id)
+    if not target_url:
+        return redirect(default_url)
+    else:
+        QR.visit(qr_id)  # Increment visit count, update last scan time
+        return redirect(target_url)
 
 
 if __name__ == '__main__':

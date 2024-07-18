@@ -3,15 +3,15 @@ from setup import query_engine
 
 
 class Database:
-	db = query_engine.QueryEngine()
+    db = query_engine.QueryEngine()
 
-	def rebuild_tables(self):
-		def create_tables():
-			tables = {
-				'categories': f"""
-                                        CREATE TABLE {creds.bc_category_table} (
+    def rebuild_tables(self):
+        def create_tables():
+            tables = {
+                'categories': f"""
+                                        CREATE TABLE {creds.shopify_category_table} (
                                         CATEG_ID int IDENTITY(1,1) PRIMARY KEY,
-                                        BC_CATEG_ID int,
+                                        COLLECTION_ID bigint,
                                         CP_CATEG_ID bigint NOT NULL,
                                         CP_PARENT_ID bigint,
                                         CATEG_NAME nvarchar(255) NOT NULL,
@@ -21,8 +21,8 @@ class Database:
                                         LST_MAINT_DT datetime NOT NULL DEFAULT(current_timestamp)
                                         );
                                         """,
-				'brands': f"""
-                                        CREATE TABLE {creds.bc_brands_table} (
+                'brands': f"""
+                                        CREATE TABLE {creds.shopify_brands_table} (
                                         ID int IDENTITY(1,1) PRIMARY KEY,
                                         CP_BRAND_ID nvarchar(50) NOT NULL,
                                         BC_BRAND_ID int,
@@ -40,31 +40,31 @@ class Database:
                                         LST_MAINT_DT datetime NOT NULL DEFAULT(current_timestamp)
                                         );
                                         """,
-				'products': f"""
-                                        CREATE TABLE {creds.bc_product_table} (
+                'products': f"""
+                                        CREATE TABLE {creds.shopify_product_table} (                                        
                                         ID int IDENTITY(1,1) PRIMARY KEY,
                                         ITEM_NO varchar(50) NOT NULL,
                                         BINDING_ID varchar(10),
                                         IS_PARENT BIT,
-                                        PRODUCT_ID int NOT NULL,
-                                        VARIANT_ID int,
+                                        PRODUCT_ID bigint NOT NULL,
+                                        VARIANT_ID bigint,
                                         VARIANT_NAME nvarchar(255),
-                                        OPTION_ID int,
-                                        OPTION_VALUE_ID int,
-                                        CATEG_ID varchar(100),
+                                        OPTION_ID bigint,
+                                        OPTION_VALUE_ID bigint,
+                                        CATEG_ID varchar(255),
                                         CUSTOM_FIELDS varchar(255),
                                         LST_MAINT_DT datetime NOT NULL DEFAULT(current_timestamp)
                                         );
                                         """,
-				'images': f"""
-                                        CREATE TABLE {creds.bc_image_table} (
+                'images': f"""
+                                        CREATE TABLE {creds.shopify_image_table} (
                                         ID int IDENTITY(1,1) PRIMARY KEY,
                                         IMAGE_NAME nvarchar(255) NOT NULL,
                                         ITEM_NO varchar(50),
                                         FILE_PATH nvarchar(255) NOT NULL,
                                         IMAGE_URL nvarchar(255),
-                                        PRODUCT_ID int,
-                                        IMAGE_ID int,
+                                        PRODUCT_ID bigint,
+                                        IMAGE_ID bigint,
                                         THUMBNAIL BIT DEFAULT(0),
                                         IMAGE_NUMBER int DEFAULT(1),
                                         SORT_ORDER int,
@@ -76,7 +76,7 @@ class Database:
                                         LST_MAINT_DT datetime NOT NULL DEFAULT(current_timestamp)
                                         );
                                         """,
-				'customers': f"""
+                'customers': f"""
                                         CREATE TABLE {creds.bc_customer_table} (
                                         ID int IDENTITY(1,1) PRIMARY KEY,
                                         CUST_NO varchar(50) NOT NULL,
@@ -84,21 +84,21 @@ class Database:
                                         LST_MAINT_DT datetime NOT NULL DEFAULT(current_timestamp)
                                         );
                                         """,
-				'orders': f"""
+                'orders': f"""
                                         CREATE TABLE {creds.bc_order_table} (
                                         ID int IDENTITY(1, 1) PRIMARY KEY,
                                         ORDER_NO int NOT NULL,
                                         DOC_ID bigint,
                                         STATUS bit DEFAULT(0)
                                         )""",
-				'gift': f"""
+                'gift': f"""
                                         CREATE TABLE {creds.bc_gift_cert_table} (
                                         ID int IDENTITY(1, 1) PRIMARY KEY,
                                         GFC_NO varchar(30) NOT NULL,
                                         BC_GFC_ID int NOT NULL,
                                         LST_MAINT_DT datetime NOT NULL DEFAULT(current_timestamp)
                                         )""",
-				'promo': f""" 
+                'promo': f""" 
                                         CREATE TABLE {creds.bc_promo_table}(
                                         ID int IDENTITY(1,1) PRIMARY KEY,
                                         GRP_COD nvarchar(50) NOT NULL,
@@ -106,29 +106,42 @@ class Database:
                                         BC_ID int,
                                         LST_MAINT_DT datetime NOT NULL DEFAULT(current_timestamp)
                                         );""",
-			}
+                'qr': f"""
+                                        CREATE TABLE {creds.qr_table} (
+                                        CODE varchar(100) NOT NULL PRIMARY KEY,
+                                        URL varchar(100),
+                                        VISIT_COUNT int DEFAULT(0),
+                                        CREATE_DT datetime NOT NULL DEFAULT(current_timestamp),
+                                        LST_SCAN datetime
+                                        );""",
+                'qr_activ': f"""
+                                        CREATE TABLE {creds.qr_activity_table} (
+                                        SCAN_DT datetime NOT NULL DEFAULT(current_timestamp) PRIMARY KEY,
+                                        CODE varchar(100) NOT NULL FOREIGN KEY REFERENCES SN_QR(CODE),
+                                        );""",
+            }
 
-			for table in tables:
-				self.db.query_db(tables[table], commit=True)
+            for table in tables:
+                self.db.query_db(tables[table], commit=True)
 
-		# Drop Tables
-		def drop_tables():
-			tables = [
-				creds.bc_customer_table,
-				creds.bc_image_table,
-				creds.bc_product_table,
-				creds.bc_brands_table,
-				creds.bc_category_table,
-				creds.bc_gift_cert_table,
-				creds.bc_order_table,
-			]
+        # Drop Tables
+        def drop_tables():
+            tables = [
+                creds.bc_customer_table,
+                creds.bc_image_table,
+                creds.bc_product_table,
+                creds.bc_brands_table,
+                creds.bc_category_table,
+                creds.bc_gift_cert_table,
+                creds.bc_order_table,
+            ]
 
-			def drop_table(table_name):
-				self.db.query_db(f'DROP TABLE {table_name}', commit=True)
+            def drop_table(table_name):
+                self.db.query_db(f'DROP TABLE {table_name}', commit=True)
 
-			for table in tables:
-				drop_table(table)
+            for table in tables:
+                drop_table(table)
 
-		# Recreate Tables
-		drop_tables()
-		create_tables()
+        # Recreate Tables
+        drop_tables()
+        create_tables()

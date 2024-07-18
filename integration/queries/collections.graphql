@@ -1,0 +1,48 @@
+
+
+mutation CollectionCreate($input: CollectionInput!) {
+  collectionCreate(input: $input) {
+    userErrors {
+      field
+      message
+    }
+    collection {
+      id
+      title
+      descriptionHtml
+      handle
+      sortOrder
+      ruleSet {
+        appliedDisjunctively
+        rules {
+          column
+          relation
+          condition
+        }
+      }
+    }
+  }
+}
+
+mutation collectionUpdate($input: CollectionInput!) {
+  collectionUpdate(input: $input) {
+    userErrors {
+      field
+      message
+    }
+  }
+}
+
+mutation collectionDelete($input: CollectionDeleteInput!) {
+  collectionDelete(input: $input) {
+    deletedCollectionId
+    shop {
+      id
+      name
+    }
+    userErrors {
+      field
+      message
+    }
+  }
+}
