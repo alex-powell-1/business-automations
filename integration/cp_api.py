@@ -392,10 +392,10 @@ class OrderAPI(DocumentAPI):
 
         response = Database.db.query_db(query, commit=True)
 
-        if response['code'] = 200:
+        if response['code'] == 200:
             self.logger.success('Cust Loyalty points written')
         else:
-            self.error_handler.add_err_v('Cust Loyalty points could not be written')
+            self.error_handler.add_error_v('Cust Loyalty points could not be written')
 
     # Returns total number of loyalty points used.
     def get_loyalty_points_used(self, doc_id):
