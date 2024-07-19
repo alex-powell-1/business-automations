@@ -20,6 +20,9 @@ mutation CreateProductWithNewMedia(
         nodes {
           id
           title
+          inventoryItem {
+            id
+          }
         }
       }
     }
@@ -84,6 +87,9 @@ mutation productVariantsBulkCreate(
     }
     productVariants {
       id
+      inventoryItem {
+        id
+      }
     }
     userErrors {
       field

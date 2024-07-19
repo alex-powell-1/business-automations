@@ -108,16 +108,22 @@ class Database:
                                         );""",
                 'qr': f"""
                                         CREATE TABLE {creds.qr_table} (
-                                        CODE varchar(100) NOT NULL PRIMARY KEY,
+                                        QR_CODE varchar(100) NOT NULL PRIMARY KEY,
                                         URL varchar(100),
+                                        PUBLICATION varchar(50),
+                                        MEDIUM varchar(50),
+                                        OFFER varchar(100),
+                                        DESCR varchar(255),
+                                        COUPON_CODE varchar(20),
+                                        COUPON_USE int DEFAULT(0),
                                         VISIT_COUNT int DEFAULT(0),
                                         CREATE_DT datetime NOT NULL DEFAULT(current_timestamp),
                                         LST_SCAN datetime
-                                        );""",
+                                        )""",
                 'qr_activ': f"""
                                         CREATE TABLE {creds.qr_activity_table} (
                                         SCAN_DT datetime NOT NULL DEFAULT(current_timestamp) PRIMARY KEY,
-                                        CODE varchar(100) NOT NULL FOREIGN KEY REFERENCES SN_QR(CODE),
+                                        CODE varchar(100) NOT NULL FOREIGN KEY REFERENCES SN_QR(QR_CODE),
                                         );""",
             }
 

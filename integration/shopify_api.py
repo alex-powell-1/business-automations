@@ -44,9 +44,9 @@ class Shopify:
                     f'User Error: {self.user_errors}\nResponse: {json.dumps(self.response, indent=4)}'
                 )
             if self.errors or self.user_errors:
-                raise Exception(f'Error: {self.errors}\nUser Error: {self.user_errors}\n\Variables: {variables}')
+                raise Exception(f'Error: {self.errors}\nUser Error: {self.user_errors}\nVariables: {variables}')
 
-            print(self)
+            print(operation_name, self)
 
         def __str__(self):
             return json.dumps(self.response, indent=4)
@@ -84,7 +84,8 @@ class Shopify:
 
         def create_single_product(product_payload, variant_payload, inventory_payload) -> tuple:
             # Step 1: Create base product and associated media.
-            prod_id, media_ids, option_ids, option_value_ids, variant_ids = Shopify.Product.create(product_payload)
+            base_product_response = Shopify.Product.create(product_payload)
+
             # Step 2: Update the price, sku, etc of the default variant.
 
             # sample_variant_payload = {
@@ -105,46 +106,60 @@ class Shopify:
             #     }
             # }
 
-            default_variant_id = variant_ids[0]
+            default_variant_id = base_product_response['variant_ids'][0]
+
             variant_payload['input']['id'] = f'gid://shopify/ProductVariant/{default_variant_id}'
 
-            response = Shopify.Query(
+            update_base_response = Shopify.Query(
                 document=Shopify.Product.queries, operation_name='productVariantUpdate', variables=variant_payload
             )
-            inventory_item_id = response.data['productVariantUpdate']['productVariant']['inventoryItem']['id']
-            inventory_payload['input']['quantities'][0]['inventoryItemId'] = inventory_item_id
-
-            # Step 3: Update the inventory of the default variant.
-            Shopify.Inventory.update(inventory_payload)
 
             return {
                 'product_id': prod_id,
+                'media_ids': media_ids,
                 'option_ids': option_ids,
                 'option_value_ids': option_value_ids,
-                'media_ids': media_ids,
                 'variant_ids': variant_ids,
+                'inventory_item_ids': inventory_item_ids,
             }
 
-        def create(product_payload) -> tuple:
+        def create_base_product(product_payload) -> tuple:
             """Create product on shopify and return tuple of product ID, media IDs, and variant IDs"""
             # Step 1: Create base product and associated media. Default Variant is created.
 
             response = Shopify.Query(
-                document=Shopify.Product.queries, operation_name='CreateProductWithNewMedia', variables=product_payload
+                document=Shopify.Product.queries,
+                operation_name='CreateProductWithNewMedia',
+                variables=product_payload,
             )
             print('\nProduct create', response)
 
             prod_id = response.data['productCreate']['product']['id'].split('/')[-1]
-            media_ids = [x['id'].split('/')[-1] for x in response.data['productCreate']['product']['media']['nodes']]
+            media_ids = [
+                x['id'].split('/')[-1] for x in response.data['productCreate']['product']['media']['nodes']
+            ]
             option_ids = [x['id'].split('/')[-1] for x in response.data['productCreate']['product']['options']]
             option_value_ids = [
-                x['id'].split('/')[-1] for x in response.data['productCreate']['product']['options'][0]['optionValues']
+                x['id'].split('/')[-1]
+                for x in response.data['productCreate']['product']['options'][0]['optionValues']
             ]
             variant_ids = [
                 x['id'].split('/')[-1] for x in response.data['productCreate']['product']['variants']['nodes']
             ]
+            inventory_ids = [
+                x['inventoryItem']['id'].split('/')[-1]
+                for x in response.data['productCreate']['product']['variants']['nodes']
+            ]
 
-            return prod_id, media_ids, option_ids, option_value_ids, variant_ids
+            result = {
+                'product_id': prod_id,
+                'media_ids': media_ids,
+                'option_ids': option_ids,
+                'option_value_ids': option_value_ids,
+                'variant_ids': variant_ids,
+                'inventory_ids': inventory_ids,
+            }
+            return result
 
         def update(product_payload, variant_payload):
             # Step 1: Update Product
@@ -169,11 +184,10 @@ class Shopify:
                 document=Shopify.Product.queries, operation_name=operation_name, variables=variant_payload
             )
 
-            print('\nVariant update', response)
-
             variant_ids = [x['id'].split('/')[-1] for x in response.data[operation_name]['productVariants']]
             option_value_ids = [
-                x['id'].split('/')[-1] for x in response.data[operation_name]['product']['options'][0]['optionValues']
+                x['id'].split('/')[-1]
+                for x in response.data[operation_name]['product']['options'][0]['optionValues']
             ]
 
             return {
@@ -192,7 +206,9 @@ class Shopify:
         class Variant:
             def create_bulk(variables):
                 response = Shopify.Query(
-                    document=Shopify.Product.queries, operation_name='productVariantsBulkCreate', variables=variables
+                    document=Shopify.Product.queries,
+                    operation_name='productVariantsBulkCreate',
+                    variables=variables,
                 )
 
                 print('\nVariant create', response)
@@ -209,17 +225,45 @@ class Shopify:
                 response = Shopify.Query(
                     document=Shopify.Product.queries, variables=variables, operation_name='productVariantUpdate'
                 )
-                print('\nVariant update', response)
                 return response.data
 
         class Option:
+            queries = './integration/queries/productOption.graphql'
+
+            def update(
+                product_id: int,
+                option_id: int,
+                option_values_to_add: list = None,
+                option_values_to_delete: list = None,
+            ):
+                variables = {
+                    'productId': f'gid://shopify/Product/{product_id}',
+                    'option': {'id': f'gid://shopify/ProductOption/{option_id}'},
+                    'variantStrategy': 'MANAGE',
+                }
+
+                if option_values_to_add:
+                    add_list = [f'gid://shopify/ProductOptionValue/{x}' for x in option_values_to_add]
+                    # variables['optionValuesToUpdate'] = add_list
+                    variables['optionValuesToAdd'] = add_list
+
+                if option_values_to_delete:
+                    delete_list = [f'gid://shopify/ProductOptionValue/{x}' for x in option_values_to_delete]
+                    # variables['optionValuesToUpdate'] = delete_list
+                    variables['optionValuesToDelete'] = delete_list
+
+                response = Shopify.Query(
+                    document=Shopify.Product.Option.queries, variables=variables, operation_name='updateOption'
+                )
+
+                return response.data
+
             def delete(product_id: str, option_ids: list):
                 response = Shopify.Query(
                     document=Shopify.Product.queries,
                     variables={'productId': f'gid://shopify/Product/{product_id}', 'options': option_ids},
                     operation_name='deleteOptions',
                 )
-                print('\nOption delete', response)
                 return response.data
 
     class Inventory:
@@ -234,21 +278,9 @@ class Shopify:
             return response.data['productVariant']['inventoryItem']['id'].split('/')[-1]
 
         def update(payload: dict):
-            # sample_inventory_payload = {
-            #     'input': {
-            #         'name': 'available',
-            #         'reason': 'correction',
-            #         'ignoreCompareQuantity': True,
-            #         'quantities': [
-            #             {'locationId': creds.shopify_location_id, 'quantity': 225}
-            #         ],
-            #     }
-            # }
-
             response = Shopify.Query(
                 document=Shopify.Inventory.queries, variables=payload, operation_name='inventorySetQuantities'
             )
-            print('\nInventory update', response)
             return response.data
 
     class Collection:
@@ -258,7 +290,6 @@ class Shopify:
             response = Shopify.Query(
                 document=Shopify.Collection.queries, variables=payload, operation_name='CollectionCreate'
             )
-            print('\nCollection create', response)
             collection_id = response.data['collectionCreate']['collection']['id'].split('/')[-1]
             return collection_id
 
@@ -266,7 +297,6 @@ class Shopify:
             response = Shopify.Query(
                 document=Shopify.Collection.queries, variables=payload, operation_name='collectionUpdate'
             )
-            print('\nCollection update', response)
             return response.data
 
         def delete(collection_id: int):
@@ -275,7 +305,6 @@ class Shopify:
                 variables={'id': f'gid://shopify/Collection/{collection_id}'},
                 operation_name='collectionDelete',
             )
-            print('\nCollection delete', response)
             return response.data
 
     class Files:
@@ -291,7 +320,8 @@ class Shopify:
                 self.url = response_data['url']
                 self.resourceUrl = response_data['resourceUrl']
                 self.parameters = [
-                    Shopify.Files.StagedMediaUploadTarget.StagedUploadParameter(i) for i in response_data['parameters']
+                    Shopify.Files.StagedMediaUploadTarget.StagedUploadParameter(i)
+                    for i in response_data['parameters']
                 ]
 
         def create(file_list, variables: dict) -> list:
@@ -300,7 +330,8 @@ class Shopify:
                 document=Shopify.Files.queries, variables=variables, operation_name='stagedUploadsCreate'
             )
             files = [
-                Shopify.Files.StagedMediaUploadTarget(i) for i in response.data['stagedUploadsCreate']['stagedTargets']
+                Shopify.Files.StagedMediaUploadTarget(i)
+                for i in response.data['stagedUploadsCreate']['stagedTargets']
             ]
 
             url_list = []
@@ -318,7 +349,6 @@ class Shopify:
                         url_list.append({'file_path': file_list[i], 'url': file.resourceUrl})
                         i += 1
                     else:
-                        print(response.status_code, response.text)
                         raise Exception(f'File {file_path.name} failed to upload')
 
             return url_list
@@ -368,4 +398,6 @@ if __name__ == '__main__':
     #     operation_name='variantInventoryId',
     # )
 
-    print(Shopify.Inventory.get_inventory_ids(variant_id=49258794058022))
+    Shopify.Product.Option.update(
+        product_id=9486842822950, option_id=11885588185382, option_values_to_delete=[4033129021734]
+    )

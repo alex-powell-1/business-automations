@@ -10,21 +10,13 @@
     </header>
 
     <section>
-        <p>Greetings!</p>
-
-        <p>Welcome to {{ company }} online! </p>
-
-        <p>We are excited to share our selection with you! <br>
-
-        Here's your coupon for $10 off your first order of $50 or more! </p>
-
-        <h2>Coupon Code: {{ coupon }}</h2>
-        <h2><a href="{{ company_url }}">Use Online Now!</a></h2>
-
-        <p>This coupon is valid on our website for the next 3 days! Enter the code at the checkout to save instantly.</p>
+        <p>This coupon is good for $10 off your first order of $50 or more! </p>
+        <p>This coupon is valid online or in-store for the next 5 days! Enter the code {{ coupon }} at the checkout to save instantly.</p>
+        
+        <h2><a href="{{ company_url }}">Use Coupon Code: {{ coupon }} Now!</a></h2>
     </section>
 
-    <section>
+    <!-- <section>
         <p>Thanks,<br>
         <strong>{{ signature_name }}</strong><br>
         {{ signature_title }}<br>
@@ -33,7 +25,7 @@
         {{ company_address }}<br>
         <a href={{company_url}}>{{company}}</a><br>
         <a href={{company_reviews}}>Recent Google Reviews</a></p>
-    </section>
+    </section> -->
 
 </body>
 </html>

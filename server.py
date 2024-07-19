@@ -195,7 +195,7 @@ def newsletter_signup():
                 from_address=creds.gmail_user,
                 from_pw=creds.gmail_pw,
                 recipients_list=recipient,
-                subject=f'Welcome to {creds.company_name}! Coupon Inside!',
+                subject=f'Coupon Code: NEW10',
                 content=email_content,
                 mode='related',
                 logo=True,
@@ -262,7 +262,9 @@ def incoming_sms():
         log_data = [[date, to_phone, from_phone, body, full_name, category.title(), media_url]]
 
         # Write dataframe to CSV file
-        df = pandas.DataFrame(log_data, columns=['date', 'to_phone', 'from_phone', 'body', 'name', 'category', 'media'])
+        df = pandas.DataFrame(
+            log_data, columns=['date', 'to_phone', 'from_phone', 'body', 'name', 'category', 'media']
+        )
         log_engine.write_log(df, creds.incoming_sms_log)
 
         # Return Response to Twilio
@@ -364,13 +366,15 @@ def serve_file(path):
 @app.route('/qr/<qr_id>', methods=['GET'])
 def qr_tracker(qr_id):
     """Redirects to the target URL for the given QR code ID"""
-    default_url = creds.company_url
-    target_url = QR.get_url(qr_id)
-    if not target_url:
-        return redirect(default_url)
-    else:
-        QR.visit(qr_id)  # Increment visit count, update last scan time
-        return redirect(target_url)
+    # default_url = creds.company_url
+    # target_url = QR.get_url(qr_id)
+    # if not target_url:
+    #     return redirect(default_url)
+    # else:
+    #     QR.visit(qr_id)  # Increment visit count, update last scan time
+    #     return redirect(target_url)
+    QR.visit(qr_id)
+    return jsonify({'success': True}), 200
 
 
 if __name__ == '__main__':

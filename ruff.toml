@@ -1,4 +1,4 @@
-line-length = 120
+line-length = 116
 
 [lint]
 ignore = ["E722", "F405", "F403"]

@@ -270,7 +270,9 @@ class Catalog:
             if is_variant == 1:
                 # Get Variant ID
                 item_number = image_name.split('.')[0].split('^')[0]
-                variant_query = f"SELECT VARIANT_ID FROM {creds.shopify_product_table} WHERE ITEM_NO = '{item_number}'"
+                variant_query = (
+                    f"SELECT VARIANT_ID FROM {creds.shopify_product_table} WHERE ITEM_NO = '{item_number}'"
+                )
                 variant_id_res = self.db.query_db(variant_query)
                 if variant_id_res is not None:
                     variant_id = variant_id_res[0][0]
@@ -387,7 +389,13 @@ class Catalog:
 
         # Sync Products
         # self.get_products()  # Get all products that have been updated since the last sync
-        self.sync_queue = [{'sku': '10338', 'binding_id': 'B0001'}]
+        # self.sync_queue = [{'sku': '10338', 'binding_id': 'B0001'}]
+
+        # Small Bound Product
+        self.sync_queue = [{'sku': 'SYUFICG01', 'binding_id': 'B0050'}]
+
+        # single product
+        # self.sync_queue = [{'sku': '201376'}]
         if not self.sync_queue:
             Catalog.logger.success('No products to sync.')
         else:
@@ -624,9 +632,7 @@ class Catalog:
         page = 1
         more_pages = True
         while more_pages:
-            url = (
-                f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/categories?limit=250&page={page}'
-            )
+            url = f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/categories?limit=250&page={page}'
             response = BCRequests.get(url)
             for category in response.json()['data']:
                 category_id_list.append(category['id'])
@@ -673,7 +679,9 @@ class Catalog:
                             error=f'Error deleting products {batch_string} from Middleware.'
                         )
                 else:
-                    Catalog.error_handler.add_error_v(error=f'Error deleting product {batch_string} from BigCommerce.')
+                    Catalog.error_handler.add_error_v(
+                        error=f'Error deleting product {batch_string} from BigCommerce.'
+                    )
                     Catalog.logger.log(f'Url: {url}')
                     Catalog.logger.log(bc_response)
 
@@ -719,9 +727,7 @@ class Catalog:
                     batch.append(str(brand_list.pop()))
                 batch_string = ','.join(batch)
                 # Delete Batch
-                url = (
-                    f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/brands?id:in={batch_string}'
-                )
+                url = f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/brands?id:in={batch_string}'
                 bc_response = BCRequests.delete(url=url)
                 if bc_response.status_code == 204:
                     Catalog.logger.success(f'Brand:\n{batch_string}\ndeleted from BigCommerce.')
@@ -734,7 +740,9 @@ class Catalog:
                             error=f'Error deleting brand:\n{batch_string}\nfrom Middleware.'
                         )
                 else:
-                    Catalog.error_handler.add_error_v(error=f'Error deleting brand:\n{batch_string}\nfrom BigCommerce.')
+                    Catalog.error_handler.add_error_v(
+                        error=f'Error deleting brand:\n{batch_string}\nfrom BigCommerce.'
+                    )
 
         query = f'SELECT DISTINCT BC_BRAND_ID FROM {creds.bc_brands_table}'
         response = Database.db.query_db(query)
@@ -750,7 +758,9 @@ class Catalog:
         page = 1
         more_pages = True
         while more_pages:
-            url = f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/brands?limit=250&page={page}'
+            url = (
+                f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/brands?limit=250&page={page}'
+            )
             response = BCRequests.get(url)
             for brand in response.json()['data']:
                 brand_id_list.append(brand['id'])
@@ -1083,7 +1093,9 @@ class Catalog:
                     return public_url
 
             def get_category_payload(self):
-                payload = {'input': {'title': self.category_name, 'handle': self.handle, 'sortOrder': 'BEST_SELLING'}}
+                payload = {
+                    'input': {'title': self.category_name, 'handle': self.handle, 'sortOrder': 'BEST_SELLING'}
+                }
                 if self.shopify_categ_id:
                     payload['input']['id'] = f'gid://shopify/Collection/{self.shopify_categ_id}'
                 if self.description:
@@ -1234,7 +1246,9 @@ class Catalog:
                     # A local image is found that is in middleware.
                     if (
                         local_image['image_size']
-                        != [x['image_size'] for x in mw_brand_images if x['image_name'] == local_image['image_name']][0]
+                        != [
+                            x['image_size'] for x in mw_brand_images if x['image_name'] == local_image['image_name']
+                        ][0]
                     ):  # Image size mismatch
                         # Update Timestamp of brand in IM table
                         profile_code = local_image['image_name'].split('.')[0]
@@ -1904,9 +1918,7 @@ class Catalog:
                 # Test for missing web title
                 if self.web_title is None or self.web_title == '':
                     if self.long_descr is None or self.long_descr == '':
-                        message = (
-                            f'Product {self.binding_id} is missing a web title and long description. Validation failed.'
-                        )
+                        message = f'Product {self.binding_id} is missing a web title and long description. Validation failed.'
                         Catalog.error_handler.add_error_v(error=message, origin='Input Validation')
                         return False
                     else:
@@ -1998,9 +2010,7 @@ class Catalog:
                 if self.brand:
                     bc_brands = [x[0] for x in list(Catalog.mw_brands)]
                     if self.brand not in bc_brands:
-                        message = (
-                            f'Product {self.binding_id} has a brand, but it is not valid. Will delete invalid brand.'
-                        )
+                        message = f'Product {self.binding_id} has a brand, but it is not valid. Will delete invalid brand.'
                         Catalog.logger.warn(message)
                         if self.validation_retries > 0:
                             self.reset_brand()
@@ -2070,7 +2080,7 @@ class Catalog:
             # )
             return True
 
-        def construct_product_payload(self):
+        def get_product_payload(self):
             """Build the payload for creating a product in BigCommerce.
             This will include all variants, images, and custom fields."""
 
@@ -2133,7 +2143,9 @@ class Catalog:
                             }
                         )
                 if file_list:
-                    uploaded_files = Shopify.Files.create(variables=stagedUploadsCreateVariables, file_list=file_list)
+                    uploaded_files = Shopify.Files.create(
+                        variables=stagedUploadsCreateVariables, file_list=file_list
+                    )
                     for file in uploaded_files:
                         print(f'Uploaded File: {file}')
                         for image in self.images:
@@ -2166,55 +2178,6 @@ class Catalog:
                 else:
                     return brand
 
-            def get_variant_payload():
-                variant_payload = {'media': [], 'strategy': 'REMOVE_STANDALONE_VARIANT', 'variants': []}
-                # If product_id exists, this is an update
-                if self.product_id:
-                    variant_payload['productId'] = f'gid://shopify/Product/{self.product_id}'
-
-                for child in self.variants:
-                    payload = {
-                        'inventoryItem': {
-                            'cost': child.cost,
-                            'tracked': True,
-                            'requiresShipping': False,
-                            'sku': child.sku,
-                        },
-                        'inventoryPolicy': 'DENY',  # Prevents overselling,
-                        'price': child.price_1,  # May be overwritten by price_2 (below)
-                        'compareAtPrice': child.price_1,  # Retail price before sales
-                        'optionValues': {'optionName': 'Option'},
-                    }
-
-                    if not self.product_id:  # Establish Stock for New Product
-                        variant_payload['inventoryQuantities'] = {
-                            'availableQuantity': child.buffered_quantity,
-                            'locationId': creds.shopify_location_id,
-                        }
-
-                    if child.variant_id:
-                        payload['id'] = f'gid://shopify/ProductVariant/{child.variant_id}'
-
-                    if child.price_2:
-                        payload['price'] = min(child.price_1, child.price_2)
-
-                    if self.is_bound:
-                        payload['optionValues']['name'] = child.variant_name
-                    else:
-                        if child.custom_size:
-                            payload['optionValues']['name'] = child.custom_size
-                        else:
-                            payload['optionValues']['name'] = 'Default Title'
-                    variant_payload['variants'].append(payload)
-
-                    # Add Variant Image
-                    for image in child.images:
-                        if image.is_variant_image:
-                            image_payload = {'mediaContentType': 'IMAGE', 'originalSource': image.image_url}
-                            variant_payload['media'].append(image_payload)
-
-                return variant_payload
-
             product_payload = {
                 'input': {
                     'title': self.web_title,
@@ -2239,40 +2202,140 @@ class Catalog:
 
             if not self.product_id:  # new product
                 # Add Standalone Variant Option - will be deleted later
-                product_payload['input']['productOptions'] = [{'name': 'Option', 'values': [{'name': '9999 Gallon'}]}]
+                product_payload['input']['productOptions'] = [
+                    {'name': 'Option', 'values': [{'name': '9999 Gallon'}]}
+                ]
 
-            variant_payload = get_variant_payload()
-            return product_payload, variant_payload
+            return product_payload
+
+        def get_variant_payload(self):
+            variant_payload = {'media': [], 'strategy': 'REMOVE_STANDALONE_VARIANT', 'variants': []}
+
+            # If product_id exists, this is an update
+            if self.product_id:
+                variant_payload['productId'] = f'gid://shopify/Product/{self.product_id}'
+
+            for child in self.variants:
+                payload = {
+                    'inventoryItem': {
+                        'cost': child.cost,
+                        'tracked': True,
+                        'requiresShipping': False,
+                        'sku': child.sku,
+                    },
+                    'inventoryPolicy': 'DENY',  # Prevents overselling,
+                    'price': child.price_1,  # May be overwritten by price_2 (below)
+                    'compareAtPrice': child.price_1,  # Retail price before sales
+                    'optionValues': {'optionName': 'Option'},
+                }
+
+                if not child.variant_id:  # Establish Stock for New Product
+                    variant_payload['inventoryQuantities'] = {
+                        'availableQuantity': child.buffered_quantity,
+                        'locationId': creds.shopify_location_id,
+                    }
+
+                if child.variant_id:
+                    payload['id'] = f'gid://shopify/ProductVariant/{child.variant_id}'
+
+                if child.price_2:
+                    payload['price'] = min(child.price_1, child.price_2)
+
+                if self.is_bound:
+                    payload['optionValues']['name'] = child.variant_name
+                else:
+                    if child.custom_size:
+                        payload['optionValues']['name'] = child.custom_size
+                    else:
+                        payload['optionValues']['name'] = 'Default Title'
+
+                variant_payload['variants'].append(payload)
+
+                # Add Variant Image
+                for image in child.images:
+                    if image.is_variant_image:
+                        image_payload = {'mediaContentType': 'IMAGE', 'originalSource': image.image_url}
+                        variant_payload['media'].append(image_payload)
+
+            return variant_payload
+
+        def get_inventory_payload(self):
+            payload = {
+                'input': {
+                    'name': 'available',
+                    'reason': 'correction',
+                    'ignoreCompareQuantity': True,
+                    'quantities': [],
+                }
+            }
+
+            for child in self.variants:
+                if child.variant_id:
+                    payload['input']['quantities'].append(
+                        {
+                            'inventoryItemId': child.inventory_id,
+                            'locationId': creds.shopify_location_id,
+                            'quantity': child.buffered_quantity,
+                        }
+                    )
+            return payload
 
         def process(self):
             """Process Product Creation/Delete/Update in BigCommerce and Middleware."""
 
             def create():
                 """Create new product in Shopify and Middleware."""
-                product_payload, variant_payload = self.construct_product_payload()
-                response = Shopify.Product.create(product_payload=product_payload, variant_payload=variant_payload)
-                self.get_product_data_from_response(response=response)
-                self.insert_product()
-                self.insert_images()
+                # Create Base Product
+                response = Shopify.Product.create_base_product(self.get_product_payload())
+                self.product_id = response['product_id']
+                self.option_id = response['option_ids'][0]
 
-            def update():
-                """Will update existing product. Will clear out custom field data and reinsert."""
-                product_payload, variant_payload = self.construct_product_payload()
-                response = Shopify.Product.update(product_payload=product_payload, variant_payload=variant_payload)
-                self.get_product_data_from_response(response=response)
-                self.middleware_sync_product()
-                self.middleware_sync_images()
+                # Assign Default Variant Properties
+                self.variants[0].variant_id = response['variant_ids'][0]
+                self.variants[0].option_id = self.option_id
+                self.variants[0].option_value_id = response['option_value_ids'][0]
+                self.variants[0].inventory_id = response['inventory_ids'][0]
 
-            # Check if product exists in Middleware, if not, create new product
-            query = f"""SELECT *
-                    FROM {creds.shopify_product_table}
-                    WHERE ITEM_NO = '{self.sku}'"""
+                for x, image in enumerate(self.images):
+                    image.product_id = self.product_id
+                    image.image_id = response['media_ids'][x]
 
-            response = self.db.query_db(query)
-            if response is None:
-                return create()
-            else:
+                if len(self.variants) > 1:
+                    # Create Variants in Bulk
+                    # Remove Default Variant ID
+                    self.variants[0].variant_id = None
+                    Shopify.Product.Variant.create_bulk(self.get_variant_payload())
+
+                    for x, variant in enumerate(self.variants):
+                        variant.variant_id = response['variant_ids'][x]
+                        variant.option_value_id = response['option_value_ids'][x]
+                        variant.option_id = self.option_id
+
+            #         Shopify.Product.Option.delete(self.product_id, self.option_id)
+
+            #     else:
+            #         # Update Default Variant
+            #         Shopify.Product.Variant.update_single(variant_payload)
+            #         # Update Default Variant Inventory
+            #         Shopify.Inventory.update(self.get_inventory_payload())
+
+            #     # Get product data from response and insert into middleware
+            #     self.get_product_data_from_response(response=response)
+            #     self.insert_product()
+            #     self.insert_images()
+
+            # def update():
+            #     """Will update existing product. Will clear out custom field data and reinsert."""
+            #     product_payload, variant_payload = self.get_product_payload()
+            #     response = Shopify.Product.update(product_payload=product_payload, variant_payload=variant_payload)
+            #     self.get_product_data_from_response(response=response)
+            #     self.middleware_sync_product()
+            #     self.middleware_sync_images()
+
+            if self.product_id:
                 return update()
+            else:
+                return create()
 
         def replace_image(self, image) -> bool:
             """Replace image in BigCommerce and SQL."""
@@ -2305,20 +2368,6 @@ class Catalog:
                     cat_response = self.db.query_db(categ_query)
                     result.append(cat_response[0][0]) if cat_response and cat_response[0][0] else ''
             return result
-
-        def get_product_data_from_response(self, response):
-            # Assign PRODUCT_ID, VARIANT_ID, and CATEG_ID to product and insert into middleware
-            self.product_id = response['product_id']
-            self.option_id = response['option_ids'][0]
-
-            for x, variant in enumerate(self.variants):
-                variant.variant_id = response['variant_ids'][x]
-                variant.option_value_id = response['option_value_ids'][x]
-                variant.option_id = self.option_id
-
-            for image in self.images:
-                image.image_id = response['media_ids'][x]
-                image.product_id = self.product_id
 
         def bc_post_image(self, image):
             # Post New Image to Big Commerce
@@ -2607,7 +2656,9 @@ class Catalog:
                 img_del_res = BCRequests.delete(url=delete_img_url)
                 if img_del_res.status_code == 204:
                     Catalog.logger.success(f'Image {image_id} deleted from BigCommerce.')
-                    delete_images_query = f'DELETE FROM {creds.shopify_image_table} ' f"WHERE IMAGE_ID = '{image_id}'"
+                    delete_images_query = (
+                        f'DELETE FROM {creds.shopify_image_table} ' f"WHERE IMAGE_ID = '{image_id}'"
+                    )
                     sql_res = self.db.query_db(delete_images_query, commit=True)
                     if sql_res['code'] == 200:
                         Catalog.logger.success(f'Image {image_id} deleted from SQL.')
@@ -2813,7 +2864,8 @@ class Catalog:
                 pass
             else:
                 Catalog.error_handler.add_error_v(
-                    error=f'{insert_img_response}', origin=f'SQL INSERT Image {image.image_name}\n\nQuery: {img_insert}'
+                    error=f'{insert_img_response}',
+                    origin=f'SQL INSERT Image {image.image_name}\n\nQuery: {img_insert}',
                 )
             return insert_img_response
 
@@ -3232,7 +3284,9 @@ class Catalog:
                     print(f'Option ID: {self.option_id}, Option Value ID: {self.option_value_id}')
                     self.insert_variant(self)
 
-                    Catalog.logger.success(f'Variant: {self.sku} Posted to BigCommerce. Variant ID: {self.variant_id}')
+                    Catalog.logger.success(
+                        f'Variant: {self.sku} Posted to BigCommerce. Variant ID: {self.variant_id}'
+                    )
 
                     return True
 
@@ -3336,7 +3390,9 @@ class Catalog:
             def hard_reset_variant(self):
                 """Hard reset for single item (variant). Used in pathological case of single item being turned into a merged item."""
                 print('Performing hard reset on variant. Sku is ', self.sku)
-                url = f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/products?sku={self.sku}'
+                url = (
+                    f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/products?sku={self.sku}'
+                )
                 delete_response = BCRequests.delete(url=url)
 
                 if delete_response.status_code == 204:
