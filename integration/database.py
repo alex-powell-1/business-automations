@@ -106,6 +106,16 @@ class Database:
                                         BC_ID int,
                                         LST_MAINT_DT datetime NOT NULL DEFAULT(current_timestamp)
                                         );""",
+                'metafields': f""" 
+                                        CREATE TABLE {creds.shopify_metafield_table}(
+                                        META_ID bigint NOT NULL, 
+                                        NAME varchar(50) NOT NULL, 
+                                        NAME_SPACE varchar(50), 
+                                        META_KEY varchar(50), 
+                                        TYPE varchar(50), 
+                                        PIN bit, 
+                                        OWNER_TYPE varchar(50),
+                                        LST_MAINT_DT DATETIME DEFAULT(current_timestamp))""",
                 'qr': f"""
                                         CREATE TABLE {creds.qr_table} (
                                         QR_CODE varchar(100) NOT NULL PRIMARY KEY,
@@ -151,3 +161,79 @@ class Database:
         # Recreate Tables
         drop_tables()
         create_tables()
+
+    class Metafield_Definition:
+        def get(definition_id):
+            query = f"""
+                    SELECT * FROM {creds.shopify_metafield_table}
+                    WHERE META_ID = {definition_id}
+                    """
+            response = Database.db.query_db(query)
+            if response is not None:
+                return {
+                    'META_ID': f'gid://shopify/MetafieldDefinition/{response[0]}',
+                    'NAME': response[1],
+                    'NAME_SPACE': response[2],
+                    'META_KEY': response[3],
+                    'TYPE': response[4],
+                    'PIN': response[5],
+                    'OWNER_TYPE': response[6],
+                    'LST_MAINT_DT': response[7],
+                }
+
+        def get_all():
+            query = f"""
+                    SELECT * FROM {creds.shopify_metafield_table}
+                    """
+            response = Database.db.query_db(query)
+            if response is not None:
+                result = {}
+                for row in response:
+                    result[row[1]] = {
+                        'META_ID': f'gid://shopify/MetafieldDefinition/{row[0]}',
+                        'NAME': row[1],
+                        'NAME_SPACE': row[2],
+                        'META_KEY': row[3],
+                        'TYPE': row[4],
+                        'PIN': row[5],
+                        'OWNER_TYPE': row[6],
+                        'LST_MAINT_DT': row[7],
+                    }
+
+                return result
+
+        def insert(values):
+            query = f"""
+                    INSERT INTO {creds.shopify_metafield_table} (META_ID, NAME, NAME_SPACE, META_KEY, TYPE, PIN, OWNER_TYPE)
+                    VALUES {values['META_ID'], values['NAME'], values['NAME_SPACE'], values['META_KEY'], values['TYPE'], values['PIN'], values['OWNER_TYPE']}
+                    """
+            response = Database.db.query_db(query, commit=True)
+            if response['code'] != 200:
+                raise Exception(response['message'])
+
+        def update(values):
+            query = f"""
+                    UPDATE {creds.shopify_metafield_table}
+                    SET NAME = {values['NAME']}, NAME_SPACE = {values['NAME_SPACE']}, META_KEY = {values['META_KEY']}, TYPE = {values['TYPE']}, PIN = {values['PIN']}, OWNER_TYPE = {values['OWNER_TYPE']}, LST_MAINT_DT = GETDATE()
+                    WHERE META_ID = {values['META_ID']}
+                    """
+            response = Database.db.query_db(query, commit=True)
+            if response['code'] != 200:
+                raise Exception(response['message'])
+
+        def delete(definition_id):
+            query = f"""
+                    DELETE FROM {creds.shopify_metafield_table}
+                    WHERE META_ID = {definition_id}
+                    """
+            response = Database.db.query_db(query, commit=True)
+            if response['code'] != 200:
+                raise Exception(response['message'])
+
+        def delete_all():
+            query = f"""
+                    DELETE FROM {creds.shopify_metafield_table}
+                    """
+            response = Database.db.query_db(query, commit=True)
+            if response['code'] != 200:
+                raise Exception(response['message'])

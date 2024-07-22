@@ -1,0 +1,136 @@
+mutation productVariantCreate($input: ProductVariantInput!) {
+  productVariantCreate(input: $input) {
+    product {
+      id
+      title
+    }
+    productVariant {
+      createdAt
+      displayName
+      id
+      inventoryItem {
+        unitCost {
+          amount
+        }
+        tracked
+      }
+      inventoryPolicy
+      inventoryQuantity
+      price
+      product {
+        id
+      }
+      title
+    }
+    userErrors {
+      field
+      message
+    }
+  }
+}
+
+mutation productVariantsBulkCreate(
+  $productId: ID!
+  $variants: [ProductVariantsBulkInput!]!
+  $media: [CreateMediaInput!]
+) {
+  productVariantsBulkCreate(
+    productId: $productId
+    variants: $variants
+    media: $media
+  ) {
+    product {
+      id
+      options {
+        id
+        optionValues {
+          id
+        }
+      }
+    }
+    productVariants {
+      id
+      title
+      inventoryItem {
+        id
+      }
+    }
+    userErrors {
+      field
+      message
+    }
+  }
+}
+
+mutation productVariantUpdate($input: ProductVariantInput!) {
+  productVariantUpdate(input: $input) {
+    productVariant {
+      id
+      title
+      inventoryPolicy
+      inventoryQuantity
+      price
+      compareAtPrice
+      inventoryItem {
+        id
+      }
+    }
+    userErrors {
+      field
+      message
+    }
+  }
+}
+
+mutation productVariantsBulkUpdate(
+  $productId: ID!
+  $variants: [ProductVariantsBulkInput!]!
+) {
+  productVariantsBulkUpdate(productId: $productId, variants: $variants) {
+    product {
+      id
+      options {
+        id
+        optionValues {
+          id
+        }
+      }
+    }
+    productVariants {
+      id
+    }
+    userErrors {
+      field
+      message
+    }
+  }
+}
+
+ mutation productVariantDelete($id: ID!) {
+   productVariantDelete(id: $id) {
+     deletedProductVariantId
+     product {
+       id
+       title
+     }
+     userErrors {
+       field
+       message
+     }
+   }
+ }
+
+mutation productVariantAppendMedia($productId: ID!, $variantMedia: [ProductVariantAppendMediaInput!]!) {
+  productVariantAppendMedia(productId: $productId, variantMedia: $variantMedia) {
+    product {
+      id
+    }
+    productVariants {
+      id
+    }
+    userErrors {
+      field
+      message
+    }
+  }
+}

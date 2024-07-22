@@ -1,0 +1,11 @@
+query publications {
+  publications(first: 5) {
+    edges {
+      node {
+        id
+        name
+        supportsFuturePublishing
+      }
+    }
+  }
+}

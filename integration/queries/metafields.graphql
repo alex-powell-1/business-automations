@@ -1,0 +1,159 @@
+mutation CreateMetafieldDefinition($definition: MetafieldDefinitionInput!) {
+  metafieldDefinitionCreate(definition: $definition) {
+    createdDefinition {
+      id
+      name
+    }
+    userErrors {
+      field
+      message
+      code
+    }
+  }
+}
+
+mutation DeleteMetafieldDefinition(
+  $id: ID!
+  $deleteAllAssociatedMetafields: Boolean!
+) {
+  metafieldDefinitionDelete(
+    id: $id
+    deleteAllAssociatedMetafields: $deleteAllAssociatedMetafields
+  ) {
+    deletedDefinitionId
+    userErrors {
+      field
+      message
+      code
+    }
+  }
+}
+
+mutation metafieldDefinitionPin($definitionId: ID!) {
+  metafieldDefinitionPin(definitionId: $definitionId) {
+    pinnedDefinition {
+      name
+      key
+      namespace
+      pinnedPosition
+    }
+    userErrors {
+      field
+      message
+    }
+  }
+}
+
+mutation metafieldDefinitionUnpin($definitionId: ID!) {
+  metafieldDefinitionUnpin(definitionId: $definitionId) {
+    unpinnedDefinition {
+      name
+      key
+      namespace
+      pinnedPosition
+    }
+    userErrors {
+      field
+      message
+    }
+  }
+}
+
+mutation UpdateMetafieldDefinition(
+  $definition: MetafieldDefinitionUpdateInput!
+) {
+  metafieldDefinitionUpdate(definition: $definition) {
+    updatedDefinition {
+      id
+      name
+    }
+    userErrors {
+      field
+      message
+      code
+    }
+  }
+}
+
+mutation metafieldDelete($input: MetafieldDeleteInput!) {
+  metafieldDelete(input: $input) {
+    deletedId
+    userErrors {
+      field
+      message
+    }
+  }
+}
+
+mutation metafieldsDelete($metafields: [MetafieldIdentifierInput!]!) {
+  metafieldsDelete(metafields: $metafields) {
+    deletedMetafields {
+      key
+      namespace
+    }
+    userErrors {
+      field
+      message
+    }
+  }
+}
+
+mutation MetafieldsSet($metafields: [MetafieldsSetInput!]!) {
+  metafieldsSet(metafields: $metafields) {
+    metafields {
+      key
+      namespace
+      value
+      createdAt
+      updatedAt
+    }
+    userErrors {
+      field
+      message
+      code
+    }
+  }
+}
+
+mutation CreateMetafieldStorefrontVisibility($input: MetafieldStorefrontVisibilityInput!) {
+  metafieldStorefrontVisibilityCreate(input: $input) {
+    metafieldStorefrontVisibility {
+      namespace
+      key
+    }
+    userErrors {
+      field
+      message
+    }
+  }
+}
+
+mutation DeleteMetafieldStorefrontVisibility($id: ID!) {
+  metafieldStorefrontVisibilityDelete(id: $id) {
+    deletedMetafieldStorefrontVisibilityId
+    userErrors {
+      field
+      message
+    }
+  }
+}
+
+query metafieldDefinition($id: ID!) {
+    metafieldDefinition(id: $id) {
+        id
+        name
+        description
+        namespace
+        key
+        type {
+            category
+            name
+            valueType
+            supportedValidations {
+                name
+                type
+            }
+        }
+        pinnedPosition
+    }
+}

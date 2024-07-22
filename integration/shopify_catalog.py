@@ -31,11 +31,12 @@ class Catalog:
 
     all_binding_ids = get_all_binding_ids()
     mw_brands = set()
+    metafields = Database.Metafield_Definition.get_all()
 
     def __init__(self, last_sync=datetime(1970, 1, 1)):
         self.last_sync = last_sync
         self.db = Database.db
-        self.category_tree = self.CategoryTree(last_sync=last_sync)
+        # self.category_tree = self.CategoryTree(last_sync=last_sync)
         self.brands = self.Brands(last_sync=last_sync)
         # Used to process preliminary deletions of products and images
         self.cp_items = []
@@ -389,10 +390,10 @@ class Catalog:
 
         # Sync Products
         # self.get_products()  # Get all products that have been updated since the last sync
-        # self.sync_queue = [{'sku': '10338', 'binding_id': 'B0001'}]
+        self.sync_queue = [{'sku': '10344', 'binding_id': 'B0001'}]
 
         # Small Bound Product
-        self.sync_queue = [{'sku': 'SYUFICG01', 'binding_id': 'B0050'}]
+        # self.sync_queue = [{'sku': 'SYUFICG01', 'binding_id': 'B0050'}]
 
         # single product
         # self.sync_queue = [{'sku': '201376'}]
@@ -1609,6 +1610,7 @@ class Catalog:
 
             # Product Information
             self.product_id = None
+            self.option_id = None
             self.web_title: str = ''
             self.long_descr = ''
             self.default_price = 0.0
@@ -1642,21 +1644,36 @@ class Catalog:
             self.custom_url = None
 
             # Custom Fields
-            self.custom_botanical_name = ''
+            self.custom_botanical_name = None
+            self.custom_botanical_name_id = None
             self.custom_climate_zone = ''
+            self.custom_climate_zone_id = None
             self.custom_plant_type = ''
+            self.custom_plant_type_id = None
             self.custom_type = ''
+            self.custom_type_id = None
             self.custom_height = ''
+            self.custom_height_id = None
             self.custom_width = ''
+            self.custom_width_id = None
             self.custom_sun_exposure = ''
+            self.custom_sun_exposure_id = None
             self.custom_bloom_time = ''
+            self.custom_bloom_time_id = None
             self.custom_bloom_color = ''
+            self.custom_bloom_color_id = None
             self.custom_attracts_pollinators = ''
+            self.custom_attracts_pollinators_id = None
             self.custom_growth_rate = ''
+            self.custom_growth_rate_id = None
             self.custom_deer_resistant = ''
+            self.custom_deer_resistant_id = None
             self.custom_soil_type = ''
+            self.custom_soil_type_id = None
             self.custom_color = ''
+            self.custom_color_id = None
             self.custom_size = ''
+            self.custom_size_id = None
             self.custom_field_response = []  # Will be list of dictionaries from BC API
             self.custom_field_ids = ''
 
@@ -2088,35 +2105,175 @@ class Catalog:
                 result = []
 
                 if self.custom_botanical_name:
-                    result.append({'name': 'Botanical Name', 'value': self.custom_botanical_name})
+                    cf_custom_botanical_name = {
+                        'key': Catalog.metafields['botanical name']['META_KEY'],
+                        'namespace': Catalog.metafields['botanical name']['NAME_SPACE'],
+                        'type': Catalog.metafields['botanical name']['TYPE'],
+                        'value': self.custom_botanical_name,
+                    }
+                    print('\n\nBOTANICAL NAME!!!\n')
+                    print(cf_custom_botanical_name)
+                    print('\n\n')
+
+                    if self.custom_botanical_name_id:
+                        cf_custom_botanical_name['id'] = self.custom_botanical_name_id
+
+                    result.append(cf_custom_botanical_name)
+
                 if self.custom_climate_zone:
-                    result.append({'name': 'Climate Zone', 'value': self.custom_climate_zone})
+                    cf_custom_climate_zone = {
+                        'key': Catalog.metafields['climate zone']['META_KEY'],
+                        'namespace': Catalog.metafields['climate zone']['NAME_SPACE'],
+                        'type': Catalog.metafields['climate zone']['TYPE'],
+                        'value': self.custom_climate_zone,
+                    }
+                    if self.custom_climate_zone_id:
+                        cf_custom_climate_zone['id'] = self.custom_climate_zone_id
+                    result.append(cf_custom_climate_zone)
+
                 if self.custom_plant_type:
-                    result.append({'name': 'Plant Type', 'value': self.custom_plant_type})
+                    cf_custom_plant_type = {
+                        'key': Catalog.metafields['plant type']['META_KEY'],
+                        'namespace': Catalog.metafields['plant type']['NAME_SPACE'],
+                        'type': Catalog.metafields['plant type']['TYPE'],
+                        'value': self.custom_plant_type,
+                    }
+                    if self.custom_plant_type_id:
+                        cf_custom_plant_type['id'] = self.custom_plant_type_id
+                    result.append(cf_custom_plant_type)
+
                 if self.custom_type:
-                    result.append({'name': 'Type', 'value': self.custom_type})
+                    cf_custom_type = {
+                        'key': Catalog.metafields['type']['META_KEY'],
+                        'namespace': Catalog.metafields['type']['NAME_SPACE'],
+                        'type': Catalog.metafields['type']['TYPE'],
+                        'value': self.custom_type,
+                    }
+                    if self.custom_type_id:
+                        cf_custom_type['id'] = self.custom_type_id
+                    result.append(cf_custom_type)
+
                 if self.custom_height:
-                    result.append({'name': 'Height', 'value': self.custom_height})
+                    cf_custom_height = {
+                        'key': Catalog.metafields['mature height']['META_KEY'],
+                        'namespace': Catalog.metafields['mature height']['NAME_SPACE'],
+                        'type': Catalog.metafields['mature height']['TYPE'],
+                        'value': self.custom_height,
+                    }
+                    if self.custom_height_id:
+                        cf_custom_height['id'] = self.custom_height_id
+                    result.append(cf_custom_height)
+
                 if self.custom_width:
-                    result.append({'name': 'Width', 'value': self.custom_width})
+                    cf_custom_width = {
+                        'key': Catalog.metafields['mature width']['META_KEY'],
+                        'namespace': Catalog.metafields['mature width']['NAME_SPACE'],
+                        'type': Catalog.metafields['mature width']['TYPE'],
+                        'value': self.custom_width,
+                    }
+                    if self.custom_width_id:
+                        cf_custom_width['id'] = self.custom_width_id
+                    result.append(cf_custom_width)
+
                 if self.custom_sun_exposure:
-                    result.append({'name': 'Sun Exposure', 'value': self.custom_sun_exposure})
+                    cf_custom_sun_exposure = {
+                        'key': Catalog.metafields['sun exposure']['META_KEY'],
+                        'namespace': Catalog.metafields['sun exposure']['NAME_SPACE'],
+                        'type': Catalog.metafields['sun exposure']['TYPE'],
+                        'value': self.custom_sun_exposure,
+                    }
+                    if self.custom_sun_exposure_id:
+                        cf_custom_sun_exposure['id'] = self.custom_sun_exposure_id
+                    result.append(cf_custom_sun_exposure)
+
                 if self.custom_bloom_time:
-                    result.append({'name': 'Bloom Time', 'value': self.custom_bloom_time})
+                    cf_custom_bloom_time = {
+                        'key': Catalog.metafields['bloom time']['META_KEY'],
+                        'namespace': Catalog.metafields['bloom time']['NAME_SPACE'],
+                        'type': Catalog.metafields['bloom time']['TYPE'],
+                        'value': self.custom_bloom_time,
+                    }
+                    if self.custom_bloom_time_id:
+                        cf_custom_bloom_time['id'] = self.custom_bloom_time_id
+                    result.append(cf_custom_bloom_time)
+
                 if self.custom_bloom_color:
-                    result.append({'name': 'Bloom Color', 'value': self.custom_bloom_color})
+                    cf_custom_bloom_color = {
+                        'key': Catalog.metafields['bloom color']['META_KEY'],
+                        'namespace': Catalog.metafields['bloom color']['NAME_SPACE'],
+                        'type': Catalog.metafields['bloom color']['TYPE'],
+                        'value': self.custom_bloom_color,
+                    }
+                    if self.custom_bloom_color_id:
+                        cf_custom_bloom_color['id'] = self.custom_bloom_color_id
+                    result.append(cf_custom_bloom_color)
+
                 if self.custom_attracts_pollinators:
-                    result.append({'name': 'Attracts Pollinators', 'value': self.custom_attracts_pollinators})
+                    cf_custom_attracts_pollinators = {
+                        'key': Catalog.metafields['attracts pollinators']['META_KEY'],
+                        'namespace': Catalog.metafields['attracts pollinators']['NAME_SPACE'],
+                        'type': Catalog.metafields['attracts pollinators']['TYPE'],
+                        'value': 'true' if self.custom_attracts_pollinators == 'Yes' else 'false',
+                    }
+                    if self.custom_attracts_pollinators_id:
+                        cf_custom_attracts_pollinators['id'] = self.custom_attracts_pollinators_id
+                    result.append(cf_custom_attracts_pollinators)
+
                 if self.custom_growth_rate:
-                    result.append({'name': 'Growth Rate', 'value': self.custom_growth_rate})
+                    cf_custom_growth_rate = {
+                        'key': Catalog.metafields['growth rate']['META_KEY'],
+                        'namespace': Catalog.metafields['growth rate']['NAME_SPACE'],
+                        'type': Catalog.metafields['growth rate']['TYPE'],
+                        'value': self.custom_growth_rate,
+                    }
+                    if self.custom_growth_rate_id:
+                        cf_custom_growth_rate['id'] = self.custom_growth_rate_id
+                    result.append(cf_custom_growth_rate)
+
                 if self.custom_deer_resistant:
-                    result.append({'name': 'Deer Resistant', 'value': self.custom_deer_resistant})
+                    cf_custom_deer_resistant = {
+                        'key': Catalog.metafields['deer resistant']['META_KEY'],
+                        'namespace': Catalog.metafields['deer resistant']['NAME_SPACE'],
+                        'type': Catalog.metafields['deer resistant']['TYPE'],
+                        'value': 'true' if self.custom_deer_resistant == 'Yes' else 'false',
+                    }
+                    if self.custom_deer_resistant_id:
+                        cf_custom_deer_resistant['id'] = self.custom_deer_resistant_id
+                    result.append(cf_custom_deer_resistant)
+
                 if self.custom_soil_type:
-                    result.append({'name': 'Soil Type', 'value': self.custom_soil_type})
+                    cf_custom_soil_type = {
+                        'key': Catalog.metafields['soil type']['META_KEY'],
+                        'namespace': Catalog.metafields['soil type']['NAME_SPACE'],
+                        'type': Catalog.metafields['soil type']['TYPE'],
+                        'value': self.custom_soil_type,
+                    }
+                    if self.custom_soil_type_id:
+                        cf_custom_soil_type['id'] = self.custom_soil_type_id
+                    result.append(cf_custom_soil_type)
+
                 if self.custom_color:
-                    result.append({'name': 'Color', 'value': self.custom_color})
+                    cf_custom_color = {
+                        'key': Catalog.metafields['color']['META_KEY'],
+                        'namespace': Catalog.metafields['color']['NAME_SPACE'],
+                        'type': Catalog.metafields['color']['TYPE'],
+                        'value': self.custom_color,
+                    }
+                    if self.custom_color_id:
+                        cf_custom_color['id'] = self.custom_color_id
+                    result.append(cf_custom_color)
+
                 if self.custom_size:
-                    result.append({'name': 'Size', 'value': self.custom_size})
+                    cf_custom_size = {
+                        'key': Catalog.metafields['size']['META_KEY'],
+                        'namespace': Catalog.metafields['size']['NAME_SPACE'],
+                        'type': Catalog.metafields['size']['TYPE'],
+                        'value': self.custom_size,
+                    }
+                    if self.custom_size_id:
+                        cf_custom_size['id'] = self.custom_size_id
+                    result.append(cf_custom_size)
+
                 return result
 
             def create_image_payload():
@@ -2186,6 +2343,7 @@ class Catalog:
                     'seo': {'title': self.meta_title, 'description': self.meta_description},
                     'status': 'ACTIVE' if self.visible else 'DRAFT',
                     'tags': self.search_keywords.split(','),
+                    'metafields': construct_custom_fields(),
                 },
                 'media': create_image_payload(),
             }
@@ -2201,84 +2359,126 @@ class Catalog:
                 ]
 
             if not self.product_id:  # new product
-                # Add Standalone Variant Option - will be deleted later
-                product_payload['input']['productOptions'] = [
-                    {'name': 'Option', 'values': [{'name': '9999 Gallon'}]}
-                ]
+                # If Add Standalone Variant Option - will be deleted later
+                if self.is_bound:
+                    product_payload['input']['productOptions'] = [
+                        {'name': 'Option', 'values': [{'name': '9999 Gallon'}]}
+                    ]
 
             return product_payload
 
-        def get_variant_payload(self):
-            variant_payload = {'media': [], 'strategy': 'REMOVE_STANDALONE_VARIANT', 'variants': []}
-
+        def get_bulk_variant_payload(self):
+            payload = {'media': [], 'strategy': 'REMOVE_STANDALONE_VARIANT', 'variants': []}
             # If product_id exists, this is an update
             if self.product_id:
-                variant_payload['productId'] = f'gid://shopify/Product/{self.product_id}'
+                payload['productId'] = f'gid://shopify/Product/{self.product_id}'
 
             for child in self.variants:
-                payload = {
+                variant_payload = {
                     'inventoryItem': {
                         'cost': child.cost,
+                        'measurement': {'weight': {'unit': 'POUNDS', 'value': self.weight}},
                         'tracked': True,
-                        'requiresShipping': False,
+                        'requiresShipping': True,
                         'sku': child.sku,
                     },
                     'inventoryPolicy': 'DENY',  # Prevents overselling,
                     'price': child.price_1,  # May be overwritten by price_2 (below)
                     'compareAtPrice': child.price_1,  # Retail price before sales
                     'optionValues': {'optionName': 'Option'},
+                    'taxable': False,
                 }
 
-                if not child.variant_id:  # Establish Stock for New Product
-                    variant_payload['inventoryQuantities'] = {
-                        'availableQuantity': child.buffered_quantity,
-                        'locationId': creds.shopify_location_id,
-                    }
+                variant_payload['inventoryQuantities'] = {
+                    'availableQuantity': child.buffered_quantity,
+                    'locationId': creds.shopify_location_id,
+                }
 
                 if child.variant_id:
-                    payload['id'] = f'gid://shopify/ProductVariant/{child.variant_id}'
+                    variant_payload['id'] = f'gid://shopify/ProductVariant/{child.variant_id}'
 
                 if child.price_2:
-                    payload['price'] = min(child.price_1, child.price_2)
+                    variant_payload['price'] = min(child.price_1, child.price_2)
 
                 if self.is_bound:
-                    payload['optionValues']['name'] = child.variant_name
+                    variant_payload['optionValues']['name'] = child.variant_name
                 else:
                     if child.custom_size:
-                        payload['optionValues']['name'] = child.custom_size
+                        variant_payload['optionValues']['name'] = child.custom_size
                     else:
-                        payload['optionValues']['name'] = 'Default Title'
-
-                variant_payload['variants'].append(payload)
+                        variant_payload['optionValues']['name'] = 'Default Title'
 
                 # Add Variant Image
                 for image in child.images:
                     if image.is_variant_image:
-                        image_payload = {'mediaContentType': 'IMAGE', 'originalSource': image.image_url}
-                        variant_payload['media'].append(image_payload)
+                        print(
+                            f'Adding Variant Image: {image.image_name} to Variant: {child.sku}. Url: {image.image_url}'
+                        )
+                        variant_payload['mediaSrc'] = image.image_url
 
-            return variant_payload
+                payload['variants'].append(variant_payload)
+
+                # for image in child.images:
+                #     if image.is_variant_image:
+                #         variant_payload['mediaId'] = f'gid://shopify/MediaImage/{image.image_id}'
+
+            print(f'Bulk Variant Payload: {payload}')
+            return payload
+
+        def get_single_variant_payload(self):
+            payload = {
+                'input': {
+                    'compareAtPrice': self.default_price,
+                    'id': f'gid://shopify/ProductVariant/{self.variants[0].variant_id}',
+                    'inventoryItem': {
+                        'cost': self.cost,
+                        'measurement': {'weight': {'unit': 'POUNDS', 'value': self.weight}},
+                        'requiresShipping': True,
+                        'sku': self.sku,
+                        'tracked': True,
+                    },
+                    'inventoryQuantities': {
+                        'availableQuantity': self.buffered_quantity,
+                        'locationId': creds.shopify_location_id,
+                    },
+                    'inventoryPolicy': 'DENY',
+                    'price': self.default_price,
+                    'taxable': False,
+                }
+            }
+            print(f'Single Variant Payload: {payload}')
+            return payload
 
         def get_inventory_payload(self):
             payload = {
-                'input': {
-                    'name': 'available',
-                    'reason': 'correction',
-                    'ignoreCompareQuantity': True,
-                    'quantities': [],
-                }
+                'input': {'name': 'available', 'reason': 'other', 'ignoreCompareQuantity': True, 'quantities': []}
             }
 
             for child in self.variants:
                 if child.variant_id:
                     payload['input']['quantities'].append(
                         {
-                            'inventoryItemId': child.inventory_id,
+                            'inventoryItemId': f'gid://shopify/InventoryItem/{child.inventory_id}',
                             'locationId': creds.shopify_location_id,
                             'quantity': child.buffered_quantity,
                         }
                     )
+            print(f'Inventory Payload: {payload}')
             return payload
+
+        def get_variant_image_payload(self):
+            # Add Variant Image
+            variant_image_payload = []
+            for child in self.variants:
+                for image in child.images:
+                    if image.is_variant_image:
+                        variant_image_payload.append(
+                            {
+                                'id': f'gid://shopify/ProductVariant/{child.variant_id}',
+                                'imageId': f'gid://shopify/MediaImage/{image.image_id}',
+                            }
+                        )
+            return variant_image_payload
 
         def process(self):
             """Process Product Creation/Delete/Update in BigCommerce and Middleware."""
@@ -2293,7 +2493,8 @@ class Catalog:
                 # Assign Default Variant Properties
                 self.variants[0].variant_id = response['variant_ids'][0]
                 self.variants[0].option_id = self.option_id
-                self.variants[0].option_value_id = response['option_value_ids'][0]
+                if self.is_bound:
+                    self.variants[0].option_value_id = response['option_value_ids'][0]
                 self.variants[0].inventory_id = response['inventory_ids'][0]
 
                 for x, image in enumerate(self.images):
@@ -2301,23 +2502,39 @@ class Catalog:
                     image.image_id = response['media_ids'][x]
 
                 if len(self.variants) > 1:
+                    print('Creating Multiple Variants')
+                    # Save Default Option Value ID for Deletion
+                    delete_target = self.variants[0].option_value_id
                     # Create Variants in Bulk
-                    # Remove Default Variant ID
                     self.variants[0].variant_id = None
-                    Shopify.Product.Variant.create_bulk(self.get_variant_payload())
+                    response = Shopify.Product.Variant.create_bulk(self.get_bulk_variant_payload())
 
                     for x, variant in enumerate(self.variants):
                         variant.variant_id = response['variant_ids'][x]
                         variant.option_value_id = response['option_value_ids'][x]
+                        variant.inventory_id = response['inventory_ids'][x]
                         variant.option_id = self.option_id
 
-            #         Shopify.Product.Option.delete(self.product_id, self.option_id)
+                    # # Remove Default Variant
+                    Shopify.Product.Option.update(
+                        product_id=self.product_id,
+                        option_id=self.option_id,
+                        option_values_to_delete=[delete_target],
+                    )
+                    # Wait for images to process
+                    time.sleep(3)
+                    Shopify.Product.Variant.add_images(self.product_id, self.get_variant_image_payload())
 
-            #     else:
-            #         # Update Default Variant
-            #         Shopify.Product.Variant.update_single(variant_payload)
-            #         # Update Default Variant Inventory
-            #         Shopify.Inventory.update(self.get_inventory_payload())
+                else:
+                    # Update Default Variant
+                    print('Updating Default Variant')
+                    single_payload = self.get_single_variant_payload()
+                    Shopify.Product.Variant.update_single(single_payload)
+
+                # # Update Inventory
+                Shopify.Inventory.update(self.get_inventory_payload())
+                # Add Product to Online Store Sales Channel
+                Shopify.Product.publish(self.product_id)
 
             #     # Get product data from response and insert into middleware
             #     self.get_product_data_from_response(response=response)
@@ -3086,7 +3303,7 @@ class Catalog:
                 'PREORDER_MESSAGE(25)', ISNULL(EC_ITEM_DESCR.HTML_DESCR, '') as 'HTML_DESCRIPTION(26)', 
                 ISNULL(USR_PROF_ALPHA_22, '') as 'ALT_TEXT_1(27)', ISNULL(USR_PROF_ALPHA_23, '') as 'ALT_TEXT_2(28)', 
                 ISNULL(USR_PROF_ALPHA_24, '') as 'ALT_TEXT_3(29)', ISNULL(USR_PROF_ALPHA_25, '') as 'ALT_TEXT_4(30)', 
-                ISNULL(PROF_ALPHA_1, '') as 'BOTANICAL_NAM(31)', ISNULL(PROF_ALPHA_2, '') as 'CLIMATE_ZONE(32)', 
+                PROF_ALPHA_1 as 'BOTANICAL_NAM(31)', ISNULL(PROF_ALPHA_2, '') as 'CLIMATE_ZONE(32)', 
                 ISNULL(PROF_ALPHA_3, '') as 'PLANT_TYPE(33)', ISNULL(PROF_ALPHA_4, '') as 'TYPE(34)', 
                 ISNULL(PROF_ALPHA_5, '') as 'HEIGHT(35)', ISNULL(USR_PROF_ALPHA_6, '') as 'WIDTH(36)', 
                 ISNULL(USR_PROF_ALPHA_7, '') as 'SUN_EXPOSURE(37)', ISNULL(USR_PROF_ALPHA_8, '') as 'BLOOM_TIME(38)', 
@@ -3697,7 +3914,7 @@ class Catalog:
                 print(f'Photo {self.image_name} deleted from database.')
 
 
-if __name__ == '__main__':
+if __name__ == '__main__':  #
     from datetime import datetime
 
     cat = Catalog(last_sync=datetime(year=2020, month=7, day=16, hour=15, minute=0))

@@ -34,70 +34,6 @@ mutation CreateProductWithNewMedia(
   }
 }
 
-
-mutation productVariantCreate($input: ProductVariantInput!) {
-  productVariantCreate(input: $input) {
-    product {
-      id
-      title
-    }
-    productVariant {
-      createdAt
-      displayName
-      id
-      inventoryItem {
-        unitCost {
-          amount
-        }
-        tracked
-      }
-      inventoryPolicy
-      inventoryQuantity
-      price
-      product {
-        id
-      }
-      title
-    }
-    userErrors {
-      field
-      message
-    }
-  }
-}
-
-mutation productVariantsBulkCreate(
-  $productId: ID!
-  $variants: [ProductVariantsBulkInput!]!
-  $media: [CreateMediaInput!]
-) {
-  productVariantsBulkCreate(
-    productId: $productId
-    variants: $variants
-    media: $media
-  ) {
-    product {
-      id
-      options {
-        id
-        optionValues {
-          id
-        }
-      }
-    }
-    productVariants {
-      id
-      inventoryItem {
-        id
-      }
-    }
-    userErrors {
-      field
-      message
-    }
-  }
-}
-
 mutation productUpdate($input: ProductInput!) {
   productUpdate(input: $input) {
     product {
@@ -121,63 +57,7 @@ mutation productUpdate($input: ProductInput!) {
   }
 }
 
-mutation productVariantUpdate($input: ProductVariantInput!) {
-  productVariantUpdate(input: $input) {
-    productVariant {
-      id
-      title
-      inventoryPolicy
-      inventoryQuantity
-      price
-      compareAtPrice
-      inventoryItem {
-        id
-      }
-    }
-    userErrors {
-      field
-      message
-    }
-  }
-}
 
-mutation productVariantsBulkUpdate(
-  $productId: ID!
-  $variants: [ProductVariantsBulkInput!]!
-) {
-  productVariantsBulkUpdate(productId: $productId, variants: $variants) {
-    product {
-      id
-      options {
-        id
-        optionValues {
-          id
-        }
-      }
-    }
-    productVariants {
-      id
-    }
-    userErrors {
-      field
-      message
-    }
-  }
-}
-
-mutation productVariantDelete($id: ID!) {
-  productVariantDelete(id: $id) {
-    deletedProductVariantId
-    product {
-      id
-      title
-    }
-    userErrors {
-      field
-      message
-    }
-  }
-}
 
 query product($id: ID!) {
   product(id: $id) {
@@ -231,6 +111,10 @@ query product($id: ID!) {
     onlineStoreUrl
     options {
       name
+      optionValues {
+        id
+        name
+      }
     }
     priceRange {
       maxVariantPrice {
@@ -303,6 +187,44 @@ query variantIventoryId($id: ID!) {
     inventoryItem {
       sku
       id
+    }
+  }
+}
+
+mutation productPublish($input: ProductPublishInput!) {
+  productPublish(input: $input) {
+    userErrors {
+      field
+      message
+    }
+  }
+}
+
+mutation publishablePublish($id: ID!, $input: [PublicationInput!]!) {
+  publishablePublish(id: $id, input: $input) {
+    publishable {
+      availablePublicationsCount {
+        count
+      }
+      resourcePublicationsCount {
+        count
+      }
+    }
+    shop {
+      publicationCount
+    }
+    userErrors {
+      field
+      message
+    }
+  }
+}
+
+mutation productUnpublish($input: ProductUnpublishInput!) {
+  productUnpublish(input: $input) {
+    userErrors {
+      field
+      message
     }
   }
 }
