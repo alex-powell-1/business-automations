@@ -1,0 +1,48 @@
+mutation CreateMenu(
+  $title: String!
+  $handle: String!
+  $items: [MenuItemCreateInput!]!
+) {
+  menuCreate(title: $title, handle: $handle, items: $items) {
+    menu {
+      id
+      handle
+      items {
+        id
+        title
+        items {
+          id
+          title
+        }
+      }
+    }
+  }
+}
+
+mutation DeleteMenu($id: ID!) {
+  menuDelete(id: $id) {
+    deletedMenuId
+  }
+}
+
+mutation UpdateMenu(
+  $id: ID!
+  $title: String!
+  $handle: String!
+  $items: [MenuItemUpdateInput!]!
+) {
+  menuUpdate(id: $id, title: $title, handle: $handle, items: $items) {
+    menu {
+      id
+      handle
+      items {
+        id
+        title
+        items {
+          id
+          title
+        }
+      }
+    }
+  }
+}

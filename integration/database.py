@@ -162,6 +162,28 @@ class Database:
         drop_tables()
         create_tables()
 
+    class Collection:
+        def get_cp_categ_id(collection_id):
+            query = f"""
+                    SELECT CP_CATEG_ID FROM {creds.shopify_category_table}
+                    WHERE COLLECTION_ID = {collection_id}
+                    """
+            response = Database.db.query_db(query)
+            if response is not None:
+                return response[0][0]
+
+        def backfill_html_description(collection_id, description):
+            cp_categ_id = Database.Collection.get_cp_categ_id(collection_id)
+            query = f"""
+                    UPDATE EC_CATEG
+                    SET HTML_DESCR = '{description}'
+                    WHERE CATEG_ID = '{cp_categ_id}'
+                    """
+            response = Database.db.query_db(query, commit=True)
+            if response['code'] != 200:
+                print(query)
+                raise Exception(response['message'])
+
     class Metafield_Definition:
         def get(definition_id):
             query = f"""
@@ -237,3 +259,7 @@ class Database:
             response = Database.db.query_db(query, commit=True)
             if response['code'] != 200:
                 raise Exception(response['message'])
+
+
+if __name__ == '__main__':
+    print(Database.Collection.get_cp_categ_id(482197405990))

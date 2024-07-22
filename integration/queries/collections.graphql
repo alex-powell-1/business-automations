@@ -46,3 +46,23 @@ mutation collectionDelete($input: CollectionDeleteInput!) {
     }
   }
 }
+
+query collection($id: ID!) {
+  collection(id: $id) {
+    id
+    title
+    descriptionHtml
+    handle
+    updatedAt
+  }
+}
+
+query collections {
+  collections(first: 250) {
+    edges {
+      node {
+        id
+      }
+    }
+  }
+}

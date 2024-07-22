@@ -389,8 +389,8 @@ class Catalog:
         #     self.process_images()
 
         # Sync Products
-        # self.get_products()  # Get all products that have been updated since the last sync
-        self.sync_queue = [{'sku': '10344', 'binding_id': 'B0001'}]
+        self.get_products()  # Get all products that have been updated since the last sync
+        # self.sync_queue = [{'sku': '10344', 'binding_id': 'B0001'}]
 
         # Small Bound Product
         # self.sync_queue = [{'sku': 'SYUFICG01', 'binding_id': 'B0050'}]
@@ -2536,10 +2536,8 @@ class Catalog:
                 # Add Product to Online Store Sales Channel
                 Shopify.Product.publish(self.product_id)
 
-            #     # Get product data from response and insert into middleware
-            #     self.get_product_data_from_response(response=response)
-            #     self.insert_product()
-            #     self.insert_images()
+                self.insert_product()
+                self.insert_images()
 
             # def update():
             #     """Will update existing product. Will clear out custom field data and reinsert."""

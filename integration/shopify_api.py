@@ -25,7 +25,7 @@ class Shopify:
         return response.json()
 
     class Query:
-        def __init__(self, document, variables=None, operation_name=None):
+        def __init__(self, document, variables=None, operation_name=None, verbose=True):
             self.response = self.execute_query(document, variables, operation_name)
             self.data = self.response['data'] if 'data' in self.response else None
             self.errors = self.response['errors'] if 'errors' in self.response else None
@@ -51,8 +51,8 @@ class Shopify:
                 raise Exception(
                     f'Operation Name: {operation_name}\n\nError: {self.errors}\n\nUser Error: {self.user_errors}\n\nVariables: {variables}'
                 )
-
-            print(operation_name, self)
+            if verbose:
+                print(operation_name, self)
 
         def __str__(self):
             return json.dumps(self.response, indent=4)
@@ -357,6 +357,31 @@ class Shopify:
     class Collection:
         queries = './integration/queries/collections.graphql'
 
+        def get(collection_id: int):
+            response = Shopify.Query(
+                document=Shopify.Collection.queries,
+                variables={'id': f'gid://shopify/Collection/{collection_id}'},
+                operation_name='collection',
+                verbose=False,
+            )
+            return response.data
+
+        def get_all():
+            response = Shopify.Query(document=Shopify.Collection.queries, operation_name='collections')
+            id_list = [x['node']['id'].split('/')[-1] for x in response.data['collections']['edges']]
+            return id_list
+
+        def backfill_collections_to_counterpoint():
+            """Backfill HTML descriptions for all collections presently on Shopify"""
+            id_list = Shopify.Collection.get_all()
+            for i in id_list:
+                html_description = Shopify.Collection.get(i)['collection']['descriptionHtml']
+                html_description = (
+                    html_description.replace(' data-mce-fragment="1"', '').replace('<!---->', '').replace("'", "''")
+                )
+                if html_description:
+                    Database.Collection.backfill_html_description(i, html_description)
+
         def create(payload: dict):
             response = Shopify.Query(
                 document=Shopify.Collection.queries, variables=payload, operation_name='CollectionCreate'
@@ -462,7 +487,7 @@ class Shopify:
                 {'name': 'mature width', 'type': 'single_line_text_field'},
                 {'name': 'sun exposure', 'type': 'single_line_text_field'},
                 {'name': 'bloom time', 'type': 'single_line_text_field'},
-                {'name': 'flower color', 'type': 'single_line_text_field'},
+                {'name': 'bloom color', 'type': 'single_line_text_field'},
                 {'name': 'attracts pollinators', 'type': 'boolean'},
                 {'name': 'growth rate', 'type': 'single_line_text_field'},
                 {'name': 'deer resistant', 'type': 'boolean'},
@@ -516,22 +541,5 @@ class Shopify:
 
 
 if __name__ == '__main__':
-    # product = 9490679267622
-
-    # Shopify.Product.get(product)
-
-    payload = {
-        'input': {
-            'name': 'available',
-            'reason': 'other',
-            'ignoreCompareQuantity': True,
-            'quantities': [
-                {
-                    'inventoryItemId': 'gid://shopify/InventoryItem/51310892384550',
-                    'locationId': creds.shopify_location_id,
-                    'quantity': 14,
-                }
-            ],
-        }
-    }
-    Shopify.Inventory.update(payload)
+    # Shopify.Collection.get(482197405990)
+    pass
