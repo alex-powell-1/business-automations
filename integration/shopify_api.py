@@ -471,6 +471,52 @@ class Shopify:
                 )
                 return response.data
 
+        class Files:
+            queries = './integration/queries/files.graphql'
+
+            class StagedMediaUploadTarget:
+                class StagedUploadParameter:
+                    def __init__(self, response_data):
+                        self.name = response_data['name']
+                        self.value = response_data['value']
+
+                def __init__(self, response_data):
+                    self.url = response_data['url']
+                    self.resourceUrl = response_data['resourceUrl']
+                    self.parameters = [
+                        Shopify.Files.StagedMediaUploadTarget.StagedUploadParameter(i)
+                        for i in response_data['parameters']
+                    ]
+
+            def create(file_list, variables: dict) -> list:
+                """Create staged media upload targets and upload files to google cloud storage. Return list of URLs"""
+                response = Shopify.Query(
+                    document=Shopify.Files.queries, variables=variables, operation_name='stagedUploadsCreate'
+                )
+                files = [
+                    Shopify.Files.StagedMediaUploadTarget(i)
+                    for i in response.data['stagedUploadsCreate']['stagedTargets']
+                ]
+
+                url_list = []
+                i = 0
+                # make POST requests to upload files and include all parameters in the request body
+                for file in files:
+                    form_data = {}
+                    for param in file.parameters:
+                        form_data[param.name] = param.value
+                    file_path = Path(file_list[i])
+                    with open(file_path, 'rb') as f:
+                        response = requests.post(url=file.url, files={'file': f}, data=form_data)
+                        if 200 <= response.status_code < 300:
+                            print(f'File {file_path.name} uploaded successfully. Code: {response.status_code}')
+                            url_list.append({'file_path': file_list[i], 'url': file.resourceUrl})
+                            i += 1
+                        else:
+                            raise Exception(f'File {file_path.name} failed to upload')
+
+                return url_list
+
     class Inventory:
         queries = './integration/queries/inventory.graphql'
 
@@ -537,6 +583,58 @@ class Shopify:
             )
             return response.data
 
+        class Files:
+            queries = './integration/queries/files.graphql'
+
+            class StagedMediaUploadTarget:
+                class StagedUploadParameter:
+                    def __init__(self, response_data):
+                        self.name = response_data['name']
+                        self.value = response_data['value']
+
+                def __init__(self, response_data):
+                    self.url = response_data['url']
+                    self.resourceUrl = response_data['resourceUrl']
+                    self.parameters = [
+                        Shopify.Collection.Files.StagedMediaUploadTarget.StagedUploadParameter(i)
+                        for i in response_data['parameters']
+                    ]
+                    for i in response_data['parameters']:
+                        if i['name'] == 'key':
+                            self.key = i['value']
+                    self.public_url = self.resourceUrl + self.key
+
+            def create(file_list, variables: dict) -> list:
+                """Create staged media upload targets and upload files to google cloud storage. Return list of URLs"""
+                response = Shopify.Query(
+                    document=Shopify.Collection.Files.queries,
+                    variables=variables,
+                    operation_name='stagedUploadsCreate',
+                )
+                files = [
+                    Shopify.Collection.Files.StagedMediaUploadTarget(i)
+                    for i in response.data['stagedUploadsCreate']['stagedTargets']
+                ]
+
+                url_list = []
+                i = 0
+                # make POST requests to upload files and include all parameters in the request body
+                for file in files:
+                    form_data = {}
+                    for param in file.parameters:
+                        form_data[param.name] = param.value
+                    file_path = Path(file_list[i])
+                    with open(file_path, 'rb') as f:
+                        response = requests.post(url=file.url, files={'file': f}, data=form_data)
+                        if 200 <= response.status_code < 300:
+                            print(f'File {file_path.name} uploaded successfully. Code: {response.status_code}')
+                            url_list.append({'file_path': file_list[i], 'url': file.public_url})
+                            i += 1
+                        else:
+                            raise Exception(f'File {file_path.name} failed to upload')
+
+                return url_list
+
     class Menu:
         queries = './integration/queries/menu.graphql'
 
@@ -559,52 +657,6 @@ class Shopify:
         def update(payload: dict):
             response = Shopify.Query(document=Shopify.Menu.queries, variables=payload, operation_name='UpdateMenu')
             return response.data
-
-    class Files:
-        queries = './integration/queries/files.graphql'
-
-        class StagedMediaUploadTarget:
-            class StagedUploadParameter:
-                def __init__(self, response_data):
-                    self.name = response_data['name']
-                    self.value = response_data['value']
-
-            def __init__(self, response_data):
-                self.url = response_data['url']
-                self.resourceUrl = response_data['resourceUrl']
-                self.parameters = [
-                    Shopify.Files.StagedMediaUploadTarget.StagedUploadParameter(i)
-                    for i in response_data['parameters']
-                ]
-
-        def create(file_list, variables: dict) -> list:
-            """Create staged media upload targets and upload files to google cloud storage. Return list of URLs"""
-            response = Shopify.Query(
-                document=Shopify.Files.queries, variables=variables, operation_name='stagedUploadsCreate'
-            )
-            files = [
-                Shopify.Files.StagedMediaUploadTarget(i)
-                for i in response.data['stagedUploadsCreate']['stagedTargets']
-            ]
-
-            url_list = []
-            i = 0
-            # make POST requests to upload files and include all parameters in the request body
-            for file in files:
-                form_data = {}
-                for param in file.parameters:
-                    form_data[param.name] = param.value
-                file_path = Path(file_list[i])
-                with open(file_path, 'rb') as f:
-                    response = requests.post(url=file.url, files={'file': f}, data=form_data)
-                    if 200 <= response.status_code < 300:
-                        print(f'File {file_path.name} uploaded successfully. Code: {response.status_code}')
-                        url_list.append({'file_path': file_list[i], 'url': file.resourceUrl})
-                        i += 1
-                    else:
-                        raise Exception(f'File {file_path.name} failed to upload')
-
-            return url_list
 
     class Channel:
         queries = './integration/queries/channel.graphql'
@@ -730,4 +782,21 @@ if __name__ == '__main__':
     #     phone='18282341265',
     #     email='alexpow@gmail.com',
 
-    Shopify.Menu.get(creds.shopify_main_menu_id)
+    Shopify.Menu.get_all()
+    # test = {
+    #     'id': f'gid://shopify/Menu/{creds.shopify_main_menu_id}',
+    #     'title': 'Main Menu',
+    #     'handle': 'main-menu',
+    #     'items': [],
+    # }
+
+    # item = {
+    #     'title': 'Landscape Design',
+    #     'type': 'PAGE',
+    #     'resourceId': 'gid://shopify/Page/256367984934',
+    #     'items': [],
+    # }
+    # test['items'].append(item)
+    # Shopify.Menu.update(test)
+
+    # Shopify.Menu.get(256367984934)

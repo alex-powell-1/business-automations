@@ -818,7 +818,7 @@ class Catalog:
         def get_tree(self):
             """Updates middleware category tables with Counterpoint category information."""
             query = f"""
-            SELECT cp.CATEG_ID, ISNULL(cp.PARENT_ID, 0), mw.COLLECTION_ID, cp.DESCR, cp.DISP_SEQ_NO, cp.HTML_DESCR, 
+            SELECT cp.CATEG_ID, ISNULL(cp.PARENT_ID, 0), mw.COLLECTION_ID, mw.MENU_ID, cp.DESCR, cp.DISP_SEQ_NO, cp.HTML_DESCR, 
             cp.LST_MAINT_DT, mw.CP_CATEG_ID, mw.is_visible
             FROM EC_CATEG cp
             FULL OUTER JOIN {creds.shopify_category_table} mw on cp.CATEG_ID=mw.CP_CATEG_ID
@@ -828,10 +828,10 @@ class Catalog:
             if response:
                 for x in response:
                     cp_categ_id = x[0]
-                    mw_cp_categ_id = x[7]  # Middleware Counterpoint Category ID
+                    mw_cp_categ_id = x[8]  # Middleware Counterpoint Category ID
 
                     if cp_categ_id is None:  # These are categories that exist in the middleware but not CP
-                        self.delete_category(x[6])
+                        self.delete_category(mw_cp_categ_id)
                         continue  # Skip deleted categories
 
                     # Create Category Object
@@ -839,11 +839,12 @@ class Catalog:
                         cp_categ_id=cp_categ_id,
                         cp_parent_id=x[1],
                         collection_id=x[2],
-                        name=x[3],
-                        sort_order=x[4],
-                        description=x[5].replace("'", "''"),
-                        lst_maint_dt=x[6],
-                        is_visible=True if x[8] == 1 else False,
+                        menu_id=x[3],
+                        name=x[4],
+                        sort_order=x[5],
+                        description=x[6].replace("'", "''"),
+                        lst_maint_dt=x[7],
+                        is_visible=True if x[9] == 1 else False,
                     )
 
                     if mw_cp_categ_id is None:
@@ -851,7 +852,6 @@ class Catalog:
 
                     else:
                         if cat.lst_maint_dt > self.last_sync:
-                            # If counterpoint category info updated, update existing middleware record
                             Database.Collection.update(cat)
 
                     # NEW
@@ -869,29 +869,34 @@ class Catalog:
         def sync(self):
             self.process_collections()
             self.process_menus()
-            self.update_tree()
+            self.update_tree_in_middleware()
 
         def process_collections(self):
             """Recursively updates collections in Shopify."""
+            # Establish queue for dealing with category images
+            queue = []
 
             def collections_helper(category):
                 # Get BC Category ID and Parent ID
                 print(f'Processing Category: {category.name}, category collection ID: {category.collection_id}')
+                queue.append(category)
                 if category.collection_id is None:
-                    category.shopify_parent_id = category.get_shopify_parent_id()
                     category.collection_id = Shopify.Collection.create(category.get_category_payload())
-                    print(f'\n\n\nCategory ID: {category.collection_id}\n\n\n')
-
-                if category.shopify_parent_id is None:
-                    category.get_shopify_parent_id()
-
-                # Recursively call this function for each child category
+                # else:
+                #     Shopify.Collection.update(category.get_category_payload())
                 for child in category.children:
                     collections_helper(child)
 
             for category in self.heads:
                 if category.lst_maint_dt > self.last_sync:
                     collections_helper(category)
+
+            for category in queue:
+                print(f'\n\nQUEUE Category: {category.name}, category collection ID: {category.collection_id}')
+
+            self.upload_category_images(queue)
+            for category in queue:
+                Shopify.Collection.update(category.get_category_payload())
 
         def process_menus(self):
             """Recursively updates menus in Shopify."""
@@ -906,12 +911,17 @@ class Catalog:
                 # Sort category children by sort order
                 category.children.sort(key=lambda x: x.sort_order)
 
-                return {
+                menu_item = {
                     'title': category.name,
                     'type': 'COLLECTION',
                     'resourceId': f'gid://shopify/Collection/{category.collection_id}',
                     'items': [menu_helper(child) for child in category.children],
                 }
+
+                if category.menu_id is not None:
+                    menu_item['id'] = f'gid://shopify/MenuItem/{category.menu_id}'
+
+                return menu_item
 
             # Recursively call this function for each child category
             for category in self.heads:
@@ -919,7 +929,12 @@ class Catalog:
 
             # Add the Landing Page to the Main Menu
             main_menu['items'].append(
-                {'title': 'Landscape Design', 'type': 'PAGE', 'url': '/pages/landscape-design'}
+                {
+                    'title': 'Landscape Design',
+                    'type': 'PAGE',
+                    'resourceId': 'gid://shopify/Page/138277978406',
+                    'items': [],
+                }
             )
 
             Shopify.Menu.update(main_menu)
@@ -927,19 +942,28 @@ class Catalog:
             heads = response['menu']['items']
             result = []
 
-            def response_helper(item):
-                for items in item:
-                    for i in items['items']:
-                        result.append({'title': i['title'], 'id': i['id']})
-                    return response_helper(item['items'])
+            def response_helper(menu_item_list):
+                menu_item_id = menu_item_list['id'].split('/')[-1]
+                result.append({'menu_id': menu_item_id, 'title': menu_item_list['title']})
+                if 'items' in menu_item_list:
+                    for i in menu_item_list['items']:
+                        response_helper(i)
 
             for head in heads:
                 response_helper(head)
 
-            for item in result:
-                print(f"Title: {item['title']}, ID: {item['id']}\n\n")
+            # Assign menu item IDs to categories
+            def assign_menu_ids(category):
+                for i in result:
+                    if i['title'] == category.name:
+                        category.menu_id = i['menu_id']
+                for child in category.children:
+                    assign_menu_ids(child)
 
-        def update_tree(self):
+            for category in self.heads:
+                assign_menu_ids(category)
+
+        def update_tree_in_middleware(self):
             # Update Entire Category Tree in Middleware
             def update_helper(category):
                 if category.lst_maint_dt > self.last_sync:
@@ -949,6 +973,33 @@ class Catalog:
 
             for category in self.heads:
                 update_helper(category)
+
+        def upload_category_images(self, queue):
+            file_list = []
+            stagedUploadsCreateVariables = {'input': []}
+
+            for category in queue:
+                if category.image_path:
+                    file_list.append(category.image_path)
+                    stagedUploadsCreateVariables['input'].append(
+                        {
+                            'filename': category.image_name,
+                            'mimeType': 'image/jpg',
+                            'httpMethod': 'POST',
+                            'resource': 'COLLECTION_IMAGE',
+                        }
+                    )
+
+            if file_list:
+                uploaded_files = Shopify.Collection.Files.create(
+                    variables=stagedUploadsCreateVariables, file_list=file_list
+                )
+                for file in uploaded_files:
+                    for category in queue:
+                        if file['file_path'] == category.image_path:
+                            category_image_url = file['url']
+                            print(f'Updating Image URL for {category.image_name} to {category_image_url}')
+                            category.image_url = category_image_url
 
         def delete_category(self, cp_categ_id):
             query = f"""
@@ -973,6 +1024,7 @@ class Catalog:
                 cp_parent_id,
                 name,
                 collection_id=None,
+                menu_id=None,
                 shopify_parent_id=None,
                 sort_order=0,
                 description='',
@@ -987,10 +1039,13 @@ class Catalog:
                 self.name = name
                 self.handle = self.get_full_custom_url_path()
                 self.collection_id = collection_id
+                self.menu_id = menu_id
                 self.shopify_parent_id = shopify_parent_id
                 self.sort_order = sort_order
                 self.description = description
-                self.image_url = self.get_category_image()
+                self.image_name = str(self.handle)[1:-1].replace('/', '_').replace(' ', '-') + '.jpg'
+                self.image_path = self.get_category_image_path()
+                self.image_url = image_url
                 self.image_alt_text = image_alt_text
                 self.is_visible = is_visible
                 self.rule_set = None  # for future use
@@ -1055,29 +1110,26 @@ class Catalog:
                         break
                 return f"/{"/".join(url_path[::-1])}/"
 
-            def get_category_image(self):
-                image_name = str(self.handle)[1:-1].replace('/', '_').replace(' ', '_') + '.jpg'
+            def get_category_image_path(self, local=True):
+                image_name = str(self.handle)[1:-1].replace('/', '_').replace(' ', '-') + '.jpg'
                 local_path = f'{creds.public_files}/{creds.category_images}/{image_name}'
                 if os.path.exists(local_path):
-                    public_url = f'{creds.ngrok_domain}/files/{creds.category_images}/{image_name}'
-                    return public_url
+                    return local_path
 
             def get_category_payload(self):
-                payload = {
-                    'input': {
-                        'publications': {'publicationId': creds.shopify_online_store_channel_id},
-                        'title': self.name,
-                        'handle': self.handle,
-                        'sortOrder': 'BEST_SELLING',
-                    }
-                }
-
+                payload = {'input': {'title': self.name, 'handle': self.handle, 'sortOrder': 'BEST_SELLING'}}
+                # New items - Add store channel
+                if not self.collection_id:
+                    payload['input']['publications'] = {'publicationId': creds.shopify_online_store_channel_id}
+                # Updates - Add Collection ID
                 if self.collection_id:
                     payload['input']['id'] = f'gid://shopify/Collection/{self.collection_id}'
                 if self.description:
                     payload['input']['descriptionHtml'] = self.description
                 if self.image_url:
-                    payload['input']['image'] = {'src': self.image_url, 'altText': self.image_alt_text}
+                    payload['input']['image'] = {'src': self.image_url}
+                    # if self.image_alt_text:
+                    #     payload['input']['image']['altText'] = self.image_alt_text
                 # for future use
                 if self.rule_set:
                     payload['input']['ruleSet'] = {
@@ -2214,7 +2266,7 @@ class Catalog:
                             }
                         )
                 if file_list:
-                    uploaded_files = Shopify.Files.create(
+                    uploaded_files = Shopify.Product.Files.create(
                         variables=stagedUploadsCreateVariables, file_list=file_list
                     )
                     for file in uploaded_files:
@@ -3604,7 +3656,6 @@ class Catalog:
                 else:
                     # 7/18/24 - passing the upload up to the product level when payload is created.
                     # Shopify will allow for a group upload of all images.
-                    # self.image_url = self.upload_product_image()
                     self.set_image_details()
 
             def validate(self):

@@ -177,9 +177,10 @@ class Database:
 
         def insert(category):
             query = f"""
-            INSERT INTO {creds.shopify_category_table}(COLLECTION_ID, CP_CATEG_ID, CP_PARENT_ID, CATEG_NAME, 
+            INSERT INTO {creds.shopify_category_table}(COLLECTION_ID, MENU_ID, CP_CATEG_ID, CP_PARENT_ID, CATEG_NAME, 
             SORT_ORDER, DESCRIPTION, IS_VISIBLE, LST_MAINT_DT)
-            VALUES({category.collection_id if category.collection_id else 'NULL'}, {category.cp_categ_id}, 
+            VALUES({category.collection_id if category.collection_id else 'NULL'}, 
+            {category.menu_id if category.menu_id else 'NULL'}, {category.cp_categ_id}, 
             {category.cp_parent_id}, '{category.name}', {category.sort_order}, 
             '{category.description.replace("'", "''")}', {1 if category.is_visible else 0}, 
             '{category.lst_maint_dt:%Y-%m-%d %H:%M:%S}')
@@ -198,6 +199,7 @@ class Database:
             query = f"""
             UPDATE {creds.shopify_category_table}
             SET COLLECTION_ID = {category.collection_id if category.collection_id else 'NULL'}, 
+            MENU_ID = {category.menu_id if category.menu_id else 'NULL'},
             CP_PARENT_ID = {category.cp_parent_id}, CATEG_NAME = '{category.name}',
             SORT_ORDER = {category.sort_order}, DESCRIPTION = '{category.description}', 
             IS_VISIBLE = {1 if category.is_visible else 0},
@@ -205,7 +207,6 @@ class Database:
             WHERE CP_CATEG_ID = {category.cp_categ_id}
             """
             response = Database.db.query_db(query, commit=True)
-
             if response['code'] == 200:
                 Database.logger.success(f'Category {category.name} updated in Middleware.')
             else:

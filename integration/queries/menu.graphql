@@ -44,10 +44,14 @@ mutation UpdateMenu(
         }
       }
     }
+    userErrors {
+      field
+      message
+    }
   }
 }
 
-query menus{
+query menus {
   menus(first: 20) {
     nodes {
       id
@@ -60,6 +64,7 @@ query menus{
         url
         items {
           id
+          resourceId
           title
         }
       }
@@ -74,6 +79,7 @@ query menu($id: ID!) {
     handle
     items {
       id
+      resourceId
       title
       type
       url
