@@ -593,7 +593,7 @@ class Catalog:
                 if bc_response.status_code == 204:
                     Catalog.logger.success(f'Products {batch_string} deleted from BigCommerce.')
                     query = f"""
-                    DELETE FROM {creds.bc_category_table} WHERE COLLECTION_ID in ({batch_string})
+                    DELETE FROM {creds.shopify_category_table} WHERE COLLECTION_ID in ({batch_string})
                     """
                     sql_response = Database.db.query_db(query, commit=True)
                     if sql_response['code'] == 200:
@@ -609,7 +609,7 @@ class Catalog:
                     Catalog.logger.log(f'Url: {url}')
                     Catalog.logger.log(bc_response)
 
-            query = f'DELETE FROM {creds.bc_category_table}'
+            query = f'DELETE FROM {creds.shopify_category_table}'
             response = Database.db.query_db(query, commit=True)
 
             if response['code'] == 200:
@@ -618,7 +618,7 @@ class Catalog:
                 Catalog.error_handler.add_error_v(error=f'Error deleting category: {batch_string} from Middleware.')
 
         # Get all parent categories from Middleware
-        query = f'SELECT DISTINCT COLLECTION_ID FROM {creds.bc_category_table} WHERE CP_PARENT_ID = 0'
+        query = f'SELECT DISTINCT COLLECTION_ID FROM {creds.shopify_category_table} WHERE CP_PARENT_ID = 0'
         response = Database.db.query_db(query)
         parent_category_list = [x[0] for x in response] if response else []
 
@@ -732,7 +732,7 @@ class Catalog:
                 bc_response = BCRequests.delete(url=url)
                 if bc_response.status_code == 204:
                     Catalog.logger.success(f'Brand:\n{batch_string}\ndeleted from BigCommerce.')
-                    query = f'DELETE FROM {creds.bc_brands_table} WHERE BC_BRAND_ID in ({batch_string})'
+                    query = f'DELETE FROM {creds.shopify_brands_table} WHERE BC_BRAND_ID in ({batch_string})'
                     response = Database.db.query_db(query, commit=True)
                     if response['code'] == 200:
                         Catalog.logger.success(f'Brand:\n{batch_string}\ndeleted from Middleware.')
@@ -745,7 +745,7 @@ class Catalog:
                         error=f'Error deleting brand:\n{batch_string}\nfrom BigCommerce.'
                     )
 
-        query = f'SELECT DISTINCT BC_BRAND_ID FROM {creds.bc_brands_table}'
+        query = f'SELECT DISTINCT BC_BRAND_ID FROM {creds.shopify_brands_table}'
         response = Database.db.query_db(query)
         brand_id_list = [x[0] for x in response] if response else []
 
@@ -788,7 +788,6 @@ class Catalog:
 
             self.categories = set()
             self.heads = []
-            self.process_mw_updates()
             self.get_tree()
 
         def __str__(self):
@@ -799,7 +798,7 @@ class Catalog:
                     f"{'    ' * level}---------------------------------------\n"
                     f"{'    ' * level}Counterpoint Category ID: {category.cp_categ_id}\n"
                     f"{'    ' * level}Counterpoint Parent ID: {category.cp_parent_id}\n"
-                    f"{'    ' * level}BigCommerce Category ID: {category.bc_categ_id}\n"
+                    f"{'    ' * level}Shopify Collection ID: {category.bc_categ_id}\n"
                     f"{'    ' * level}BigCommerce Parent ID: {category.bc_parent_id}\n"
                     f"{'    ' * level}Sort Order: {category.sort_order}\n"
                     f"{'    ' * level}Last Maintenance Date: {category.lst_maint_dt}\n\n"
@@ -816,186 +815,168 @@ class Catalog:
 
             return result
 
-        def process_mw_updates(self):
+        def get_tree(self):
             """Updates middleware category tables with Counterpoint category information."""
             query = f"""
-            SELECT cp.CATEG_ID, ISNULL(cp.PARENT_ID, 0), cp.DESCR, cp.DISP_SEQ_NO, cp.HTML_DESCR, 
+            SELECT cp.CATEG_ID, ISNULL(cp.PARENT_ID, 0), mw.COLLECTION_ID, cp.DESCR, cp.DISP_SEQ_NO, cp.HTML_DESCR, 
             cp.LST_MAINT_DT, mw.CP_CATEG_ID, mw.is_visible
             FROM EC_CATEG cp
             FULL OUTER JOIN {creds.shopify_category_table} mw on cp.CATEG_ID=mw.CP_CATEG_ID
+            WHERE cp.CATEG_ID != '0'
             """
             response = self.db.query_db(query)
             if response:
                 for x in response:
                     cp_categ_id = x[0]
-                    if cp_categ_id == '0':
-                        continue  # Skip the root category
-                    if cp_categ_id is None:
+                    mw_cp_categ_id = x[7]  # Middleware Counterpoint Category ID
+
+                    if cp_categ_id is None:  # These are categories that exist in the middleware but not CP
                         self.delete_category(x[6])
                         continue  # Skip deleted categories
-                    lst_maint_dt = x[5]
-                    mw_cp_categ_id = x[6]
-                    is_visible = x[7]
+
+                    # Create Category Object
+                    cat = self.Category(
+                        cp_categ_id=cp_categ_id,
+                        cp_parent_id=x[1],
+                        collection_id=x[2],
+                        name=x[3],
+                        sort_order=x[4],
+                        description=x[5].replace("'", "''"),
+                        lst_maint_dt=x[6],
+                        is_visible=True if x[8] == 1 else False,
+                    )
 
                     if mw_cp_categ_id is None:
-                        # Insert new records
-                        cp_parent_id = x[1]
-                        category_name = x[2]
-                        sort_order = x[3]
-                        description = x[4]
-                        query = f"""
-                        INSERT INTO {creds.shopify_category_table}(CP_CATEG_ID, CP_PARENT_ID, CATEG_NAME, 
-                        SORT_ORDER, DESCRIPTION, LST_MAINT_DT)
-                        VALUES({cp_categ_id}, {cp_parent_id}, '{category_name}',
-                        {sort_order}, '{description}', '{lst_maint_dt:%Y-%m-%d %H:%M:%S}')
-                        """
-                        response = self.db.query_db(query, commit=True)
-                        if response['code'] == 200:
-                            Catalog.logger.success(f'Category {category_name} added to Middleware.')
-                        else:
-                            Catalog.error_handler.add_error_v(
-                                error=f'Error adding category {category_name} to Middleware. \n Query: {query}'
-                            )
+                        Database.Collection.insert(cat)
 
                     else:
-                        if lst_maint_dt > self.last_sync:
-                            # If counterpoint category info updated, update existing middleware records
-                            cp_parent_id = x[1]
-                            category_name = x[2]
-                            sort_order = x[3]
-                            description = x[4]
-                            lst_maint_dt = x[5]
+                        if cat.lst_maint_dt > self.last_sync:
+                            # If counterpoint category info updated, update existing middleware record
+                            Database.Collection.update(cat)
 
-                            query = f"""
-                            UPDATE {creds.shopify_category_table}
-                            SET CP_PARENT_ID = {cp_parent_id}, CATEG_NAME = '{category_name}',
-                            SORT_ORDER = {sort_order}, DESCRIPTION = '{description}', 
-                            IS_VISIBLE = {1 if is_visible else 0},
-                            LST_MAINT_DT = '{lst_maint_dt:%Y-%m-%d %H:%M:%S}'
-                            WHERE CP_CATEG_ID = {mw_cp_categ_id}
-                            """
-                            update_res = self.db.query_db(query, commit=True)
+                    # NEW
+                    self.categories.add(cat)
 
-                            if update_res['code'] == 200:
-                                Catalog.logger.success(f'Category {category_name} updated in Middleware.')
-                            else:
-                                Catalog.error_handler.add_error_v(
-                                    error=f'Error updating category {category_name} in Middleware. \n Query: {query}'
-                                )
+                for x in self.categories:
+                    for y in self.categories:
+                        if y.cp_parent_id == x.cp_categ_id:
+                            x.add_child(y)
 
-        def get_tree(self):
-            """Builds a tree of categories from the Middleware database."""
-
-            def get_categories():
-                query = """
-                SELECT ec.CATEG_ID, ISNULL(PARENT_ID, 0), DESCR, DISP_SEQ_NO, HTML_DESCR, ec.LST_MAINT_DT, mw.COLLECTION_ID
-                FROM EC_CATEG ec
-                FULL OUTER JOIN SN_SHOP_CATEG mw on ec.CATEG_ID = mw.CP_CATEG_ID
-                WHERE ec.CATEG_ID != '0'
-                """
-                response = self.db.query_db(query)
-                if response is not None:
-                    for ec_cat in response:
-                        category = self.Category(
-                            cp_categ_id=ec_cat[0],
-                            cp_parent_id=ec_cat[1],
-                            category_name=ec_cat[2],
-                            sort_order=ec_cat[3],
-                            description=ec_cat[4],
-                            lst_maint_dt=ec_cat[5],
-                            shopify_categ_id=ec_cat[6],
-                        )
-                        self.categories.add(category)
-
-            get_categories()
-
-            for x in self.categories:
-                for y in self.categories:
-                    if y.cp_parent_id == x.cp_categ_id:
-                        x.add_child(y)
-
-            self.heads = [x for x in self.categories if x.cp_parent_id == '0']
+                self.heads = [x for x in self.categories if x.cp_parent_id == '0']
+                # Sort Heads by x.sort_order
+                self.heads.sort(key=lambda x: x.sort_order)
 
         def sync(self):
-            def process(category):
+            self.process_collections()
+            self.process_menus()
+            self.update_tree()
+
+        def process_collections(self):
+            """Recursively updates collections in Shopify."""
+
+            def collections_helper(category):
                 # Get BC Category ID and Parent ID
-                print(f'Updating: {category.category_name}')
-                if category.shopify_categ_id is None:
-                    print('Getting Shopify Category ID')
-                    category.get_shopify_cat_id()  # Get BC Category ID, will create if not found
+                print(f'Processing Category: {category.name}, category collection ID: {category.collection_id}')
+                if category.collection_id is None:
+                    category.shopify_parent_id = category.get_shopify_parent_id()
+                    category.collection_id = Shopify.Collection.create(category.get_category_payload())
+                    print(f'\n\n\nCategory ID: {category.collection_id}\n\n\n')
 
                 if category.shopify_parent_id is None:
                     category.get_shopify_parent_id()
 
-                category.update_category_in_middleware()
-                category_update_payload = category.get_category_payload()
-                Shopify.Collection.update(payload=category_update_payload)
-
                 # Recursively call this function for each child category
                 for child in category.children:
-                    process(child)
+                    collections_helper(child)
 
             for category in self.heads:
                 if category.lst_maint_dt > self.last_sync:
-                    process(category)
+                    collections_helper(category)
+
+        def process_menus(self):
+            """Recursively updates menus in Shopify."""
+            main_menu = {
+                'id': f'gid://shopify/Menu/{creds.shopify_main_menu_id}',
+                'title': 'Main Menu',
+                'handle': 'main-menu',
+                'items': [],
+            }
+
+            def menu_helper(category):
+                # Sort category children by sort order
+                category.children.sort(key=lambda x: x.sort_order)
+
+                return {
+                    'title': category.name,
+                    'type': 'COLLECTION',
+                    'resourceId': f'gid://shopify/Collection/{category.collection_id}',
+                    'items': [menu_helper(child) for child in category.children],
+                }
+
+            # Recursively call this function for each child category
+            for category in self.heads:
+                main_menu['items'].append(menu_helper(category))
+
+            # Add the Landing Page to the Main Menu
+            main_menu['items'].append(
+                {'title': 'Landscape Design', 'type': 'PAGE', 'url': '/pages/landscape-design'}
+            )
+
+            Shopify.Menu.update(main_menu)
+            response = Shopify.Menu.get(creds.shopify_main_menu_id)
+            heads = response['menu']['items']
+            result = []
+
+            def response_helper(item):
+                for items in item:
+                    for i in items['items']:
+                        result.append({'title': i['title'], 'id': i['id']})
+                    return response_helper(item['items'])
+
+            for head in heads:
+                response_helper(head)
+
+            for item in result:
+                print(f"Title: {item['title']}, ID: {item['id']}\n\n")
+
+        def update_tree(self):
+            # Update Entire Category Tree in Middleware
+            def update_helper(category):
+                if category.lst_maint_dt > self.last_sync:
+                    Database.Collection.update(category)
+                for child in category.children:
+                    update_helper(child)
+
+            for category in self.heads:
+                update_helper(category)
 
         def delete_category(self, cp_categ_id):
             query = f"""
             SELECT COLLECTION_ID
-            FROM SN_CATEG
+            FROM {creds.shopify_category_table}
             WHERE CP_CATEG_ID = {cp_categ_id}
             """
             response = self.db.query_db(query)
             if response:
-                bc_category_id = response[0][0]
-                print(bc_category_id)
-                if bc_category_id is not None:
-                    # Delete Category from BigCommerce
-                    print(f'BigCommerce: DELETE {bc_category_id}')
-                    url = (
-                        f'https://api.bigcommerce.com/stores/{creds.big_store_hash}'
-                        f'/v3/catalog/trees/categories?category_id:in={bc_category_id}'
-                    )
-                    response = BCRequests.delete(url=url)
-                    if 207 >= response.status_code >= 200:
-                        print(response.status_code)  # figure what code they are actually returning
-                        print(f'Category {bc_category_id} deleted from BigCommerce.')
-                        # Delete Category from Middleware
-                        print(f'Middleware: DELETE {cp_categ_id}')
-                        query = f"""
-                                        DELETE FROM SN_CATEG
-                                        WHERE CP_CATEG_ID = {cp_categ_id}
-                                        """
-                        try:
-                            self.db.query_db(query, commit=True)
-                        except Exception as e:
-                            print(f'Error deleting category from middleware: {e}')
-                        else:
-                            print(f'Category {cp_categ_id} deleted from Middleware.')
-                    else:
-                        print(f'Error deleting category {bc_category_id} from BigCommerce.')
-                        print(response.json())
+                collection_id = response[0][0] if response and response[0][0] is not None else None
+                if collection_id:
+                    # Delete Category from Shopify
+                    Shopify.Collection.delete(collection_id)
+                    Database.Collection.delete(cp_categ_id)
                 else:
-                    Catalog.logger.warn(f'BC Category {cp_categ_id} not found in Middleware.')
-                    query = f'DELETE FROM {creds.bc_category_table} WHERE CP_CATEG_ID = {cp_categ_id}'
-                    del_res = self.db.query_db(query, commit=True)
-                    if del_res['code'] == 200:
-                        Catalog.logger.success(f'Category {cp_categ_id} deleted from Middleware.')
-                    else:
-                        Catalog.error_handler.add_error_v(
-                            error=f'Error deleting category {cp_categ_id} from Middleware.'
-                        )
+                    Database.Collection.delete(cp_categ_id=cp_categ_id)
 
         class Category:
             def __init__(
                 self,
                 cp_categ_id,
                 cp_parent_id,
-                category_name,
-                shopify_categ_id=None,
+                name,
+                collection_id=None,
                 shopify_parent_id=None,
                 sort_order=0,
                 description='',
+                is_visible=True,
                 image_url=None,
                 image_alt_text=None,
                 lst_maint_dt=datetime(1970, 1, 1),
@@ -1003,26 +984,26 @@ class Catalog:
                 # Category Properties
                 self.cp_categ_id = cp_categ_id
                 self.cp_parent_id = cp_parent_id
-                self.category_name = category_name
+                self.name = name
                 self.handle = self.get_full_custom_url_path()
-                self.shopify_categ_id = shopify_categ_id
+                self.collection_id = collection_id
                 self.shopify_parent_id = shopify_parent_id
                 self.sort_order = sort_order
                 self.description = description
                 self.image_url = self.get_category_image()
                 self.image_alt_text = image_alt_text
-                self.is_visible = self.get_visibility()
+                self.is_visible = is_visible
                 self.rule_set = None  # for future use
                 self.lst_maint_dt = lst_maint_dt
                 self.children = []
 
             def __str__(self):
                 return (
-                    f'Category Name: {self.category_name}\n'
+                    f'Category Name: {self.name}\n'
                     f'---------------------------------------\n'
                     f'Counterpoint Category ID: {self.cp_categ_id}\n'
                     f'Counterpoint Parent ID: {self.cp_parent_id}\n'
-                    f'BigCommerce Category ID: {self.shopify_categ_id}\n'
+                    f'BigCommerce Category ID: {self.collection_id}\n'
                     f'BigCommerce Parent ID: {self.shopify_parent_id}\n'
                     f'Sort Order: {self.sort_order}\n'
                     f'Last Maintenance Date: {self.lst_maint_dt}\n\n'
@@ -1030,18 +1011,6 @@ class Catalog:
 
             def add_child(self, child):
                 self.children.append(child)
-
-            def get_visibility(self):
-                query = f"""
-                SELECT IS_VISIBLE
-                FROM SN_CATEG
-                WHERE CP_CATEG_ID = {self.cp_categ_id}
-                """
-                response = query_engine.QueryEngine().query_db(query)
-                if response:
-                    return response[0][0]
-                else:
-                    return False
 
             def get_shopify_cat_id(self):
                 query = f"""
@@ -1054,12 +1023,12 @@ class Catalog:
                     shopify_category_id = response[0][0] if response[0][0] is not None else None
                     print(f'Category ID: {shopify_category_id}')
                     if shopify_category_id is not None:
-                        self.shopify_categ_id = response[0][0]
+                        self.collection_id = response[0][0]
                     else:
                         self.shopify_parent_id = self.get_shopify_parent_id()
                         category_payload = self.get_category_payload()
-                        self.shopify_categ_id = Shopify.Collection.create(category_payload)
-                        print(f'Category ID: {self.shopify_categ_id}')
+                        self.collection_id = Shopify.Collection.create(category_payload)
+                        print(f'Category ID: {self.collection_id}')
 
             def get_shopify_parent_id(self):
                 query = f"""
@@ -1075,9 +1044,9 @@ class Catalog:
             def get_full_custom_url_path(self):
                 parent_id = self.cp_parent_id
                 url_path = []
-                url_path.append(Catalog.parse_custom_url_string(self.category_name))
+                url_path.append(Catalog.parse_custom_url_string(self.name))
                 while parent_id != 0:
-                    query = f'SELECT CATEG_NAME, CP_PARENT_ID FROM SN_CATEG WHERE CP_CATEG_ID = {parent_id}'
+                    query = f'SELECT CATEG_NAME, CP_PARENT_ID FROM {creds.shopify_category_table} WHERE CP_CATEG_ID = {parent_id}'
                     response = query_engine.QueryEngine().query_db(query)
                     if response:
                         url_path.append(Catalog.parse_custom_url_string(response[0][0] or ''))
@@ -1095,10 +1064,16 @@ class Catalog:
 
             def get_category_payload(self):
                 payload = {
-                    'input': {'title': self.category_name, 'handle': self.handle, 'sortOrder': 'BEST_SELLING'}
+                    'input': {
+                        'publications': {'publicationId': creds.shopify_online_store_channel_id},
+                        'title': self.name,
+                        'handle': self.handle,
+                        'sortOrder': 'BEST_SELLING',
+                    }
                 }
-                if self.shopify_categ_id:
-                    payload['input']['id'] = f'gid://shopify/Collection/{self.shopify_categ_id}'
+
+                if self.collection_id:
+                    payload['input']['id'] = f'gid://shopify/Collection/{self.collection_id}'
                 if self.description:
                     payload['input']['descriptionHtml'] = self.description
                 if self.image_url:
@@ -1110,67 +1085,6 @@ class Catalog:
                         'rules': [{{'column': 'TAG', 'relation': 'EQUALS', 'condition': 'summer'}}],
                     }
                 return payload
-
-            def bc_update_category(self):
-                pass
-
-            def insert_category(self):
-                query = f"""
-                INSERT INTO {creds.shopify_category_table}(COLLECTION_ID, CP_CATEG_ID, CP_PARENT_ID, CATEG_NAME, SORT_ORDER, DESCRIPTION, IS_VISIBLE)
-                VALUES ({self.shopify_categ_id}, {self.cp_categ_id}, {self.cp_parent_id}, 
-                '{self.category_name}', {self.sort_order}, '{self.description}', {1 if self.is_visible else 0})
-                """
-                try:
-                    query_engine.QueryEngine().query_db(query, commit=True)
-                except Exception as e:
-                    print(f'Middleware: INSERT {self.category_name}: FAILED')
-                    print(e)
-                else:
-                    print(f'Middleware: INSERT {self.category_name}: SUCCESS')
-
-            def update_category_in_middleware(self):
-                query = f"""
-                UPDATE {creds.shopify_category_table}
-                SET COLLECTION_ID = '{self.shopify_categ_id}', CP_PARENT_ID = {self.cp_parent_id}, 
-                CATEG_NAME = '{self.category_name}', 
-                SORT_ORDER = {self.sort_order}, DESCRIPTION = '{self.description}',
-                IS_VISIBLE = {1 if self.is_visible else 0} 
-                WHERE CP_CATEG_ID = {self.cp_categ_id}
-                """
-                response = query_engine.QueryEngine().query_db(query, commit=True)
-                if response['code'] == 200:
-                    Catalog.logger.success(f'Middleware: UPDATE {self.category_name}: SUCCESS')
-                else:
-                    Catalog.error_handler.add_error_v(
-                        f'Middleware: UPDATE {self.category_name}: FAILED\nQuery: {query}\nResponse: {response}'
-                    )
-
-            def delete_category(self):
-                # Delete Category from BigCommerce
-                print(f'BigCommerce: DELETE {self.category_name}')
-                url = (
-                    f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/'
-                    f'catalog/trees/categories/{self.shopify_categ_id}'
-                )
-                response = BCRequests.delete(url=url)
-                if response.status_code == 204:
-                    print(f'Category {self.category_name} deleted from BigCommerce.')
-                else:
-                    print(f'Error deleting category {self.category_name} from BigCommerce.')
-                    print(response.json())
-
-                # Delete Category from Middleware
-                print(f'Middleware: DELETE {self.category_name}')
-                query = f"""
-                DELETE FROM SN_CATEG
-                WHERE CP_CATEG_ID = {self.cp_categ_id}
-                """
-                try:
-                    query_engine.QueryEngine().query_db(query, commit=True)
-                except Exception as e:
-                    print(f'Error deleting category from middleware: {e}')
-                else:
-                    print(f'Category {self.category_name} deleted from Middleware.')
 
     class Brands:
         def __init__(self, last_sync=datetime(1970, 1, 1)):
@@ -1203,7 +1117,7 @@ class Catalog:
 
             def get_brand_photos_middleware():
                 query = f"""
-                SELECT IMAGE_NAME, IMAGE_SIZE FROM {creds.bc_brands_table} WHERE IMAGE_NAME IS NOT NULL
+                SELECT IMAGE_NAME, IMAGE_SIZE FROM {creds.shopify_brands_table} WHERE IMAGE_NAME IS NOT NULL
                 """
                 response = query_engine.QueryEngine().query_db(query)
                 return [{'image_name': x[0], 'image_size': x[1]} for x in response] if response else []
@@ -1286,7 +1200,7 @@ class Catalog:
             def get_mw_brands():
                 query = f"""
                 SELECT CP_BRAND_ID, NAME, BC_BRAND_ID
-                FROM {creds.bc_brands_table}
+                FROM {creds.shopify_brands_table}
                 """
                 response = self.db.query_db(query)
                 if response:
@@ -1322,7 +1236,7 @@ class Catalog:
 
             def middleware_delete_brand(target):
                 query = f"""
-                DELETE FROM {creds.bc_brands_table}
+                DELETE FROM {creds.shopify_brands_table}
                 WHERE CP_BRAND_ID = '{target}'
                 """
                 mw_brand_del_res = self.db.query_db(query, commit=True)
@@ -1335,7 +1249,7 @@ class Catalog:
             def get_bc_brand_id(cp_brand_id):
                 query = f"""
                 SELECT BC_BRAND_ID
-                FROM {creds.bc_brands_table}
+                FROM {creds.shopify_brands_table}
                 WHERE CP_BRAND_ID = '{cp_brand_id}'
                 """
                 response = self.db.query_db(query)
@@ -1376,9 +1290,9 @@ class Catalog:
 
             def get_brand_details(self, last_sync):
                 query = f"""SELECT *
-                FROM {creds.bc_brands_table}
+                FROM {creds.shopify_brands_table}
                 INNER JOIN IM_ITEM_PROF_COD 
-                ON {creds.bc_brands_table}.CP_BRAND_ID = IM_ITEM_PROF_COD.PROF_COD
+                ON {creds.shopify_brands_table}.CP_BRAND_ID = IM_ITEM_PROF_COD.PROF_COD
                 WHERE CP_BRAND_ID = '{self.cp_brand_id}'"""
 
                 response = self.db.query_db(query)
@@ -1429,7 +1343,7 @@ class Catalog:
 
             def process(self):
                 query = f"""
-                SELECT * FROM {creds.bc_brands_table}
+                SELECT * FROM {creds.shopify_brands_table}
                 WHERE CP_BRAND_ID = '{self.cp_brand_id}'"""
                 response = self.db.query_db(query)
                 if response:
@@ -1453,7 +1367,7 @@ class Catalog:
                 def insert_to_middleware():
                     print('insert')
                     query = f"""
-                    INSERT INTO {creds.bc_brands_table} (CP_BRAND_ID, BC_BRAND_ID, NAME, PAGE_TITLE, META_KEYWORDS, 
+                    INSERT INTO {creds.shopify_brands_table} (CP_BRAND_ID, BC_BRAND_ID, NAME, PAGE_TITLE, META_KEYWORDS, 
                     META_DESCR, SEARCH_KEYWORDS, IMAGE_NAME, IMAGE_URL, IMAGE_FILEPATH, IMAGE_SIZE, IS_CUSTOMIZED, 
                     CUSTOM_URL)
                     VALUES ('{self.cp_brand_id}', 
@@ -1501,7 +1415,7 @@ class Catalog:
 
                 def update_middleware():
                     query = f"""
-                    UPDATE {creds.bc_brands_table}
+                    UPDATE {creds.shopify_brands_table}
                     SET NAME = {f"'{self.name.replace("'", "''")}'"}, 
                     PAGE_TITLE = {f"'{self.page_title.replace("'", "''")}'"}, META_KEYWORDS = 
                     {f"'{self.meta_keywords.replace("'", "''")}'" if self.meta_keywords else "NULL"}, 
@@ -2539,7 +2453,9 @@ class Catalog:
                 self.insert_product()
                 self.insert_images()
 
-            # def update():
+            def update():
+                pass
+
             #     """Will update existing product. Will clear out custom field data and reinsert."""
             #     product_payload, variant_payload = self.get_product_payload()
             #     response = Shopify.Product.update(product_payload=product_payload, variant_payload=variant_payload)
@@ -3915,5 +3831,5 @@ class Catalog:
 if __name__ == '__main__':  #
     from datetime import datetime
 
-    cat = Catalog(last_sync=datetime(year=2020, month=7, day=16, hour=15, minute=0))
-    cat.sync()
+    tree = Catalog.CategoryTree(last_sync=datetime(2021, 7, 1))
+    tree.sync()

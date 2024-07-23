@@ -64,6 +64,140 @@ class Shopify:
             response = requests.post(endpoint, headers=Shopify.headers, json=payload)
             return response.json()
 
+    class Customer:
+        queries = './integration/queries/customers.graphql'
+
+        def get_customer_payload(
+            cp_cust_no, f_nam, l_nam, sh_cust_no: int, addr_lst: list = None, phone=None, email=None
+        ):
+            variables = {
+                'input': {
+                    'firstName': f_nam,
+                    'lastName': l_nam,
+                    'addresses': [],
+                    'metafields': [
+                        {
+                            'namespace': 'counterpoint',
+                            'key': 'customer_number',
+                            'type': 'single_line_text_field',
+                            'value': cp_cust_no,
+                        }
+                    ],
+                }
+            }
+            # Add optional fields if they are provided
+            if sh_cust_no:
+                variables['input']['id'] = f'gid://shopify/Customer/{sh_cust_no}'
+
+            if email:
+                variables['input']['email'] = email
+                variables['input']['emailMarketingConsent'] = {'marketingState': 'SUBSCRIBED'}
+
+            if phone:
+                variables['input']['phone'] = phone
+
+            if addr_lst:
+                for i in addr_lst:
+                    variables['input']['addresses'].append(
+                        {
+                            'address1': i['address'],
+                            'city': i['city'],
+                            'phone': i['phone'],
+                            'provinceCode': i['state'],
+                            'zip': i['zip'],
+                            'lastName': i['last_name'],
+                            'firstName': i['first_name'],
+                            'country': i['country'],
+                        }
+                    )
+
+            return variables
+
+        def get(customer_id: int):
+            variables = {'id': f'gid://shopify/Customer/{customer_id}'}
+            response = Shopify.Query(
+                document=Shopify.Customer.queries, variables=variables, operation_name='customer'
+            )
+            return response.data
+
+        def create(customer_number, fst_name, lst_name, address_list=None, phone=None, email=None):
+            variables = Shopify.Customer.get_customer_payload(
+                cp_cust_no=customer_number,
+                f_nam=fst_name,
+                l_nam=lst_name,
+                sh_cust_no=None,
+                addr_lst=address_list,
+                phone=phone,
+                email=email,
+            )
+
+            response = Shopify.Query(
+                document=Shopify.Customer.queries, variables=variables, operation_name='customerCreate'
+            )
+            # return new customer ID
+            return response.data['customerCreate']['customer']['id'].split('/')[-1]
+
+        def update(customer_id: int, fst_name, lst_name, addresses=None, phone=None, email=None):
+            variables = Shopify.Customer.get_customer_payload(
+                cp_cust_no=None,
+                f_nam=fst_name,
+                l_nam=lst_name,
+                sh_cust_no=customer_id,
+                addr_lst=addresses,
+                phone=phone,
+                email=email,
+            )
+            response = Shopify.Query(
+                document=Shopify.Customer.queries, variables=variables, operation_name='customerUpdate'
+            )
+            return response.data
+
+        def delete(customer_id: int):
+            response = Shopify.Query(
+                document=Shopify.Customer.queries,
+                variables={'id': f'gid://shopify/Customer/{customer_id}'},
+                operation_name='customerDelete',
+            )
+            return response.data
+
+        class StoreCredit:
+            queries = './integration/queries/storeCredit.graphql'
+
+            def get(customer_id: int):
+                variables = {'id': f'gid://shopify/Customer/{customer_id}'}
+                response = Shopify.Query(
+                    document=Shopify.Customer.StoreCredit.queries,
+                    variables=variables,
+                    operation_name='storeCreditAccount',
+                )
+                return response.data
+
+            def add_store_credit(customer_id: int, amount: float):
+                variables = {
+                    'id': f'gid://shopify/Customer/{customer_id}',
+                    'creditInput': {'creditAmount': {'amount': amount, 'currencyCode': 'USD'}},
+                }
+
+                response = Shopify.Query(
+                    document=Shopify.Customer.StoreCredit.queries,
+                    variables=variables,
+                    operation_name='storeCreditAccountCredit',
+                )
+                return response.data
+
+            def remove_store_credit(customer_id: int, amount: float):
+                variables = {
+                    'id': f'gid://shopify/Customer/{customer_id}',
+                    'debitInput': {'debitAmount': {'amount': amount, 'currencyCode': 'USD'}},
+                }
+
+                response = Shopify.Query(
+                    document=Shopify.Customer.StoreCredit.queries,
+                    variables=variables,
+                    operation_name='storeCreditAccountDebit',
+                )
+                return response.data
+
     class Product:
         queries = './integration/queries/products.graphql'
 
@@ -403,6 +537,29 @@ class Shopify:
             )
             return response.data
 
+    class Menu:
+        queries = './integration/queries/menu.graphql'
+
+        def get(menu_id: int):
+            response = Shopify.Query(
+                document=Shopify.Menu.queries,
+                variables={'id': f'gid://shopify/Menu/{menu_id}'},
+                operation_name='menu',
+            )
+            return response.data
+
+        def get_all():
+            response = Shopify.Query(document=Shopify.Menu.queries, operation_name='menus')
+            return response.data
+
+        def create(payload: dict):
+            response = Shopify.Query(document=Shopify.Menu.queries, variables=payload, operation_name='CreateMenu')
+            return response.data
+
+        def update(payload: dict):
+            response = Shopify.Query(document=Shopify.Menu.queries, variables=payload, operation_name='UpdateMenu')
+            return response.data
+
     class Files:
         queries = './integration/queries/files.graphql'
 
@@ -541,5 +698,36 @@ class Shopify:
 
 
 if __name__ == '__main__':
-    # Shopify.Collection.get(482197405990)
-    pass
+    payload = {
+        'id': f'gid://shopify/Menu/{creds.shopify_main_menu_id}',
+        'title': 'Main Menu Test 2',
+        'handle': 'main-menu-2',
+        'items': [],
+    }
+
+    # Shopify.Menu.update(payload)
+
+    # Shopify.Menu.create(payload)
+
+    # Shopify.Customer.delete(8859520500006)
+
+    # Shopify.Customer.create(
+    #     customer_number='OL-12345',
+    #     fst_name='Daniel',
+    #     lst_name='Hernandez',
+    #     address_list=[
+    #         {
+    #             'address': '345 Tron Ave NW',
+    #             'city': 'Valdese',
+    #             'state': 'NC',
+    #             'zip': '28690',
+    #             'phone': '8282341265',
+    #             'first_name': 'Alex',
+    #             'last_name': 'Powell',
+    #             'country': 'US',
+    #         }
+    #     ],
+    #     phone='18282341265',
+    #     email='alexpow@gmail.com',
+
+    Shopify.Menu.get(creds.shopify_main_menu_id)

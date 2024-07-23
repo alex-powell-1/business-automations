@@ -32,10 +32,9 @@ class Catalog:
     all_binding_ids = get_all_binding_ids()
     mw_brands = set()
 
-    def __init__(self, last_sync=datetime(1970, 1, 1), mode='BigCommerce'):
+    def __init__(self, last_sync=datetime(1970, 1, 1)):
         self.last_sync = last_sync
         self.db = Database.db
-        self.mode = mode
         self.category_tree = self.CategoryTree(last_sync=last_sync)
         self.brands = self.Brands(last_sync=last_sync)
         # Used to process preliminary deletions of products and images
@@ -223,7 +222,7 @@ class Catalog:
                 product_id = Catalog.get_product_id_from_sku(parent_sku)
 
                 if product_id is not None:
-                    variant = Catalog.Product.Variant(sku=variant_sku, last_run_date=self.last_sync, mode=self.mode)
+                    variant = Catalog.Product.Variant(sku=variant_sku, last_run_date=self.last_sync)
                     print(f'\n\nPosting new variant for {variant_sku} to product ID {product_id}.\n\n')
                     variant.bc_post_variant(product_id=product_id)
         else:
@@ -399,7 +398,7 @@ class Catalog:
             while len(self.sync_queue) > 0:
                 start_time = time.time()
                 target = self.sync_queue.pop()
-                prod = self.Product(target, last_sync=self.last_sync, mode=self.mode)
+                prod = self.Product(target, last_sync=self.last_sync)
                 prod.get_product_details(last_sync=self.last_sync)
                 Catalog.logger.info(
                     f'Processing Product: {prod.sku}, Binding: {prod.binding_id}, Title: {prod.web_title}'
@@ -438,7 +437,7 @@ class Catalog:
         else:
             Catalog.logger.warn(f'Binding ID not found for {sku}.')
 
-        product = Catalog.Product(product_data=delete_payload, last_sync=self.last_sync, mode=self.mode)
+        product = Catalog.Product(product_data=delete_payload, last_sync=self.last_sync)
 
         if binding_id:
             Catalog.logger.info(f'Deleting Product: {sku} with Binding ID: {binding_id}')
@@ -632,9 +631,7 @@ class Catalog:
         page = 1
         more_pages = True
         while more_pages:
-            url = (
-                f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/categories?limit=250&page={page}'
-            )
+            url = f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/categories?limit=250&page={page}'
             response = BCRequests.get(url)
             for category in response.json()['data']:
                 category_id_list.append(category['id'])
@@ -681,7 +678,9 @@ class Catalog:
                             error=f'Error deleting products {batch_string} from Middleware.'
                         )
                 else:
-                    Catalog.error_handler.add_error_v(error=f'Error deleting product {batch_string} from BigCommerce.')
+                    Catalog.error_handler.add_error_v(
+                        error=f'Error deleting product {batch_string} from BigCommerce.'
+                    )
                     Catalog.logger.log(f'Url: {url}')
                     Catalog.logger.log(bc_response)
 
@@ -727,9 +726,7 @@ class Catalog:
                     batch.append(str(brand_list.pop()))
                 batch_string = ','.join(batch)
                 # Delete Batch
-                url = (
-                    f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/brands?id:in={batch_string}'
-                )
+                url = f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/brands?id:in={batch_string}'
                 bc_response = BCRequests.delete(url=url)
                 if bc_response.status_code == 204:
                     Catalog.logger.success(f'Brand:\n{batch_string}\ndeleted from BigCommerce.')
@@ -742,7 +739,9 @@ class Catalog:
                             error=f'Error deleting brand:\n{batch_string}\nfrom Middleware.'
                         )
                 else:
-                    Catalog.error_handler.add_error_v(error=f'Error deleting brand:\n{batch_string}\nfrom BigCommerce.')
+                    Catalog.error_handler.add_error_v(
+                        error=f'Error deleting brand:\n{batch_string}\nfrom BigCommerce.'
+                    )
 
         query = f'SELECT DISTINCT BC_BRAND_ID FROM {creds.bc_brands_table}'
         response = Database.db.query_db(query)
@@ -758,7 +757,9 @@ class Catalog:
         page = 1
         more_pages = True
         while more_pages:
-            url = f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/brands?limit=250&page={page}'
+            url = (
+                f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/brands?limit=250&page={page}'
+            )
             response = BCRequests.get(url)
             for brand in response.json()['data']:
                 brand_id_list.append(brand['id'])
@@ -814,8 +815,9 @@ class Catalog:
             return result
 
         def get_cp_updates(self):
+            print('Getting CP Updates')
             query = """
-            SELECT cp.CATEG_ID, ISNULL(cp.PARENT_ID, 0), cp.DESCR, cp.DISP_SEQ_NO, cp.HTML_DESCR, 
+            SELECT cp.CATEG_ID, ISNULL(cp.PARENT_ID, 0), cp.DESCR, cp.DISP_SEQ_NO, 
             cp.LST_MAINT_DT, sn.CP_CATEG_ID, sn.is_visible
             FROM EC_CATEG cp
             FULL OUTER JOIN SN_CATEG sn on cp.CATEG_ID=sn.CP_CATEG_ID
@@ -823,29 +825,33 @@ class Catalog:
             response = self.db.query_db(query)
             if response:
                 for x in response:
+                    print(f'Processing: {x[2]}')
                     cp_categ_id = x[0]
+                    print(f'CP Categ ID: {cp_categ_id}')
                     if cp_categ_id == '0':
-                        continue
+                        continue  # Skip the root category
                     if cp_categ_id is None:
                         self.delete_category(x[6])
                         continue
-                    lst_maint_dt = x[5]
-                    sn_cp_categ_id = x[6]
-                    is_visible = x[7]
+                    lst_maint_dt = x[4]
+                    print(f'Last Maintenance Date: {lst_maint_dt}')
+                    sn_cp_categ_id = x[5]
+                    is_visible = x[6]
 
                     if sn_cp_categ_id is None:
+                        print(f'Inserting: {cp_categ_id} for {x[2]}')
                         # Insert new records
                         cp_parent_id = x[1]
                         category_name = x[2]
                         sort_order = x[3]
-                        description = x[4]
                         query = f"""
                         INSERT INTO SN_CATEG(CP_CATEG_ID, CP_PARENT_ID, CATEG_NAME, 
-                        SORT_ORDER, DESCRIPTION, LST_MAINT_DT)
+                        SORT_ORDER, IS_VISIBLE, LST_MAINT_DT)
                         VALUES({cp_categ_id}, {cp_parent_id}, '{category_name}',
-                        {sort_order}, '{description}', '{lst_maint_dt:%Y-%m-%d %H:%M:%S}')
+                        {sort_order}, 1, '{lst_maint_dt}')
                         """
-                        self.db.query_db(query, commit=True)
+                        response = self.db.query_db(query, commit=True)
+                        print(response)
 
                     else:
                         if lst_maint_dt > self.last_sync:
@@ -853,15 +859,14 @@ class Catalog:
                             cp_parent_id = x[1]
                             category_name = x[2]
                             sort_order = x[3]
-                            description = x[4]
                             lst_maint_dt = x[5]
 
                             query = f"""
                             UPDATE {creds.bc_category_table}
                             SET CP_PARENT_ID = {cp_parent_id}, CATEG_NAME = '{category_name}',
-                            SORT_ORDER = {sort_order}, DESCRIPTION = '{description}', 
+                            SORT_ORDER = {sort_order},  
                             IS_VISIBLE = {1 if is_visible else 0},
-                            LST_MAINT_DT = '{lst_maint_dt:%Y-%m-%d %H:%M:%S}'
+                            LST_MAINT_DT = '{lst_maint_dt}'
                             WHERE CP_CATEG_ID = {sn_cp_categ_id}
                             """
                             update_res = self.db.query_db(query, commit=True)
@@ -876,7 +881,7 @@ class Catalog:
         def create_tree_in_memory(self):
             def get_categories():
                 query = """
-                SELECT CATEG_ID, ISNULL(PARENT_ID, 0), DESCR, DISP_SEQ_NO, HTML_DESCR, LST_MAINT_DT
+                SELECT CATEG_ID, ISNULL(PARENT_ID, 0), DESCR, DISP_SEQ_NO, LST_MAINT_DT
                 FROM EC_CATEG
                 WHERE CATEG_ID != '0'
                 """
@@ -888,8 +893,7 @@ class Catalog:
                             cp_parent_id=ec_cat[1],
                             category_name=ec_cat[2],
                             sort_order=ec_cat[3],
-                            description=ec_cat[4],
-                            lst_maint_dt=ec_cat[5],
+                            lst_maint_dt=ec_cat[4],
                         )
                         self.categories.add(category)
 
@@ -901,17 +905,25 @@ class Catalog:
                         x.add_child(y)
 
             self.heads = [x for x in self.categories if x.cp_parent_id == '0']
+            for x in self.heads:
+                print(x)
 
         def sync(self):
             def build_tree(category):
                 # Get BC Category ID and Parent ID
                 if category.lst_maint_dt > self.last_sync:
-                    # if category.lst_maint_dt > datetime(2021, 1, 1):
                     print(f'Updating: {category.category_name}')
+
                     if category.bc_categ_id is None:
+                        print(f'Getting BC ID for {category.category_name}')
                         category.get_bc_id()
+
                     if category.bc_parent_id is None:
-                        category.get_bc_parent_id()
+                        print(f'Getting BC Parent ID for {category.category_name}')
+                        category.bc_parent_id = category.get_bc_parent_id()
+
+                    print(f'Parent ID: {category.bc_parent_id}')
+
                     category.update_category_in_middleware()
                     category.bc_update_category()
 
@@ -920,6 +932,7 @@ class Catalog:
                     build_tree(child)
 
             for x in self.heads:
+                print(f'Building Tree for {x.category_name}, CP ID: {x.cp_categ_id}')
                 build_tree(x)
 
         def delete_category(self, cp_categ_id):
@@ -988,7 +1001,6 @@ class Catalog:
                 self.bc_categ_id = bc_categ_id
                 self.bc_parent_id = bc_parent_id
                 self.sort_order = sort_order
-                self.description = description
                 self.is_visible = self.get_visibility()
                 self.lst_maint_dt = lst_maint_dt
                 self.children = []
@@ -1021,19 +1033,26 @@ class Catalog:
                     return False
 
             def get_bc_id(self):
+                print('In get_bc_id')
                 query = f"""
                 SELECT BC_CATEG_ID
                 FROM {creds.bc_category_table}
                 WHERE CP_CATEG_ID = {self.cp_categ_id}
                 """
-                response = query_engine.QueryEngine().query_db(query)
+                response = Database.db.query_db(query)
                 if response is not None:
                     bc_category_id = response[0][0]
                     if bc_category_id is not None:
+                        print(
+                            f'Category {self.category_name} already exists in BigCommerce. BC ID: {bc_category_id}'
+                        )
                         self.bc_categ_id = response[0][0]
                     else:
-                        self.get_bc_parent_id()
+                        print(f'Category {self.category_name} not found in BigCommerce. OUT 1')
                         self.bc_categ_id = self.bc_create_category()
+                        print(f'Category {self.category_name} created in BigCommerce. BC ID: {self.bc_categ_id}')
+                else:
+                    print(f'Category {self.category_name} not found in Middleware. OUT 2')
 
             def get_bc_parent_id(self):
                 query = f"""
@@ -1044,10 +1063,7 @@ class Catalog:
                                     WHERE CP_CATEG_ID = {self.cp_categ_id})
                 """
                 response = query_engine.QueryEngine().query_db(query)
-                if response:
-                    self.bc_parent_id = response[0][0]
-                else:
-                    self.bc_parent_id = 0
+                return response[0][0] if response else 0
 
             def get_full_custom_url_path(self):
                 parent_id = self.cp_parent_id
@@ -1066,17 +1082,19 @@ class Catalog:
             def get_category_payload(self):
                 payload = [
                     {
-                        'category_id': self.bc_categ_id,
                         'name': self.category_name,
                         'parent_id': self.bc_parent_id,
                         'tree_id': 1,
                         'page_title': self.category_name,
-                        'description': self.description,
+                        # 'description': self.description,
                         'is_visible': self.is_visible,
                         'sort_order': self.sort_order,
                         'url': {'path': self.get_full_custom_url_path(), 'is_customized': False},
                     }
                 ]
+                if self.bc_categ_id is not None:
+                    payload[0]['category_id'] = self.bc_categ_id
+
                 return payload
 
             def bc_create_category(self):
@@ -1098,8 +1116,10 @@ class Catalog:
                 payload = self.get_category_payload()
 
                 response = BCRequests.put(url=url, json=payload)
-                if response.status_code in [200, 207]:
-                    print(f'BigCommerce: UPDATE: {self.category_name} Category: SUCCESS Code: {response.status_code}\n')
+                if response.status_code in [200, 201, 207]:
+                    print(
+                        f'BigCommerce: UPDATE: {self.category_name} Category: SUCCESS Code: {response.status_code}\n'
+                    )
 
                 else:
                     print(
@@ -1111,9 +1131,9 @@ class Catalog:
 
             def write_category_to_middleware(self):
                 query = f"""
-                INSERT INTO SN_CATEG (BC_CATEG_ID, CP_CATEG_ID, CP_PARENT_ID, CATEG_NAME, SORT_ORDER, DESCRIPTION, IS_VISIBLE)
+                INSERT INTO SN_CATEG (BC_CATEG_ID, CP_CATEG_ID, CP_PARENT_ID, CATEG_NAME, SORT_ORDER, IS_VISIBLE)
                 VALUES ({self.bc_categ_id}, {self.cp_categ_id}, {self.cp_parent_id}, 
-                '{self.category_name}', {self.sort_order}, '{self.description}', {1 if self.is_visible else 0})
+                '{self.category_name}', {self.sort_order}, {1 if self.is_visible else 0})
                 """
                 try:
                     query_engine.QueryEngine().query_db(query, commit=True)
@@ -1128,10 +1148,11 @@ class Catalog:
                 UPDATE SN_CATEG
                 SET BC_CATEG_ID = {self.bc_categ_id}, CP_PARENT_ID = {self.cp_parent_id}, 
                 CATEG_NAME = '{self.category_name}', 
-                SORT_ORDER = {self.sort_order}, DESCRIPTION = '{self.description}',
+                SORT_ORDER = {self.sort_order},
                 IS_VISIBLE = {1 if self.is_visible else 0} 
                 WHERE CP_CATEG_ID = {self.cp_categ_id}
                 """
+                print(query)
                 try:
                     query_engine.QueryEngine().query_db(query, commit=True)
                 except Exception as e:
@@ -1242,7 +1263,9 @@ class Catalog:
                     # A local image is found that is in middleware.
                     if (
                         local_image['image_size']
-                        != [x['image_size'] for x in mw_brand_images if x['image_name'] == local_image['image_name']][0]
+                        != [
+                            x['image_size'] for x in mw_brand_images if x['image_name'] == local_image['image_name']
+                        ][0]
                     ):  # Image size mismatch
                         # Update Timestamp of brand in IM table
                         profile_code = local_image['image_name'].split('.')[0]
@@ -1577,10 +1600,8 @@ class Catalog:
                         )
 
     class Product:
-        def __init__(self, product_data, last_sync, mode='BigCommerce'):
+        def __init__(self, product_data, last_sync):
             self.db = Database.db
-            self.mode = mode
-
             self.sku = product_data['sku']
             self.binding_id = product_data['binding_id'] if 'binding_id' in product_data else None
             # Will be set to True if product gets a success response from BigCommerce API on POST or PUT
@@ -1709,7 +1730,7 @@ class Catalog:
                 if response is not None:
                     # Create Product objects for each child and add object to bound parent list
                     for item in response:
-                        variant = self.Variant(item[0], last_run_date=last_sync, mode=self.mode)
+                        variant = self.Variant(item[0], last_run_date=last_sync)
                         self.variants.append(variant)
 
                 # Sort self.variants by variant.is_parent so parent is processed first.
@@ -1776,7 +1797,7 @@ class Catalog:
                     if total_binding_images > 0:
                         # print(f"Found {total_binding_images} binding images for Binding ID: {self.binding_id}")
                         for image in binding_images:
-                            binding_img = self.Image(image, mode=self.mode)
+                            binding_img = self.Image(image)
 
                             if binding_img.validate():
                                 self.images.append(binding_img)
@@ -1808,7 +1829,7 @@ class Catalog:
                 self.lst_maint_dt = max(lst_maint_dt_list)
 
             def get_single_product_details():
-                self.variants.append(self.Variant(self.sku, last_run_date=last_sync, mode=self.mode))
+                self.variants.append(self.Variant(self.sku, last_run_date=last_sync))
                 single = self.variants[0]
                 self.product_id = single.product_id
                 self.web_title = single.web_title
@@ -1874,7 +1895,7 @@ class Catalog:
             check_html_description = False
             min_description_length = 20
             check_missing_images = True
-            check_for_invalid_brand = True
+            check_for_invalid_brand = False
             check_for_item_cost = False
 
             def set_parent(status: bool = True) -> None:
@@ -1913,9 +1934,7 @@ class Catalog:
                 # Test for missing web title
                 if self.web_title is None or self.web_title == '':
                     if self.long_descr is None or self.long_descr == '':
-                        message = (
-                            f'Product {self.binding_id} is missing a web title and long description. Validation failed.'
-                        )
+                        message = f'Product {self.binding_id} is missing a web title and long description. Validation failed.'
                         Catalog.error_handler.add_error_v(error=message, origin='Input Validation')
                         return False
                     else:
@@ -2007,9 +2026,7 @@ class Catalog:
                 if self.brand:
                     bc_brands = [x[0] for x in list(Catalog.mw_brands)]
                     if self.brand not in bc_brands:
-                        message = (
-                            f'Product {self.binding_id} has a brand, but it is not valid. Will delete invalid brand.'
-                        )
+                        message = f'Product {self.binding_id} has a brand, but it is not valid. Will delete invalid brand.'
                         Catalog.logger.warn(message)
                         if self.validation_retries > 0:
                             self.reset_brand()
@@ -2140,30 +2157,19 @@ class Catalog:
                     sort_order += 1
                 result = []
 
-                if self.mode == 'BigCommerce':
-                    for image in self.images:
-                        image_payload = {
-                            'product_id': self.product_id,
-                            'is_thumbnail': image.is_thumbnail,
-                            'sort_order': image.sort_order,
-                            'description': f"""{image.description}""",
-                            'image_url': image.image_url,
-                        }
-                        if image.image_id:
-                            image_payload['id'] = image.image_id
+                for image in self.images:
+                    image_payload = {
+                        'product_id': self.product_id,
+                        'is_thumbnail': image.is_thumbnail,
+                        'sort_order': image.sort_order,
+                        'description': f"""{image.description}""",
+                        'image_url': image.image_url,
+                    }
+                    if image.image_id:
+                        image_payload['id'] = image.image_id
 
-                        result.append(image_payload)
-                    return result
-
-                elif self.mode == 'Shopify':
-                    for image in self.images:
-                        image_payload = {
-                            'originalSource': image.image_url,
-                            'alt': image.description,
-                            'mediaContentType': 'IMAGE',
-                        }
-                        result.append(image_payload)
-                    return result
+                    result.append(image_payload)
+                return result
 
             def construct_video_payload():
                 return []
@@ -2185,169 +2191,117 @@ class Catalog:
             def construct_variant_payload():
                 result = []
 
-                if self.mode == 'BigCommerce':
-                    if self.is_bound:
-                        for child in self.variants:
-                            variant_payload = {
-                                'cost_price': child.cost,
-                                'price': child.price_1,
-                                'image_url': child.variant_image_url,
-                                'sale_price': child.price_2,
-                                'retail_price': child.price_1,
-                                'weight': child.weight,
-                                'width': child.width,
-                                'height': child.height,
-                                'depth': child.depth,
-                                'is_free_shipping': child.is_free_shipping,
-                                'purchasing_disabled': True if child.buffered_quantity < 1 else False,
-                                'purchasing_disabled_message': child.purchasing_disabled_message,
-                                'inventory_level': child.buffered_quantity,
-                                'sku': child.sku,
-                                'option_values': [{'option_display_name': 'Option', 'label': child.variant_name}],
-                                'calculated_price': 0.1,
-                                'calculated_weight': 0.1,
-                            }
-
-                            if self.product_id:
-                                variant_payload['product_id'] = self.product_id
-
-                            if child.variant_id:
-                                variant_payload['id'] = child.variant_id
-
-                            result.append(variant_payload)
-
-                    return result
-
-                elif self.mode == 'Shopify':
-                    variant_payload = {'variants': []}
+                if self.is_bound:
                     for child in self.variants:
-                        payload = {
-                            'inventoryItem': {
-                                'cost': child.cost,
-                                'tracked': True,
-                                'requiresShipping': False,
-                                'sku': child.sku,
-                            },
-                            'inventoryPolicy': 'DENY',  # Prevents overselling
-                            'inventoryQuantities': {
-                                'availableQuantity': child.buffered_quantity,
-                                'locationId': creds.shopify_location_id,
-                            },
-                            'price': min(child.price_1, child.price_2),  # Use the lower price.
-                            'compareAtPrice': child.price_1,
-                            'optionValues': {'optionName': 'Option'},
+                        variant_payload = {
+                            'cost_price': child.cost,
+                            'price': child.price_1,
+                            'image_url': child.variant_image_url,
+                            'sale_price': child.price_2,
+                            'retail_price': child.price_1,
+                            'weight': child.weight,
+                            'width': child.width,
+                            'height': child.height,
+                            'depth': child.depth,
+                            'is_free_shipping': child.is_free_shipping,
+                            'purchasing_disabled': True if child.buffered_quantity < 1 else False,
+                            'purchasing_disabled_message': child.purchasing_disabled_message,
+                            'inventory_level': child.buffered_quantity,
+                            'sku': child.sku,
+                            'option_values': [{'option_display_name': 'Option', 'label': child.variant_name}],
+                            'calculated_price': 0.1,
+                            'calculated_weight': 0.1,
                         }
-                        if self.is_bound:
-                            payload['optionValues']['name'] = child.variant_name
-                        else:
-                            if child.custom_size:
-                                payload['optionValues']['name'] = child.custom_size
-                            else:
-                                payload['optionValues']['name'] = 'Default Title'
 
-                        variant_payload['variants'].append(payload)
+                        if self.product_id:
+                            variant_payload['product_id'] = self.product_id
 
-                    return variant_payload
+                        if child.variant_id:
+                            variant_payload['id'] = child.variant_id
 
-            if self.mode == 'BigCommerce':
-                payload = {
-                    'name': self.web_title,
-                    'type': 'physical',
-                    'sku': self.binding_id if self.binding_id else self.sku,
-                    'description': f"""{self.html_description}""",
-                    'weight': self.weight,
-                    'width': self.width,
-                    'depth': self.depth,
-                    'height': self.height,
-                    'price': self.default_price,
-                    'cost_price': self.cost,
-                    'retail_price': self.default_price,
-                    'sale_price': self.sale_price,
-                    'map_price': 0,
-                    'tax_class_id': 0,
-                    'brand_id': get_brand_id(),
-                    'brand_name': self.brand,
-                    'inventory_level': self.buffered_quantity,
-                    'inventory_warning_level': 10,
-                    'inventory_tracking': 'variant' if self.is_bound else 'product',
-                    'is_free_shipping': False,
-                    'is_visible': self.visible,
-                    'is_featured': self.featured,
-                    'sort_order': self.sort_order,
-                    'search_keywords': self.search_keywords,
-                    'gift_wrapping_options_type': 'none' if not self.gift_wrap else 'any',
-                    'condition': 'New',
-                    'is_condition_shown': True,
-                    'page_title': self.meta_title,
-                    'meta_description': self.meta_description,
-                    'is_price_hidden': self.is_price_hidden,
-                    'custom_fields': construct_custom_fields(),
-                    'videos': construct_video_payload(),
+                        result.append(variant_payload)
+
+                return result
+
+            payload = {
+                'name': self.web_title,
+                'type': 'physical',
+                'sku': self.binding_id if self.binding_id else self.sku,
+                'description': f"""{self.html_description}""",
+                'weight': self.weight,
+                'width': self.width,
+                'depth': self.depth,
+                'height': self.height,
+                'price': self.default_price,
+                'cost_price': self.cost,
+                'retail_price': self.default_price,
+                'sale_price': self.sale_price,
+                'map_price': 0,
+                'tax_class_id': 0,
+                'brand_id': get_brand_id(),
+                'brand_name': self.brand,
+                'inventory_level': self.buffered_quantity,
+                'inventory_warning_level': 10,
+                'inventory_tracking': 'variant' if self.is_bound else 'product',
+                'is_free_shipping': False,
+                'is_visible': self.visible,
+                'is_featured': self.featured,
+                'sort_order': self.sort_order,
+                'search_keywords': self.search_keywords,
+                'gift_wrapping_options_type': 'none' if not self.gift_wrap else 'any',
+                'condition': 'New',
+                'is_condition_shown': True,
+                'page_title': self.meta_title,
+                'meta_description': self.meta_description,
+                'is_price_hidden': self.is_price_hidden,
+                'custom_fields': construct_custom_fields(),
+                'videos': construct_video_payload(),
+            }
+
+            if self.is_preorder and not self.in_store_only:
+                payload['availability'] = 'preorder'
+                payload['preorder_release_date'] = self.preorder_release_date
+                payload['preorder_message'] = self.preorder_message
+                payload['is_preorder_only'] = True
+
+            elif self.in_store_only:
+                payload['availability'] = 'disabled'
+                payload['purchasing_disabled_message'] = 'This product is only available in-store.'
+            else:
+                payload['availability'] = 'available'
+
+            # If the product has a product_id, it is an update
+            if self.product_id:
+                payload['id'] = self.product_id
+
+            # Add child products
+            if len(self.variants) >= 1:
+                payload['variants'] = construct_variant_payload()
+
+            # Add images
+            if self.images:
+                payload['images'] = create_image_payload()
+
+            # Add custom URL
+
+            if self.custom_url:
+                payload['custom_url'] = {
+                    'url': f'/{self.custom_url}/',
+                    'is_customized': True,
+                    'create_redirect': True,
+                }
+            else:
+                fall_back_url = Catalog.parse_custom_url_string(self.web_title)
+                payload['custom_url'] = {
+                    'url': f'/{fall_back_url}/',
+                    'is_customized': False,
+                    'create_redirect': True,
                 }
 
-                if self.is_preorder and not self.in_store_only:
-                    payload['availability'] = 'preorder'
-                    payload['preorder_release_date'] = self.preorder_release_date
-                    payload['preorder_message'] = self.preorder_message
-                    payload['is_preorder_only'] = True
-
-                elif self.in_store_only:
-                    payload['availability'] = 'disabled'
-                    payload['purchasing_disabled_message'] = 'This product is only available in-store.'
-                else:
-                    payload['availability'] = 'available'
-
-                # If the product has a product_id, it is an update
-                if self.product_id:
-                    payload['id'] = self.product_id
-
-                # Add child products
-                if len(self.variants) >= 1:
-                    payload['variants'] = construct_variant_payload()
-
-                # Add images
-                if self.images:
-                    payload['images'] = create_image_payload()
-
-                # Add custom URL
-
-                if self.custom_url:
-                    payload['custom_url'] = {
-                        'url': f'/{self.custom_url}/',
-                        'is_customized': True,
-                        'create_redirect': True,
-                    }
-                else:
-                    fall_back_url = Catalog.parse_custom_url_string(self.web_title)
-                    payload['custom_url'] = {
-                        'url': f'/{fall_back_url}/',
-                        'is_customized': False,
-                        'create_redirect': True,
-                    }
-
-                # Add E-Commerce Categories
-                if self.bc_ecommerce_categories:
-                    payload['categories'] = self.bc_ecommerce_categories
-                return payload
-
-            elif self.mode == 'Shopify':
-                product_payload = {
-                    'input': {
-                        'title': self.web_title,
-                        'productType': self.custom_type,
-                        'vendor': self.brand,
-                        'descriptionHtml': self.html_description,
-                        # Dummy option - will be deleted.
-                        'productOptions': [{'name': 'Option', 'values': [{'name': '9999 Gallon'}]}],
-                        'seo': {'title': self.meta_title, 'description': self.meta_description},
-                        'status': 'ACTIVE' if self.visible else 'DRAFT',
-                        'tags': self.search_keywords.split(','),
-                    },
-                    'media': create_image_payload(),
-                }
-
-                variant_payload = construct_variant_payload()
-                return product_payload, variant_payload
+            # Add E-Commerce Categories
+            if self.bc_ecommerce_categories:
+                payload['categories'] = self.bc_ecommerce_categories
+            return payload
 
         def process(self, retries=3):
             """Process Product Creation/Delete/Update in BigCommerce and Middleware."""
@@ -2416,7 +2370,9 @@ class Catalog:
                 elif update_response.status_code == 404:
                     # Product was not found. This is a conflict. Delete from BigCommerce and try again.
                     if self.is_bound:
-                        message = f'Deleting Bound Product, self.sku: {self.sku}, self.binding_id: {self.binding_id}'
+                        message = (
+                            f'Deleting Bound Product, self.sku: {self.sku}, self.binding_id: {self.binding_id}'
+                        )
                         Catalog.logger.info(message)
                         self.delete_product(sku=self.sku, binding_id=self.binding_id)
                     else:
@@ -2441,10 +2397,7 @@ class Catalog:
                     )
                     return False
 
-            if self.mode == 'BigCommerce':
-                table = creds.bc_product_table
-            elif self.mode == 'Shopify':
-                table = creds.shopify_product_table
+            table = creds.bc_product_table
 
             query = f"""SELECT *
                     FROM {table}
@@ -2498,94 +2451,67 @@ class Catalog:
 
         def get_product_data_from_response(self, response):
             # Assign PRODUCT_ID, VARIANT_ID, and CATEG_ID to product and insert into middleware
-            if self.mode == 'BigCommerce':
-                self.product_id = response.json()['data']['id']
+            self.product_id = response.json()['data']['id']
 
-                custom_field_response = response.json()['data']['custom_fields']
+            custom_field_response = response.json()['data']['custom_fields']
 
-                if custom_field_response:
-                    self.custom_field_ids = ','.join([str(x['id']) for x in custom_field_response])
+            if custom_field_response:
+                self.custom_field_ids = ','.join([str(x['id']) for x in custom_field_response])
 
-                for x, variant in enumerate(self.variants):
-                    variant.binding_id = self.binding_id
-                    variant.product_id = self.product_id
+            for x, variant in enumerate(self.variants):
+                variant.binding_id = self.binding_id
+                variant.product_id = self.product_id
 
-                variant_data = response.json()['data']['variants']
-                # Get Variant ID from SKU
-                if variant_data:
-                    for variant in response.json()['data']['variants']:
-                        for child in self.variants:
-                            if child.sku == variant['sku']:
-                                child.variant_id = variant['id']
-
-                # Option Value IDs
-                option_data = response.json()['data']['options']
-                if option_data:
-                    option_id = option_data[0]['id']
+            variant_data = response.json()['data']['variants']
+            # Get Variant ID from SKU
+            if variant_data:
+                for variant in response.json()['data']['variants']:
                     for child in self.variants:
-                        child.option_id = option_id
-                        for option in option_data[0]['option_values']:
-                            if child.variant_name == option['label']:
-                                child.option_value_id = option['id']
+                        if child.sku == variant['sku']:
+                            child.variant_id = variant['id']
 
-                # Update Image IDs
-                image_response = response.json()['data']['images']
-                if image_response and self.images:
-                    for bc_image in image_response:
-                        for image in self.images:
-                            if bc_image['sort_order'] == image.sort_order:
-                                image.image_id = bc_image['id']
+            # Option Value IDs
+            option_data = response.json()['data']['options']
+            if option_data:
+                option_id = option_data[0]['id']
+                for child in self.variants:
+                    child.option_id = option_id
+                    for option in option_data[0]['option_values']:
+                        if child.variant_name == option['label']:
+                            child.option_value_id = option['id']
 
-                for image in self.images:
-                    image.product_id = self.product_id
+            # Update Image IDs
+            image_response = response.json()['data']['images']
+            if image_response and self.images:
+                for bc_image in image_response:
+                    for image in self.images:
+                        if bc_image['sort_order'] == image.sort_order:
+                            image.image_id = bc_image['id']
 
-            elif self.mode == 'Shopify':
-                self.product_id = response.json()['product']['id']
-
-                for x, variant in enumerate(self.variants):
-                    variant.product_id = self.product_id
-                    variant.variant_id = response.json()['product']['variants'][x]['id']
-
-                self.option_id = response.json()['product']['options'][0]['id']
+            for image in self.images:
+                image.product_id = self.product_id
 
         def post_product(self):
             """Create product in BigCommerce or Shopify."""
-            if self.mode == 'BigCommerce':
-                url = f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/products?include=custom_fields,options,variants,images'
-                payload = self.construct_product_payload()
-                response = BCRequests.post(url=url, json=payload)
-                if response.status_code in [200, 201, 207]:
-                    if self.is_bound:
-                        message = f'POST Code: {response.status_code}. Product: {self.sku} Binding ID: {self.binding_id} Create Success'
-                    else:
-                        message = f'POST Code: {response.status_code}. POST Product: {self.sku} Create Success'
-                    Catalog.logger.success(message)
-
+            url = f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/products?include=custom_fields,options,variants,images'
+            payload = self.construct_product_payload()
+            response = BCRequests.post(url=url, json=payload)
+            if response.status_code in [200, 201, 207]:
+                if self.is_bound:
+                    message = f'POST Code: {response.status_code}. Product: {self.sku} Binding ID: {self.binding_id} Create Success'
                 else:
-                    Catalog.error_handler.add_error_v(
-                        error=f'BC POST SKU: {self.sku} Binding ID: {self.binding_id} to BigCommerce. Response Code: {response.status_code}\n'
-                        f'Code {response.status_code}: POST SKU: {self.sku} Binding ID: {self.binding_id}\n'
-                        f'Payload: {payload}\n'
-                        f'Response: {json.dumps(response.json(), indent=4)}',
-                        origin='Catalog --> post_product',
-                    )
-                return response
+                    message = f'POST Code: {response.status_code}. POST Product: {self.sku} Create Success'
+                Catalog.logger.success(message)
 
-            elif self.mode == 'Shopify':
-                product_payload, variant_payload = self.construct_product_payload()
-                print('\n\nproduct_payload:\n')
-                print(json.dumps(product_payload, indent=4))
-                print('\n\nvariant_payload: \n')
-                print(json.dumps(variant_payload, indent=4))
-                product_id, media_ids, variant_ids = Shopify.create_product(product_payload, variant_payload)
-                self.product_id = product_id
-                print(f'self.variants: {self.variants}')
-                for x, variant in enumerate(self.variants):
-                    variant.variant_id = variant_ids[x]
-
-                for image in self.images:
-                    image.image_id = media_ids[x]
-                return 200
+            else:
+                Catalog.error_handler.add_error_v(
+                    error=f'BC POST SKU: {self.sku} Binding ID: {self.binding_id} to BigCommerce. Response Code: {response.status_code}\n'
+                    f'Code {response.status_code}: POST SKU: {self.sku} Binding ID: {self.binding_id}\n'
+                    f'Payload: {payload}\n'
+                    f'Response: {json.dumps(response.json(), indent=4)}',
+                    origin='Catalog --> post_product',
+                )
+            return response
 
         def bc_post_image(self, image):
             # Post New Image to Big Commerce
@@ -2965,10 +2891,7 @@ class Catalog:
             else:
                 categories_string = None
 
-            if self.mode == 'BigCommerce':
-                table = creds.bc_product_table
-            elif self.mode == 'Shopify':
-                table = creds.shopify_product_table
+            table = creds.bc_product_table
 
             insert_query = (
                 f"INSERT INTO {table} (ITEM_NO, BINDING_ID, IS_PARENT, "
@@ -3233,9 +3156,8 @@ class Catalog:
             return list(binding_ids)
 
         class Variant:
-            def __init__(self, sku, last_run_date, get_images=True, mode='BigCommerce'):
+            def __init__(self, sku, last_run_date, get_images=True):
                 self.db = Database.db
-                self.mode = mode
                 self.sku = sku
                 self.last_run_date = last_run_date
 
@@ -3567,7 +3489,9 @@ class Catalog:
                     print(f'Option ID: {self.option_id}, Option Value ID: {self.option_value_id}')
                     self.insert_variant(self)
 
-                    Catalog.logger.success(f'Variant: {self.sku} Posted to BigCommerce. Variant ID: {self.variant_id}')
+                    Catalog.logger.success(
+                        f'Variant: {self.sku} Posted to BigCommerce. Variant ID: {self.variant_id}'
+                    )
 
                     return True
 
@@ -3632,7 +3556,7 @@ class Catalog:
                 if total_images > 0:
                     # print(f"Found {total_images} product images for item: {self.sku}")
                     for image in product_images:
-                        img = Catalog.Product.Image(image_name=image, mode=self.mode)
+                        img = Catalog.Product.Image(image_name=image)
                         if img.validate():
                             self.images.append(img)
 
@@ -3651,28 +3575,20 @@ class Catalog:
             def construct_image_payload(self):
                 result = []
                 for image in self.images:
-                    if self.mode == 'BigCommerce':
-                        image_payload = {
-                            'is_thumbnail': image.is_thumbnail,
-                            'sort_order': image.sort_order,
-                            'description': image.alt_text_1,
-                            'image_url': f'{creds.public_web_dav_photos}/{image.image_name}',
-                            'date_modified': image.modified_date,
-                        }
+                    image_payload = {
+                        'is_thumbnail': image.is_thumbnail,
+                        'sort_order': image.sort_order,
+                        'description': image.alt_text_1,
+                        'image_url': f'{creds.public_web_dav_photos}/{image.image_name}',
+                        'date_modified': image.modified_date,
+                    }
 
-                        if self.product_id is not None:
-                            image_payload['product_id'] = self.product_id
-                        if image.image_id is not None:
-                            image_payload['id'] = image.image_id
+                    if self.product_id is not None:
+                        image_payload['product_id'] = self.product_id
+                    if image.image_id is not None:
+                        image_payload['id'] = image.image_id
 
-                        result.append(image_payload)
-                    elif self.mode == 'Shopify':
-                        image_payload = {
-                            'src': f'{creds.public_web_dav_photos}/{image.image_name}',
-                            'position': image.image_number,
-                            'alt': image.alt_text_1,
-                        }
-                        result.append(image_payload)
+                    result.append(image_payload)
 
                 return result
 
@@ -3687,7 +3603,9 @@ class Catalog:
             def hard_reset_variant(self):
                 """Hard reset for single item (variant). Used in pathological case of single item being turned into a merged item."""
                 print('Performing hard reset on variant. Sku is ', self.sku)
-                url = f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/products?sku={self.sku}'
+                url = (
+                    f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/products?sku={self.sku}'
+                )
                 delete_response = BCRequests.delete(url=url)
 
                 if delete_response.status_code == 204:
@@ -3717,9 +3635,8 @@ class Catalog:
             pass
 
         class Image:
-            def __init__(self, image_name: str, mode='BigCommerce'):
+            def __init__(self, image_name: str):
                 self.db = Database.db
-                self.mode = mode
                 self.id = None
                 self.image_name = image_name  # This is the file name
                 self.sku = ''
@@ -3747,11 +3664,7 @@ class Catalog:
 
             def get_image_details(self):
                 """Get image details from SQL"""
-                if self.mode == 'BigCommerce':
-                    query = f"SELECT * FROM {creds.bc_image_table} WHERE IMAGE_NAME = '{self.image_name}'"
-                elif self.mode == 'Shopify':
-                    query = f"SELECT * FROM {creds.shopify_image_table} WHERE IMAGE_NAME = '{self.image_name}'"
-
+                query = f"SELECT * FROM {creds.bc_image_table} WHERE IMAGE_NAME = '{self.image_name}'"
                 response = self.db.query_db(query)
                 print(f'\n\n\nImage Response: {response}\n\n\n')
 
@@ -3937,30 +3850,21 @@ class Catalog:
                 random_int = random.randint(1000, 9999)
                 new_name = f"{self.image_name.split(".")[0].replace("^", "-")}-{random_int}.jpg"
 
-                if self.mode == 'BigCommerce':
-                    url = f'{creds.web_dav_product_photos}/{new_name}'
-                    try:
-                        img_upload_res = requests.put(
-                            url, data=data, auth=HTTPDigestAuth(creds.web_dav_user, creds.web_dav_pw)
-                        )
-                    except Exception as e:
-                        Catalog.error_handler.add_error_v(error=f'Error uploading image: {e}')
+                url = f'{creds.web_dav_product_photos}/{new_name}'
+                try:
+                    img_upload_res = requests.put(
+                        url, data=data, auth=HTTPDigestAuth(creds.web_dav_user, creds.web_dav_pw)
+                    )
+                except Exception as e:
+                    Catalog.error_handler.add_error_v(error=f'Error uploading image: {e}')
+                else:
+                    # return public url of image
+                    if img_upload_res.status_code == 201:
+                        return f'{creds.public_web_dav_photos}/{new_name}'
                     else:
-                        # return public url of image
-                        if img_upload_res.status_code == 201:
-                            return f'{creds.public_web_dav_photos}/{new_name}'
-                        else:
-                            Catalog.error_handler.add_error_v(
-                                error=f'Error uploading image: {img_upload_res.status_code} - {img_upload_res.text}'
-                            )
-                elif self.mode == 'Shopify':
-                    # Copy file to Shopify folder
-                    print('\n\nUploading image to Shopify\n\n')
-                    file_path = f'catalog_images/product_images/{new_name}'
-                    dest = f'{creds.public_files}/{file_path}'
-                    Catalog.logger.info(f'Copying {self.file_path} to {dest}')
-                    shutil.copy(src=self.file_path, dst=dest)
-                    return f'{creds.ngrok_domain}/{file_path}'
+                        Catalog.error_handler.add_error_v(
+                            error=f'Error uploading image: {img_upload_res.status_code} - {img_upload_res.text}'
+                        )
 
             def resize_image(self):
                 size = (1280, 1280)
@@ -4014,6 +3918,3 @@ class Catalog:
 
 if __name__ == '__main__':
     from datetime import datetime
-
-    cat = Catalog(last_sync=datetime(year=2024, month=7, day=16, hour=8, minute=20), mode='Shopify')
-    cat.sync()

@@ -1,0 +1,59 @@
+query storeCreditAccount($accountId: ID!) {
+  storeCreditAccount(id: $accountId) {
+    id
+    balance {
+      amount
+      currencyCode
+    }
+  }
+}
+
+mutation storeCreditAccountCredit(
+  $id: ID!
+  $creditInput: StoreCreditAccountCreditInput!
+) {
+  storeCreditAccountCredit(id: $id, creditInput: $creditInput) {
+    storeCreditAccountTransaction {
+      amount {
+        amount
+        currencyCode
+      }
+      account {
+        id
+        balance {
+          amount
+          currencyCode
+        }
+      }
+    }
+    userErrors {
+      message
+      field
+    }
+  }
+}
+
+mutation storeCreditAccountDebit(
+  $id: ID!
+  $debitInput: StoreCreditAccountDebitInput!
+) {
+  storeCreditAccountDebit(id: $id, debitInput: $debitInput) {
+    storeCreditAccountTransaction {
+      amount {
+        amount
+        currencyCode
+      }
+      account {
+        id
+        balance {
+          amount
+          currencyCode
+        }
+      }
+    }
+    userErrors {
+      message
+      field
+    }
+  }
+}

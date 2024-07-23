@@ -1,9 +1,12 @@
 from setup import creds
 from setup import query_engine
+from setup.error_handler import ProcessOutErrorHandler
 
 
 class Database:
     db = query_engine.QueryEngine()
+    error_handler = ProcessOutErrorHandler.error_handler
+    logger = ProcessOutErrorHandler.logger
 
     def rebuild_tables(self):
         def create_tables():
@@ -171,6 +174,60 @@ class Database:
             response = Database.db.query_db(query)
             if response is not None:
                 return response[0][0]
+
+        def insert(category):
+            query = f"""
+            INSERT INTO {creds.shopify_category_table}(COLLECTION_ID, CP_CATEG_ID, CP_PARENT_ID, CATEG_NAME, 
+            SORT_ORDER, DESCRIPTION, IS_VISIBLE, LST_MAINT_DT)
+            VALUES({category.collection_id if category.collection_id else 'NULL'}, {category.cp_categ_id}, 
+            {category.cp_parent_id}, '{category.name}', {category.sort_order}, 
+            '{category.description.replace("'", "''")}', {1 if category.is_visible else 0}, 
+            '{category.lst_maint_dt:%Y-%m-%d %H:%M:%S}')
+            """
+            response = Database.db.query_db(query, commit=True)
+            if response['code'] == 200:
+                Database.logger.success(f'Category {category.name} added to Middleware.')
+            else:
+                error = (
+                    f'Error adding category {category.name} to Middleware. \nQuery: {query}\nResponse: {response}'
+                )
+                Database.error_handler.add_error_v(error=error)
+                raise Exception(error)
+
+        def update(category):
+            query = f"""
+            UPDATE {creds.shopify_category_table}
+            SET COLLECTION_ID = {category.collection_id if category.collection_id else 'NULL'}, 
+            CP_PARENT_ID = {category.cp_parent_id}, CATEG_NAME = '{category.name}',
+            SORT_ORDER = {category.sort_order}, DESCRIPTION = '{category.description}', 
+            IS_VISIBLE = {1 if category.is_visible else 0},
+            LST_MAINT_DT = '{category.lst_maint_dt:%Y-%m-%d %H:%M:%S}'
+            WHERE CP_CATEG_ID = {category.cp_categ_id}
+            """
+            response = Database.db.query_db(query, commit=True)
+
+            if response['code'] == 200:
+                Database.logger.success(f'Category {category.name} updated in Middleware.')
+            else:
+                error = f'Error updating category {category.name} in Middleware. \n Query: {query}\nResponse: {response}'
+                Database.error_handler.add_error_v(error=error)
+                raise Exception(error)
+
+        def delete(collection_id=None, cp_categ_id=None):
+            if collection_id is not None:
+                cp_categ_id = Database.Collection.get_cp_categ_id(collection_id)
+
+            query = f"""
+                    DELETE FROM {creds.shopify_category_table}
+                    WHERE CP_CATEG_ID = {cp_categ_id}
+                    """
+            response = Database.db.query_db(query, commit=True)
+            if response['code'] == 200:
+                Database.logger.success(f'Category {cp_categ_id} deleted from Middleware.')
+            else:
+                error = f'Error deleting category {cp_categ_id} from Middleware. \n Query: {query}\nResponse: {response}'
+                Database.error_handler.add_error_v(error=error)
+                raise Exception(error)
 
         def backfill_html_description(collection_id, description):
             cp_categ_id = Database.Collection.get_cp_categ_id(collection_id)

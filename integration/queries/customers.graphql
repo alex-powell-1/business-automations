@@ -1,0 +1,55 @@
+mutation customerCreate($input: CustomerInput!) {
+  customerCreate(input: $input) {
+    userErrors {
+      field
+      message
+    }
+    customer {
+      id
+      email
+      phone
+      taxExempt
+      firstName
+      lastName
+      smsMarketingConsent {
+        marketingState
+        marketingOptInLevel
+      }
+      addresses {
+        address1
+        city
+        country
+        phone
+        zip
+      }
+    }
+  }
+}
+
+mutation customerUpdate($input: CustomerInput!) {
+  customerUpdate(input: $input) {
+    userErrors {
+      field
+      message
+    }
+    customer {
+      id
+      firstName
+      lastName
+    }
+  }
+}
+
+mutation customerDelete($id: ID!) {
+  customerDelete(input: { id: $id }) {
+    shop {
+      id
+    }
+    userErrors {
+      field
+      message
+    }
+    deletedCustomerId
+  }
+}
+

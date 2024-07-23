@@ -46,3 +46,41 @@ mutation UpdateMenu(
     }
   }
 }
+
+query menus{
+  menus(first: 20) {
+    nodes {
+      id
+      title
+      handle
+      items {
+        id
+        title
+        type
+        url
+        items {
+          id
+          title
+        }
+      }
+    }
+  }
+}
+
+query menu($id: ID!) {
+  menu(id: $id) {
+    id
+    title
+    handle
+    items {
+      id
+      title
+      type
+      url
+      items {
+        id
+        title
+      }
+    }
+  }
+}

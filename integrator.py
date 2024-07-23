@@ -30,12 +30,15 @@ class Integrator:
     def __str__(self):
         return f'Integrator\n' f'Last Sync: {self.last_sync}\n'
 
-    def initialize(self):
+    def initialize(self, rebuild=False):
         """Initialize the integrator by deleting the catalog, rebuilding the tables, and syncing the catalog."""
         start_time = time.time()
         self.catalog.delete_catalog()
         # self.customers.delete_customers()
-        self.db.rebuild_tables()
+        if rebuild:
+            # Drop and rebuild the tables
+            self.db.rebuild_tables()
+
         self.catalog = Catalog(last_sync=date_presets.business_start_date)
         self.sync(initial=True)
         # self.customers = Customers(last_sync=business_start)
@@ -110,7 +113,9 @@ def main_menu():
 
         elif input_command.startswith('delete'):
             command = (
-                input('\nEnter command: \n' '- product\n' '- catalog\n' '- brands\n' '- categories\n' '- products\n\n')
+                input(
+                    '\nEnter command: \n' '- product\n' '- catalog\n' '- brands\n' '- categories\n' '- products\n\n'
+                )
                 .lower()
                 .strip()
             )
