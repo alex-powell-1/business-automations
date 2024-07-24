@@ -1,0 +1,67 @@
+mutation productCreateMedia($media: [CreateMediaInput!]!, $productId: ID!) {
+  productCreateMedia(media: $media, productId: $productId) {
+    media {
+      id
+      alt
+      mediaContentType
+      status
+    }
+    mediaUserErrors {
+      field
+      message
+    }
+    product {
+      id
+      title
+    }
+  }
+}
+
+mutation productUpdateMedia($media: [UpdateMediaInput!]!, $productId: ID!) {
+  productUpdateMedia(media: $media, productId: $productId) {
+    media {
+      id
+      alt
+      mediaContentType
+      status
+    }
+    mediaUserErrors {
+      field
+      message
+    }
+    product {
+      id
+      title
+  }
+}
+
+mutation productDeleteMedia($mediaIds: [ID!]!, $productId: ID!) {
+  productDeleteMedia(mediaIds: $mediaIds, productId: $productId) {
+    deletedMediaIds
+    deletedProductImageIds
+    mediaUserErrors {
+      field
+      message
+    }
+    product {
+      id
+      title
+      media(first: 5) {
+        nodes {
+          alt
+          mediaContentType
+          status
+        }
+      }
+    }
+  }
+}
+
+
+mutation productReorderMedia($id: ID!, $moves: [MoveInput!]!) {
+  productReorderMedia(id: $id, moves: $moves) {
+    job {
+      id
+    }
+  }
+}

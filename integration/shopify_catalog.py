@@ -31,13 +31,12 @@ class Catalog:
 
     all_binding_ids = get_all_binding_ids()
     mw_brands = set()
-    metafields = Database.Metafield_Definition.get_all()
+    metafields = Database.Shopify.Metafield_Definition.get_all()
 
     def __init__(self, last_sync=datetime(1970, 1, 1)):
         self.last_sync = last_sync
         self.db = Database.db
-        # self.category_tree = self.CategoryTree(last_sync=last_sync)
-        self.brands = self.Brands(last_sync=last_sync)
+        self.category_tree = self.CategoryTree(last_sync=last_sync)
         # Used to process preliminary deletions of products and images
         self.cp_items = []
         self.mw_items = []
@@ -336,7 +335,8 @@ class Catalog:
             Catalog.logger.info(message=f'Delete Targets: {delete_targets}')
             for x in delete_targets:
                 Catalog.logger.info(f'Deleting Image {x[0]}.\n')
-                delete_image(x[0])
+                Catalog.logger.warn('Skipping image deletion during testing.')
+                # delete_image(x[0])
         else:
             Catalog.logger.info('No image deletions found.')
 
@@ -377,11 +377,6 @@ class Catalog:
     def sync(self, initial=False):
         # # Sync Category Tree
         # self.category_tree.sync()
-        # # Sync Product Brands
-        # self.brands.sync()
-
-        # PRODUCTS
-        # --------
 
         # if not initial:
         #     # Process Product Deletions and Images
@@ -389,8 +384,8 @@ class Catalog:
         #     self.process_images()
 
         # Sync Products
-        self.get_products()  # Get all products that have been updated since the last sync
-        # self.sync_queue = [{'sku': '10344', 'binding_id': 'B0001'}]
+        # self.get_products()  # Get all products that have been updated since the last sync
+        self.sync_queue = [{'sku': '10344', 'binding_id': 'B0001'}]
 
         # Small Bound Product
         # self.sync_queue = [{'sku': 'SYUFICG01', 'binding_id': 'B0050'}]
@@ -446,7 +441,7 @@ class Catalog:
             product.delete_variant(sku=sku, binding_id=binding_id)
         else:
             Catalog.logger.info(f'Deleting Product: {sku}')
-            product.delete_product(sku=sku)
+            Database.Shopify.Product.delete(sku=sku)
 
         if update_timestamp:
             Catalog.update_timestamp(sku=sku)
@@ -574,218 +569,55 @@ class Catalog:
 
     @staticmethod
     def delete_categories():
-        """Find parent categories and delete them from Big. Delete all categories from the middleware."""
-
-        def batch_delete_categories(category_list):
-            while category_list:
-                batch = []
-                while len(batch) < 250:
-                    if not category_list:
-                        break
-                    batch.append(str(category_list.pop()))
-
-                batch_string = ','.join(batch)
-
-                url = f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/trees/categories?category_id:in={batch_string}'
-
-                bc_response = BCRequests.delete(url=url)
-
-                if bc_response.status_code == 204:
-                    Catalog.logger.success(f'Products {batch_string} deleted from BigCommerce.')
-                    query = f"""
-                    DELETE FROM {creds.shopify_category_table} WHERE COLLECTION_ID in ({batch_string})
-                    """
-                    sql_response = Database.db.query_db(query, commit=True)
-                    if sql_response['code'] == 200:
-                        Catalog.logger.success(f'Categories {batch_string} deleted from Middleware.')
-                    else:
-                        Catalog.error_handler.add_error_v(
-                            error=f'Error deleting categories {batch_string} from Middleware.'
-                        )
-                else:
-                    Catalog.error_handler.add_error_v(
-                        error=f'Error deleting categories {batch_string} from BigCommerce.'
-                    )
-                    Catalog.logger.log(f'Url: {url}')
-                    Catalog.logger.log(bc_response)
-
-            query = f'DELETE FROM {creds.shopify_category_table}'
-            response = Database.db.query_db(query, commit=True)
-
-            if response['code'] == 200:
-                Catalog.logger.success(f'Category: {batch_string} deleted from Middleware.')
-            else:
-                Catalog.error_handler.add_error_v(error=f'Error deleting category: {batch_string} from Middleware.')
-
-        # Get all parent categories from Middleware
-        query = f'SELECT DISTINCT COLLECTION_ID FROM {creds.shopify_category_table} WHERE CP_PARENT_ID = 0'
+        # Get all categories from Middleware. Delete from Shopify and Middleware.
+        query = f'SELECT DISTINCT COLLECTION_ID FROM {creds.shopify_category_table}'
         response = Database.db.query_db(query)
         parent_category_list = [x[0] for x in response] if response else []
+        while parent_category_list:
+            target = parent_category_list.pop()
+            Shopify.Collection.delete(collection_id=target)
+            Database.Shopify.Collection.delete(collection_id=target)
 
-        # Delete all categories from BigCommerce and Middleware
-        if parent_category_list:
-            batch_delete_categories(parent_category_list)
-        else:
-            Catalog.logger.warn('No categories found in Middleware. Will check BigCommerce.')
-
-        # As a failsafe for broken mappings, get all categories from BigCommerce and delete them.
-        category_id_list = []
-        page = 1
-        more_pages = True
-        while more_pages:
-            url = f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/categories?limit=250&page={page}'
-            response = BCRequests.get(url)
-            for category in response.json()['data']:
-                category_id_list.append(category['id'])
-            count = response.json()['meta']['pagination']['count']
-            if count == 0:
-                more_pages = False
-            page += 1
-
-        # Delete all remaining categories from BigCommerce
-        if category_id_list:
-            batch_delete_categories(category_list=category_id_list)
-        else:
-            Catalog.logger.info('No categories found in BigCommerce.')
+        # Check for any remaining categories in Shopify
+        response = Shopify.Collection.get_all()
+        if response:
+            for collection in response:
+                Shopify.Collection.delete(collection)
 
     @staticmethod
     def delete_products():
         """Deletes all products from BigCommerce and Middleware."""
-
-        def batch_delete_products(product_list):
-            while product_list:
-                batch = []
-                while len(batch) < 250:
-                    if not product_list:
-                        break
-                    batch.append(str(product_list.pop()))
-
-                batch_string = ','.join(batch)
-
-                url = f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/products?id:in={batch_string}'
-
-                bc_response = BCRequests.delete(url=url)
-
-                if bc_response.status_code == 204:
-                    Catalog.logger.success(f'Products {batch_string} deleted from BigCommerce.')
-                    query = f"""
-                    DELETE FROM {creds.shopify_product_table} WHERE PRODUCT_ID in ({batch_string})
-                    DELETE FROM {creds.shopify_image_table} WHERE PRODUCT_ID in ({batch_string})
-                    """
-                    sql_response = Database.db.query_db(query, commit=True)
-                    if sql_response['code'] == 200:
-                        Catalog.logger.success(f'Products {batch_string} deleted from Middleware.')
-                    else:
-                        Catalog.error_handler.add_error_v(
-                            error=f'Error deleting products {batch_string} from Middleware.'
-                        )
-                else:
-                    Catalog.error_handler.add_error_v(
-                        error=f'Error deleting product {batch_string} from BigCommerce.'
-                    )
-                    Catalog.logger.log(f'Url: {url}')
-                    Catalog.logger.log(bc_response)
-
         # Get all product IDs from Middleware
         query = f'SELECT DISTINCT PRODUCT_ID FROM {creds.shopify_product_table}'
         response = Database.db.query_db(query)
         product_id_list = [x[0] for x in response] if response else []
 
-        if product_id_list:
-            batch_delete_products(product_id_list)
-        else:
-            Catalog.logger.warn('No products found in Middleware. Will check BigCommerce.')
+        while product_id_list:
+            target = product_id_list.pop()
+            try:
+                Shopify.Product.delete(product_id=target)
+            except Exception as e:
+                Catalog.error_handler.add_error_v(
+                    error=f'Error deleting product {target}. {e}', origin='delete_products()'
+                )
+            Database.Shopify.Product.delete(product_id=target)
 
-        # As a failsafe, get all products from BigCommerce and delete them.
-        product_id_list = []
-        page = 1
-        more_pages = True
-        while more_pages:
-            url = f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/products?limit=250&page={page}'
-            response = BCRequests.get(url)
-            for product in response.json()['data']:
-                product_id_list.append(product['id'])
-            count = response.json()['meta']['pagination']['count']
-            if count == 0:
-                more_pages = False
-            page += 1
-        if product_id_list:
-            batch_delete_products(product_list=product_id_list)
-        else:
-            Catalog.logger.info('No products found in BigCommerce.')
-
-    @staticmethod
-    def delete_brands():
-        """Deletes all brands from Middleware."""
-
-        def batch_delete_brands(brand_list):
-            while brand_list:
-                # Create Batch
-                batch = []
-                while len(batch) < 250:
-                    if not brand_list:
-                        break
-                    batch.append(str(brand_list.pop()))
-                batch_string = ','.join(batch)
-                # Delete Batch
-                url = f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/brands?id:in={batch_string}'
-                bc_response = BCRequests.delete(url=url)
-                if bc_response.status_code == 204:
-                    Catalog.logger.success(f'Brand:\n{batch_string}\ndeleted from BigCommerce.')
-                    query = f'DELETE FROM {creds.shopify_brands_table} WHERE BC_BRAND_ID in ({batch_string})'
-                    response = Database.db.query_db(query, commit=True)
-                    if response['code'] == 200:
-                        Catalog.logger.success(f'Brand:\n{batch_string}\ndeleted from Middleware.')
-                    else:
-                        Catalog.error_handler.add_error_v(
-                            error=f'Error deleting brand:\n{batch_string}\nfrom Middleware.'
-                        )
-                else:
-                    Catalog.error_handler.add_error_v(
-                        error=f'Error deleting brand:\n{batch_string}\nfrom BigCommerce.'
-                    )
-
-        query = f'SELECT DISTINCT BC_BRAND_ID FROM {creds.shopify_brands_table}'
-        response = Database.db.query_db(query)
-        brand_id_list = [x[0] for x in response] if response else []
-
-        # Delete all brands from Middleware and BigCommerce
-        if brand_id_list:
-            batch_delete_brands(brand_id_list)
-        else:
-            Catalog.logger.warn('No brands found in Middleware. Will check BigCommerce.')
-        # As a failsafe, get all brands from BigCommerce and delete them.
-        brand_id_list = []
-        page = 1
-        more_pages = True
-        while more_pages:
-            url = (
-                f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/brands?limit=250&page={page}'
-            )
-            response = BCRequests.get(url)
-            for brand in response.json()['data']:
-                brand_id_list.append(brand['id'])
-            count = response.json()['meta']['pagination']['count']
-            if count == 0:
-                more_pages = False
-            page += 1
-        if brand_id_list:
-            batch_delete_brands(brand_id_list)
-        else:
-            Catalog.logger.info('No brands found in BigCommerce.')
+        # Check for any remaining products in Shopify
+        response = Shopify.Product.get_all()
+        if response:
+            for product in response:
+                Shopify.Product.delete(product)
 
     @staticmethod
     def delete_catalog():
         """Deletes all products, categories, and brands from BigCommerce and Middleware."""
         Catalog.delete_products()
         Catalog.delete_categories()
-        Catalog.delete_brands()
 
     class CategoryTree:
         def __init__(self, last_sync):
             self.db = Database.db
             self.last_sync = last_sync
-
             self.categories = set()
             self.heads = []
             self.get_tree()
@@ -803,6 +635,7 @@ class Catalog:
                     f"{'    ' * level}Sort Order: {category.sort_order}\n"
                     f"{'    ' * level}Last Maintenance Date: {category.lst_maint_dt}\n\n"
                 )
+
                 # Recursively call this function for each child category
                 for child in category.children:
                     res += print_category_tree(child, level + 1)
@@ -819,7 +652,7 @@ class Catalog:
             """Updates middleware category tables with Counterpoint category information."""
             query = f"""
             SELECT cp.CATEG_ID, ISNULL(cp.PARENT_ID, 0), mw.COLLECTION_ID, mw.MENU_ID, cp.DESCR, cp.DISP_SEQ_NO, cp.HTML_DESCR, 
-            cp.LST_MAINT_DT, mw.CP_CATEG_ID, mw.is_visible
+            cp.LST_MAINT_DT, mw.CP_CATEG_ID, mw.is_visible, mw.IMG_SIZE
             FROM EC_CATEG cp
             FULL OUTER JOIN {creds.shopify_category_table} mw on cp.CATEG_ID=mw.CP_CATEG_ID
             WHERE cp.CATEG_ID != '0'
@@ -845,16 +678,16 @@ class Catalog:
                         description=x[6].replace("'", "''"),
                         lst_maint_dt=x[7],
                         is_visible=True if x[9] == 1 else False,
+                        image_size=x[10] if x[10] else None,
                     )
 
                     if mw_cp_categ_id is None:
-                        Database.Collection.insert(cat)
+                        Database.Shopify.Collection.insert(cat)
 
                     else:
                         if cat.lst_maint_dt > self.last_sync:
-                            Database.Collection.update(cat)
+                            Database.Shopify.Collection.update(cat)
 
-                    # NEW
                     self.categories.add(cat)
 
                 for x in self.categories:
@@ -876,23 +709,18 @@ class Catalog:
             # Establish queue for dealing with category images
             queue = []
 
-            def collections_helper(category):
+            def collections_h(category):
                 # Get BC Category ID and Parent ID
                 print(f'Processing Category: {category.name}, category collection ID: {category.collection_id}')
                 queue.append(category)
                 if category.collection_id is None:
                     category.collection_id = Shopify.Collection.create(category.get_category_payload())
-                # else:
-                #     Shopify.Collection.update(category.get_category_payload())
                 for child in category.children:
-                    collections_helper(child)
+                    collections_h(child)
 
             for category in self.heads:
                 if category.lst_maint_dt > self.last_sync:
-                    collections_helper(category)
-
-            for category in queue:
-                print(f'\n\nQUEUE Category: {category.name}, category collection ID: {category.collection_id}')
+                    collections_h(category)
 
             self.upload_category_images(queue)
             for category in queue:
@@ -918,8 +746,8 @@ class Catalog:
                     'items': [menu_helper(child) for child in category.children],
                 }
 
-                if category.menu_id is not None:
-                    menu_item['id'] = f'gid://shopify/MenuItem/{category.menu_id}'
+                # if category.menu_id is not None:
+                #     menu_item['id'] = f'gid://shopify/MenuItem/{category.menu_id}'
 
                 return menu_item
 
@@ -967,7 +795,7 @@ class Catalog:
             # Update Entire Category Tree in Middleware
             def update_helper(category):
                 if category.lst_maint_dt > self.last_sync:
-                    Database.Collection.update(category)
+                    Database.Shopify.Collection.update(category)
                 for child in category.children:
                     update_helper(child)
 
@@ -980,15 +808,19 @@ class Catalog:
 
             for category in queue:
                 if category.image_path:
-                    file_list.append(category.image_path)
-                    stagedUploadsCreateVariables['input'].append(
-                        {
-                            'filename': category.image_name,
-                            'mimeType': 'image/jpg',
-                            'httpMethod': 'POST',
-                            'resource': 'COLLECTION_IMAGE',
-                        }
-                    )
+                    image_size = Catalog.get_filesize(category.image_path)
+                    print(f'\n\nImage Size: {image_size}, Category Image Size: {category.image_size}\n\n')
+                    if image_size != category.image_size:
+                        category.image_size = image_size
+                        file_list.append(category.image_path)
+                        stagedUploadsCreateVariables['input'].append(
+                            {
+                                'filename': category.image_name,
+                                'mimeType': 'image/jpg',
+                                'httpMethod': 'POST',
+                                'resource': 'COLLECTION_IMAGE',
+                            }
+                        )
 
             if file_list:
                 uploaded_files = Shopify.Collection.Files.create(
@@ -1013,9 +845,9 @@ class Catalog:
                 if collection_id:
                     # Delete Category from Shopify
                     Shopify.Collection.delete(collection_id)
-                    Database.Collection.delete(cp_categ_id)
+                    Database.Shopify.Collection.delete(cp_categ_id)
                 else:
-                    Database.Collection.delete(cp_categ_id=cp_categ_id)
+                    Database.Shopify.Collection.delete(cp_categ_id=cp_categ_id)
 
         class Category:
             def __init__(
@@ -1030,6 +862,7 @@ class Catalog:
                 description='',
                 is_visible=True,
                 image_url=None,
+                image_size=None,
                 image_alt_text=None,
                 lst_maint_dt=datetime(1970, 1, 1),
             ):
@@ -1043,6 +876,7 @@ class Catalog:
                 self.shopify_parent_id = shopify_parent_id
                 self.sort_order = sort_order
                 self.description = description
+                self.image_size = image_size
                 self.image_name = str(self.handle)[1:-1].replace('/', '_').replace(' ', '-') + '.jpg'
                 self.image_path = self.get_category_image_path()
                 self.image_url = image_url
@@ -1138,417 +972,6 @@ class Catalog:
                     }
                 return payload
 
-    class Brands:
-        def __init__(self, last_sync=datetime(1970, 1, 1)):
-            self.db = Database.db
-            self.last_sync = last_sync
-            self.cp_brands = set()
-            self.mw_brands = set()
-            # self.brands will be a set of Brand objects only created if the last_maint_dt is > than last sync
-            self.brands = set()
-            # get all brands from CP and MW
-            self.update_brand_timestamps(last_run=self.last_sync)
-            self.get_brands()
-            self.process_deletes()
-
-        def __str__(self):
-            result = ''
-            for brand in self.brands:
-                result += f'Brand Name: {brand.name}\n'
-                result += '---------------------------------------\n'
-                result += f'Counterpoint Brand ID: {brand.cp_brand_id}\n'
-                result += f'BigCommerce Brand ID: {brand.bc_brand_id}\n'
-                result += f'Last Maintenance Date: {brand.last_maint_dt}\n\n'
-
-            return result
-
-        @staticmethod
-        def update_brand_timestamps(last_run):
-            """Takes in a list of SKUs and updates the last maintenance date in input table for each product in the
-            list"""
-
-            def get_brand_photos_middleware():
-                query = f"""
-                SELECT IMAGE_NAME, IMAGE_SIZE FROM {creds.shopify_brands_table} WHERE IMAGE_NAME IS NOT NULL
-                """
-                response = query_engine.QueryEngine().query_db(query)
-                return [{'image_name': x[0], 'image_size': x[1]} for x in response] if response else []
-
-            def get_brand_photos_local():
-                result_list = []
-                # Iterate over all files in the directory
-                for filename in os.listdir(creds.brand_photo_path):
-                    if filename not in ['Thumbs.db', 'desktop.ini', '.DS_Store']:
-                        file_size = os.path.getsize(f'{creds.brand_photo_path}/{filename}')
-                        result_list.append({'image_name': filename, 'image_size': file_size})
-                return result_list
-
-            def update_timestamp(target):
-                query = f"""
-                UPDATE IM_ITEM_PROF_COD
-                SET LST_MAINT_DT = GETDATE()
-                WHERE PROF_COD = '{target}'"""
-                response = query_engine.QueryEngine().query_db(query, commit=True)
-                if response['code'] == 200:
-                    Catalog.logger.success(f'Brand {target} updated in Counterpoint.')
-                else:
-                    Catalog.error_handler.add_error_v(error=f'Error updating brand {target} in Counterpoint.')
-
-            local_brand_images = get_brand_photos_local()
-            mw_brand_images = get_brand_photos_middleware()
-
-            # Check for new or updated images
-            for local_image in local_brand_images:
-                if local_image['image_name'] not in [
-                    x['image_name'] for x in mw_brand_images
-                ]:  # A local image is found that is not in middleware.
-                    # Update Timestamp of brand in IM table
-                    profile_code = local_image['image_name'].split('.')[0]
-                    Catalog.logger.info(
-                        f'Local brand image not found in middleware. Updating LST_MAINT_DT for {profile_code} in Counterpoint.'
-                    )
-                    update_timestamp(profile_code)
-
-                else:
-                    # A local image is found that is in middleware.
-                    if (
-                        local_image['image_size']
-                        != [
-                            x['image_size'] for x in mw_brand_images if x['image_name'] == local_image['image_name']
-                        ][0]
-                    ):  # Image size mismatch
-                        # Update Timestamp of brand in IM table
-                        profile_code = local_image['image_name'].split('.')[0]
-                        Catalog.logger.info(
-                            f'Brand Image Size Mismatch. Updating LST_MAINT_DT for {profile_code} in Counterpoint.'
-                        )
-                        update_timestamp(profile_code)
-
-            # Check for deleted images
-            for mw_image in mw_brand_images:
-                if mw_image['image_name'] not in [x['image_name'] for x in local_brand_images]:
-                    # Update Timestamp of brand in IM table
-                    profile_code = mw_image['image_name'].split('.')[0]
-                    Catalog.logger.info(
-                        f'Brand Image Deleted. Updating LST_MAINT_DT for {profile_code} in Counterpoint.'
-                    )
-                    update_timestamp(profile_code)
-
-        def sync(self):
-            for brand in self.brands:
-                brand.process()
-
-        def get_brands(self):
-            def get_cp_brands():
-                query = """
-                SELECT PROF_COD, DESCR, LST_MAINT_DT
-                FROM IM_ITEM_PROF_COD
-                """
-                response = self.db.query_db(query)
-                if response:
-                    for x in response:
-                        self.cp_brands.add((x[0], x[1], x[2]))
-
-            def get_mw_brands():
-                query = f"""
-                SELECT CP_BRAND_ID, NAME, BC_BRAND_ID
-                FROM {creds.shopify_brands_table}
-                """
-                response = self.db.query_db(query)
-                if response:
-                    for x in response:
-                        Catalog.mw_brands.add((x[0], x[1], x[2]))
-
-            get_cp_brands()
-            get_mw_brands()
-
-            for cp_brand in self.cp_brands:
-                # Filter out brands that are not new or updated
-                if cp_brand[2] > self.last_sync:
-                    brand = self.Brand(cp_brand[0], cp_brand[1], cp_brand[2], self.last_sync)
-                    self.brands.add(brand)
-                    print(f'Brand {brand.name} added to sync queue.')
-
-        def process_deletes(self):
-            delete_count = 0
-            mw_brand_ids = [x[0] for x in list(Catalog.mw_brands)]
-            cp_brand_ids = [x[0] for x in self.cp_brands]
-            delete_targets = Catalog.get_deletion_target(secondary_source=mw_brand_ids, primary_source=cp_brand_ids)
-
-            def bc_delete_brand(target):
-                url = f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/' f'catalog/brands/{target}'
-                response = BCRequests.delete(url=url)
-                if response.status_code == 204:
-                    print(f'BigCommerce: Brand {x} DELETE: SUCCESS. Code: {response.status_code}')
-                elif response.status_code == 404:
-                    print(f'BigCommerce: Brand {x} DELETE: Brand Not Found.')
-                else:
-                    print(f'BigCommerce: Brand {x} DELETE: FAILED! Status Code: {response.status_code}')
-                    print(response.json())
-
-            def middleware_delete_brand(target):
-                query = f"""
-                DELETE FROM {creds.shopify_brands_table}
-                WHERE CP_BRAND_ID = '{target}'
-                """
-                mw_brand_del_res = self.db.query_db(query, commit=True)
-                if mw_brand_del_res['code'] != 200:
-                    Catalog.error_handler.add_error_v(
-                        error=f'Brand {target} deleted from middleware.',
-                        origin='process_deletes() -> delete_from_middleware()',
-                    )
-
-            def get_bc_brand_id(cp_brand_id):
-                query = f"""
-                SELECT BC_BRAND_ID
-                FROM {creds.shopify_brands_table}
-                WHERE CP_BRAND_ID = '{cp_brand_id}'
-                """
-                response = self.db.query_db(query)
-                if response:
-                    return response[0][0]
-                else:
-                    return None
-
-            for x in delete_targets:
-                bc_brand_id = get_bc_brand_id(x)
-                if bc_brand_id is not None:
-                    Catalog.logger.log(f'Deleting Brand {x}.')
-                    bc_delete_brand(bc_brand_id)
-                    middleware_delete_brand(x)
-                    delete_count += 1
-                else:
-                    Catalog.logger.warn(f'Brand {x} not found in middleware.')
-
-        class Brand:
-            def __init__(self, cp_brand_id, description, last_maint_dt, last_sync):
-                self.db = query_engine.QueryEngine()
-                self.db_id = None
-                self.cp_brand_id = cp_brand_id
-                self.bc_brand_id = None
-                self.name = description
-                self.page_title = description
-                self.meta_keywords = None
-                self.meta_description = None
-                self.search_keywords = None
-                self.image_name = None
-                self.image_url = None
-                self.image_filepath = f'{creds.brand_photo_path}/{self.cp_brand_id}.jpg'
-                self.image_size = None
-                self.is_custom_url = True
-                self.custom_url = '-'.join(str(re.sub('[^A-Za-z0-9 ]+', '', self.name)).split(' '))
-                self.last_maint_dt = last_maint_dt
-                self.get_brand_details(last_sync)
-
-            def get_brand_details(self, last_sync):
-                query = f"""SELECT *
-                FROM {creds.shopify_brands_table}
-                INNER JOIN IM_ITEM_PROF_COD 
-                ON {creds.shopify_brands_table}.CP_BRAND_ID = IM_ITEM_PROF_COD.PROF_COD
-                WHERE CP_BRAND_ID = '{self.cp_brand_id}'"""
-
-                response = self.db.query_db(query)
-                if response is not None:
-                    self.db_id = response[0][0]
-                    self.bc_brand_id = response[0][2]
-                    self.name = response[0][16]  # This pulls fresh from CP each time
-                    self.page_title = response[0][4]
-                    self.meta_keywords = response[0][5]
-                    self.meta_description = response[0][6]
-                    self.search_keywords = response[0][7]
-                    self.image_name = response[0][8]
-                    self.image_url = response[0][9]
-                    self.image_filepath = f'{creds.brand_photo_path}/{self.cp_brand_id}.jpg'
-                    self.image_size = response[0][11]
-                    image_size = Catalog.get_filesize(self.image_filepath)
-                    self.is_custom_url = True if response[0][12] == 1 else False
-                    self.custom_url = response[0][13]
-                    self.last_maint_dt = response[0][14]
-
-                    # Image Exists in DB
-                    if self.image_name is not None:
-                        if image_size is not None:
-                            # Image exists locally. Check for size match.
-                            if self.image_size != image_size:
-                                self.image_url, self.image_size = self.upload_brand_image()
-                        else:
-                            # Image does not exist locally. Reset image values.
-                            self.image_url = None
-                            self.image_filepath = None
-                            self.image_size = None
-                            self.image_name = None
-
-                    # Image Does Not Exist in DB
-                    else:
-                        self.image_name, self.image_size = self.get_brand_image()
-
-                        if self.image_name is not None:
-                            self.image_url, self.image_size = self.upload_brand_image()
-                        else:
-                            self.image_url = None
-                            self.image_size = None
-                else:
-                    # Brand does not exist in Middleware
-                    self.image_name, self.image_size = self.get_brand_image()
-                    if self.image_name is not None:
-                        self.image_url, self.image_size = self.upload_brand_image()
-
-            def process(self):
-                query = f"""
-                SELECT * FROM {creds.shopify_brands_table}
-                WHERE CP_BRAND_ID = '{self.cp_brand_id}'"""
-                response = self.db.query_db(query)
-                if response:
-                    self.update()
-                else:
-                    self.create()
-
-            def create(self):
-                def create_bc_brand():
-                    url = f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/brands'
-                    response = BCRequests.post(url=url, json=self.construct_payload())
-                    if response.status_code in [200, 207]:
-                        print(f'BigCommerce: Brand {self.name} POST: SUCCESS. Code: {response.status_code}')
-                        return response.json()['data']['id']
-                    else:
-                        print(f'BigCommerce: Brand {self.name} POST: FAILED! Status Code: {response.status_code}')
-                        print(response.json())  # figure out what they are actually returning
-
-                self.bc_brand_id = create_bc_brand()
-
-                def insert_to_middleware():
-                    print('insert')
-                    query = f"""
-                    INSERT INTO {creds.shopify_brands_table} (CP_BRAND_ID, BC_BRAND_ID, NAME, PAGE_TITLE, META_KEYWORDS, 
-                    META_DESCR, SEARCH_KEYWORDS, IMAGE_NAME, IMAGE_URL, IMAGE_FILEPATH, IMAGE_SIZE, IS_CUSTOMIZED, 
-                    CUSTOM_URL)
-                    VALUES ('{self.cp_brand_id}', 
-                    {self.bc_brand_id}, 
-                    {f"'{self.name.replace("'", "''")}'"}, 
-                    {f"'{self.page_title.replace("'", "''")}'"}, 
-                    {f"'{self.meta_keywords.replace("'", "''")}'" if self.meta_keywords else "NULL"}, 
-                    {f"'{self.meta_description.replace("'", "''")}'" if self.meta_description else "NULL"}, 
-                    {f"'{self.search_keywords.replace("'", "''")}'" if self.search_keywords else "NULL"}, 
-                    {f"'{self.image_name}'" if self.image_name else "NULL"},
-                    {f"'{self.image_url}'" if self.image_url else "NULL"}, 
-                    {f"'{self.image_filepath}'" if self.image_name else "NULL"}, 
-                    {self.image_size if self.image_size else "NULL"},
-                    {1 if self.is_custom_url else 0},
-                    {f"'{self.custom_url}'" if self.custom_url else "NULL"})
-                    """
-                    try:
-                        response = self.db.query_db(query, commit=True)
-                    except Exception as e:
-                        print(f'MIDDLEWARE: Brand {self.name} INSERT: FAILED.\n')
-                        print(e)
-                    else:
-                        if response['code'] == 200:
-                            print('Brand: MIDDLEWARE UPDATE sent.')
-                        else:
-                            print(response)
-
-                insert_to_middleware()
-
-            def update(self):
-                def update_bc_brand():
-                    url = (
-                        f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3'
-                        f'/catalog/brands/{self.bc_brand_id}'
-                    )
-
-                    response = BCRequests.put(url=url, json=self.construct_payload())
-                    if response.status_code in [200, 207]:
-                        print(f'BigCommerce: Brand {self.name} PUT: SUCCESS. Code: {response.status_code}')
-                    else:
-                        print(f'BigCommerce: Brand {self.name} PUT: FAILED! Status Code: {response.status_code}')
-                        print(response.json())
-
-                update_bc_brand()
-
-                def update_middleware():
-                    query = f"""
-                    UPDATE {creds.shopify_brands_table}
-                    SET NAME = {f"'{self.name.replace("'", "''")}'"}, 
-                    PAGE_TITLE = {f"'{self.page_title.replace("'", "''")}'"}, META_KEYWORDS = 
-                    {f"'{self.meta_keywords.replace("'", "''")}'" if self.meta_keywords else "NULL"}, 
-                    META_DESCR = {f"'{self.meta_description.replace("'", "''")}'" if self.meta_description else "NULL"}, 
-                    SEARCH_KEYWORDS = {f"'{self.search_keywords.replace("'", "''")}'" if self.search_keywords else "NULL"},
-                    IMAGE_NAME = {f"'{self.image_name}'" if self.image_name else "NULL"}, 
-                    IMAGE_URL = {f"'{self.image_url}'" if self.image_url else "NULL"}, 
-                    IMAGE_FILEPATH = {f"'{self.image_filepath}'" if self.image_name else "NULL"},
-                    IMAGE_SIZE = {self.image_size if self.image_size else "NULL"},
-                    IS_CUSTOMIZED = {1 if self.is_custom_url else 0}, 
-                    CUSTOM_URL = {f"'{self.custom_url}'" if self.custom_url else "NULL"}, LST_MAINT_DT = GETDATE()
-                    WHERE CP_BRAND_ID = '{self.cp_brand_id}'
-                    """
-                    try:
-                        response = self.db.query_db(query, commit=True)
-                    except Exception as e:
-                        print(f'MIDDLEWARE: Brand {self.name} UPDATE: FAILED.\n')
-                        print(e)
-                    else:
-                        if response['code'] == 200:
-                            print('Brand: MIDDLEWARE UPDATE sent.')
-                        else:
-                            print(response)
-
-                update_middleware()
-
-            def get_brand_image(self):
-                """Get image file name from directory"""
-                for filename in os.listdir(creds.brand_photo_path):
-                    if filename.split('.')[0].lower() == self.cp_brand_id.lower():
-                        file_size = os.path.getsize(f'{creds.brand_photo_path}/{filename}')
-                        return filename, file_size
-                return None, None
-
-            def construct_payload(self):
-                payload = {
-                    'name': self.name,
-                    'page_title': self.page_title,
-                    'custom_url': {'url': f'/{self.custom_url}/', 'is_customized': self.is_custom_url},
-                }
-
-                payload['image_url'] = self.image_url if self.image_url else ''
-
-                payload['meta_description'] = self.meta_description if self.meta_description else ''
-
-                payload['search_keywords'] = self.search_keywords if self.search_keywords else ''
-
-                return payload
-
-            def get_image_last_modified(self):
-                """Get last modified date of image file"""
-                try:
-                    return datetime.fromtimestamp(os.path.getmtime(self.image_filepath))
-                except FileNotFoundError:
-                    return datetime(1970, 1, 1)
-
-            def upload_brand_image(self) -> str:
-                """Upload brand file to import folder on webDAV server and turn public url"""
-                try:
-                    data = open(self.image_filepath, 'rb')
-                except FileNotFoundError:
-                    return None, None
-                file_size = os.path.getsize(self.image_filepath)
-                random_int = random.randint(1000, 9999)
-                new_name = f"{self.image_name.split(".")[0]}-{random_int}.jpg"
-                url = f'{creds.web_dav_product_photos}/{new_name}'
-                try:
-                    img_upload_res = requests.put(
-                        url, data=data, auth=HTTPDigestAuth(creds.web_dav_user, creds.web_dav_pw)
-                    )
-                except Exception as e:
-                    Catalog.error_handler.add_error_v(error=f'Error uploading image: {e}')
-                else:
-                    # return public url of image
-                    if img_upload_res.status_code == 201:
-                        return f'{creds.public_web_dav_photos}/{new_name}', file_size
-                    else:
-                        Catalog.error_handler.add_error_v(
-                            error=f'Error uploading brand image: {img_upload_res.status_code} - {img_upload_res.text}'
-                        )
-
     class Product:
         def __init__(self, product_data, last_sync):
             self.db = Database.db
@@ -1610,38 +1033,21 @@ class Catalog:
             self.custom_url = None
 
             # Custom Fields
-            self.custom_botanical_name = None
-            self.custom_botanical_name_id = None
-            self.custom_climate_zone = ''
-            self.custom_climate_zone_id = None
-            self.custom_plant_type = ''
-            self.custom_plant_type_id = None
-            self.custom_type = ''
-            self.custom_type_id = None
-            self.custom_height = ''
-            self.custom_height_id = None
-            self.custom_width = ''
-            self.custom_width_id = None
-            self.custom_sun_exposure = ''
-            self.custom_sun_exposure_id = None
-            self.custom_bloom_time = ''
-            self.custom_bloom_time_id = None
-            self.custom_bloom_color = ''
-            self.custom_bloom_color_id = None
-            self.custom_attracts_pollinators = ''
-            self.custom_attracts_pollinators_id = None
-            self.custom_growth_rate = ''
-            self.custom_growth_rate_id = None
-            self.custom_deer_resistant = ''
-            self.custom_deer_resistant_id = None
-            self.custom_soil_type = ''
-            self.custom_soil_type_id = None
-            self.custom_color = ''
-            self.custom_color_id = None
-            self.custom_size = ''
-            self.custom_size_id = None
-            self.custom_field_response = []  # Will be list of dictionaries from BC API
-            self.custom_field_ids = ''
+            self.custom_botanical_name = {'id': None, 'value': None}
+            self.custom_climate_zone = {'id': None, 'value': None}
+            self.custom_plant_type = {'id': None, 'value': None}
+            self.custom_type = {'id': None, 'value': None}
+            self.custom_height = {'id': None, 'value': None}
+            self.custom_width = {'id': None, 'value': None}
+            self.custom_sun_exposure = {'id': None, 'value': None}
+            self.custom_bloom_time = {'id': None, 'value': None}
+            self.custom_bloom_color = {'id': None, 'value': None}
+            self.custom_attracts_pollinators = {'id': None, 'value': None}
+            self.custom_growth_rate = {'id': None, 'value': None}
+            self.custom_deer_resistant = {'id': None, 'value': None}
+            self.custom_soil_type = {'id': None, 'value': None}
+            self.custom_color = {'id': None, 'value': None}
+            self.custom_size = {'id': None, 'value': None}
 
             self.lst_maint_dt = datetime(1970, 1, 1)
 
@@ -1744,7 +1150,6 @@ class Catalog:
                         self.custom_size = bound.custom_size
                         self.cp_ecommerce_categories = bound.cp_ecommerce_categories
                         self.custom_url = bound.custom_url
-                        self.custom_field_ids = bound.custom_field_ids
                         self.long_descr = bound.long_descr
                         self.is_preorder = bound.is_preorder
                         self.preorder_release_date = bound.preorder_release_date
@@ -1862,7 +1267,7 @@ class Catalog:
             check_html_description = False
             min_description_length = 20
             check_missing_images = True
-            check_for_invalid_brand = True
+            check_for_invalid_brand = False
             check_for_item_cost = False
 
             def set_parent(status: bool = True) -> None:
@@ -2071,173 +1476,217 @@ class Catalog:
                 result = []
 
                 if self.custom_botanical_name:
-                    cf_custom_botanical_name = {
-                        'key': Catalog.metafields['botanical name']['META_KEY'],
-                        'namespace': Catalog.metafields['botanical name']['NAME_SPACE'],
-                        'type': Catalog.metafields['botanical name']['TYPE'],
-                        'value': self.custom_botanical_name,
-                    }
-                    print('\n\nBOTANICAL NAME!!!\n')
-                    print(cf_custom_botanical_name)
-                    print('\n\n')
+                    cf_custom_botanical_name = {'value': self.custom_botanical_name['value']}
 
-                    if self.custom_botanical_name_id:
-                        cf_custom_botanical_name['id'] = self.custom_botanical_name_id
+                    if self.custom_botanical_name['id']:
+                        # Update Custom Field
+                        cf_custom_botanical_name['id'] = self.custom_botanical_name['id']
+                    else:
+                        # Create Custom Field
+                        cf_custom_botanical_name['key'] = Catalog.metafields['botanical name']['META_KEY']
+                        cf_custom_botanical_name['type'] = Catalog.metafields['botanical name']['TYPE']
+                        cf_custom_botanical_name['namespace'] = Catalog.metafields['botanical name']['NAME_SPACE']
 
                     result.append(cf_custom_botanical_name)
 
                 if self.custom_climate_zone:
-                    cf_custom_climate_zone = {
-                        'key': Catalog.metafields['climate zone']['META_KEY'],
-                        'namespace': Catalog.metafields['climate zone']['NAME_SPACE'],
-                        'type': Catalog.metafields['climate zone']['TYPE'],
-                        'value': self.custom_climate_zone,
-                    }
-                    if self.custom_climate_zone_id:
-                        cf_custom_climate_zone['id'] = self.custom_climate_zone_id
+                    cf_custom_climate_zone = {'value': self.custom_climate_zone['value']}
+
+                    if self.custom_climate_zone['id']:
+                        # Update Custom Field
+                        cf_custom_climate_zone['id'] = self.custom_climate_zone['id']
+                    else:
+                        # Create Custom Field
+                        cf_custom_climate_zone['key'] = Catalog.metafields['climate zone']['META_KEY']
+                        cf_custom_climate_zone['type'] = Catalog.metafields['climate zone']['TYPE']
+                        cf_custom_climate_zone['namespace'] = Catalog.metafields['climate zone']['NAME_SPACE']
+
                     result.append(cf_custom_climate_zone)
 
                 if self.custom_plant_type:
-                    cf_custom_plant_type = {
-                        'key': Catalog.metafields['plant type']['META_KEY'],
-                        'namespace': Catalog.metafields['plant type']['NAME_SPACE'],
-                        'type': Catalog.metafields['plant type']['TYPE'],
-                        'value': self.custom_plant_type,
-                    }
-                    if self.custom_plant_type_id:
-                        cf_custom_plant_type['id'] = self.custom_plant_type_id
+                    cf_custom_plant_type = {'value': self.custom_plant_type['value']}
+
+                    if self.custom_plant_type['id']:
+                        # Update Custom Field
+                        cf_custom_plant_type['id'] = self.custom_plant_type['id']
+                    else:
+                        # Create Custom Field
+                        cf_custom_plant_type['key'] = Catalog.metafields['plant type']['META_KEY']
+                        cf_custom_plant_type['type'] = Catalog.metafields['plant type']['TYPE']
+                        cf_custom_plant_type['namespace'] = Catalog.metafields['plant type']['NAME_SPACE']
+
                     result.append(cf_custom_plant_type)
 
                 if self.custom_type:
-                    cf_custom_type = {
-                        'key': Catalog.metafields['type']['META_KEY'],
-                        'namespace': Catalog.metafields['type']['NAME_SPACE'],
-                        'type': Catalog.metafields['type']['TYPE'],
-                        'value': self.custom_type,
-                    }
-                    if self.custom_type_id:
-                        cf_custom_type['id'] = self.custom_type_id
+                    cf_custom_type = {'value': self.custom_type['value']}
+
+                    if self.custom_type['id']:
+                        # Update Custom Field
+                        cf_custom_type['id'] = self.custom_type['id']
+                    else:
+                        # Create Custom Field
+                        cf_custom_type['key'] = Catalog.metafields['type']['META_KEY']
+                        cf_custom_type['type'] = Catalog.metafields['type']['TYPE']
+                        cf_custom_type['namespace'] = Catalog.metafields['type']['NAME_SPACE']
+
                     result.append(cf_custom_type)
 
                 if self.custom_height:
-                    cf_custom_height = {
-                        'key': Catalog.metafields['mature height']['META_KEY'],
-                        'namespace': Catalog.metafields['mature height']['NAME_SPACE'],
-                        'type': Catalog.metafields['mature height']['TYPE'],
-                        'value': self.custom_height,
-                    }
-                    if self.custom_height_id:
-                        cf_custom_height['id'] = self.custom_height_id
+                    cf_custom_height = {'value': self.custom_height['value']}
+
+                    if self.custom_height['id']:
+                        # Update Custom Field
+                        cf_custom_height['id'] = self.custom_height['id']
+                    else:
+                        # Create Custom Field
+                        cf_custom_height['key'] = Catalog.metafields['mature height']['META_KEY']
+                        cf_custom_height['type'] = Catalog.metafields['mature height']['TYPE']
+                        cf_custom_height['namespace'] = Catalog.metafields['mature height']['NAME_SPACE']
+
                     result.append(cf_custom_height)
 
                 if self.custom_width:
-                    cf_custom_width = {
-                        'key': Catalog.metafields['mature width']['META_KEY'],
-                        'namespace': Catalog.metafields['mature width']['NAME_SPACE'],
-                        'type': Catalog.metafields['mature width']['TYPE'],
-                        'value': self.custom_width,
-                    }
-                    if self.custom_width_id:
-                        cf_custom_width['id'] = self.custom_width_id
+                    cf_custom_width = {'value': self.custom_width['value']}
+
+                    if self.custom_width['id']:
+                        # Update Custom Field
+                        cf_custom_width['id'] = self.custom_width['id']
+                    else:
+                        # Create Custom Field
+                        cf_custom_width['key'] = Catalog.metafields['mature width']['META_KEY']
+                        cf_custom_width['type'] = Catalog.metafields['mature width']['TYPE']
+                        cf_custom_width['namespace'] = Catalog.metafields['mature width']['NAME_SPACE']
+
                     result.append(cf_custom_width)
 
                 if self.custom_sun_exposure:
-                    cf_custom_sun_exposure = {
-                        'key': Catalog.metafields['sun exposure']['META_KEY'],
-                        'namespace': Catalog.metafields['sun exposure']['NAME_SPACE'],
-                        'type': Catalog.metafields['sun exposure']['TYPE'],
-                        'value': self.custom_sun_exposure,
-                    }
-                    if self.custom_sun_exposure_id:
-                        cf_custom_sun_exposure['id'] = self.custom_sun_exposure_id
+                    cf_custom_sun_exposure = {'value': self.custom_sun_exposure['value']}
+
+                    if self.custom_sun_exposure['id']:
+                        # Update Custom Field
+                        cf_custom_sun_exposure['id'] = self.custom_sun_exposure['id']
+                    else:
+                        # Create Custom Field
+                        cf_custom_sun_exposure['key'] = Catalog.metafields['sun exposure']['META_KEY']
+                        cf_custom_sun_exposure['type'] = Catalog.metafields['sun exposure']['TYPE']
+                        cf_custom_sun_exposure['namespace'] = Catalog.metafields['sun exposure']['NAME_SPACE']
+
                     result.append(cf_custom_sun_exposure)
 
                 if self.custom_bloom_time:
-                    cf_custom_bloom_time = {
-                        'key': Catalog.metafields['bloom time']['META_KEY'],
-                        'namespace': Catalog.metafields['bloom time']['NAME_SPACE'],
-                        'type': Catalog.metafields['bloom time']['TYPE'],
-                        'value': self.custom_bloom_time,
-                    }
-                    if self.custom_bloom_time_id:
-                        cf_custom_bloom_time['id'] = self.custom_bloom_time_id
+                    cf_custom_bloom_time = {'value': self.custom_bloom_time['value']}
+
+                    if self.custom_bloom_time['id']:
+                        # Update Custom Field
+                        cf_custom_bloom_time['id'] = self.custom_bloom_time['id']
+                    else:
+                        # Create Custom Field
+                        cf_custom_bloom_time['key'] = Catalog.metafields['bloom time']['META_KEY']
+                        cf_custom_bloom_time['type'] = Catalog.metafields['bloom time']['TYPE']
+                        cf_custom_bloom_time['namespace'] = Catalog.metafields['bloom time']['NAME_SPACE']
+
                     result.append(cf_custom_bloom_time)
 
                 if self.custom_bloom_color:
-                    cf_custom_bloom_color = {
-                        'key': Catalog.metafields['bloom color']['META_KEY'],
-                        'namespace': Catalog.metafields['bloom color']['NAME_SPACE'],
-                        'type': Catalog.metafields['bloom color']['TYPE'],
-                        'value': self.custom_bloom_color,
-                    }
-                    if self.custom_bloom_color_id:
-                        cf_custom_bloom_color['id'] = self.custom_bloom_color_id
+                    cf_custom_bloom_color = {'value': self.custom_bloom_color['value']}
+
+                    if self.custom_bloom_color['id']:
+                        # Update Custom Field
+                        cf_custom_bloom_color['id'] = self.custom_bloom_color['id']
+                    else:
+                        # Create Custom Field
+                        cf_custom_bloom_color['key'] = Catalog.metafields['bloom color']['META_KEY']
+                        cf_custom_bloom_color['type'] = Catalog.metafields['bloom color']['TYPE']
+                        cf_custom_bloom_color['namespace'] = Catalog.metafields['bloom color']['NAME_SPACE']
+
                     result.append(cf_custom_bloom_color)
 
                 if self.custom_attracts_pollinators:
-                    cf_custom_attracts_pollinators = {
-                        'key': Catalog.metafields['attracts pollinators']['META_KEY'],
-                        'namespace': Catalog.metafields['attracts pollinators']['NAME_SPACE'],
-                        'type': Catalog.metafields['attracts pollinators']['TYPE'],
-                        'value': 'true' if self.custom_attracts_pollinators == 'Yes' else 'false',
-                    }
-                    if self.custom_attracts_pollinators_id:
-                        cf_custom_attracts_pollinators['id'] = self.custom_attracts_pollinators_id
+                    cf_custom_attracts_pollinators = {'value': self.custom_attracts_pollinators['value']}
+
+                    if self.custom_attracts_pollinators['id']:
+                        # Update Custom Field
+                        cf_custom_attracts_pollinators['id'] = self.custom_attracts_pollinators['id']
+                    else:
+                        # Create Custom Field
+                        cf_custom_attracts_pollinators['key'] = Catalog.metafields['attracts pollinators'][
+                            'META_KEY'
+                        ]
+                        cf_custom_attracts_pollinators['type'] = Catalog.metafields['attracts pollinators']['TYPE']
+                        cf_custom_attracts_pollinators['namespace'] = Catalog.metafields['attracts pollinators'][
+                            'NAME_SPACE'
+                        ]
+
                     result.append(cf_custom_attracts_pollinators)
 
                 if self.custom_growth_rate:
-                    cf_custom_growth_rate = {
-                        'key': Catalog.metafields['growth rate']['META_KEY'],
-                        'namespace': Catalog.metafields['growth rate']['NAME_SPACE'],
-                        'type': Catalog.metafields['growth rate']['TYPE'],
-                        'value': self.custom_growth_rate,
-                    }
-                    if self.custom_growth_rate_id:
-                        cf_custom_growth_rate['id'] = self.custom_growth_rate_id
+                    cf_custom_growth_rate = {'value': self.custom_growth_rate['value']}
+
+                    if self.custom_growth_rate['id']:
+                        # Update Custom Field
+                        cf_custom_growth_rate['id'] = self.custom_growth_rate['id']
+                    else:
+                        # Create Custom Field
+                        cf_custom_growth_rate['key'] = Catalog.metafields['growth rate']['META_KEY']
+                        cf_custom_growth_rate['type'] = Catalog.metafields['growth rate']['TYPE']
+                        cf_custom_growth_rate['namespace'] = Catalog.metafields['growth rate']['NAME_SPACE']
+
                     result.append(cf_custom_growth_rate)
 
                 if self.custom_deer_resistant:
-                    cf_custom_deer_resistant = {
-                        'key': Catalog.metafields['deer resistant']['META_KEY'],
-                        'namespace': Catalog.metafields['deer resistant']['NAME_SPACE'],
-                        'type': Catalog.metafields['deer resistant']['TYPE'],
-                        'value': 'true' if self.custom_deer_resistant == 'Yes' else 'false',
-                    }
-                    if self.custom_deer_resistant_id:
-                        cf_custom_deer_resistant['id'] = self.custom_deer_resistant_id
+                    cf_custom_deer_resistant = {'value': self.custom_deer_resistant['value']}
+
+                    if self.custom_deer_resistant['id']:
+                        # Update Custom Field
+                        cf_custom_deer_resistant['id'] = self.custom_deer_resistant['id']
+                    else:
+                        # Create Custom Field
+                        cf_custom_deer_resistant['key'] = Catalog.metafields['deer resistant']['META_KEY']
+                        cf_custom_deer_resistant['type'] = Catalog.metafields['deer resistant']['TYPE']
+                        cf_custom_deer_resistant['namespace'] = Catalog.metafields['deer resistant']['NAME_SPACE']
+
                     result.append(cf_custom_deer_resistant)
 
                 if self.custom_soil_type:
-                    cf_custom_soil_type = {
-                        'key': Catalog.metafields['soil type']['META_KEY'],
-                        'namespace': Catalog.metafields['soil type']['NAME_SPACE'],
-                        'type': Catalog.metafields['soil type']['TYPE'],
-                        'value': self.custom_soil_type,
-                    }
-                    if self.custom_soil_type_id:
-                        cf_custom_soil_type['id'] = self.custom_soil_type_id
+                    cf_custom_soil_type = {'value': self.custom_soil_type['value']}
+
+                    if self.custom_soil_type['id']:
+                        # Update Custom Field
+                        cf_custom_soil_type['id'] = self.custom_soil_type['id']
+                    else:
+                        # Create Custom Field
+                        cf_custom_soil_type['key'] = Catalog.metafields['soil type']['META_KEY']
+                        cf_custom_soil_type['type'] = Catalog.metafields['soil type']['TYPE']
+                        cf_custom_soil_type['namespace'] = Catalog.metafields['soil type']['NAME_SPACE']
+
                     result.append(cf_custom_soil_type)
 
                 if self.custom_color:
-                    cf_custom_color = {
-                        'key': Catalog.metafields['color']['META_KEY'],
-                        'namespace': Catalog.metafields['color']['NAME_SPACE'],
-                        'type': Catalog.metafields['color']['TYPE'],
-                        'value': self.custom_color,
-                    }
-                    if self.custom_color_id:
-                        cf_custom_color['id'] = self.custom_color_id
+                    cf_custom_color = {'value': self.custom_color['value']}
+
+                    if self.custom_color['id']:
+                        # Update Custom Field
+                        cf_custom_color['id'] = self.custom_color['id']
+                    else:
+                        # Create Custom Field
+                        cf_custom_color['key'] = Catalog.metafields['color']['META_KEY']
+                        cf_custom_color['type'] = Catalog.metafields['color']['TYPE']
+                        cf_custom_color['namespace'] = Catalog.metafields['color']['NAME_SPACE']
+
                     result.append(cf_custom_color)
 
                 if self.custom_size:
-                    cf_custom_size = {
-                        'key': Catalog.metafields['size']['META_KEY'],
-                        'namespace': Catalog.metafields['size']['NAME_SPACE'],
-                        'type': Catalog.metafields['size']['TYPE'],
-                        'value': self.custom_size,
-                    }
-                    if self.custom_size_id:
-                        cf_custom_size['id'] = self.custom_size_id
+                    cf_custom_size = {'value': self.custom_size['value']}
+
+                    if self.custom_size['id']:
+                        # Update Custom Field
+                        cf_custom_size['id'] = self.custom_size['id']
+                    else:
+                        # Create Custom Field
+                        cf_custom_size['key'] = Catalog.metafields['size']['META_KEY']
+                        cf_custom_size['type'] = Catalog.metafields['size']['TYPE']
+                        cf_custom_size['namespace'] = Catalog.metafields['size']['NAME_SPACE']
+
                     result.append(cf_custom_size)
 
                 return result
@@ -2452,7 +1901,7 @@ class Catalog:
             def create():
                 """Create new product in Shopify and Middleware."""
                 # Create Base Product
-                response = Shopify.Product.create_base_product(self.get_product_payload())
+                response = Shopify.Product.create(self.get_product_payload())
                 self.product_id = response['product_id']
                 self.option_id = response['option_ids'][0]
 
@@ -2489,7 +1938,7 @@ class Catalog:
                     )
                     # Wait for images to process
                     time.sleep(3)
-                    Shopify.Product.Variant.add_images(self.product_id, self.get_variant_image_payload())
+                    Shopify.Product.Variant.Image.create(self.product_id, self.get_variant_image_payload())
 
                 else:
                     # Update Default Variant
@@ -2497,45 +1946,44 @@ class Catalog:
                     single_payload = self.get_single_variant_payload()
                     Shopify.Product.Variant.update_single(single_payload)
 
-                # # Update Inventory
-                Shopify.Inventory.update(self.get_inventory_payload())
                 # Add Product to Online Store Sales Channel
                 Shopify.Product.publish(self.product_id)
 
-                self.insert_product()
-                self.insert_images()
+                Database.Shopify.Product.insert(self)
+                for image in self.images:
+                    Database.Shopify.Product.Image.insert(image)
 
             def update():
-                pass
+                """Will update existing product. Will clear out custom field data and reinsert."""
+                product_payload = self.get_product_payload()
 
-            #     """Will update existing product. Will clear out custom field data and reinsert."""
-            #     product_payload, variant_payload = self.get_product_payload()
-            #     response = Shopify.Product.update(product_payload=product_payload, variant_payload=variant_payload)
-            #     self.get_product_data_from_response(response=response)
-            #     self.middleware_sync_product()
-            #     self.middleware_sync_images()
+                response = Shopify.Product.update(product_payload)
+                self.option_id = response['option_ids'][0]
+                for x, image in enumerate(self.images):
+                    image.image_id = response['media_ids'][x]
+
+                if self.is_bound:
+                    variant_payload = self.get_bulk_variant_payload()
+                    Shopify.Product.Variant.update_bulk(variant_payload)
+                else:
+                    variant_payload = self.get_single_variant_payload()
+                    Shopify.Product.Variant.update_single(variant_payload)
+
+                Database.Shopify.Product.sync(product=self)
 
             if self.product_id:
-                return update()
+                update()
             else:
-                return create()
+                create()
+
+            # Update Inventory
+            Shopify.Inventory.update(self.get_inventory_payload())
 
         def replace_image(self, image) -> bool:
             """Replace image in BigCommerce and SQL."""
-            delete_response = self.delete_image(image.image_name)
-            if delete_response.status_code == 204:
-                post_response = self.bc_post_image(image)
-                if post_response.status_code == 200:
-                    insert_response = self.insert_image(image)
-                    print(insert_response)
-                else:
-                    print(f'Replace Image: Error posting {image.image_name} to BigCommerce')
-                    print(post_response.status_code, post_response.content)
-                    return False
-            else:
-                print(f'Error deleting {image.image_name} from BigCommerce')
-                print(delete_response.status_code, delete_response.content)
-                return False
+            self.delete_image(image)
+            image.image_id = Shopify.Product.Media.Image.create(image)
+            Database.Shopify.Product.Image.insert(image)
 
         def get_shopify_collections(self):
             """Get Shopify Collection IDs from Middleware Category IDs"""
@@ -2543,203 +1991,55 @@ class Catalog:
 
             if self.cp_ecommerce_categories:
                 for category in self.cp_ecommerce_categories:
-                    categ_query = f"""
+                    # Get Collection ID from Middleware Category ID
+                    q = f"""
                         SELECT COLLECTION_ID 
                         FROM {creds.shopify_category_table}
                         WHERE CP_CATEG_ID = '{category}'
                         """
-                    cat_response = self.db.query_db(categ_query)
-                    result.append(cat_response[0][0]) if cat_response and cat_response[0][0] else ''
+                    response = self.db.query_db(q)
+                    try:
+                        result.append(response[0][0])
+                    except:
+                        continue
+                    else:
+                        top_level = False
+                        while not top_level:
+                            # Get Parent Collection ID from Middleware Category ID
+                            q = f"""
+                                SELECT COLLECTION_ID
+                                FROM SN_SHOP_CATEG
+                                WHERE CP_CATEG_ID = (SELECT CP_PARENT_ID
+                                                    FROM SN_SHOP_CATEG
+                                                    WHERE CP_CATEG_ID = '{category}')
+                                """
+                            parent_response = self.db.query_db(q)
+                            print(parent_response)
+                            try:
+                                result.append(parent_response[0][0])
+                            except:
+                                top_level = True
+                            else:
+                                category = parent_response[0][0]
+
             return result
-
-        def bc_post_image(self, image):
-            # Post New Image to Big Commerce
-
-            image_payload = {
-                'is_thumbnail': image.is_thumbnail,
-                'sort_order': image.sort_order,
-                'description': image.description,
-                'image_url': image.image_url,
-            }
-
-            if self.product_id:
-                image_payload['product_id'] = self.product_id
-
-            url = f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/products/{self.product_id}/images'
-
-            bc_response = BCRequests.post(url=url, json=image_payload)
-
-            if bc_response.status_code == 200:
-                Catalog.logger.success(f'Image: {image.image_name} Posted to BigCommerce')
-            else:
-                Catalog.error_handler.add_error_v(
-                    error=f'POST Image: {image.image_name} to BigCommerce. Response Code: {bc_response.status_code}\n'
-                    f'Code {bc_response.status_code}: POST Image: {image.image_name}\n'
-                    f'Payload: {image_payload}\n'
-                    f'Response: {json.dumps(bc_response.json(), indent=4)}',
-                    origin='Catalog --> bc_post_image',
-                )
-            return bc_response
-
-        def bc_get_custom_fields(self):
-            custom_fields = []
-
-            cf_url = (
-                f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/'
-                f'catalog/products/{self.product_id}/custom-fields'
-            )
-            cf_response = BCRequests.get(url=cf_url)
-            if cf_response.status_code == 200:
-                custom_field_data = cf_response.json()['data']
-                for field in custom_field_data:
-                    custom_fields.append(field['id'])
-            else:
-                Catalog.error_handler.add_error_v(
-                    f'Error getting custom fields from BigCommerce. Response: {cf_response.status_code}\n{cf_response.content}'
-                )
-                return None
-
-            return custom_fields
-
-        def bc_delete_custom_fields(self, asynchronous=False):
-            if self.custom_field_ids:
-                id_list = self.custom_field_ids.split(',')
-            else:
-                # If there are no custom fields in the middleware, get them from BigCommerce
-                id_list = self.bc_get_custom_fields()
-                # If there are no custom fields in BigCommerce, return
-                if not id_list:
-                    return
-
-            async def bc_delete_custom_fields_async():
-                async with aiohttp.ClientSession() as session:
-                    for field_id in id_list:
-                        async_url = f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/products/{self.product_id}/custom-fields/{field_id}'
-                        rate_limited = True
-                        while rate_limited:
-                            rate_limited = False
-                            async with session.delete(url=async_url, headers=creds.bc_api_headers) as resp:
-                                text_response = await resp.text()
-                                status_code = resp.status
-                                if status_code == 204:
-                                    Catalog.logger.success(f'Custom Field {field_id} Deleted from BigCommerce.')
-                                elif status_code == 429:
-                                    rate_limited = True
-                                    ms_to_wait = int(resp.headers['X-Rate-Limit-Time-Reset-Ms'])
-                                    seconds_to_wait = (ms_to_wait / 1000) + 1
-                                    VirtualRateLimiter.pause_requests(seconds_to_wait)
-                                    time.sleep(seconds_to_wait)
-                                else:
-                                    Catalog.error_handler.add_error_v(
-                                        f'Error deleting custom field {field_id} from BigCommerce. Response: {status_code}\n{text_response}'
-                                    )
-
-            asyncio.run(bc_delete_custom_fields_async())
-
-            update_cf1_query = f"""
-                UPDATE {creds.shopify_product_table} 
-                SET CUSTOM_FIELDS = NULL, LST_MAINT_DT = GETDATE() 
-                WHERE PRODUCT_ID = '{self.product_id}' AND IS_PARENT = 1
-                """
-            self.db.query_db(update_cf1_query, commit=True)
-
-        def bc_get_option_id(self):
-            url = f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/products/{self.product_id}/options'
-            response = requests.get(url)
-            if response.status_code == 200:
-                return response.json()['data'][0]['id']
-
-        def bc_delete_product_option_value(self, product_id, option_id, value_id):
-            url = f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/products/{product_id}/options/{option_id}/values/{value_id}'
-            response = BCRequests.delete(url)
-            return response
-
-        def bc_create_product_variant_option_value(self, variant_name, product_id, option_id):
-            url = (
-                f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/'
-                f'products/{product_id}/options/{option_id}/values'
-            )
-            print(f'Option Value ID URL: {url}')
-            value_payload = {'is_default': False, 'label': variant_name, 'value_data': {}, 'sort_order': 0}
-            print(f'OPTION ID Value Payload: {value_payload}')
-            response = BCRequests.post(url=url, json=value_payload)
-            if response.status_code == 200:
-                return response.json()['data']['id']
-
-            else:
-                print(f'Error creating option value for {product_id}. Response: {response.status_code}')
-                print(response.content)
-                return None
-
-        def reset_variant_properties(self, variant):
-            variant.db_id = None
-            variant.product_id = None
-            variant.variant_id = None
-            variant.custom_field_ids = None
-
-            for image in variant.images:
-                image.id = None
-                image.image_id = None
-
-            variant.variant_id = None
-            variant.option_value_id = None
 
         def delete_product(self, sku, binding_id=None):
             """Delete Product from BigCommerce and Middleware."""
-
-            # CHECK THIS OUT.
             self.db_id = None
-            if binding_id:
-                product_id = self.get_product_id(binding_id=binding_id)
+            if self.product_id:
+                product_id = self.product_id
             else:
-                product_id = self.get_product_id(item_no=sku)
-
-            if product_id is None:
                 if binding_id:
-                    delete_url = f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/products?sku={binding_id}'
+                    product_id = Database.Shopify.Product.get_id(binding_id=binding_id)
                 else:
-                    delete_url = (
-                        f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/products?sku={sku}'
-                    )
-            else:
-                delete_url = (
-                    f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/products?id={product_id}'
-                )
+                    product_id = Database.Shopify.Product.get_id(item_no=sku)
 
-            del_product_response = BCRequests.delete(url=delete_url)
-            if del_product_response.status_code == 204:
-                print(f'Product {sku} deleted from BigCommerce.')
-
-                if product_id is None:
-                    if binding_id:
-                        delete_query = f"""DELETE FROM {creds.shopify_product_table} WHERE BINDING_ID = '{binding_id}' 
-                        DELETE FROM {creds.shopify_image_table} WHERE BINDING_ID = '{binding_id}'"""
-                    else:
-                        delete_query = f"""DELETE FROM {creds.shopify_product_table} WHERE ITEM_NO = '{sku}' 
-                        DELETE FROM {creds.shopify_image_table} WHERE ITEM_NO = '{sku}'"""
-                else:
-                    delete_query = f"""DELETE FROM {creds.shopify_product_table} WHERE PRODUCT_ID = '{product_id}' 
-                    DELETE FROM {creds.shopify_image_table} WHERE PRODUCT_ID = '{product_id}'"""
-
-                sql_del_res = self.db.query_db(delete_query, commit=True)
-                if sql_del_res['code'] == 200:
-                    Catalog.logger.success(f'Product {sku} deleted from BigCommerce and Middleware.')
-                    return True
-                else:
-                    Catalog.error_handler.add_error_v(
-                        error=f'Error deleting product {sku} from Middleware. Response: {sql_del_res}'
-                    )
-                    return False
-            else:
-                Catalog.error_handler.add_error_v(
-                    error=f'Error deleting product {sku} from BigCommerce. Response: {del_product_response} \n URL: {delete_url}'
-                )
-                return False
+            Shopify.Product.delete(product_id)
+            Database.Shopify.Product.delete(product_id)
 
         def delete_variant(self, sku, binding_id=None):
-            print(f'IN Delete Variant. sku is {sku}, binding_id is {binding_id}')
             """Delete Variant from BigCommerce and Middleware. This will also delete the option value from BigCommerce."""
-
             if self.is_last_variant(binding_id=binding_id):
                 print('Last Variant in Product. Will delete product.')
                 self.delete_product(sku=sku, binding_id=binding_id)
@@ -2747,343 +2047,28 @@ class Catalog:
                 print('Parent Product. Will delete product.')
                 self.delete_product(sku=sku, binding_id=binding_id)
             else:
-                self.db_id = None
-                # Get Variant Details Required for Deletion
-                item_query = (
-                    f'SELECT PRODUCT_ID, VARIANT_ID, OPTION_ID, OPTION_VALUE_ID '
-                    f"FROM {creds.shopify_product_table} WHERE ITEM_NO = '{sku}'"
-                )
-                response = self.db.query_db(item_query)
-                if response is not None:
-                    product_id = response[0][0]
-                    variant_id = response[0][1]
-                    option_id = response[0][2]
-                    variant_option_value_id = response[0][3]
-
-                url = (
-                    f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/'
-                    f'v3/catalog/products/{product_id}/variants/{variant_id}'
-                )
-                rate_limited = True
-                while rate_limited:
-                    rate_limited = False
-                    # Step 1: Delete Variant from Big Commerce
-                    del_variant_response = BCRequests.delete(url=url)
-                    # print(f"Delete Variant Response: {del_variant_response.status_code}")
-                    if del_variant_response.status_code == 204:
-                        # print(f"Variant {sku} deleted from BigCommerce.")
-
-                        # Step 2: Delete Option Value from Big Commerce so an orphan option value isn't left behind.
-                        del_option_res = self.bc_delete_product_option_value(
-                            product_id, option_id, variant_option_value_id
-                        )
-                        # print(f"Delete Option Value Response: {del_option_res.status_code}")
-                        if del_option_res.status_code == 204:
-                            # print(
-                            #     f"Variant Option Value {variant_option_value_id} deleted from BigCommerce."
-                            # )
-                            # Step 3: Get Image ID's associated with variant and delete them from parent product.
-                            image_query = f"""
-                            SELECT IMAGE_ID
-                            FROM {creds.shopify_image_table}
-                            WHERE ITEM_NO = '{sku}'
-                            """
-                            image_response = self.db.query_db(image_query)
-                            if image_response is not None:
-                                for image_id in image_response:
-                                    image_id = image_id[0]
-                                    self.delete_image(
-                                        # product ID is new here.
-                                        product_id=product_id,
-                                        image_id=image_id,
-                                    )
-
-                            # Step 4: Delete Variant from Middleware (Product and Image Tables)
-                            delete_query = (
-                                f"DELETE FROM {creds.shopify_product_table} WHERE VARIANT_ID = '{variant_id}'"
-                            )
-                            response = self.db.query_db(delete_query, commit=True)
-
-                            if response['code'] == 200:
-                                Catalog.logger.success(f'Variant {sku} deleted from Big Commerce and Middleware.')
-                                return True
-
-                        else:
-                            Catalog.error_handler.add_error_v(
-                                error=f'Error deleting option value {variant_option_value_id} from BigCommerce. Response: {del_option_res} \n URL: {url}'
-                            )
-                            return False
-
+                # self.db_id = None # does this make sense. Should it be child only?
+                variant_id = Database.Shopify.Product.Variant.get_variant_id(sku=sku)  # Use for MW deletion
+                # Shopify.Product.Variant.delete(variant_id)
+                option_value_id = Database.Shopify.Product.Variant.get_option_value_id(sku=sku)
+                if self.product_id:
+                    product_id = self.product_id
+                else:
+                    if binding_id:
+                        product_id = Database.Shopify.Product.get_id(binding_id=binding_id)
                     else:
-                        print(
-                            f'Error deleting product {sku} from BigCommerce. Response: {del_variant_response} \n URL: {url}'
-                        )
-                        return False
+                        product_id = Database.Shopify.Product.get_id(item_no=sku)
 
-        def delete_image(self, image_id=None, product_id=None, image_name=None):
-            """Delete image from BigCommerce and SQL."""
-            if image_id is None:
-                image_id = self.get_image_id(image_name)
-
-            if product_id is None:
-                # if self.product_id:
-                #     product_id = self.product_id
-                # else:
-                product_id = self.get_product_id(image_id=image_id)
-
-            delete_img_url = f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/products/{product_id}/images/{image_id}'
-
-            rate_limited = True
-            while rate_limited:
-                rate_limited = False
-                img_del_res = BCRequests.delete(url=delete_img_url)
-                if img_del_res.status_code == 204:
-                    Catalog.logger.success(f'Image {image_id} deleted from BigCommerce.')
-                    delete_images_query = (
-                        f'DELETE FROM {creds.shopify_image_table} ' f"WHERE IMAGE_ID = '{image_id}'"
-                    )
-                    sql_res = self.db.query_db(delete_images_query, commit=True)
-                    if sql_res['code'] == 200:
-                        Catalog.logger.success(f'Image {image_id} deleted from SQL.')
-                    else:
-                        Catalog.error_handler.add_error_v(
-                            error=f'Error deleting image {image_id} from SQL. Response: {sql_res}'
-                        )
-
-                else:
-                    Catalog.error_handler.add_error_v(
-                        error=f'Error deleting image {image_id} from BigCommerce.\n'
-                        f'Response: {img_del_res.status_code}\n'
-                        f'Content: {img_del_res.content}\n'
-                        f'URL: {delete_img_url}'
-                    )
-                return img_del_res
-
-        # Middleware Methods
-        def middleware_sync_product(self):
-            success = True
-            for variant in self.variants:
-                if variant.db_id is None:
-                    # If variant.db_id is None, this is a new product to be inserted into SQL
-                    insert_response = self.insert_variant(variant)
-                    if insert_response['code'] != 200:
-                        success = False
-                else:
-                    update_response = self.update_variant(variant)
-                    if update_response['code'] != 200:
-                        success = False
-            return success
-
-        def middleware_sync_images(self):
-            """Sync images to middleware."""
-            success = True
-            for image in self.images:
-                if image.id is None:
-                    insert_image_response = self.insert_image(image=image)
-                    if insert_image_response['code'] != 200:
-                        success = False
-                else:
-                    update_image_response = self.update_image(image)
-                    if update_image_response['code'] != 200:
-                        success = False
-            return success
-
-        def insert_product(self):
-            """Insert product into middleware"""
-            for variant in self.variants:
-                self.insert_variant(variant)
-
-        def insert_variant(self, variant):
-            custom_field_string = self.custom_field_ids
-            if not variant.is_parent:
-                custom_field_string = None
-
-            if self.shopify_collections:
-                categories_string = ','.join(str(x) for x in self.shopify_collections)
-            else:
-                categories_string = None
-
-            insert_query = (
-                f"INSERT INTO {creds.shopify_product_table} (ITEM_NO, BINDING_ID, IS_PARENT, "
-                f"PRODUCT_ID, VARIANT_ID, VARIANT_NAME, OPTION_ID, OPTION_VALUE_ID, CATEG_ID, CUSTOM_FIELDS) VALUES ('{variant.sku}', "
-                f"{f"'{self.binding_id}'" if self.binding_id else 'NULL'}, "
-                f"{1 if variant.is_parent else 0}, {self.product_id if self.product_id else "NULL"}, "
-                f"{variant.variant_id if variant.variant_id else "NULL"}, "
-                f"{f"'{variant.variant_name}'" if variant.variant_id else "NULL"}, "
-                f"{variant.option_id if variant.option_id else "NULL"}, "
-                f"{variant.option_value_id if variant.option_value_id else "NULL"}, "
-                f"{f"'{categories_string}'" if categories_string else "NULL"}, "
-                f"{f"'{custom_field_string}'" if custom_field_string else "NULL"})"
-            )
-
-            insert_product_response = self.db.query_db(insert_query, commit=True)
-            if insert_product_response['code'] == 200:
-                # Catalog.logger.success(
-                #     f"SKU: {variant.sku}, Binding ID: {variant.binding_id} - INSERT Variant {self.sku}: Success"
-                # )
-                pass
-            else:
-                Catalog.error_handler.add_error_v(
-                    error=f'Query: {insert_query}\n\nResponse: {insert_product_response}',
-                    origin=f'SKU: {variant.sku} Bind: {variant.binding_id} - insert_variant',
-                )
-            return insert_product_response
-
-        def update_variant(self, variant):
-            custom_field_string = self.custom_field_ids
-            if not variant.is_parent:
-                custom_field_string = None
-
-            if self.shopify_collections:
-                categories_string = ','.join(str(x) for x in self.shopify_collections)
-            else:
-                categories_string = None
-
-            update_query = (
-                f"UPDATE {creds.shopify_product_table} "
-                f"SET ITEM_NO = '{variant.sku}', "
-                f"BINDING_ID = "
-                f"{f"'{self.binding_id}'" if self.binding_id else 'NULL'}, "
-                f"IS_PARENT = {1 if variant.is_parent else 0}, "
-                f"PRODUCT_ID = {self.product_id if self.product_id else 'NULL'}, "
-                f"VARIANT_ID = {variant.variant_id if variant.variant_id else 'NULL'}, "
-                f"VARIANT_NAME = {f"'{variant.variant_name}'" if variant.variant_id else "NULL"}, "
-                f"OPTION_ID = {variant.option_id if variant.option_id else "NULL"}, "
-                f"OPTION_VALUE_ID = {variant.option_value_id if variant.option_value_id else "NULL"}, "
-                f"CATEG_ID = {f"'{categories_string}'" if categories_string else "NULL"}, "
-                f"CUSTOM_FIELDS = {f"'{custom_field_string}'" if custom_field_string else "NULL"}, "
-                f"LST_MAINT_DT = GETDATE() "
-                f"WHERE ID = {variant.db_id}"
-            )
-
-            update_product_response = self.db.query_db(update_query, commit=True)
-            if update_product_response['code'] == 200:
-                # Catalog.logger.success(
-                #     f"SKU: {variant.sku}, Binding ID: {variant.binding_id} - UPDATE Variant {self.sku}: Success"
-                # )
-                pass
-            else:
-                Catalog.error_handler.add_error_v(
-                    error=f'UPDATE{update_product_response}',
-                    origin=f'SKU: {variant.sku} Bind: {variant.binding_id} - update_variant',
-                )
-            return update_product_response
-
-        def reset_brand(self):
-            """Delete brand from item in counterpoint. Used as a corrective measure when an item has a prof_cod_1 that doesn't exist in
-            ITEM_PROF_COD"""
-            if self.is_bound:
-                reset_brand_query = f"""
-                UPDATE IM_ITEM
-                SET PROF_COD_1 = "SETTLEMYRE", LST_MOD_DT = GETDATE()
-                WHERE {creds.cp_field_binding_id} = '{self.binding_id}' AND IS_ADM_TKT = 'Y'
-                """
-            else:
-                reset_brand_query = f"""
-                UPDATE IM_ITEM
-                SET PROF_COD_1 = NULL, LST_MOD_DT = GETDATE()
-                WHERE ITEM_NO = '{self.sku}'
-                """
-            self.db.query_db(reset_brand_query, commit=True)
-
-        def get_product_id(self, item_no=None, binding_id=None, image_id=None):
-            """Get product ID from SQL using image ID. If not found, return None."""
-            if item_no:
-                product_query = f"SELECT PRODUCT_ID FROM {creds.shopify_product_table} WHERE ITEM_NO = '{item_no}'"
-            if image_id:
-                product_query = f"SELECT PRODUCT_ID FROM {creds.shopify_image_table} WHERE IMAGE_ID = '{image_id}'"
-            if binding_id:
-                product_query = (
-                    f"SELECT PRODUCT_ID FROM {creds.shopify_product_table} WHERE BINDING_ID = '{binding_id}'"
+                Shopify.Product.Option.update(
+                    product_id=product_id, option_id=self.option_id, option_values_to_delete=[option_value_id]
                 )
 
-            if item_no or image_id or binding_id:
-                prod_id_res = self.db.query_db(product_query)
-                if prod_id_res is not None:
-                    return prod_id_res[0][0]
+                Database.Shopify.Product.Variant.delete(variant_id)
 
-        def get_image_id(self, target):
-            """Get image ID from SQL using filename. If not found, return None."""
-            image_query = f"SELECT IMAGE_ID FROM {creds.shopify_image_table} WHERE IMAGE_NAME = '{target}'"
-            img_id_res = self.db.query_db(image_query)
-            if img_id_res is not None:
-                return img_id_res[0][0]
-
-                print('No images to delete.')
-
-        def insert_images(self):
-            """Insert images into SQL."""
-            success = True
-            for image in self.images:
-                insert_image_response = self.insert_image(image)
-                if insert_image_response['code'] != 200:
-                    success = False
-            return success
-
-        def insert_image(self, image) -> bool:
-            """Insert image into SQL."""
-            img_insert = f"""
-            INSERT INTO {creds.shopify_image_table} (IMAGE_NAME, ITEM_NO, FILE_PATH,
-            IMAGE_URL, PRODUCT_ID, IMAGE_ID, THUMBNAIL, IMAGE_NUMBER, SORT_ORDER,
-            IS_BINDING_IMAGE, BINDING_ID, IS_VARIANT_IMAGE, DESCR, SIZE)
-            VALUES (
-            '{image.image_name}',
-            {f"'{image.sku}'" if image.sku != '' else 'NULL'},
-            '{image.file_path}',
-            '{image.image_url}',
-            {image.product_id},
-            {image.image_id},
-            '{1 if image.is_thumbnail else 0}', '{image.image_number}',
-            '{image.sort_order}',
-            '{image.is_binding_image}',
-            {f"'{image.binding_id}'" if image.binding_id else 'NULL'},
-            '{image.is_variant_image}',
-            {f"'{image.description.replace("'", "''")}'" if image.description != '' else 'NULL'},
-            {image.size})"""
-
-            insert_img_response = self.db.query_db(img_insert, commit=True)
-            if insert_img_response['code'] == 200:
-                # Catalog.logger.success(f"SQL INSERT Image {image.image_name}: Success")
-                pass
-            else:
-                Catalog.error_handler.add_error_v(
-                    error=f'{insert_img_response}',
-                    origin=f'SQL INSERT Image {image.image_name}\n\nQuery: {img_insert}',
-                )
-            return insert_img_response
-
-        def update_image(self, image) -> bool:
-            """Update image in SQL."""
-            img_update = f"""
-                UPDATE {creds.shopify_image_table}
-                SET IMAGE_NAME = '{image.image_name}',
-                ITEM_NO = '{image.sku}',
-                FILE_PATH = '{image.file_path}',
-                IMAGE_URL = '{image.image_url}',
-                PRODUCT_ID = '{image.product_id}',
-                IMAGE_ID = '{image.image_id}',
-                THUMBNAIL = '{1 if image.is_thumbnail else 0}',
-                IMAGE_NUMBER = '{image.image_number}',
-                SORT_ORDER = '{image.sort_order}',
-                IS_BINDING_IMAGE = '{image.is_binding_image}',
-                BINDING_ID = {f"'{image.binding_id}'" if image.binding_id else 'NULL'},
-                IS_VARIANT_IMAGE = '{image.is_variant_image}',
-                DESCR = {f"'{image.description.replace("'", "''")}'" if
-                            image.description != '' else 'NULL'},
-                SIZE = '{image.size}'
-                WHERE ID = {image.id}"""
-
-            update_img_response = self.db.query_db(img_update, commit=True)
-
-            if update_img_response['code'] == 200:
-                # Catalog.logger.success(f"SQL UPDATE Image {image.image_name}: Success")
-                pass
-            else:
-                Catalog.error_handler.add_error_v(
-                    error=f'{update_img_response}', origin=f'SQL UPDATE Image {image.image_name}'
-                )
-
-            return update_img_response
+        def delete_image(self, image):
+            """Delete image from Shopify and Middleware."""
+            Shopify.Product.Media.Image.delete(image)
+            Database.Shopify.Product.Image.delete(image)
 
         def is_parent(self, sku):
             """Check if this product is a parent product."""
@@ -3149,6 +2134,7 @@ class Catalog:
                 self.is_parent = True if product_data['is_parent'] == 'Y' else False
                 self.product_id: int = product_data['product_id'] if product_data['product_id'] else None
                 self.variant_id: int = product_data['variant_id'] if product_data['variant_id'] else None
+                self.inventory_id: int = product_data['inventory_id'] if product_data['inventory_id'] else None
                 self.option_id = None
                 self.option_value_id = None
                 self.web_title: str = product_data['web_title']
@@ -3208,7 +2194,6 @@ class Catalog:
                 self.custom_soil_type = product_data['custom_soil_type']
                 self.custom_color = product_data['custom_color']
                 self.custom_size = product_data['custom_size']
-                self.custom_field_ids = product_data['custom_field_ids']
 
                 # Custom URL
                 custom_url = product_data['custom_url']
@@ -3254,8 +2239,8 @@ class Catalog:
                 have an after update Trigger implemented for updating IM_ITEM.LST_MAINT_DT."""
 
                 query = f""" select ITEM.{creds.cp_field_binding_id} as 'Binding ID(0)', ITEM.IS_ECOMM_ITEM as 'Web 
-                Enabled(1)', ISNULL(ITEM.IS_ADM_TKT, 'N') as 'Is Parent(2)', BC_PROD.PRODUCT_ID as 'Product ID (3)', 
-                BC_PROD.VARIANT_ID as 'Variant ID(4)', ITEM.USR_CPC_IS_ENABLED 
+                Enabled(1)', ISNULL(ITEM.IS_ADM_TKT, 'N') as 'Is Parent(2)', MW_PROD.PRODUCT_ID as 'Product ID (3)', 
+                MW_PROD.VARIANT_ID as 'Variant ID(4)', ITEM.USR_CPC_IS_ENABLED 
                 as 'Web Visible(5)', ITEM.USR_ALWAYS_ONLINE as 'ALWAYS ONLINE(6)', ITEM.IS_FOOD_STMP_ITEM as 
                 'GIFT_WRAP(7)', ITEM.PROF_COD_1 as 'BRAND(8)', ITEM.ECOMM_NEW as 'IS_FEATURED(9)', 
                 ITEM.USR_IN_STORE_ONLY as 'IN_STORE_ONLY(10)', ITEM.USR_PROF_ALPHA_27 as 'SORT ORDER(11)', 
@@ -3281,20 +2266,36 @@ class Catalog:
                 'ITEM_NO (48)', stuff(( select ',' + EC_CATEG_ITEM.CATEG_ID from EC_CATEG_ITEM where 
                 EC_CATEG_ITEM.ITEM_NO =ITEM.ITEM_NO for xml path('')),1,1,'') as 'categories(49)',
 
-                BC_PROD.ID as 'db_id(50)', BC_PROD.CUSTOM_FIELDS as 'custom_field_ids(51)', ITEM.LONG_DESCR as 'long_descr(52)',
-                BC_PROD.BINDING_ID as 'mw_binding_id(53)', ITEM.USR_IS_PREORDER as 'is_preorder(54)', 
-                ITEM.USR_PREORDER_REL_DT as 'preorder_release_date(55)', ITEM.USR_PROF_ALPHA_18 as 'CUSTOM_URL(56)'
+                MW_PROD.ID as 'db_id(50)', MW_PROD.CUSTOM_FIELDS as 'custom_field_ids(51)', ITEM.LONG_DESCR as 'long_descr(52)',
+                MW_PROD.BINDING_ID as 'mw_binding_id(53)', ITEM.USR_IS_PREORDER as 'is_preorder(54)', 
+                ITEM.USR_PREORDER_REL_DT as 'preorder_release_date(55)', ITEM.USR_PROF_ALPHA_18 as 'CUSTOM_URL(56)', 
+                MW_PROD.INVENTORY_ID as 'inventory_id(57)', 
+
+                MW_PROD.CF_BOTAN_NAM as 'custom_botanical_name(58)',
+                MW_PROD.CF_CLIM_ZON as 'custom_climate_zone(59)',
+                MW_PROD.CF_PLANT_TYP as 'custom_plant_type(60)',
+                MW_PROD.CF_TYP as 'custom_type(61)',
+                MW_PROD.CF_HEIGHT as 'custom_height(62)',
+                MW_PROD.CF_WIDTH as 'custom_width(63)',
+                MW_PROD.CF_SUN_EXP as 'custom_sun_exposure(64)',
+                MW_PROD.CF_BLOOM_TIM as 'custom_bloom_time(65)',
+                MW_PROD.CF_FLOW_COL as 'custom_bloom_color(66)',
+                MW_PROD.CF_POLLIN as 'custom_attracts_pollinators(67)',
+                MW_PROD.CF_GROWTH_RT as 'custom_growth_rate(68)',
+                MW_PROD.CF_DEER_RES as 'custom_deer_resistant(69)',
+                MW_PROD.CF_SOIL_TYP as 'custom_soil_type(70)',
+                MW_PROD.CF_COLOR as 'custom_color(71)',
+                MW_PROD.CF_SIZE as 'custom_size(72)'
 
                 FROM IM_ITEM ITEM
                 LEFT OUTER JOIN IM_PRC PRC ON ITEM.ITEM_NO=PRC.ITEM_NO
                 LEFT OUTER JOIN IM_INV INV ON ITEM.ITEM_NO=INV.ITEM_NO
                 LEFT OUTER JOIN EC_ITEM_DESCR ON ITEM.ITEM_NO=EC_ITEM_DESCR.ITEM_NO
-                LEFT OUTER JOIN {creds.shopify_product_table} BC_PROD ON ITEM.ITEM_NO=BC_PROD.ITEM_NO
+                LEFT OUTER JOIN {creds.shopify_product_table} MW_PROD ON ITEM.ITEM_NO=MW_PROD.ITEM_NO
                 LEFT OUTER JOIN IM_ITEM_PROF_COD COD ON ITEM.PROF_COD_1 = COD.PROF_COD
                 WHERE ITEM.ITEM_NO = '{self.sku}'"""
 
-                db = query_engine.QueryEngine()
-                item = db.query_db(query)
+                item = self.db.query_db(query)
                 if item is not None:
                     details = {
                         'sku': item[0][48],
@@ -3305,6 +2306,7 @@ class Catalog:
                         'is_parent': item[0][2],
                         'product_id': item[0][3],
                         'variant_id': item[0][4],
+                        'inventory_id': item[0][57],
                         'web_visible': True if item[0][5] == 'Y' else False,
                         'always_online': True if item[0][6] == 'Y' else False,
                         'gift_wrap': True if item[0][7] == 'Y' else False,
@@ -3335,26 +2337,25 @@ class Catalog:
                         'alt_text_3': item[0][29],
                         'alt_text_4': item[0][30],
                         # Custom Fields
-                        'custom_botanical_name': item[0][31],
-                        'custom_climate_zone': item[0][32],
-                        'custom_plant_type': item[0][33],
-                        'custom_type': item[0][34],
-                        'custom_height': item[0][35],
-                        'custom_width': item[0][36],
-                        'custom_sun_exposure': item[0][37],
-                        'custom_bloom_time': item[0][38],
-                        'custom_bloom_color': item[0][39],
-                        'custom_attracts_pollinators': item[0][40],
-                        'custom_growth_rate': item[0][41],
-                        'custom_deer_resistant': item[0][42],
-                        'custom_soil_type': item[0][43],
-                        'custom_color': item[0][44],
-                        'custom_size': item[0][45],
+                        'custom_botanical_name': {'id': item[0][58], 'value': item[0][31]},
+                        'custom_climate_zone': {'id': item[0][59], 'value': item[0][32]},
+                        'custom_plant_type': {'id': item[0][60], 'value': item[0][33]},
+                        'custom_type': {'id': item[0][61], 'value': item[0][34]},
+                        'custom_height': {'id': item[0][62], 'value': item[0][35]},
+                        'custom_width': {'id': item[0][63], 'value': item[0][36]},
+                        'custom_sun_exposure': {'id': item[0][64], 'value': item[0][37]},
+                        'custom_bloom_time': {'id': item[0][65], 'value': item[0][38]},
+                        'custom_bloom_color': {'id': item[0][66], 'value': item[0][39]},
+                        'custom_attracts_pollinators': {'id': item[0][67], 'value': item[0][40]},
+                        'custom_growth_rate': {'id': item[0][68], 'value': item[0][41]},
+                        'custom_deer_resistant': {'id': item[0][69], 'value': item[0][42]},
+                        'custom_soil_type': {'id': item[0][70], 'value': item[0][43]},
+                        'custom_color': {'id': item[0][71], 'value': item[0][44]},
+                        'custom_size': {'id': item[0][72], 'value': item[0][45]},
                         'lst_maint_dt': item[0][46],
                         'cost': item[0][47],
                         'cp_ecommerce_categories': str(item[0][49]).split(',') if item[0][49] else [],
                         'custom_url': item[0][56],
-                        'custom_field_ids': item[0][51],
                         'long_descr': item[0][52],
                         'mw_binding_id': item[0][53],
                         'is_preorder': True if item[0][54] == 'Y' else False,
@@ -3375,152 +2376,6 @@ class Catalog:
 
                 return True
 
-            def bc_get_option_id(self, product_id=None):
-                if product_id is None:
-                    product_id = self.product_id
-                url = f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/products/{product_id}/options'
-                response = BCRequests.get(url)
-                if response.status_code == 200:
-                    return response.json()['data'][0]['id']
-
-            def bc_delete_product_option_value(self, product_id, option_id, value_id):
-                url = f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/products/{product_id}/options/{option_id}/values/{value_id}'
-                response = BCRequests.delete(url)
-                return response
-
-            def bc_create_product_variant_option_value(self, variant_name, product_id, option_id):
-                url = (
-                    f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/'
-                    f'products/{product_id}/options/{option_id}/values'
-                )
-                print(f'Option Value ID URL: {url}')
-                value_payload = {'is_default': False, 'label': variant_name, 'value_data': {}, 'sort_order': 0}
-
-                print(f'OPTION ID Value Payload: {value_payload}')
-                response = BCRequests.post(url=url, json=value_payload)
-                if response.status_code == 200:
-                    return response.json()['data']['id']
-
-                else:
-                    print(f'Error creating option value for {product_id}. Response: {response.status_code}')
-                    print(response.content)
-                    return None
-
-            def bc_post_variant(self, product_id=None):
-                """Create variant in BigCommerce."""
-                if product_id is None:
-                    product_id = self.product_id
-
-                self.option_id = self.bc_get_option_id(product_id)
-
-                self.option_value_id = self.bc_create_product_variant_option_value(
-                    variant_name=self.variant_name, product_id=product_id, option_id=self.option_id
-                )
-
-                variant_payload = {
-                    'product_id': product_id,
-                    'cost_price': self.cost,
-                    'price': self.price_1,
-                    'image_url': self.variant_image_url,
-                    'sale_price': self.price_2,
-                    'retail_price': self.price_1,
-                    'weight': self.weight,
-                    'width': self.width,
-                    'height': self.height,
-                    'depth': self.depth,
-                    'is_free_shipping': self.is_free_shipping,
-                    'purchasing_disabled': True if self.buffered_quantity < 1 else False,
-                    'purchasing_disabled_message': self.purchasing_disabled_message,
-                    'inventory_level': self.buffered_quantity,
-                    'sku': self.sku,
-                    'option_values': [
-                        {
-                            'option_id': self.option_id,
-                            'id': self.option_value_id,
-                            'option_display_name': 'Option',
-                            'label': self.variant_name,
-                        }
-                    ],
-                }
-
-                if self.images:
-                    print('I have images!')
-                    variant_payload['image_url'] = self.images[0].image_url
-
-                url = f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/products/{product_id}/variants'
-                print(f'self.product_id: {self.product_id}')
-                print(f'self.option_id: {self.option_id}')
-                print(f'self.option_value_id: {self.option_value_id}')
-                print(f'Variant URL: {url}')
-                print('Variant Payload: \n')
-                print(json.dumps(variant_payload, indent=4))
-
-                bc_response = BCRequests.post(url=url, json=variant_payload)
-
-                if bc_response.status_code in [200, 207]:
-                    self.product_id = bc_response.json()['data']['product_id']
-                    self.variant_id = bc_response.json()['data']['id']
-                    option_data = bc_response.json()['data']['option_values']
-                    self.option_id = option_data[0]['option_id']
-                    self.option_value_id = option_data[0]['id']
-                    print(f'Product ID: {self.product_id}, Variant ID: {self.variant_id}')
-                    print(f'Option ID: {self.option_id}, Option Value ID: {self.option_value_id}')
-                    self.insert_variant(self)
-
-                    Catalog.logger.success(
-                        f'Variant: {self.sku} Posted to BigCommerce. Variant ID: {self.variant_id}'
-                    )
-
-                    return True
-
-                else:
-                    Catalog.error_handler.add_error_v(
-                        f'POST VARIANT SKU: {self.sku} Binding ID: {self.binding_id} to BigCommerce. Response Code: {bc_response.status_code}'
-                    )
-                    Catalog.logger.warn(
-                        f'Code {bc_response.status_code}: POST SKU: {self.sku} Binding ID: {self.binding_id}'
-                    )
-                    Catalog.logger.info(f'Payload: {variant_payload}')
-                    Catalog.logger.info(f'Response: {json.dumps(bc_response.json(), indent=4)}')
-                    return False
-
-            def insert_variant(self, variant):
-                custom_field_string = self.custom_field_ids
-                if not variant.is_parent:
-                    custom_field_string = None
-
-                insert_query = (
-                    f"INSERT INTO {creds.shopify_product_table} (ITEM_NO, BINDING_ID, IS_PARENT, "
-                    f"PRODUCT_ID, VARIANT_ID, VARIANT_NAME, OPTION_ID, OPTION_VALUE_ID, CUSTOM_FIELDS) VALUES ('{variant.sku}', "
-                    f"{f"'{self.binding_id}'" if self.binding_id else 'NULL'}, "
-                    f"{1 if variant.is_parent else 0}, {self.product_id if self.product_id else "NULL"}, "
-                    f"{variant.variant_id if variant.variant_id else "NULL"}, "
-                    f"{f"'{variant.variant_name}'" if variant.variant_id else "NULL"}, "
-                    f"{variant.option_id if variant.option_id else "NULL"}, "
-                    f"{variant.option_value_id if variant.option_value_id else "NULL"}, "
-                    f"{f"'{custom_field_string}'" if custom_field_string else "NULL"})"
-                )
-
-                insert_product_response = self.db.query_db(insert_query, commit=True)
-                if insert_product_response['code'] == 200:
-                    # Catalog.logger.success(
-                    #     f"SKU: {variant.sku}, Binding ID: {variant.binding_id} - INSERT Variant {self.sku}: Success"
-                    # )
-                    pass
-                else:
-                    Catalog.error_handler.add_error_v(
-                        error=f'QUERY: {insert_query}\n\nRESPONSE: {insert_product_response}',
-                        origin=f'SKU: {variant.sku} Bind: {variant.binding_id} - Variant --> insert_variant',
-                    )
-                return insert_product_response
-
-            def get_last_maintained_dates(self, dates):
-                """Get last maintained dates for product"""
-                for x in dates:
-                    if x is not None:
-                        if x > self.lst_maint_dt:
-                            self.lst_maint_dt = x
-
             def get_local_product_images(self):
                 """Get local image information for product"""
                 product_images = []
@@ -3537,18 +2392,6 @@ class Catalog:
                         img = Catalog.Product.Image(image_name=image)
                         if img.validate():
                             self.images.append(img)
-
-            def get_bc_product_images(self):
-                """Get BigCommerce image information for product's images"""
-                url = (
-                    f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/'
-                    f'catalog/products/{self.product_id}/images'
-                )
-                response = BCRequests.get(url=url)
-                if response is not None:
-                    for x in response.json():
-                        # Could use this to back-fill database with image id and sort order info
-                        pass
 
             def construct_image_payload(self):
                 result = []
@@ -3570,30 +2413,6 @@ class Catalog:
                     else datetime(1970, 1, 1)
                 )
 
-            def hard_reset_variant(self):
-                """Hard reset for single item (variant). Used in pathological case of single item being turned into a merged item."""
-                print('Performing hard reset on variant. Sku is ', self.sku)
-                url = (
-                    f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/products?sku={self.sku}'
-                )
-                delete_response = BCRequests.delete(url=url)
-
-                if delete_response.status_code == 204:
-                    print(f'Product {self.sku} deleted from BigCommerce.')
-
-                    delete_product_query = f"DELETE FROM {creds.shopify_product_table} WHERE ITEM_NO = '{self.sku}'"
-
-                    print('Deleting Product from SQL')
-                    self.db.query_db(delete_product_query, commit=True)
-                    print('Deleting Product Images from SQL')
-                    delete_images_query = f"DELETE FROM {creds.shopify_image_table} WHERE ITEM_NO = '{self.sku}'"
-                    self.db.query_db(delete_images_query, commit=True)
-
-                self.variant_id = None
-                self.product_id = None
-                for image in self.images:
-                    image.image_id = 0
-
         class Video:
             """Placeholder for video class"""
 
@@ -3607,7 +2426,7 @@ class Catalog:
         class Image:
             def __init__(self, image_name: str):
                 self.db = Database.db
-                self.id = None
+                self.db_id = None
                 self.image_name = image_name  # This is the file name
                 self.sku = ''
                 self.file_path = f'{creds.photo_path}/{self.image_name}'
@@ -3638,7 +2457,7 @@ class Catalog:
                 response = self.db.query_db(query)
 
                 if response is not None:
-                    self.id = response[0][0]
+                    self.db_id = response[0][0]
                     self.image_name = response[0][1]
                     self.sku = response[0][2]
                     self.file_path = response[0][3]
@@ -3654,14 +2473,12 @@ class Catalog:
                     self.last_maintained_dt = response[0][15]
 
                 else:
-                    # 7/18/24 - passing the upload up to the product level when payload is created.
-                    # Shopify will allow for a group upload of all images.
                     self.set_image_details()
 
             def validate(self):
                 """Images will be validated for size and format before being uploaded and written to middleware.
                 Images that have been written to database previously will be considered valid and will pass."""
-                if self.id:
+                if self.db_id:
                     # These items have already been through check before.
                     return True
                 else:
@@ -3814,21 +2631,6 @@ class Catalog:
                     # If image number is greater than 4, it  will not have a description
                     return ''
 
-            def upload_product_image(self) -> str:
-                """Upload file to import folder on webDAV server and return public url"""
-                random_int = random.randint(1000, 9999)
-                new_name = f"{self.image_name.split(".")[0].replace("^", "-")}-{random_int}.jpg"
-
-                # Copy file to Shopify folder
-                print('\n\nUploading image to Shopify\n\n')
-                file_path = f'{creds.product_images}/{new_name}'
-                dest = f'{creds.public_files}/{file_path}'
-                Catalog.logger.info(f'Copying {self.file_path} to {dest}')
-                shutil.copy(src=self.file_path, dst=dest)
-                public_url = f'{creds.ngrok_domain}/files/{file_path}'
-                print(f'Public URL: {public_url}')
-                return public_url
-
             def resize_image(self):
                 size = (1280, 1280)
                 q = 90
@@ -3842,45 +2644,10 @@ class Catalog:
                     im.save(self.file_path, 'JPEG', quality=q)
                     print(f'Resized {self.image_name}')
 
-            def bc_get_image(self):
-                url = (
-                    f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/'
-                    f'products/{self.product_id}/images/{self.image_id}'
-                )
-                response = BCRequests.get(url=url)
-                return response.content
-
-            def bc_delete_image(self):
-                """Photos can either be variant images or product images. Two flows in this function"""
-                if self.is_variant_image:
-                    url = (
-                        f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/'
-                        f'products/{self.product_id}/variants/{self.variant_id}/images/{self.image_id}'
-                    )
-                    response = BCRequests.delete(url=url)
-
-                url = (
-                    f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/'
-                    f'products/{self.product_id}/images/{self.image_id}'
-                )
-                response = BCRequests.delete(url=url)
-
-                return response.content
-
-            def sql_post_photo(self):
-                pass
-
-            def sql_update_photo(self):
-                pass
-
-            def sql_delete_photo(self):
-                query = f"DELETE FROM {creds.shopify_image_table} WHERE IMAGE_NAME = '{self.image_name}'"
-                query_engine.QueryEngine().query_db(query, commit=True)
-                print(f'Photo {self.image_name} deleted from database.')
-
 
 if __name__ == '__main__':  #
     from datetime import datetime
 
-    tree = Catalog.CategoryTree(last_sync=datetime(2021, 7, 1))
-    tree.sync()
+    # Catalog.delete_products()
+    catalog = Catalog(datetime(2021, 1, 1))
+    catalog.sync()

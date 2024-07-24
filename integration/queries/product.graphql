@@ -57,6 +57,15 @@ mutation productUpdate($input: ProductInput!) {
   }
 }
 
+mutation productDelete($id: ID!) {
+  productDelete(input: { id: $id }) {
+    deletedProductId
+    userErrors {
+      field
+      message
+    }
+  }
+}
 
 
 query product($id: ID!) {
@@ -94,20 +103,16 @@ query product($id: ID!) {
         }
       }
     }
-    inCollection(id: "gid://shopify/Collection/1007901140")
-    isGiftCard
-    legacyResourceId
-    metafield(key: "app_key", namespace: "affiliates") {
-      description
-    }
-    metafields(first: 5) {
+
+    metafields(first: 25) {
       edges {
         node {
-          description
+          id
+          key
         }
       }
     }
-    onlineStorePreviewUrl
+
     onlineStoreUrl
     options {
       name
@@ -125,13 +130,7 @@ query product($id: ID!) {
       }
     }
     productType
-    resourcePublicationsCount {
-      count
-    }
-    availablePublicationsCount {
-      count
-    }
-    publishedAt
+
     resourcePublications(first: 5) {
       edges {
         node {
@@ -139,14 +138,7 @@ query product($id: ID!) {
         }
       }
     }
-    resourcePublicationOnCurrentPublication {
-      publication {
-        name
-        id
-      }
-      publishDate
-      isPublished
-    }
+
     seo {
       title
     }
@@ -156,31 +148,28 @@ query product($id: ID!) {
     title
     totalInventory
     tracksInventory
-    unpublishedPublications(first: 5) {
-      edges {
-        node {
-          name
-        }
-      }
-    }
-    updatedAt
-    variants(first: 5) {
-      edges {
-        node {
-          id
-          displayName
-          inventoryItem {
-            id
-          }
-        }
-      }
-    }
     variantsCount {
       count
     }
     vendor
   }
 }
+
+query products($first: Int, $after: String) {
+  products(first: $first, after: $after) {
+    edges {
+      node {
+        id
+      }
+    }
+    pageInfo {
+      hasNextPage
+      endCursor
+    }
+  }
+}
+
+
 
 query variantIventoryId($id: ID!) {
   productVariant(id: $id) {

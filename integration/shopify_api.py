@@ -2,7 +2,6 @@ from setup import creds
 import requests
 import json
 from setup.error_handler import ProcessOutErrorHandler
-import re
 from pathlib import Path
 from integration.database import Database
 
@@ -199,78 +198,34 @@ class Shopify:
                 return response.data
 
     class Product:
-        queries = './integration/queries/products.graphql'
+        queries = './integration/queries/product.graphql'
+        prefix = 'gid://shopify/Product/'
 
         def get(product_id: int):
-            variables = {'id': f'gid://shopify/Product/{product_id}'}
+            variables = {'id': f'{Shopify.Product.prefix}{product_id}'}
             response = Shopify.Query(
                 document=Shopify.Product.queries, variables=variables, operation_name='product'
             )
             return response.data
 
-        def create_bound_product(product_payload, variant_payload) -> tuple:
-            # Step 1: Create base product and associated media and dummy option.
-            prod_id, media_ids, option_ids, option_value_ids, variant_ids = Shopify.Product.create(
-                product_payload, variant_payload
+        def get_all():
+            """Return list of all product IDs"""
+            id_list = []
+            variables = {'first': 250, 'after': None}
+            response = Shopify.Query(
+                document=Shopify.Product.queries, variables=variables, operation_name='products'
             )
-            # Step 2: Create new variants in bulk.
-            #   a) Assign product ID to variant payload.
-            variant_payload['productId'] = f'gid://shopify/Product/{prod_id}'
-            variant_ids, option_value_ids = Shopify.Product.Variant.create_bulk(variant_payload)
+            id_list += [x['node']['id'].split('/')[-1] for x in response.data['products']['edges']]
+            while response.data['products']['pageInfo']['hasNextPage']:
+                variables['after'] = response.data['products']['pageInfo']['endCursor']
+                response = Shopify.Query(
+                    document=Shopify.Product.queries, variables=variables, operation_name='products'
+                )
+                id_list += [x['node']['id'].split('/')[-1] for x in response.data['products']['edges']]
+            print(len(id_list))
+            return id_list
 
-            # Step 3: Delete the default variant
-            Shopify.Product.Option.delete(product_id=prod_id, option_ids=option_ids[0])
-
-            return {
-                'product_id': prod_id,
-                'option_ids': option_ids,
-                'option_value_ids': option_value_ids,
-                'media_ids': media_ids,
-                'variant_ids': variant_ids,
-            }
-
-        def create_single_product(product_payload, variant_payload, inventory_payload) -> tuple:
-            # Step 1: Create base product and associated media.
-            base_product_response = Shopify.Product.create(product_payload)
-
-            # Step 2: Update the price, sku, etc of the default variant.
-
-            # sample_variant_payload = {
-            #     'input': {
-            #         'position': 1,
-            #         'price': '100.00',
-            #         'compareAtPrice': '105.00',
-            #         'inventoryPolicy': 'DENY',
-            #         'inventoryQuantities': [{'locationId': creds.shopify_location_id, 'availableQuantity': 10}],
-            #         'inventoryItem': {
-            #             'sku': '1234',
-            #             'tracked': True,
-            #             'cost': 19.99,
-            #             'measurement': {'weight': {'value': 10, 'unit': 'POUNDS'}},
-            #             'requiresShipping': False,
-            #         },
-            #         'taxable': False,
-            #     }
-            # }
-
-            default_variant_id = base_product_response['variant_ids'][0]
-
-            variant_payload['input']['id'] = f'gid://shopify/ProductVariant/{default_variant_id}'
-
-            update_base_response = Shopify.Query(
-                document=Shopify.Product.queries, operation_name='productVariantUpdate', variables=variant_payload
-            )
-
-            return {
-                'product_id': prod_id,
-                'media_ids': media_ids,
-                'option_ids': option_ids,
-                'option_value_ids': option_value_ids,
-                'variant_ids': variant_ids,
-                'inventory_item_ids': inventory_item_ids,
-            }
-
-        def create_base_product(product_payload) -> tuple:
+        def create(product_payload) -> tuple:
             """Create product on shopify and return tuple of product ID, media IDs, and variant IDs"""
             # Step 1: Create base product and associated media. Default Variant is created.
 
@@ -307,7 +262,7 @@ class Shopify:
             }
             return result
 
-        def update(product_payload, variant_payload):
+        def update(product_payload):
             # Step 1: Update Product
             operation_name = 'productUpdate'
             response = Shopify.Query(
@@ -320,49 +275,22 @@ class Shopify:
 
             print('\nProduct update', response)
 
-            prod_id = response.data[operation_name]['product']['id'].split('/')[-1]
             media_ids = [x['id'].split('/')[-1] for x in response.data[operation_name]['product']['media']['nodes']]
             option_ids = [x['id'].split('/')[-1] for x in response.data[operation_name]['product']['options']]
 
-            # Step 2: Update Variants
-            operation_name = 'productVariantsBulkUpdate'
-            response = Shopify.Query(
-                document=Shopify.Product.queries, operation_name=operation_name, variables=variant_payload
-            )
-
-            variant_ids = [x['id'].split('/')[-1] for x in response.data[operation_name]['productVariants']]
-            option_value_ids = [
-                x['id'].split('/')[-1]
-                for x in response.data[operation_name]['product']['options'][0]['optionValues']
-            ]
-
-            return {
-                'product_id': prod_id,
-                'option_ids': option_ids,
-                'option_value_ids': option_value_ids,
-                'media_ids': media_ids,
-                'variant_ids': variant_ids,
-            }
+            return {'media_ids': media_ids, 'option_ids': option_ids}
 
         def delete(product_id: int):
-            url = f'https://{Shopify.shop_url}/admin/api/2024-07/products/{product_id}.json'
-            response = requests.delete(url, headers=Shopify.headers)
-            return response.json()
+            response = Shopify.Query(
+                document=Shopify.Product.queries,
+                variables={'id': f'{Shopify.Product.prefix}{product_id}'},
+                operation_name='productDelete',
+            )
+            return response.data
 
         def publish(product_id: int):
-            # variables = {
-            #     'input': {
-            #         'id': f'gid://shopify/Product/{product_id}',
-            #         'productPublications': [{'publicationId': creds.shopify_online_store_channel_id}],
-            #     }
-            # }
-
-            # response = Shopify.Query(
-            #     document=Shopify.Product.queries, variables=variables, operation_name='productPublish'
-            # )
-            # return response.data
             variables = {
-                'id': f'gid://shopify/Product/{product_id}',
+                'id': f'{Shopify.Product.prefix}{product_id}',
                 'input': {'publicationId': creds.shopify_online_store_channel_id},
             }
             response = Shopify.Query(
@@ -372,6 +300,7 @@ class Shopify:
 
         class Variant:
             queries = './integration/queries/productVariant.graphql'
+            prefix = 'gid://shopify/ProductVariant/'
 
             def create_bulk(variables):
                 response = Shopify.Query(
@@ -405,29 +334,108 @@ class Shopify:
                 )
                 return response.data
 
+            def update_bulk(variables):
+                response = Shopify.Query(
+                    document=Shopify.Product.Variant.queries,
+                    variables=variables,
+                    operation_name='productVariantsBulkUpdate',
+                )
+
+                variant_ids = [
+                    x['id'].split('/')[-1] for x in response.data['productVariantBulkUpdate']['productVariants']
+                ]
+                option_value_ids = [
+                    x['id'].split('/')[-1]
+                    for x in response.data['productVariantBulkUpdate']['product']['options'][0]['optionValues']
+                ]
+                return {'option_value_ids': option_value_ids, 'variant_ids': variant_ids}
+
             def delete(variant_id: int):
                 response = Shopify.Query(
                     document=Shopify.Product.Variant.queries,
-                    variables={'id': f'gid://shopify/ProductVariant/{variant_id}'},
+                    variables={'id': {Shopify.Product.Variant.prefix} + {variant_id}},
                     operation_name='productVariantDelete',
                 )
                 return response.data
 
-            def add_images(product_id: int, variant_data: list):
-                print(variant_data)
-                variables = {
-                    'productId': f'gid://shopify/Product/{product_id}',
-                    'variantMedia': [{'variantId': x['id'], 'mediaIds': x['imageId']} for x in variant_data],
-                }
-                response = Shopify.Query(
-                    document=Shopify.Product.Variant.queries,
-                    variables=variables,
-                    operation_name='productVariantAppendMedia',
-                )
-                return response.data
+            class Image:
+                def create(product_id: int, variant_data: list):
+                    print(variant_data)
+                    variables = {
+                        'productId': f'{Shopify.Product.prefix}{product_id}',
+                        'variantMedia': [{'variantId': x['id'], 'mediaIds': x['imageId']} for x in variant_data],
+                    }
+                    response = Shopify.Query(
+                        document=Shopify.Product.Variant.queries,
+                        variables=variables,
+                        operation_name='productVariantAppendMedia',
+                    )
+                    return response.data
+
+        class Media:
+            queries = './integration/queries/media.graphql'
+
+            def reorder(product):
+                variables = {'id': {Shopify.Product.prefix} + {product.product_id}, 'moves': []}
+                for image in product.images:
+                    variables['moves'].append(
+                        {
+                            'id': {Shopify.Product.Media.Image.prefix} + {image.image_id},
+                            'newPosition': image.sort_order,
+                        }
+                    )
+
+            class Image:
+                prefix = 'gid://shopify/ProductImage/'
+
+                def create(image):
+                    variables = {'productId': {Shopify.Product.prefix} + {image.product_id}}
+                    variables['media'] = {'originalSource': image.image_url, 'mediaContentType': 'IMAGE'}
+                    if image.description:
+                        variables['media']['alt'] = image.alt_text
+
+                    response = Shopify.Query(
+                        document=Shopify.Product.Media.queries,
+                        variables=variables,
+                        operation_name='productCreateMedia',
+                    )
+
+                    return response.data['productCreateMedia']['media'][0]['id'].split('/')[-1]
+
+                def update(image):
+                    variables = {
+                        'productId': {Shopify.Product.prefix} + {image.product_id},
+                        'media': {'id': {Shopify.Product.Media.Image.prefix} + {image.image_id}},
+                    }
+                    if image.description:
+                        variables['media']['alt'] = image.description
+
+                    response = Shopify.Query(
+                        document=Shopify.Product.Media.queries,
+                        variables=variables,
+                        operation_name='productUpdateMedia',
+                    )
+                    return response.data
+
+                def delete(image):
+                    variables = {
+                        'productId': {Shopify.Product.prefix} + {image.product_id},
+                        'mediaIds': [{Shopify.Product.Media.Image.prefix} + {image.image_id}],
+                    }
+
+                    response = Shopify.Query(
+                        document=Shopify.Product.Media.queries,
+                        variables=variables,
+                        operation_name='productDeleteMedia',
+                    )
+                    return response.data
+
+            class Video:
+                pass
 
         class Option:
             queries = './integration/queries/productOption.graphql'
+            prefix = 'gid://shopify/ProductOption/'
 
             def update(
                 product_id: int,
@@ -437,8 +445,8 @@ class Shopify:
                 option_values_to_delete: list = None,
             ):
                 variables = {
-                    'productId': f'gid://shopify/Product/{product_id}',
-                    'option': {'id': f'gid://shopify/ProductOption/{option_id}'},
+                    'productId': f'{Shopify.Product.prefix}{product_id}',
+                    'option': {'id': {Shopify.Product.Option.prefix} + {option_id}},
                     'variantStrategy': 'MANAGE',
                     'optionValuesToDelete': [],
                     'optionValuesToUpdate': [],
@@ -466,10 +474,124 @@ class Shopify:
             def delete(product_id: str, option_ids: list):
                 response = Shopify.Query(
                     document=Shopify.Product.queries,
-                    variables={'productId': f'gid://shopify/Product/{product_id}', 'options': option_ids},
+                    variables={'productId': f'{Shopify.Product.prefix}{product_id}', 'options': option_ids},
                     operation_name='deleteOptions',
                 )
                 return response.data
+
+        class Metafield:
+            queries = './integration/queries/metafield.graphql'
+            prefix = 'gid://shopify/Metafield/'
+
+            def backfill_metafields_to_counterpoint():
+                all_products = Shopify.Product.get_all()
+                for product_id in all_products:
+                    response = Shopify.Product.get(product_id)
+                    try:
+                        metafield_list = [
+                            {'id': x['node']['id'].split('/')[-1], 'key': x['node']['key']}
+                            for x in response['product']['metafields']['edges']
+                        ]
+                    except:
+                        metafield_list = None
+
+                    if not metafield_list:
+                        continue
+                    try:
+                        bot_id = [x['id'] for x in metafield_list if x['key'] == 'botanical_name'][0]
+                    except:
+                        bot_id = None
+
+                    try:
+                        climate_id = [x['id'] for x in metafield_list if x['key'] == 'climate_zone'][0]
+                    except:
+                        climate_id = None
+
+                    try:
+                        plant_id = [x['id'] for x in metafield_list if x['key'] == 'plant_type'][0]
+                    except:
+                        plant_id = None
+
+                    try:
+                        type_id = [x['id'] for x in metafield_list if x['key'] == 'type'][0]
+                    except:
+                        type_id = None
+
+                    try:
+                        height_id = [x['id'] for x in metafield_list if x['key'] == 'mature_height'][0]
+                    except:
+                        height_id = None
+
+                    try:
+                        width_id = [x['id'] for x in metafield_list if x['key'] == 'mature_width'][0]
+                    except:
+                        width_id = None
+
+                    try:
+                        sun_id = [x['id'] for x in metafield_list if x['key'] == 'sun_exposure'][0]
+                    except:
+                        sun_id = None
+
+                    try:
+                        bloom_id = [x['id'] for x in metafield_list if x['key'] == 'bloom_time'][0]
+                    except:
+                        bloom_id = None
+
+                    try:
+                        color_id = [x['id'] for x in metafield_list if x['key'] == 'bloom_color'][0]
+                    except:
+                        color_id = None
+
+                    try:
+                        pollinator_id = [x['id'] for x in metafield_list if x['key'] == 'attracts_pollinators'][0]
+                    except:
+                        pollinator_id = None
+
+                    try:
+                        rate_id = [x['id'] for x in metafield_list if x['key'] == 'growth_rate'][0]
+                    except:
+                        rate_id = None
+
+                    try:
+                        deer_id = [x['id'] for x in metafield_list if x['key'] == 'deer_resistant'][0]
+                    except:
+                        deer_id = None
+
+                    try:
+                        soil_id = [x['id'] for x in metafield_list if x['key'] == 'soil_type'][0]
+                    except:
+                        soil_id = None
+
+                    try:
+                        size_id = [x['id'] for x in metafield_list if x['key'] == 'size'][0]
+                    except:
+                        size_id = None
+
+                    db = Database.db
+
+                    query = f"""
+                    UPDATE {creds.shopify_product_table}
+                    SET
+                        CF_BOTAN_NAM = {bot_id if bot_id else 'NULL'},
+                        CF_CLIM_ZON = {climate_id if climate_id else 'NULL'},
+                        CF_PLANT_TYP = {plant_id if plant_id else 'NULL'},
+                        CF_TYP =  {type_id if type_id else 'NULL'},
+                        CF_HEIGHT = {height_id if height_id else 'NULL'},
+                        CF_WIDTH = {width_id if width_id else 'NULL'},
+                        CF_SUN_EXP  = {sun_id if sun_id else 'NULL'},
+                        CF_BLOOM_TIM = {bloom_id if bloom_id else 'NULL'},
+                        CF_FLOW_COL = {color_id if color_id else 'NULL'},
+                        CF_POLLIN = {pollinator_id if pollinator_id else 'NULL'},
+                        CF_GROWTH_RT = {rate_id if rate_id else 'NULL'},
+                        CF_DEER_RES = {deer_id if deer_id else 'NULL'},
+                        CF_SOIL_TYP = {soil_id if soil_id else 'NULL'},
+                        CF_COLOR = {color_id if color_id else 'NULL'},
+                        CF_SIZE = {size_id if size_id else 'NULL'}
+                    WHERE
+                        PRODUCT_ID = {product_id}
+                    """
+                    response = db.query_db(query, commit=True)
+                    print(response)
 
         class Files:
             queries = './integration/queries/files.graphql'
@@ -484,17 +606,19 @@ class Shopify:
                     self.url = response_data['url']
                     self.resourceUrl = response_data['resourceUrl']
                     self.parameters = [
-                        Shopify.Files.StagedMediaUploadTarget.StagedUploadParameter(i)
+                        Shopify.Product.Files.StagedMediaUploadTarget.StagedUploadParameter(i)
                         for i in response_data['parameters']
                     ]
 
             def create(file_list, variables: dict) -> list:
                 """Create staged media upload targets and upload files to google cloud storage. Return list of URLs"""
                 response = Shopify.Query(
-                    document=Shopify.Files.queries, variables=variables, operation_name='stagedUploadsCreate'
+                    document=Shopify.Product.Files.queries,
+                    variables=variables,
+                    operation_name='stagedUploadsCreate',
                 )
                 files = [
-                    Shopify.Files.StagedMediaUploadTarget(i)
+                    Shopify.Product.Files.StagedMediaUploadTarget(i)
                     for i in response.data['stagedUploadsCreate']['stagedTargets']
                 ]
 
@@ -522,8 +646,8 @@ class Shopify:
 
         def get_inventory_ids(variant_id):
             response = Shopify.Query(
-                document='./integration/queries/products.graphql',
-                variables={'id': f'gid://shopify/ProductVariant/{variant_id}'},
+                document=Shopify.Product.queries,
+                variables={'id': {Shopify.Product.Variant.prefix} + {variant_id}},
                 operation_name='variantIventoryId',
             )
             return response.data['productVariant']['inventoryItem']['id'].split('/')[-1]
@@ -536,11 +660,12 @@ class Shopify:
 
     class Collection:
         queries = './integration/queries/collections.graphql'
+        prefix = 'gid://shopify/Collection/'
 
         def get(collection_id: int):
             response = Shopify.Query(
                 document=Shopify.Collection.queries,
-                variables={'id': f'gid://shopify/Collection/{collection_id}'},
+                variables={'id': {Shopify.Collection.prefix} + {collection_id}},
                 operation_name='collection',
                 verbose=False,
             )
@@ -578,7 +703,7 @@ class Shopify:
         def delete(collection_id: int):
             response = Shopify.Query(
                 document=Shopify.Collection.queries,
-                variables={'id': f'gid://shopify/Collection/{collection_id}'},
+                variables={'id': {Shopify.Collection.prefix} + {collection_id}},
                 operation_name='collectionDelete',
             )
             return response.data
@@ -637,11 +762,12 @@ class Shopify:
 
     class Menu:
         queries = './integration/queries/menu.graphql'
+        prefix = 'gid://shopify/Menu/'
 
         def get(menu_id: int):
             response = Shopify.Query(
                 document=Shopify.Menu.queries,
-                variables={'id': f'gid://shopify/Menu/{menu_id}'},
+                variables={'id': {Shopify.Menu.prefix} + {menu_id}},
                 operation_name='menu',
             )
             return response.data
@@ -667,11 +793,12 @@ class Shopify:
 
     class MetafieldDefinition:
         queries = './integration/queries/metafields.graphql'
+        prefix = 'gid://shopify/MetafieldDefinition/'
 
         def get(metafield_id: int):
             response = Shopify.Query(
                 document=Shopify.MetafieldDefinition.queries,
-                variables={'id': f'gid://shopify/MetafieldDefinition/{metafield_id}'},
+                variables={'id': {Shopify.MetafieldDefinition.prefix} + {metafield_id}},
                 operation_name='metafieldDefinition',
             )
             return response.data
@@ -735,7 +862,7 @@ class Shopify:
             response = Shopify.Query(
                 document=Shopify.MetafieldDefinition.queries,
                 variables={
-                    'id': f'gid://shopify/MetafieldDefinition/{metafield_def_id}',
+                    'id': {Shopify.MetafieldDefinition.prefix} + {metafield_def_id},
                     'deleteAllAssociatedMetafields': True,
                 },
                 operation_name='DeleteMetafieldDefinition',
@@ -750,53 +877,4 @@ class Shopify:
 
 
 if __name__ == '__main__':
-    payload = {
-        'id': f'gid://shopify/Menu/{creds.shopify_main_menu_id}',
-        'title': 'Main Menu Test 2',
-        'handle': 'main-menu-2',
-        'items': [],
-    }
-
-    # Shopify.Menu.update(payload)
-
-    # Shopify.Menu.create(payload)
-
-    # Shopify.Customer.delete(8859520500006)
-
-    # Shopify.Customer.create(
-    #     customer_number='OL-12345',
-    #     fst_name='Daniel',
-    #     lst_name='Hernandez',
-    #     address_list=[
-    #         {
-    #             'address': '345 Tron Ave NW',
-    #             'city': 'Valdese',
-    #             'state': 'NC',
-    #             'zip': '28690',
-    #             'phone': '8282341265',
-    #             'first_name': 'Alex',
-    #             'last_name': 'Powell',
-    #             'country': 'US',
-    #         }
-    #     ],
-    #     phone='18282341265',
-    #     email='alexpow@gmail.com',
-
-    Shopify.Menu.get_all()
-    # test = {
-    #     'id': f'gid://shopify/Menu/{creds.shopify_main_menu_id}',
-    #     'title': 'Main Menu',
-    #     'handle': 'main-menu',
-    #     'items': [],
-    # }
-
-    # item = {
-    #     'title': 'Landscape Design',
-    #     'type': 'PAGE',
-    #     'resourceId': 'gid://shopify/Page/256367984934',
-    #     'items': [],
-    # }
-    # test['items'].append(item)
-    # Shopify.Menu.update(test)
-
-    # Shopify.Menu.get(256367984934)
+    pass
