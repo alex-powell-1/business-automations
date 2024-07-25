@@ -875,6 +875,87 @@ class Shopify:
                 Shopify.MetafieldDefinition.delete(i[0])
                 Database.Metafield_Definition.delete(i[0])
 
+    class Webhook:
+        queries = './integration/queries/webhook.graphql'
+        prefix = 'gid://shopify/WebhookSubscription'
+        format = 'JSON'
+        topics = ['ORDERS_CREATE', 'REFUNDS_CREATE']
+        address = f'{creds.ngrok_domain}/shopify'
+
+        def get(id='', ids_only=False):
+            if id:
+                response = Shopify.Query(
+                    document=Shopify.Webhook.queries,
+                    variables={'id': f'{Shopify.Webhook.prefix}/{id}'},
+                    operation_name='webhookSubscription',
+                )
+                return response.data
+            else:
+                response = Shopify.Query(document=Shopify.Webhook.queries, operation_name='webhookSubscriptions')
+                if ids_only:
+                    return [x['node']['id'].split('/')[-1] for x in response.data['webhookSubscriptions']['edges']]
+                return response.data
+
+        def create(topic=None, address=None, default=False) -> int:
+            if default:
+                # Create all default webhooks
+                result = []
+                for topic in Shopify.Webhook.topics:
+                    response = Shopify.Query(
+                        document=Shopify.Webhook.queries,
+                        variables={
+                            'topic': topic,
+                            'webhookSubscription': {
+                                'callbackUrl': Shopify.Webhook.address,
+                                'format': Shopify.Webhook.format,
+                            },
+                        },
+                        operation_name='webhookSubscriptionCreate',
+                    )
+                    result.append(
+                        {
+                            'TOPIC': topic,
+                            'HOOK_ID': response.data['webhookSubscriptionCreate']['webhookSubscription'][
+                                'id'
+                            ].split('/')[-1],
+                            'DESTINATION': Shopify.Webhook.address,
+                            'FORMAT': Shopify.Webhook.format,
+                            'DOMAIN': 'Shopify',
+                        }
+                    )
+                for i in result:
+                    Database.Shopify.Webhook.insert(i)
+                return
+
+            response = Shopify.Query(
+                document=Shopify.Webhook.queries,
+                variables={'topic': topic, 'address': address},
+                operation_name='webhookSubscriptionCreate',
+            )
+            return response.data['webhookSubscriptionCreate']['webhookSubscription']['id'].split('/')[-1]
+
+        def update(id, topic, address):
+            response = Shopify.Query(
+                document=Shopify.Webhook.queries,
+                variables={'id': f'{Shopify.Webhook.prefix}/{id}', 'topic': topic, 'address': address},
+                operation_name='webhookSubscriptionUpdate',
+            )
+            return response.data
+
+        def delete(id='', all=False):
+            if all:
+                ids = Shopify.Webhook.get(ids_only=True)
+                for i in ids:
+                    Shopify.Webhook.delete(i)
+            else:
+                response = Shopify.Query(
+                    document=Shopify.Webhook.queries,
+                    variables={'id': f'{Shopify.Webhook.prefix}/{id}'},
+                    operation_name='webhookSubscriptionDelete',
+                )
+                Database.Shopify.Webhook.delete(id)
+                return response.data
+
 
 if __name__ == '__main__':
     pass

@@ -9,16 +9,6 @@ class Database:
     logger = ProcessOutErrorHandler.logger
 
     class Shopify:
-        product_table = creds.shopify_product_table
-        category_table = creds.shopify_category_table
-        image_table = creds.shopify_image_table
-        brands_table = creds.shopify_brands_table
-        metafield_table = creds.shopify_metafield_table
-        customer_table = creds.shopify_customer_table
-        order_table = creds.shopify_order_table
-        gift_cert_table = creds.shopify_gift_cert_table
-        promo_table = creds.shopify_promo_table
-
         def rebuild_tables(self):
             def create_tables():
                 tables = {
@@ -193,10 +183,18 @@ class Database:
             drop_tables()
             create_tables()
 
+        class Customer:
+            table = creds.shopify_customer_table
+
+        class Order:
+            table = creds.shopify_order_table
+
         class Collection:
+            table = creds.shopify_collection_table
+
             def get_cp_categ_id(collection_id):
                 query = f"""
-                        SELECT CP_CATEG_ID FROM {creds.shopify_category_table}
+                        SELECT CP_CATEG_ID FROM {creds.shopify_collection_table}
                         WHERE COLLECTION_ID = {collection_id}
                         """
                 response = Database.db.query_db(query)
@@ -207,7 +205,7 @@ class Database:
 
             def insert(category):
                 query = f"""
-                INSERT INTO {creds.shopify_category_table}(COLLECTION_ID, MENU_ID, CP_CATEG_ID, CP_PARENT_ID, CATEG_NAME, 
+                INSERT INTO {creds.shopify_collection_table}(COLLECTION_ID, MENU_ID, CP_CATEG_ID, CP_PARENT_ID, CATEG_NAME, 
                 SORT_ORDER, DESCRIPTION, IS_VISIBLE, IMG_SIZE, LST_MAINT_DT)
                 VALUES({category.collection_id if category.collection_id else 'NULL'}, 
                 {category.menu_id if category.menu_id else 'NULL'}, {category.cp_categ_id}, 
@@ -226,7 +224,7 @@ class Database:
 
             def update(category):
                 query = f"""
-                UPDATE {creds.shopify_category_table}
+                UPDATE {creds.shopify_collection_table}
                 SET COLLECTION_ID = {category.collection_id if category.collection_id else 'NULL'}, 
                 MENU_ID = {category.menu_id if category.menu_id else 'NULL'},
                 CP_PARENT_ID = {category.cp_parent_id}, CATEG_NAME = '{category.name}',
@@ -252,7 +250,7 @@ class Database:
                     raise Exception('No CP_CATEG_ID provided for deletion.')
 
                 query = f"""
-                        DELETE FROM {creds.shopify_category_table}
+                        DELETE FROM {creds.shopify_collection_table}
                         WHERE CP_CATEG_ID = {cp_categ_id}
                         """
                 response = Database.db.query_db(query, commit=True)
@@ -276,6 +274,8 @@ class Database:
                     raise Exception(response['message'])
 
         class Product:
+            table = creds.shopify_product_table
+
             def get_id(item_no=None, binding_id=None, image_id=None):
                 """Get product ID from SQL using image ID. If not found, return None."""
                 if item_no:
@@ -463,6 +463,8 @@ class Database:
                         raise Exception(error)
 
             class Image:
+                table = creds.shopify_image_table
+
                 def get_image_id(file_name):
                     img_id_res = Database.db.query_db(
                         f"SELECT IMAGE_ID FROM {creds.shopify_image_table} WHERE IMAGE_NAME = '{file_name}'"
@@ -536,6 +538,8 @@ class Database:
                         raise Exception(error)
 
         class Metafield_Definition:
+            table = creds.shopify_metafield_table
+
             def get(definition_id):
                 query = f"""
                         SELECT * FROM {creds.shopify_metafield_table}
@@ -610,6 +614,67 @@ class Database:
                 response = Database.db.query_db(query, commit=True)
                 if response['code'] != 200:
                     raise Exception(response['message'])
+
+        class Webhook:
+            table = creds.shopify_webhook_table
+
+            def get(id='', ids_only=False):
+                if id:
+                    query = f'SELECT * FROM {Database.Shopify.Webhook.table} WHERE HOOK_ID = {id}'
+                    response = Database.db.query_db(query)
+                    if response is not None:
+                        return response
+                else:
+                    query = f'SELECT * FROM {Database.Shopify.Webhook.table}'
+                    response = Database.db.query_db(query)
+                    if response is not None:
+                        if ids_only:
+                            return [hook['id'] for hook in response]
+                        return response
+
+            def insert(webhook_data):
+                query = f"""
+                        INSERT INTO {Database.Shopify.Webhook.table} (HOOK_ID, TOPIC, DESTINATION, FORMAT, DOMAIN)
+                        VALUES ({webhook_data['HOOK_ID']}, '{webhook_data['TOPIC']}', '{webhook_data['DESTINATION']}', '{webhook_data['FORMAT']}', '{webhook_data['DOMAIN']}')
+                        """
+                response = Database.db.query_db(query, commit=True)
+                if response['code'] != 200:
+                    raise Exception(response['message'])
+
+            def update(webhook_data):
+                query = f"""
+                        UPDATE {Database.Shopify.Webhook.table}
+                        SET TOPIC = '{webhook_data['TOPIC']}', 
+                        DESTINATION = '{webhook_data['DESTINATION']}', 
+                        FORMAT = '{webhook_data['FORMAT']}',
+                        DOMAIN = '{webhook_data['DOMAIN']}'
+                        WHERE HOOK_ID = {webhook_data['HOOK_ID']}
+                        """
+                response = Database.db.query_db(query, commit=True)
+                if response['code'] != 200:
+                    raise Exception(response['message'])
+
+            def delete(hook_id=None, all=False):
+                if all:
+                    response = Database.db.query_db(f'DELETE FROM {Database.Shopify.Webhook.table}', commit=True)
+                    if response['code'] != 200:
+                        raise Exception(response['message'])
+                    else:
+                        return 'All webhooks deleted'
+                elif hook_id:
+                    response = Database.db.query_db(
+                        f'DELETE FROM {Database.Shopify.Webhook.table} WHERE HOOK_ID = {hook_id}', commit=True
+                    )
+                    if response['code'] != 200:
+                        raise Exception(response['message'])
+                    else:
+                        return f'Webhook {hook_id} deleted'
+
+        class Promotion:
+            table = creds.shopify_promo_table
+
+        class Gift_Certificate:
+            table = creds.shopify_gift_cert_table
 
 
 if __name__ == '__main__':

@@ -570,7 +570,7 @@ class Catalog:
     @staticmethod
     def delete_categories():
         # Get all categories from Middleware. Delete from Shopify and Middleware.
-        query = f'SELECT DISTINCT COLLECTION_ID FROM {creds.shopify_category_table}'
+        query = f'SELECT DISTINCT COLLECTION_ID FROM {creds.shopify_collection_table}'
         response = Database.db.query_db(query)
         parent_category_list = [x[0] for x in response] if response else []
         while parent_category_list:
@@ -654,7 +654,7 @@ class Catalog:
             SELECT cp.CATEG_ID, ISNULL(cp.PARENT_ID, 0), mw.COLLECTION_ID, mw.MENU_ID, cp.DESCR, cp.DISP_SEQ_NO, cp.HTML_DESCR, 
             cp.LST_MAINT_DT, mw.CP_CATEG_ID, mw.is_visible, mw.IMG_SIZE
             FROM EC_CATEG cp
-            FULL OUTER JOIN {creds.shopify_category_table} mw on cp.CATEG_ID=mw.CP_CATEG_ID
+            FULL OUTER JOIN {creds.shopify_collection_table} mw on cp.CATEG_ID=mw.CP_CATEG_ID
             WHERE cp.CATEG_ID != '0'
             """
             response = self.db.query_db(query)
@@ -836,7 +836,7 @@ class Catalog:
         def delete_category(self, cp_categ_id):
             query = f"""
             SELECT COLLECTION_ID
-            FROM {creds.shopify_category_table}
+            FROM {creds.shopify_collection_table}
             WHERE CP_CATEG_ID = {cp_categ_id}
             """
             response = self.db.query_db(query)
@@ -904,7 +904,7 @@ class Catalog:
             def get_shopify_cat_id(self):
                 query = f"""
                 SELECT COLLECTION_ID
-                FROM {creds.shopify_category_table}
+                FROM {creds.shopify_collection_table}
                 WHERE CP_CATEG_ID = {self.cp_categ_id}
                 """
                 response = query_engine.QueryEngine().query_db(query)
@@ -922,9 +922,9 @@ class Catalog:
             def get_shopify_parent_id(self):
                 query = f"""
                 SELECT COLLECTION_ID
-                FROM {creds.shopify_category_table}
+                FROM {creds.shopify_collection_table}
                 WHERE CP_CATEG_ID = (SELECT CP_PARENT_ID 
-                                    FROM {creds.shopify_category_table} 
+                                    FROM {creds.shopify_collection_table} 
                                     WHERE CP_CATEG_ID = {self.cp_categ_id})
                 """
                 response = query_engine.QueryEngine().query_db(query)
@@ -935,7 +935,7 @@ class Catalog:
                 url_path = []
                 url_path.append(Catalog.parse_custom_url_string(self.name))
                 while parent_id != 0:
-                    query = f'SELECT CATEG_NAME, CP_PARENT_ID FROM {creds.shopify_category_table} WHERE CP_CATEG_ID = {parent_id}'
+                    query = f'SELECT CATEG_NAME, CP_PARENT_ID FROM {creds.shopify_collection_table} WHERE CP_CATEG_ID = {parent_id}'
                     response = query_engine.QueryEngine().query_db(query)
                     if response:
                         url_path.append(Catalog.parse_custom_url_string(response[0][0] or ''))
@@ -1994,7 +1994,7 @@ class Catalog:
                     # Get Collection ID from Middleware Category ID
                     q = f"""
                         SELECT COLLECTION_ID 
-                        FROM {creds.shopify_category_table}
+                        FROM {creds.shopify_collection_table}
                         WHERE CP_CATEG_ID = '{category}'
                         """
                     response = self.db.query_db(q)
