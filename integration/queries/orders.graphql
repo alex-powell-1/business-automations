@@ -1,0 +1,18 @@
+query order($id: ID!) {
+  node(id: $id) {
+    id
+    ... on Order {
+      name
+    }
+  }
+}
+
+query orders{
+  orders(first: 10) {
+    edges {
+      node {
+        id
+      }
+    }
+  }
+}

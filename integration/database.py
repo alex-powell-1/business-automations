@@ -27,27 +27,8 @@ class Database:
                                             LST_MAINT_DT datetime NOT NULL DEFAULT(current_timestamp)
                                             );
                                             """,
-                    'brands': f"""
-                                            CREATE TABLE {Database.Shopify.brands_table} (
-                                            ID int IDENTITY(1,1) PRIMARY KEY,
-                                            CP_BRAND_ID nvarchar(50) NOT NULL,
-                                            BC_BRAND_ID int,
-                                            NAME nvarchar(255) NOT NULL,
-                                            PAGE_TITLE nvarchar(255) NOT NULL,
-                                            META_KEYWORDS nvarchar(255),
-                                            META_DESCR nvarchar(255),
-                                            SEARCH_KEYWORDS nvarchar(255),
-                                            IMAGE_NAME nvarchar(255),
-                                            IMAGE_URL nvarchar(255),
-                                            IMAGE_FILEPATH nvarchar(255),
-                                            IMAGE_SIZE int,
-                                            IS_CUSTOMIZED BIT,
-                                            CUSTOM_URL nvarchar(255),
-                                            LST_MAINT_DT datetime NOT NULL DEFAULT(current_timestamp)
-                                            );
-                                            """,
                     'products': f"""
-                                            CREATE TABLE {Database.Shopify.product_table} (                                        
+                                            CREATE TABLE {Database.Shopify.Product.table} (                                        
                                             ID int IDENTITY(1,1) PRIMARY KEY,
                                             ITEM_NO varchar(50) NOT NULL,
                                             BINDING_ID varchar(10),
@@ -83,7 +64,6 @@ class Database:
                                             IMAGE_NAME nvarchar(255) NOT NULL,
                                             ITEM_NO varchar(50),
                                             FILE_PATH nvarchar(255) NOT NULL,
-                                            IMAGE_URL nvarchar(255),
                                             PRODUCT_ID bigint,
                                             IMAGE_ID bigint,
                                             THUMBNAIL BIT DEFAULT(0),
@@ -280,7 +260,7 @@ class Database:
                 """Get product ID from SQL using image ID. If not found, return None."""
                 if item_no:
                     product_query = (
-                        f"SELECT PRODUCT_ID FROM {Database.Shopify.product_table} WHERE ITEM_NO = '{item_no}'"
+                        f"SELECT PRODUCT_ID FROM {Database.Shopify.Product.table} WHERE ITEM_NO = '{item_no}'"
                     )
                 if image_id:
                     product_query = (
@@ -288,7 +268,7 @@ class Database:
                     )
                 if binding_id:
                     product_query = (
-                        f"SELECT PRODUCT_ID FROM {Database.Shopify.product_table} WHERE BINDING_ID = '{binding_id}'"
+                        f"SELECT PRODUCT_ID FROM {Database.Shopify.Product.table} WHERE BINDING_ID = '{binding_id}'"
                     )
 
                 if item_no or image_id or binding_id:
@@ -314,7 +294,7 @@ class Database:
                     Database.Shopify.Product.Variant.insert(product, variant)
 
             def delete(product_id):
-                query = f'DELETE FROM {Database.Shopify.product_table} WHERE PRODUCT_ID = {product_id}'
+                query = f'DELETE FROM {Database.Shopify.Product.table} WHERE PRODUCT_ID = {product_id}'
                 response = Database.db.query_db(query, commit=True)
 
                 if response['code'] == 200:
@@ -359,10 +339,9 @@ class Database:
                         categories_string = None
 
                     insert_query = f"""
-                        INSERT INTO {Database.Shopify.product_table} (ITEM_NO, BINDING_ID, IS_PARENT, 
-                        PRODUCT_ID, VARIANT_ID, INVENTORY_ID, VARIANT_NAME, OPTION_ID, OPTION_VALUE_ID, CATEG_ID,
-                        CF_BOTAN_NAM, CF_CLIM_ZON, CF_PLANT_TYP, CF_TYP, CF_HEIGHT, CF_WIDTH, CF_SUN_EXP, CF_BLOOM_TIM,
-                        CF_FLOW_COL, CF_POLLIN, CF_GROWTH_RT, CF_DEER_RES, CF_SOIL_TYP, CF_COLOR, CF_SIZE)
+                        INSERT INTO {Database.Shopify.Product.table} (ITEM_NO, BINDING_ID, IS_PARENT, 
+                        PRODUCT_ID, VARIANT_ID, INVENTORY_ID, VARIANT_NAME, OPTION_ID, OPTION_VALUE_ID, CATEG_ID
+                        )
                          
                         VALUES ('{variant.sku}', {f"'{product.binding_id}'" if product.binding_id else 'NULL'}, 
                         {1 if variant.is_parent else 0}, {product.product_id if product.product_id else "NULL"}, 
@@ -371,8 +350,10 @@ class Database:
                         {f"'{variant.variant_name}'" if variant.variant_name else "NULL"}, 
                         {variant.option_id if variant.option_id else "NULL"}, 
                         {variant.option_value_id if variant.option_value_id else "NULL"}, 
-                        {f"'{categories_string}'" if categories_string else "NULL"}, 
-                        {variant.botanical_name_id if variant.botanical_name_id else "NULL"},
+                        {f"'{categories_string}'" if categories_string else "NULL"}
+                        )
+                        """
+                    future_values_add = """{variant.botanical_name_id if variant.botanical_name_id else "NULL"},
                         {variant.climate_zone_id if variant.climate_zone_id else "NULL"},
                         {variant.plant_type_id if variant.plant_type_id else "NULL"},
                         {variant.type_id if variant.type_id else "NULL"},
@@ -386,9 +367,10 @@ class Database:
                         {variant.deer_resistant_id if variant.deer_resistant_id else "NULL"},
                         {variant.soil_type_id if variant.soil_type_id else "NULL"},
                         {variant.color_id if variant.color_id else "NULL"},
-                        {variant.size_id if variant.size_id else "NULL"}
-                        )
-                        """
+                        {variant.size_id if variant.size_id else "NULL"}"""
+
+                    future_columns = """CF_BOTAN_NAM, CF_CLIM_ZON, CF_PLANT_TYP, CF_TYP, CF_HEIGHT, CF_WIDTH, CF_SUN_EXP, CF_BLOOM_TIM,
+                        CF_FLOW_COL, CF_POLLIN, CF_GROWTH_RT, CF_DEER_RES, CF_SOIL_TYP, CF_COLOR, CF_SIZE"""
 
                     response = product.db.query_db(insert_query, commit=True)
                     if response['code'] == 200:
@@ -409,7 +391,7 @@ class Database:
                         categories_string = None
 
                     update_query = f"""
-                        UPDATE {Database.Shopify.product_table} 
+                        UPDATE {Database.Shopify.Product.table} 
                         SET ITEM_NO = '{variant.sku}', 
                         BINDING_ID = {f"'{product.binding_id}'" if product.binding_id else 'NULL'}, 
                         IS_PARENT = {1 if variant.is_parent else 0}, 
@@ -418,10 +400,13 @@ class Database:
                         INVENTORY_ID = {variant.inventory_id if variant.inventory_id else 'NULL'}, 
                         VARIANT_NAME = {f"'{variant.variant_name}'" if variant.variant_id else "NULL"}, 
                         OPTION_ID = {variant.option_id if variant.option_id else "NULL"}, 
-                        OPTION_VALUE_ID = {variant.option_value_id if variant.option_value_id else "NULL"}, 
+                        OPTION_VALUE_ID = {variant.option_value_id if variant.option_value_id else "NULL"},  
                         CATEG_ID = {f"'{categories_string}'" if categories_string else "NULL"}, 
-                        CF_BOTAN_NAM = {variant.botanical_name_id if variant.botanical_name_id else "NULL"},
-                        CF_CLIM_ZON = {variant.climate_zone_id if variant.climate_zone_id else "NULL"},
+                        LST_MAINT_DT = GETDATE() 
+                        WHERE ID = {variant.db_id}
+                        """
+                    future = """CF_BOTAN_NAM = {variant.custom_botanical_name['id'] if variant.botanical_name['id'] else "NULL"},
+                        CF_CLIM_ZON = {variant.custom_climate_zone['id'] if variant.climate_zone_id['id'] else "NULL"},
                         CF_PLANT_TYP = {variant.plant_type_id if variant.plant_type_id else "NULL"},
                         CF_TYP = {variant.type_id if variant.type_id else "NULL"},
                         CF_HEIGHT = {variant.height_id if variant.height_id else "NULL"},
@@ -434,10 +419,7 @@ class Database:
                         CF_DEER_RES = {variant.deer_resistant_id if variant.deer_resistant_id else "NULL"},
                         CF_SOIL_TYP = {variant.soil_type_id if variant.soil_type_id else "NULL"},
                         CF_COLOR = {variant.color_id if variant.color_id else "NULL"},
-                        CF_SIZE = {variant.size_id if variant.size_id else "NULL"},
-                        LST_MAINT_DT = GETDATE() 
-                        WHERE ID = {variant.db_id}
-                        """
+                        CF_SIZE = {variant.size_id if variant.size_id else "NULL"},"""
 
                     response = Database.db.query_db(update_query, commit=True)
                     if response['code'] == 200:
@@ -452,7 +434,7 @@ class Database:
                         raise Exception(error)
 
                 def delete(variant_id):
-                    query = f'DELETE FROM {Database.Shopify.product_table} WHERE VARIANT_ID = {variant_id}'
+                    query = f'DELETE FROM {Database.Shopify.Product.table} WHERE VARIANT_ID = {variant_id}'
                     response = Database.db.query_db(query, commit=True)
 
                     if response['code'] == 200:
@@ -500,7 +482,7 @@ class Database:
                     q = f"""
                     UPDATE {creds.shopify_image_table}
                     SET IMAGE_NAME = '{image.image_name}', ITEM_NO = '{image.sku}', FILE_PATH = '{image.file_path}',
-                    IMAGE_URL = '{image.image_url}', PRODUCT_ID = '{image.product_id}', IMAGE_ID = '{image.image_id}',
+                    PRODUCT_ID = '{image.product_id}', IMAGE_ID = '{image.image_id}',
                     THUMBNAIL = '{1 if image.is_thumbnail else 0}', IMAGE_NUMBER = '{image.image_number}',
                     SORT_ORDER = '{image.sort_order}', IS_BINDING_IMAGE = '{image.is_binding_image}',
                     BINDING_ID = {f"'{image.binding_id}'" if image.binding_id else 'NULL'},
@@ -521,19 +503,22 @@ class Database:
                         )
                         raise Exception(error)
 
-                def delete(image):
-                    if image.image_id is None:
-                        image.image_id = Database.Shopify.Product.Image.get_image_id(filename=image.image_name)
-                    q = f'DELETE FROM {creds.shopify_image_table} WHERE IMAGE_ID = {image.image_id}'
+                def delete(image=None, image_id=None):
+                    if image_id:
+                        q = f'DELETE FROM {creds.shopify_image_table} WHERE IMAGE_ID = {image_id}'
+                    else:
+                        if image.image_id is None:
+                            image.image_id = Database.Shopify.Product.Image.get_image_id(filename=image.image_name)
+                        q = f'DELETE FROM {creds.shopify_image_table} WHERE IMAGE_ID = {image.image_id}'
                     res = Database.db.query_db(q, commit=True)
                     if res['code'] == 200:
-                        Database.logger.success(f'SQL DELETE Image {image.image_name}: Success')
+                        Database.logger.success(f'Query: {q}\nSQL DELETE Image')
                     else:
                         error = (
                             f'Error deleting image {image.image_name} in Middleware. \nQuery: {q}\nResponse: {res}'
                         )
                         Database.error_handler.add_error_v(
-                            error=error, origin=f'Database.Shopify.Product.Image.delete({image.image_name})'
+                            error=error, origin=f'Database.Shopify.Product.Image.delete(query:\n{q})'
                         )
                         raise Exception(error)
 

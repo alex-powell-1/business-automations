@@ -33,6 +33,7 @@ mutation productUpdateMedia($media: [UpdateMediaInput!]!, $productId: ID!) {
       id
       title
   }
+  }
 }
 
 mutation productDeleteMedia($mediaIds: [ID!]!, $productId: ID!) {
@@ -61,6 +62,22 @@ mutation productDeleteMedia($mediaIds: [ID!]!, $productId: ID!) {
 mutation productReorderMedia($id: ID!, $moves: [MoveInput!]!) {
   productReorderMedia(id: $id, moves: $moves) {
     job {
+      id
+    }
+  }
+}
+
+mutation productVariantAppendMedia($productId: ID!, $variantMedia: [ProductVariantAppendMediaInput!]!) {
+  productVariantAppendMedia(productId: $productId, variantMedia: $variantMedia) {
+    product {
+      id
+    }
+  }
+}
+
+mutation productVariantDetachMedia($productId: ID!, $variantMedia: [ProductVariantDetachMediaInput!]!) {
+  productVariantDetachMedia(productId: $productId, variantMedia: $variantMedia) {
+    product {
       id
     }
   }

@@ -68,7 +68,6 @@ class Catalog:
         ORDER BY {creds.cp_field_binding_id} DESC
         """
         response = self.db.query_db(query)
-        print(response)
         if response is not None:
             result = []
             for item in response:
@@ -223,7 +222,6 @@ class Catalog:
 
                 if product_id is not None:
                     variant = Catalog.Product.Variant(sku=variant_sku, last_run_date=self.last_sync)
-                    print(f'\n\nPosting new variant for {variant_sku} to product ID {product_id}.\n\n')
                     variant.bc_post_variant(product_id=product_id)
         else:
             Catalog.logger.info('No products to add.')
@@ -257,72 +255,32 @@ class Catalog:
         def delete_image(image_name) -> bool:
             """Takes in an image name and looks for matching image file in middleware. If found, deletes from BC and SQL."""
             Catalog.logger.info(f'Deleting {image_name}')
-            image_query = f"SELECT PRODUCT_ID, IMAGE_ID, IS_VARIANT_IMAGE, IMAGE_URL FROM {creds.shopify_image_table} WHERE IMAGE_NAME = '{image_name}'"
+            image_query = f"""
+            SELECT img.PRODUCT_ID, prod.VARIANT_ID, IMAGE_ID, IS_VARIANT_IMAGE 
+            FROM SN_SHOP_IMAGES img
+            INNER JOIN SN_SHOP_PROD prod on img.ITEM_NO = prod.ITEM_NO
+            WHERE IMAGE_NAME = '{image_name}'
+            """
+
             img_id_res = self.db.query_db(image_query)
+            print(img_id_res)
             if img_id_res is not None:
-                product_id, image_id, is_variant, image_url = (
+                product_id, variant_id, image_id, is_variant = (
                     img_id_res[0][0],
                     img_id_res[0][1],
                     img_id_res[0][2],
                     img_id_res[0][3],
                 )
 
-            if is_variant == 1:
-                # Get Variant ID
-                item_number = image_name.split('.')[0].split('^')[0]
-                variant_query = (
-                    f"SELECT VARIANT_ID FROM {creds.shopify_product_table} WHERE ITEM_NO = '{item_number}'"
+            if is_variant:
+                print('This is a variant image. Delete from Shopify.')
+                Shopify.Product.Variant.Image.delete(
+                    product_id=product_id, variant_id=variant_id, image_id=image_id
                 )
-                variant_id_res = self.db.query_db(variant_query)
-                if variant_id_res is not None:
-                    variant_id = variant_id_res[0][0]
-                else:
-                    Catalog.logger.warn(f'Variant ID not found for {image_name}. Response: {variant_id_res}')
 
-                if variant_id is not None:
-                    url = (
-                        f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/'
-                        f'products/{product_id}/variants/{variant_id}/images/'
-                    )
-                    response = BCRequests.post(url=url, json={'image_url': ''})
-                    if response.status_code == 200:
-                        Catalog.logger.success(f'Primary Variant Image {image_name} deleted from BigCommerce.')
-                    else:
-                        Catalog.error_handler.add_error_v(
-                            error=f'Error deleting Primary Variant Image {image_name} from BigCommerce. {response.json()}',
-                            origin='process_images() -> delete_image()',
-                        )
-                        Catalog.logger.warn(f'Error deleting primary variant image: {response.json()}')
-
-            delete_img_url = f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/products/{product_id}/images/{image_id}'
-
-            img_del_res = BCRequests.delete(url=delete_img_url)
-
-            if img_del_res.status_code == 204:
-                Catalog.logger.success(f'Image {image_name} deleted from BigCommerce.')
-            else:
-                Catalog.error_handler.add_error_v(
-                    error=f'Error deleting image {image_name} from BigCommerce.', origin='Catalog.delete_image()'
-                )
-            delete_images_query = f'DELETE FROM {creds.shopify_image_table} ' f"WHERE IMAGE_ID = '{image_id}'"
-            response = self.db.query_db(delete_images_query, commit=True)
-            if response['code'] == 200:
-                Catalog.logger.success(f'Image {image_name} deleted from SQL.')
-            else:
-                Catalog.error_handler.add_error_v(
-                    error=f'Error deleting image {image_name} from SQL.', origin='Catalog.delete_image()'
-                )
-            # Delete image from WebDav directory
-            url_filename = image_url.split('/')[-1]
-            print(f'Deleting {url_filename}')
-            web_dav_response = Catalog.delete_image_from_webdav(url_filename)
-            if web_dav_response.status_code == 204:
-                Catalog.logger.success(f'Image {image_name} deleted from WebDav.')
-            else:
-                Catalog.error_handler.add_error_v(
-                    error=f'Error deleting image {image_name} from WebDav. {web_dav_response.text}',
-                    origin='Catalog.delete_image()',
-                )
+            # Delete the image from Shopify Product and Middleware
+            Shopify.Product.Media.Image.delete(product_id=product_id, image_id=image_id, variant_id=variant_id)
+            Database.Shopify.Product.Image.delete(image_id=image_id)
 
         Catalog.logger.info('Processing Image Updates.')
         start_time = time.time()
@@ -336,7 +294,7 @@ class Catalog:
             for x in delete_targets:
                 Catalog.logger.info(f'Deleting Image {x[0]}.\n')
                 Catalog.logger.warn('Skipping image deletion during testing.')
-                # delete_image(x[0])
+                delete_image(x[0])
         else:
             Catalog.logger.info('No image deletions found.')
 
@@ -376,22 +334,24 @@ class Catalog:
 
     def sync(self, initial=False):
         # # Sync Category Tree
-        # self.category_tree.sync()
+        self.category_tree.sync()
 
-        # if not initial:
-        #     # Process Product Deletions and Images
-        #     self.process_product_deletes()
-        #     self.process_images()
+        if not initial:
+            # Process Product Deletions and Images
+            # self.process_product_deletes()
+            self.process_images()
 
         # Sync Products
-        # self.get_products()  # Get all products that have been updated since the last sync
-        self.sync_queue = [{'sku': '10344', 'binding_id': 'B0001'}]
+        self.get_products()  # Get all products that have been updated since the last sync
+        # self.sync_queue = [{'sku': '10344', 'binding_id': 'B0001'}]
 
         # Small Bound Product
         # self.sync_queue = [{'sku': 'SYUFICG01', 'binding_id': 'B0050'}]
 
         # single product
-        # self.sync_queue = [{'sku': '201376'}]
+        # self.sync_queue = [{'sku': '200899'}, {'sku': 'SYUFICG01', 'binding_id': 'B0050'}]
+        # self.sync_queue = [{'sku': '200899'}]
+
         if not self.sync_queue:
             Catalog.logger.success('No products to sync.')
         else:
@@ -568,7 +528,7 @@ class Catalog:
         return [element for element in secondary_source if element not in primary_source]
 
     @staticmethod
-    def delete_categories():
+    def delete_collections():
         # Get all categories from Middleware. Delete from Shopify and Middleware.
         query = f'SELECT DISTINCT COLLECTION_ID FROM {creds.shopify_collection_table}'
         response = Database.db.query_db(query)
@@ -612,10 +572,10 @@ class Catalog:
     def delete_catalog():
         """Deletes all products, categories, and brands from BigCommerce and Middleware."""
         Catalog.delete_products()
-        Catalog.delete_categories()
+        Catalog.delete_collections()
 
     class CategoryTree:
-        def __init__(self, last_sync):
+        def __init__(self, last_sync=datetime(1970, 1, 1)):
             self.db = Database.db
             self.last_sync = last_sync
             self.categories = set()
@@ -655,22 +615,25 @@ class Catalog:
             cp.LST_MAINT_DT, mw.CP_CATEG_ID, mw.is_visible, mw.IMG_SIZE
             FROM EC_CATEG cp
             FULL OUTER JOIN {creds.shopify_collection_table} mw on cp.CATEG_ID=mw.CP_CATEG_ID
-            WHERE cp.CATEG_ID != '0'
             """
             response = self.db.query_db(query)
             if response:
                 for x in response:
                     cp_categ_id = x[0]
+                    cp_parent_id = x[1]
                     mw_cp_categ_id = x[8]  # Middleware Counterpoint Category ID
 
                     if cp_categ_id is None:  # These are categories that exist in the middleware but not CP
-                        self.delete_category(mw_cp_categ_id)
+                        self.delete_collection(mw_cp_categ_id)
                         continue  # Skip deleted categories
+
+                    if cp_parent_id == '0' and cp_categ_id == '0':
+                        continue  # Skip the root category
 
                     # Create Category Object
                     cat = self.Category(
                         cp_categ_id=cp_categ_id,
-                        cp_parent_id=x[1],
+                        cp_parent_id=cp_parent_id,
                         collection_id=x[2],
                         menu_id=x[3],
                         name=x[4],
@@ -696,6 +659,7 @@ class Catalog:
                             x.add_child(y)
 
                 self.heads = [x for x in self.categories if x.cp_parent_id == '0']
+
                 # Sort Heads by x.sort_order
                 self.heads.sort(key=lambda x: x.sort_order)
 
@@ -705,32 +669,31 @@ class Catalog:
             self.update_tree_in_middleware()
 
         def process_collections(self):
-            """Recursively updates collections in Shopify."""
-            # Establish queue for dealing with category images
             queue = []
 
             def collections_h(category):
                 # Get BC Category ID and Parent ID
-                print(f'Processing Category: {category.name}, category collection ID: {category.collection_id}')
-                queue.append(category)
-                if category.collection_id is None:
-                    category.collection_id = Shopify.Collection.create(category.get_category_payload())
+                if category.lst_maint_dt > self.last_sync:
+                    queue.append(category)
+                    if category.collection_id is None:
+                        category.collection_id = Shopify.Collection.create(category.get_category_payload())
+
                 for child in category.children:
                     collections_h(child)
 
-            for category in self.heads:
-                if category.lst_maint_dt > self.last_sync:
-                    collections_h(category)
+            for head in self.heads:
+                collections_h(head)
 
             self.upload_category_images(queue)
+
             for category in queue:
                 Shopify.Collection.update(category.get_category_payload())
 
         def process_menus(self):
             """Recursively updates menus in Shopify."""
             main_menu = {
-                'id': f'gid://shopify/Menu/{creds.shopify_main_menu_id}',
-                'title': 'Main Menu',
+                'id': 'gid://shopify/Menu/205591937191',
+                'title': 'Menu menu',
                 'handle': 'main-menu',
                 'items': [],
             }
@@ -746,50 +709,48 @@ class Catalog:
                     'items': [menu_helper(child) for child in category.children],
                 }
 
-                # if category.menu_id is not None:
-                #     menu_item['id'] = f'gid://shopify/MenuItem/{category.menu_id}'
-
                 return menu_item
 
             # Recursively call this function for each child category
             for category in self.heads:
                 main_menu['items'].append(menu_helper(category))
 
-            # Add the Landing Page to the Main Menu
+            # # Add the Landing Page to the Main Menu
             main_menu['items'].append(
                 {
                     'title': 'Landscape Design',
                     'type': 'PAGE',
-                    'resourceId': 'gid://shopify/Page/138277978406',
+                    'resourceId': 'gid://shopify/Page/98894217383',
                     'items': [],
                 }
             )
 
             Shopify.Menu.update(main_menu)
-            response = Shopify.Menu.get(creds.shopify_main_menu_id)
-            heads = response['menu']['items']
-            result = []
+            # response = Shopify.Menu.get(creds.shopify_main_menu_id)
+            # heads = response['menu']['items']
+            # result = []
 
-            def response_helper(menu_item_list):
-                menu_item_id = menu_item_list['id'].split('/')[-1]
-                result.append({'menu_id': menu_item_id, 'title': menu_item_list['title']})
-                if 'items' in menu_item_list:
-                    for i in menu_item_list['items']:
-                        response_helper(i)
+            # def response_helper(menu_item_list):
+            #     menu_item_id = menu_item_list['id'].split('/')[-1]
+            #     result.append({'menu_id': menu_item_id, 'title': menu_item_list['title']})
+            #     if 'items' in menu_item_list:
+            #         for i in menu_item_list['items']:
+            #             response_helper(i)
 
-            for head in heads:
-                response_helper(head)
+            # for head in heads:
+            #     response_helper(head)
 
-            # Assign menu item IDs to categories
-            def assign_menu_ids(category):
-                for i in result:
-                    if i['title'] == category.name:
-                        category.menu_id = i['menu_id']
-                for child in category.children:
-                    assign_menu_ids(child)
+            # # Assign menu item IDs to categories
+            # def assign_menu_ids(category):
+            #     for i in result:
+            #         if i['title'] == category.name:
+            #             category.menu_id = i['menu_id']
 
-            for category in self.heads:
-                assign_menu_ids(category)
+            #     for child in category.children:
+            #         assign_menu_ids(child)
+
+            # for category in self.heads:
+            #     assign_menu_ids(category)
 
         def update_tree_in_middleware(self):
             # Update Entire Category Tree in Middleware
@@ -809,7 +770,6 @@ class Catalog:
             for category in queue:
                 if category.image_path:
                     image_size = Catalog.get_filesize(category.image_path)
-                    print(f'\n\nImage Size: {image_size}, Category Image Size: {category.image_size}\n\n')
                     if image_size != category.image_size:
                         category.image_size = image_size
                         file_list.append(category.image_path)
@@ -830,10 +790,10 @@ class Catalog:
                     for category in queue:
                         if file['file_path'] == category.image_path:
                             category_image_url = file['url']
-                            print(f'Updating Image URL for {category.image_name} to {category_image_url}')
                             category.image_url = category_image_url
 
-        def delete_category(self, cp_categ_id):
+        def delete_collection(self, cp_categ_id):
+            print(f'Deleting Category: {cp_categ_id}')
             query = f"""
             SELECT COLLECTION_ID
             FROM {creds.shopify_collection_table}
@@ -843,11 +803,11 @@ class Catalog:
             if response:
                 collection_id = response[0][0] if response and response[0][0] is not None else None
                 if collection_id:
+                    print(f'Deleting Category {cp_categ_id} from Shopify.')
                     # Delete Category from Shopify
                     Shopify.Collection.delete(collection_id)
-                    Database.Shopify.Collection.delete(cp_categ_id)
-                else:
-                    Database.Shopify.Collection.delete(cp_categ_id=cp_categ_id)
+                print(f'Deleting Category {cp_categ_id} from Middleware.')
+                Database.Shopify.Collection.delete(cp_categ_id=cp_categ_id)
 
         class Category:
             def __init__(
@@ -1243,7 +1203,6 @@ class Catalog:
                 self.cp_ecommerce_categories = single.cp_ecommerce_categories
                 self.images = single.images
                 self.custom_url = single.custom_url
-                self.custom_field_ids = single.custom_field_ids
                 # Set the product last maintained date to the single product's last maintained date
                 self.lst_maint_dt = single.lst_maint_dt
                 self.long_descr = single.long_descr
@@ -1460,19 +1419,13 @@ class Catalog:
                                 WHERE ITEM_NO = '{child.sku}'"""
                                 self.db.query_db(query, commit=True)
 
-            # Need validations for character counts on all fields
-            # print(f"Product {self.sku} has passed validation.")
-            # Validation has Passed.
-            # Catalog.logger.success(
-            #     f"Product SKU: {self.sku} Binding ID: {self.binding_id} has passed input validation."
-            # )
             return True
 
         def get_product_payload(self):
             """Build the payload for creating a product in BigCommerce.
             This will include all variants, images, and custom fields."""
 
-            def construct_custom_fields():
+            def get_custom_fields():
                 result = []
 
                 if self.custom_botanical_name:
@@ -1480,7 +1433,9 @@ class Catalog:
 
                     if self.custom_botanical_name['id']:
                         # Update Custom Field
-                        cf_custom_botanical_name['id'] = self.custom_botanical_name['id']
+                        cf_custom_botanical_name['id'] = (
+                            f'{Shopify.Product.Metafield.prefix}{self.custom_botanical_name["id"]}'
+                        )
                     else:
                         # Create Custom Field
                         cf_custom_botanical_name['key'] = Catalog.metafields['botanical name']['META_KEY']
@@ -1494,7 +1449,9 @@ class Catalog:
 
                     if self.custom_climate_zone['id']:
                         # Update Custom Field
-                        cf_custom_climate_zone['id'] = self.custom_climate_zone['id']
+                        cf_custom_climate_zone['id'] = (
+                            f'{Shopify.Product.Metafield.prefix}{self.custom_climate_zone["id"]}'
+                        )
                     else:
                         # Create Custom Field
                         cf_custom_climate_zone['key'] = Catalog.metafields['climate zone']['META_KEY']
@@ -1508,7 +1465,9 @@ class Catalog:
 
                     if self.custom_plant_type['id']:
                         # Update Custom Field
-                        cf_custom_plant_type['id'] = self.custom_plant_type['id']
+                        cf_custom_plant_type['id'] = (
+                            f'{Shopify.Product.Metafield.prefix}{self.custom_plant_type["id"]}'
+                        )
                     else:
                         # Create Custom Field
                         cf_custom_plant_type['key'] = Catalog.metafields['plant type']['META_KEY']
@@ -1522,7 +1481,7 @@ class Catalog:
 
                     if self.custom_type['id']:
                         # Update Custom Field
-                        cf_custom_type['id'] = self.custom_type['id']
+                        cf_custom_type['id'] = f'{Shopify.Product.Metafield.prefix}{self.custom_type["id"]}'
                     else:
                         # Create Custom Field
                         cf_custom_type['key'] = Catalog.metafields['type']['META_KEY']
@@ -1536,7 +1495,7 @@ class Catalog:
 
                     if self.custom_height['id']:
                         # Update Custom Field
-                        cf_custom_height['id'] = self.custom_height['id']
+                        cf_custom_height['id'] = f'{Shopify.Product.Metafield.prefix}{self.custom_height["id"]}'
                     else:
                         # Create Custom Field
                         cf_custom_height['key'] = Catalog.metafields['mature height']['META_KEY']
@@ -1550,7 +1509,7 @@ class Catalog:
 
                     if self.custom_width['id']:
                         # Update Custom Field
-                        cf_custom_width['id'] = self.custom_width['id']
+                        cf_custom_width['id'] = f'{Shopify.Product.Metafield.prefix}{self.custom_width["id"]}'
                     else:
                         # Create Custom Field
                         cf_custom_width['key'] = Catalog.metafields['mature width']['META_KEY']
@@ -1564,7 +1523,9 @@ class Catalog:
 
                     if self.custom_sun_exposure['id']:
                         # Update Custom Field
-                        cf_custom_sun_exposure['id'] = self.custom_sun_exposure['id']
+                        cf_custom_sun_exposure['id'] = (
+                            f'{Shopify.Product.Metafield.prefix}{self.custom_sun_exposure["id"]}'
+                        )
                     else:
                         # Create Custom Field
                         cf_custom_sun_exposure['key'] = Catalog.metafields['sun exposure']['META_KEY']
@@ -1578,7 +1539,9 @@ class Catalog:
 
                     if self.custom_bloom_time['id']:
                         # Update Custom Field
-                        cf_custom_bloom_time['id'] = self.custom_bloom_time['id']
+                        cf_custom_bloom_time['id'] = (
+                            f'{Shopify.Product.Metafield.prefix}{self.custom_bloom_time["id"]}'
+                        )
                     else:
                         # Create Custom Field
                         cf_custom_bloom_time['key'] = Catalog.metafields['bloom time']['META_KEY']
@@ -1592,7 +1555,9 @@ class Catalog:
 
                     if self.custom_bloom_color['id']:
                         # Update Custom Field
-                        cf_custom_bloom_color['id'] = self.custom_bloom_color['id']
+                        cf_custom_bloom_color['id'] = (
+                            f'{Shopify.Product.Metafield.prefix}{self.custom_bloom_color["id"]}'
+                        )
                     else:
                         # Create Custom Field
                         cf_custom_bloom_color['key'] = Catalog.metafields['bloom color']['META_KEY']
@@ -1606,7 +1571,9 @@ class Catalog:
 
                     if self.custom_attracts_pollinators['id']:
                         # Update Custom Field
-                        cf_custom_attracts_pollinators['id'] = self.custom_attracts_pollinators['id']
+                        cf_custom_attracts_pollinators['id'] = (
+                            f'{Shopify.Product.Metafield.prefix}{self.custom_attracts_pollinators["id"]}'
+                        )
                     else:
                         # Create Custom Field
                         cf_custom_attracts_pollinators['key'] = Catalog.metafields['attracts pollinators'][
@@ -1624,7 +1591,9 @@ class Catalog:
 
                     if self.custom_growth_rate['id']:
                         # Update Custom Field
-                        cf_custom_growth_rate['id'] = self.custom_growth_rate['id']
+                        cf_custom_growth_rate['id'] = (
+                            f'{Shopify.Product.Metafield.prefix}{self.custom_growth_rate["id"]}'
+                        )
                     else:
                         # Create Custom Field
                         cf_custom_growth_rate['key'] = Catalog.metafields['growth rate']['META_KEY']
@@ -1634,11 +1603,13 @@ class Catalog:
                     result.append(cf_custom_growth_rate)
 
                 if self.custom_deer_resistant:
-                    cf_custom_deer_resistant = {'value': self.custom_deer_resistant['value']}
+                    cf_custom_deer_resistant = {'value': 'true' if self.custom_deer_resistant['value'] else 'false'}
 
                     if self.custom_deer_resistant['id']:
                         # Update Custom Field
-                        cf_custom_deer_resistant['id'] = self.custom_deer_resistant['id']
+                        cf_custom_deer_resistant['id'] = (
+                            f'{Shopify.Product.Metafield.prefix}{self.custom_deer_resistant["id"]}'
+                        )
                     else:
                         # Create Custom Field
                         cf_custom_deer_resistant['key'] = Catalog.metafields['deer resistant']['META_KEY']
@@ -1652,7 +1623,9 @@ class Catalog:
 
                     if self.custom_soil_type['id']:
                         # Update Custom Field
-                        cf_custom_soil_type['id'] = self.custom_soil_type['id']
+                        cf_custom_soil_type['id'] = (
+                            f'{Shopify.Product.Metafield.prefix}{self.custom_soil_type["id"]}'
+                        )
                     else:
                         # Create Custom Field
                         cf_custom_soil_type['key'] = Catalog.metafields['soil type']['META_KEY']
@@ -1666,7 +1639,7 @@ class Catalog:
 
                     if self.custom_color['id']:
                         # Update Custom Field
-                        cf_custom_color['id'] = self.custom_color['id']
+                        cf_custom_color['id'] = f'{Shopify.Product.Metafield.prefix}{self.custom_color["id"]}'
                     else:
                         # Create Custom Field
                         cf_custom_color['key'] = Catalog.metafields['color']['META_KEY']
@@ -1680,7 +1653,7 @@ class Catalog:
 
                     if self.custom_size['id']:
                         # Update Custom Field
-                        cf_custom_size['id'] = self.custom_size['id']
+                        cf_custom_size['id'] = f'{Shopify.Product.Metafield.prefix}{self.custom_size["id"]}'
                     else:
                         # Create Custom Field
                         cf_custom_size['key'] = Catalog.metafields['size']['META_KEY']
@@ -1698,13 +1671,17 @@ class Catalog:
                         x.is_thumbnail = True
                     x.sort_order = sort_order
                     sort_order += 1
+
                 result = []
 
                 file_list = []
                 stagedUploadsCreateVariables = {'input': []}
 
                 for image in self.images:
-                    if not image.image_url:
+                    image_size = Catalog.get_filesize(image.file_path)
+                    if image_size != image.size:
+                        print(f'Image {image.image_name} is not the correct size. ...\n\n')
+                        image.size = image_size
                         file_list.append(image.file_path)
                         stagedUploadsCreateVariables['input'].append(
                             {
@@ -1714,28 +1691,29 @@ class Catalog:
                                 'resource': 'IMAGE',
                             }
                         )
+
                 if file_list:
                     uploaded_files = Shopify.Product.Files.create(
                         variables=stagedUploadsCreateVariables, file_list=file_list
                     )
                     for file in uploaded_files:
-                        print(f'Uploaded File: {file}')
                         for image in self.images:
                             if file['file_path'] == image.file_path:
-                                print(f'Updating Image URL for {image.image_name} to {file['url']}')
+                                print(f'Image {image.image_name} uploaded to Shopify. Url: {file["url"]}')
                                 image.image_url = file['url']
 
-                for image in self.images:
-                    image_payload = {
-                        'originalSource': image.image_url,
-                        'alt': image.description,
-                        'mediaContentType': 'IMAGE',
-                    }
-                    if image.image_id:
-                        image_payload['id'] = f'gid://shopify/MediaImage/{image.image_id}'
+                    for image in self.images:
+                        image_payload = {
+                            'originalSource': image.image_url,
+                            'alt': image.description,
+                            'mediaContentType': 'IMAGE',
+                        }
+                        if image.image_id:
+                            image_payload['id'] = f'gid://shopify/MediaImage/{image.image_id}'
 
-                    print(f'Image Payload: {image_payload}')
-                    result.append(image_payload)
+                        print(f'Image Payload: {image_payload}')
+                        result.append(image_payload)
+
                 return result
 
             def get_brand_name(brand):
@@ -1753,12 +1731,12 @@ class Catalog:
             product_payload = {
                 'input': {
                     'title': self.web_title,
-                    'productType': self.custom_type,
+                    'productType': self.custom_type['value'] if self.custom_type else None,
                     'descriptionHtml': self.html_description,
                     'seo': {'title': self.meta_title, 'description': self.meta_description},
                     'status': 'ACTIVE' if self.visible else 'DRAFT',
                     'tags': self.search_keywords.split(','),
-                    'metafields': construct_custom_fields(),
+                    # 'metafields': get_custom_fields(),
                 },
                 'media': create_image_payload(),
             }
@@ -1780,6 +1758,7 @@ class Catalog:
                         {'name': 'Option', 'values': [{'name': '9999 Gallon'}]}
                     ]
 
+            print(f'Product Payload: {product_payload}')
             return product_payload
 
         def get_bulk_variant_payload(self):
@@ -1804,19 +1783,20 @@ class Catalog:
                     'taxable': False,
                 }
 
-                variant_payload['inventoryQuantities'] = {
-                    'availableQuantity': child.buffered_quantity,
-                    'locationId': creds.shopify_location_id,
-                }
-
                 if child.variant_id:
                     variant_payload['id'] = f'gid://shopify/ProductVariant/{child.variant_id}'
+                else:
+                    variant_payload['inventoryQuantities'] = {
+                        'availableQuantity': child.buffered_quantity,
+                        'locationId': creds.shopify_location_id,
+                    }
 
                 if child.price_2:
                     variant_payload['price'] = min(child.price_1, child.price_2)
 
                 if self.is_bound:
                     variant_payload['optionValues']['name'] = child.variant_name
+
                 else:
                     if child.custom_size:
                         variant_payload['optionValues']['name'] = child.custom_size
@@ -1826,18 +1806,32 @@ class Catalog:
                 # Add Variant Image
                 for image in child.images:
                     if image.is_variant_image:
-                        print(
-                            f'Adding Variant Image: {image.image_name} to Variant: {child.sku}. Url: {image.image_url}'
-                        )
-                        variant_payload['mediaSrc'] = image.image_url
+                        image_size = Catalog.get_filesize(image.file_path)
+                        if image_size != image.size:
+                            print(
+                                f'Adding Variant Image: {image.image_name} to Variant: {child.sku}. Url: {image.image_url}'
+                            )
+                            file_list = [image.file_path]
+                            stagedUploadsCreateVariables = {
+                                'input': [
+                                    {
+                                        'filename': image.image_name,
+                                        'mimeType': 'image/jpg',
+                                        'httpMethod': 'POST',
+                                        'resource': 'IMAGE',
+                                    }
+                                ]
+                            }
+
+                            uploaded_file = Shopify.Product.Files.create(
+                                variables=stagedUploadsCreateVariables, file_list=file_list
+                            )
+                            variant_payload['mediaSrc'] = uploaded_file[0]['url']
 
                 payload['variants'].append(variant_payload)
 
-                # for image in child.images:
-                #     if image.is_variant_image:
-                #         variant_payload['mediaId'] = f'gid://shopify/MediaImage/{image.image_id}'
-
             print(f'Bulk Variant Payload: {payload}')
+
             return payload
 
         def get_single_variant_payload(self):
@@ -1889,8 +1883,8 @@ class Catalog:
                     if image.is_variant_image:
                         variant_image_payload.append(
                             {
-                                'id': f'gid://shopify/ProductVariant/{child.variant_id}',
-                                'imageId': f'gid://shopify/MediaImage/{image.image_id}',
+                                'id': f'{Shopify.Product.Variant.prefix}{child.variant_id}',
+                                'imageId': f'{Shopify.Product.Variant.Image.prefix}{image.image_id}',
                             }
                         )
             return variant_image_payload
@@ -1956,11 +1950,12 @@ class Catalog:
             def update():
                 """Will update existing product. Will clear out custom field data and reinsert."""
                 product_payload = self.get_product_payload()
-
                 response = Shopify.Product.update(product_payload)
                 self.option_id = response['option_ids'][0]
-                for x, image in enumerate(self.images):
-                    image.image_id = response['media_ids'][x]
+
+                if 'media_ids' in response:
+                    for x, image in enumerate(self.images):
+                        image.image_id = response['media_ids'][x]
 
                 if self.is_bound:
                     variant_payload = self.get_bulk_variant_payload()
@@ -2364,15 +2359,19 @@ class Catalog:
                     return details
 
             def validate_product(self):
-                print(f'Validating product {self.sku}')
                 # Test for missing variant name
                 if self.variant_name == '':
-                    print(f'Product {self.sku} is missing a variant name. Validation failed.')
-                    return False
+                    Catalog.error_handler.add_error_v(
+                        f'Product {self.sku} is missing a variant name. Validation failed.',
+                        origin='Product Validation',
+                    )
+                    raise Exception(f'Product {self.sku} is missing a variant name. Validation failed.')
                 # Test for missing price 1
                 if self.price_1 == 0:
-                    print(f'Product {self.sku} is missing a price 1. Validation failed.')
-                    return False
+                    Catalog.error_handler.add_error_v(
+                        f'Product {self.sku} is missing a price 1. Validation failed.', origin='Product Validation'
+                    )
+                    raise Exception(f'Product {self.sku} is missing a price 1. Validation failed.')
 
                 return True
 
@@ -2385,11 +2384,11 @@ class Catalog:
                     for x in list_of_files:
                         if x.split('.')[0].split('^')[0].lower() == self.sku.lower():
                             product_images.append(x)
+
                 total_images = len(product_images)
                 if total_images > 0:
-                    # print(f"Found {total_images} product images for item: {self.sku}")
                     for image in product_images:
-                        img = Catalog.Product.Image(image_name=image)
+                        img = Catalog.Product.Image(image_name=image, product_id=self.product_id)
                         if img.validate():
                             self.images.append(img)
 
@@ -2424,14 +2423,14 @@ class Catalog:
             pass
 
         class Image:
-            def __init__(self, image_name: str):
+            def __init__(self, image_name: str, product_id: int = None):
                 self.db = Database.db
                 self.db_id = None
                 self.image_name = image_name  # This is the file name
                 self.sku = ''
                 self.file_path = f'{creds.photo_path}/{self.image_name}'
                 self.image_url = ''
-                self.product_id = None
+                self.product_id = product_id
                 self.variant_id = None
                 self.image_id = None
                 self.is_thumbnail = False
@@ -2461,16 +2460,15 @@ class Catalog:
                     self.image_name = response[0][1]
                     self.sku = response[0][2]
                     self.file_path = response[0][3]
-                    self.image_url = response[0][4]
-                    self.product_id = response[0][5]
-                    self.image_id = response[0][6]
-                    self.image_number = response[0][8]
-                    self.is_binding_image = True if response[0][10] == 1 else False
-                    self.binding_id = response[0][11]
-                    self.is_variant_image = True if response[0][12] == 1 else False
+                    self.product_id = response[0][4]
+                    self.image_id = response[0][5]
+                    self.image_number = response[0][7]
+                    self.is_binding_image = True if response[0][9] == 1 else False
+                    self.binding_id = response[0][10]
+                    self.is_variant_image = True if response[0][11] == 1 else False
                     self.description = self.get_image_description()  # This will pull fresh data each sync.
-                    self.size = response[0][14]
-                    self.last_maintained_dt = response[0][15]
+                    self.size = response[0][13]
+                    self.last_maintained_dt = response[0][14]
 
                 else:
                     self.set_image_details()
@@ -2489,7 +2487,7 @@ class Catalog:
                     if self.image_name.lower().endswith('jpg'):
                         # Resize files larger than 1.8 MB
                         if self.size > 1800000:
-                            print(f'Found large file {self.image_name}. Attempting to resize.')
+                            Catalog.logger.warn(f'Found large file {self.image_name}. Attempting to resize.')
                             try:
                                 im = Image.open(self.file_path)
                                 im.thumbnail(size, Image.LANCZOS)
@@ -2499,16 +2497,17 @@ class Catalog:
                                 im.save(self.file_path, 'JPEG', quality=q)
                                 im.close()
                                 self.size = os.path.getsize(self.file_path)
-                                print(f'{self.image_name} resized.')
                             except Exception as e:
-                                print(f'Error resizing {self.image_name}: {e}')
+                                Catalog.error_handler.add_error_v(
+                                    f'Error resizing {self.image_name}: {e}', origin='Image Resize'
+                                )
                                 return False
                             else:
-                                print(f'Image {self.image_name} was resized.')
+                                Catalog.logger.success(f'Image {self.image_name} was resized.')
 
                     # Remove Alpha Layer and Convert PNG to JPG
                     if self.image_name.lower().endswith('png'):
-                        print(f'Found PNG file: {self.image_name}. Attempting to reformat.')
+                        Catalog.logger.warn(f'Found PNG file: {self.image_name}. Attempting to reformat.')
                         try:
                             im = Image.open(self.file_path)
                             im.thumbnail(size, Image.LANCZOS)
@@ -2516,28 +2515,26 @@ class Catalog:
                             code = im.getexif().get(exif_orientation, 1)
                             if code and code != 1:
                                 im = ImageOps.exif_transpose(im)
-                            print('Stripping Alpha Layer.')
                             rgb_im = im.convert('RGB')
-                            print('Saving new file in JPG format.')
                             new_image_name = self.image_name.split('.')[0] + '.jpg'
                             new_file_path = f'{creds.photo_path}/{new_image_name}'
                             rgb_im.save(new_file_path, 'JPEG', quality=q)
                             im.close()
-                            print('Removing old PNG file')
                             os.remove(self.file_path)
                             self.file_path = new_file_path
                             self.image_name = new_image_name
                         except Exception as e:
-                            print(f'Error converting {self.image_name}: {e}')
+                            Catalog.error_handler.add_error_v(
+                                error=f'Error converting {self.image_name}: {e}', origin='Reformat PNG'
+                            )
                             return False
                         else:
-                            print('Conversion successful.')
+                            Catalog.logger.success('Conversion successful.')
 
                     # replace .JPEG with .JPG
                     if self.image_name.lower().endswith('jpeg'):
-                        print('Found file ending with .JPEG. Attempting to reformat.')
+                        Catalog.logger.warn('Found file ending with .JPEG. Attempting to reformat.')
                         try:
-                            print(self.file_path)
                             im = Image.open(self.file_path)
                             im.thumbnail(size, Image.LANCZOS)
                             # Preserve Rotational Data
@@ -2552,19 +2549,25 @@ class Catalog:
                             self.file_path = new_file_path
                             self.image_name = new_image_name
                         except Exception as e:
-                            print(f'Error converting {self.image_name}: {e}')
+                            Catalog.error_handler.add_error_v(
+                                error=f'Error converting {self.image_name}: {e}', origin='Image Rename JPEG'
+                            )
                             return False
                         else:
-                            print('Conversion successful.')
+                            Catalog.logger.success(f'Conversion successful for {self.image_name}')
 
                     # check for description that is too long
                     if len(self.description) >= 500:
-                        print(f'Description for {self.image_name} is too long. Validation failed.')
+                        Catalog.error_handler.add_error_v(
+                            f'Description for {self.image_name} is too long. Validation failed.'
+                        )
                         return False
 
                     # Check for images with words or trailing numbers in the name
                     if '^' in self.image_name and not self.image_name.split('.')[0].split('^')[1].isdigit():
-                        print(f'Image {self.image_name} is not valid.')
+                        Catalog.error_handler.add_error_v(
+                            f'Image {self.image_name} is not valid.', origin='Image Validation'
+                        )
                         return False
 
                     # Valid Image
@@ -2605,7 +2608,7 @@ class Catalog:
                 self.sku, self.binding_id = get_item_no_from_image_name(self.image_name)
                 self.image_number = get_image_number()
 
-                self.size = os.path.getsize(self.file_path)
+                # self.size = os.path.getsize(self.file_path)
 
                 # Image Description Only non-binding images have descriptions at this time. Though,
                 # this could be handled with JSON reference in the future for binding images.
@@ -2642,12 +2645,11 @@ class Catalog:
                     if code and code != 1:
                         im = ImageOps.exif_transpose(im)
                     im.save(self.file_path, 'JPEG', quality=q)
-                    print(f'Resized {self.image_name}')
+                    Catalog.logger.log(f'Resized {self.image_name}')
 
 
 if __name__ == '__main__':  #
     from datetime import datetime
 
-    # Catalog.delete_products()
-    catalog = Catalog(datetime(2021, 1, 1))
-    catalog.sync()
+    cat = Catalog()
+    cat.sync()

@@ -53,3 +53,17 @@ mutation customerDelete($id: ID!) {
   }
 }
 
+query customers($first: Int) {
+  customers(first: $first) {
+    edges {
+      node {
+        id
+      }
+    }
+    pageInfo {
+      hasNextPage
+      endCursor
+    }
+  }
+}
+
