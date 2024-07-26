@@ -303,6 +303,37 @@ def bc_orders():
     return jsonify({'success': True}), 200
 
 
+@app.route('/shopify', methods=['POST'])
+@limiter.limit('20/minute')  # 10 requests per minute
+def shopify():
+    """Webhook route for incoming orders. Sends to RabbitMQ queue for asynchronous processing"""
+    response_data = request.get_json()
+    order_id = response_data['data']['id']
+
+    ProcessInErrorHandler.logger.info(f'Received order {order_id}')
+
+    # Send order to RabbitMQ for asynchronous processing
+    try:
+        connection = pika.BlockingConnection(pika.ConnectionParameters('localhost'))
+        channel = connection.channel()
+
+        channel.queue_declare(queue='shopify', durable=True)
+
+        channel.basic_publish(
+            exchange='',
+            routing_key='shopify_orders',
+            body=str(order_id),
+            properties=pika.BasicProperties(delivery_mode=pika.DeliveryMode.Persistent),
+        )
+        connection.close()
+    except Exception as e:
+        ProcessInErrorHandler.error_handler.add_error_v(
+            error=f'Error sending order {order_id} to RabbitMQ: {e}', origin='shopify_orders'
+        )
+
+    return jsonify({'success': True}), 200
+
+
 @app.route('/token', methods=['POST'])
 @limiter.limit('10/minute')  # 10 requests per minute
 def get_token():

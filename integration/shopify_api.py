@@ -393,9 +393,15 @@ class Shopify:
                     variables['moves'].append(
                         {
                             'id': f'{Shopify.Product.Media.Image.prefix}{image.image_id}',
-                            'newPosition': image.sort_order,
+                            'newPosition': str(image.sort_order),
                         }
                     )
+                response = Shopify.Query(
+                    document=Shopify.Product.Media.queries,
+                    variables=variables,
+                    operation_name='productReorderMedia',
+                )
+                return response.data
 
             class Image:
                 prefix = 'gid://shopify/MediaImage/'
@@ -814,59 +820,95 @@ class Shopify:
         queries = './integration/queries/metafields.graphql'
         prefix = 'gid://shopify/MetafieldDefinition/'
 
-        def get(metafield_id: int):
-            response = Shopify.Query(
-                document=Shopify.MetafieldDefinition.queries,
-                variables={'id': f'{Shopify.MetafieldDefinition.prefix}{metafield_id}'},
-                operation_name='metafieldDefinition',
-            )
-            return response.data
+        def get(metafield_id: int = None):
+            if metafield_id:
+                response = Shopify.Query(
+                    document=Shopify.MetafieldDefinition.queries,
+                    variables={'id': f'{Shopify.MetafieldDefinition.prefix}{metafield_id}'},
+                    operation_name='metafieldDefinition',
+                )
 
-        def create(variables: dict):
-            response = Shopify.Query(
-                document=Shopify.MetafieldDefinition.queries,
-                variables=variables,
-                operation_name='CreateMetafieldDefinition',
-            )
-            metafield_id = response.data['metafieldDefinitionCreate']['createdDefinition']['id'].split('/')[-1]
-            return metafield_id
+                result = {
+                    'META_ID': response.data['metafieldDefinition']['id'].split('/')[-1],
+                    'NAME': response.data['metafieldDefinition']['name'],
+                    'DESCR': response.data['metafieldDefinition']['description'],
+                    'NAME_SPACE': response.data['metafieldDefinition']['namespace'],
+                    'META_KEY': response.data['metafieldDefinition']['key'],
+                    'TYPE': response.data['metafieldDefinition']['type']['name'],
+                    'PINNED_POS': response.data['metafieldDefinition']['pinnedPosition'],
+                    'OWNER_TYPE': response.data['metafieldDefinition']['ownerType'],
+                    'VALIDATIONS': [
+                        {'NAME': x['name'], 'TYPE': x['type'], 'VALUE': x['value']}
+                        for x in response.data['metafieldDefinition']['validations']
+                    ],
+                }
 
-        def create_default():
-            """Create default metafields for products"""
-            cf_list = [
-                {'name': 'botanical name', 'type': 'single_line_text_field'},
-                {'name': 'climate zone', 'type': 'single_line_text_field'},
-                {'name': 'plant type', 'type': 'single_line_text_field'},
-                {'name': 'type', 'type': 'single_line_text_field'},
-                {'name': 'mature height', 'type': 'single_line_text_field'},
-                {'name': 'mature width', 'type': 'single_line_text_field'},
-                {'name': 'sun exposure', 'type': 'single_line_text_field'},
-                {'name': 'bloom time', 'type': 'single_line_text_field'},
-                {'name': 'bloom color', 'type': 'single_line_text_field'},
-                {'name': 'attracts pollinators', 'type': 'boolean'},
-                {'name': 'growth rate', 'type': 'single_line_text_field'},
-                {'name': 'deer resistant', 'type': 'boolean'},
-                {'name': 'soil type', 'type': 'single_line_text_field'},
-                {'name': 'color', 'type': 'single_line_text_field'},
-                {'name': 'size', 'type': 'single_line_text_field'},
+                if not response.data['metafieldDefinition']['pinnedPosition']:
+                    result['PINNED_POS'] = ''
+
+                return result
+
+            response = Shopify.Query(
+                document=Shopify.MetafieldDefinition.queries, operation_name='metafieldDefinitions'
+            )
+            return [
+                {
+                    'META_ID': x['node']['id'].split('/')[-1],
+                    'NAME': x['node']['name'],
+                    'DESCR': x['node']['description'],
+                    'NAME_SPACE': x['node']['namespace'],
+                    'META_KEY': x['node']['key'],
+                    'TYPE': x['node']['type']['name'],
+                    'PINNED_POS': x['node']['pinnedPosition'] if x['node']['pinnedPosition'] else 0,
+                    'OWNER_TYPE': x['node']['ownerType'],
+                    'VALIDATIONS': [
+                        {'NAME': y['name'], 'TYPE': y['type'], 'VALUE': y['value']}
+                        for y in x['node']['validations']
+                    ],
+                }
+                for x in response.data['metafieldDefinitions']['edges']
             ]
 
-            for i in cf_list[::-1]:
-                variables = {
-                    'definition': {
-                        'name': i['name'].title(),
-                        'namespace': 'test_data',
-                        'key': i['name'].replace(' ', '_').lower(),
-                        'type': i['type'],
-                        'pin': True,
-                        'ownerType': 'PRODUCT',
+        def create(payload=None):
+            if not payload:
+                # Create all default metafields from Database and replace META_ID with new META_ID
+                metafields = Database.Shopify.Metafield_Definition.get()
+                for i in metafields:
+                    variables = {
+                        'definition': {
+                            'name': i['NAME'].title(),
+                            'namespace': i['NAME_SPACE'],
+                            'key': i['META_KEY'].replace(' ', '_').lower(),
+                            'type': i['TYPE'],
+                            'pin': True if i['PIN'] else False,
+                            'ownerType': i['OWNER_TYPE'],
+                        }
                     }
-                }
-                meta_id = Shopify.MetafieldDefinition.create(variables)
-                print(meta_id)
+                    response = Shopify.Query(
+                        document=Shopify.MetafieldDefinition.queries,
+                        variables=variables,
+                        operation_name='CreateMetafieldDefinition',
+                    )
+
+                    metafield_id = response.data['metafieldDefinitionCreate']['createdDefinition']['id'].split('/')[
+                        -1
+                    ]
+
+                    update_values = {'META_ID': metafield_id, 'META_KEY': i['META_KEY']}
+                    # This doesn't work yet...
+                    Database.Shopify.Metafield_Definition.update(i['META_ID'], update_values)
+
+            else:
+                # Create single metafield from arguments
+                response = Shopify.Query(
+                    document=Shopify.MetafieldDefinition.queries,
+                    variables=payload,
+                    operation_name='CreateMetafieldDefinition',
+                )
+                metafield_id = response.data['metafieldDefinitionCreate']['createdDefinition']['id'].split('/')[-1]
 
                 insert_values = {
-                    'META_ID': meta_id,
+                    'META_ID': metafield_id,
                     'NAME': i['name'],
                     'NAME_SPACE': 'test_data',
                     'META_KEY': i['name'].replace(' ', '_').lower(),
@@ -877,22 +919,23 @@ class Shopify:
 
                 Database.Metafield_Definition.insert(insert_values)
 
-        def delete(metafield_def_id: int):
-            response = Shopify.Query(
-                document=Shopify.MetafieldDefinition.queries,
-                variables={
-                    'id': f'{Shopify.MetafieldDefinition.prefix}{metafield_def_id}',
-                    'deleteAllAssociatedMetafields': True,
-                },
-                operation_name='DeleteMetafieldDefinition',
-            )
-            return response.data
-
-        def delete_all():
-            metafields = Database.Metafield_Definition.get_all()
-            for i in metafields:
-                Shopify.MetafieldDefinition.delete(i[0])
-                Database.Metafield_Definition.delete(i[0])
+        def delete(metafield_def_id: int = None):
+            if metafield_def_id:
+                # Delete single metafield from Shopify
+                response = Shopify.Query(
+                    document=Shopify.MetafieldDefinition.queries,
+                    variables={
+                        'id': f'{Shopify.MetafieldDefinition.prefix}{metafield_def_id}',
+                        'deleteAllAssociatedMetafields': True,
+                    },
+                    operation_name='DeleteMetafieldDefinition',
+                )
+                return response.data
+            else:
+                # Delete all metafields from Shopify
+                metafields = Database.Shopify.Metafield_Definition.get()
+                for i in metafields:
+                    Shopify.MetafieldDefinition.delete(i['META_ID'])
 
     class Webhook:
         queries = './integration/queries/webhooks.graphql'
@@ -980,8 +1023,9 @@ class Shopify:
 
 
 if __name__ == '__main__':
-    # Shopify.Menu.get_all()
+    # response = Shopify.MetafieldDefinition.get()
+    # for i in response:
+    #     Database.Shopify.Metafield_Definition.insert(i)
+    response = Database.Shopify.Metafield_Definition.get(46624604327)
 
-    Shopify.Menu.update(
-        {'id': 'gid://shopify/Menu/205591937191', 'title': 'Menu menu', 'handle': 'main-menu', 'items': []}
-    )
+    # Shopify.MetafieldDefinition.create()

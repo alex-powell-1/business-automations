@@ -253,7 +253,7 @@ class Catalog:
             return [[x[0], x[1]] for x in response] if response else []
 
         def delete_image(image_name) -> bool:
-            """Takes in an image name and looks for matching image file in middleware. If found, deletes from BC and SQL."""
+            """Takes in an image name and looks for matching image file in middleware. If found, delete."""
             Catalog.logger.info(f'Deleting {image_name}')
             image_query = f"""
             SELECT img.PRODUCT_ID, prod.VARIANT_ID, IMAGE_ID, IS_VARIANT_IMAGE 
@@ -263,7 +263,6 @@ class Catalog:
             """
 
             img_id_res = self.db.query_db(image_query)
-            print(img_id_res)
             if img_id_res is not None:
                 product_id, variant_id, image_id, is_variant = (
                     img_id_res[0][0],
@@ -278,7 +277,6 @@ class Catalog:
                     product_id=product_id, variant_id=variant_id, image_id=image_id
                 )
 
-            # Delete the image from Shopify Product and Middleware
             Shopify.Product.Media.Image.delete(product_id=product_id, image_id=image_id, variant_id=variant_id)
             Database.Shopify.Product.Image.delete(image_id=image_id)
 
@@ -333,17 +331,17 @@ class Catalog:
         Catalog.logger.info(f'Image Add/Delete Processing Complete. Time: {time.time() - start_time}')
 
     def sync(self, initial=False):
-        # # Sync Category Tree
-        self.category_tree.sync()
+        # # # Sync Category Tree
+        # self.category_tree.sync()
 
-        if not initial:
-            # Process Product Deletions and Images
-            # self.process_product_deletes()
-            self.process_images()
+        # if not initial:
+        #     # Process Product Deletions and Images
+        #     # self.process_product_deletes()
+        #     self.process_images()
 
         # Sync Products
-        self.get_products()  # Get all products that have been updated since the last sync
-        # self.sync_queue = [{'sku': '10344', 'binding_id': 'B0001'}]
+        # self.get_products()  # Get all products that have been updated since the last sync
+        self.sync_queue = [{'sku': '10344', 'binding_id': 'B0001'}]
 
         # Small Bound Product
         # self.sync_queue = [{'sku': 'SYUFICG01', 'binding_id': 'B0050'}]
@@ -584,7 +582,6 @@ class Catalog:
 
         def __str__(self):
             def print_category_tree(category, level=0):
-                # Print the category id and name, indented by the category's level in the tree
                 res = (
                     f"{'    ' * level}Category Name: {category.category_name}\n"
                     f"{'    ' * level}---------------------------------------\n"
@@ -595,13 +592,10 @@ class Catalog:
                     f"{'    ' * level}Sort Order: {category.sort_order}\n"
                     f"{'    ' * level}Last Maintenance Date: {category.lst_maint_dt}\n\n"
                 )
-
-                # Recursively call this function for each child category
                 for child in category.children:
                     res += print_category_tree(child, level + 1)
                 return res
 
-            # Use the helper function to print the entire tree
             result = ''
             for root in self.heads:
                 result += print_category_tree(root)
@@ -726,31 +720,6 @@ class Catalog:
             )
 
             Shopify.Menu.update(main_menu)
-            # response = Shopify.Menu.get(creds.shopify_main_menu_id)
-            # heads = response['menu']['items']
-            # result = []
-
-            # def response_helper(menu_item_list):
-            #     menu_item_id = menu_item_list['id'].split('/')[-1]
-            #     result.append({'menu_id': menu_item_id, 'title': menu_item_list['title']})
-            #     if 'items' in menu_item_list:
-            #         for i in menu_item_list['items']:
-            #             response_helper(i)
-
-            # for head in heads:
-            #     response_helper(head)
-
-            # # Assign menu item IDs to categories
-            # def assign_menu_ids(category):
-            #     for i in result:
-            #         if i['title'] == category.name:
-            #             category.menu_id = i['menu_id']
-
-            #     for child in category.children:
-            #         assign_menu_ids(child)
-
-            # for category in self.heads:
-            #     assign_menu_ids(category)
 
         def update_tree_in_middleware(self):
             # Update Entire Category Tree in Middleware
@@ -793,7 +762,7 @@ class Catalog:
                             category.image_url = category_image_url
 
         def delete_collection(self, cp_categ_id):
-            print(f'Deleting Category: {cp_categ_id}')
+            Catalog.logger.info(f'Deleting Category: {cp_categ_id}')
             query = f"""
             SELECT COLLECTION_ID
             FROM {creds.shopify_collection_table}
@@ -803,10 +772,7 @@ class Catalog:
             if response:
                 collection_id = response[0][0] if response and response[0][0] is not None else None
                 if collection_id:
-                    print(f'Deleting Category {cp_categ_id} from Shopify.')
-                    # Delete Category from Shopify
                     Shopify.Collection.delete(collection_id)
-                print(f'Deleting Category {cp_categ_id} from Middleware.')
                 Database.Shopify.Collection.delete(cp_categ_id=cp_categ_id)
 
         class Category:
@@ -870,14 +836,12 @@ class Catalog:
                 response = query_engine.QueryEngine().query_db(query)
                 if response is not None:
                     shopify_category_id = response[0][0] if response[0][0] is not None else None
-                    print(f'Category ID: {shopify_category_id}')
                     if shopify_category_id is not None:
                         self.collection_id = response[0][0]
                     else:
                         self.shopify_parent_id = self.get_shopify_parent_id()
                         category_payload = self.get_category_payload()
                         self.collection_id = Shopify.Collection.create(category_payload)
-                        print(f'Category ID: {self.collection_id}')
 
             def get_shopify_parent_id(self):
                 query = f"""
@@ -1127,7 +1091,6 @@ class Catalog:
                     total_binding_images = len(binding_images)
 
                     if total_binding_images > 0:
-                        # print(f"Found {total_binding_images} binding images for Binding ID: {self.binding_id}")
                         for image in binding_images:
                             binding_img = self.Image(image)
 
@@ -1404,7 +1367,6 @@ class Catalog:
 
             # BOUND PRODUCTS
             if self.is_bound:
-                # print(f"Product {self.binding_id} is a bound product. Validation starting...")
                 if check_web_title:
                     for child in self.variants:
                         if not child.is_parent:
@@ -1680,7 +1642,6 @@ class Catalog:
                 for image in self.images:
                     image_size = Catalog.get_filesize(image.file_path)
                     if image_size != image.size:
-                        print(f'Image {image.image_name} is not the correct size. ...\n\n')
                         image.size = image_size
                         file_list.append(image.file_path)
                         stagedUploadsCreateVariables['input'].append(
@@ -1699,7 +1660,6 @@ class Catalog:
                     for file in uploaded_files:
                         for image in self.images:
                             if file['file_path'] == image.file_path:
-                                print(f'Image {image.image_name} uploaded to Shopify. Url: {file["url"]}')
                                 image.image_url = file['url']
 
                     for image in self.images:
@@ -1711,7 +1671,6 @@ class Catalog:
                         if image.image_id:
                             image_payload['id'] = f'gid://shopify/MediaImage/{image.image_id}'
 
-                        print(f'Image Payload: {image_payload}')
                         result.append(image_payload)
 
                 return result
@@ -1758,7 +1717,6 @@ class Catalog:
                         {'name': 'Option', 'values': [{'name': '9999 Gallon'}]}
                     ]
 
-            print(f'Product Payload: {product_payload}')
             return product_payload
 
         def get_bulk_variant_payload(self):
@@ -1772,7 +1730,7 @@ class Catalog:
                     'inventoryItem': {
                         'cost': child.cost,
                         'measurement': {'weight': {'unit': 'POUNDS', 'value': self.weight}},
-                        'tracked': True,
+                        'tracked': True if not self.is_preorder else False,
                         'requiresShipping': True,
                         'sku': child.sku,
                     },
@@ -1786,10 +1744,11 @@ class Catalog:
                 if child.variant_id:
                     variant_payload['id'] = f'gid://shopify/ProductVariant/{child.variant_id}'
                 else:
-                    variant_payload['inventoryQuantities'] = {
-                        'availableQuantity': child.buffered_quantity,
-                        'locationId': creds.shopify_location_id,
-                    }
+                    if not self.is_preorder:
+                        variant_payload['inventoryQuantities'] = {
+                            'availableQuantity': child.buffered_quantity,
+                            'locationId': creds.shopify_location_id,
+                        }
 
                 if child.price_2:
                     variant_payload['price'] = min(child.price_1, child.price_2)
@@ -1808,9 +1767,6 @@ class Catalog:
                     if image.is_variant_image:
                         image_size = Catalog.get_filesize(image.file_path)
                         if image_size != image.size:
-                            print(
-                                f'Adding Variant Image: {image.image_name} to Variant: {child.sku}. Url: {image.image_url}'
-                            )
                             file_list = [image.file_path]
                             stagedUploadsCreateVariables = {
                                 'input': [
@@ -1830,8 +1786,6 @@ class Catalog:
 
                 payload['variants'].append(variant_payload)
 
-            print(f'Bulk Variant Payload: {payload}')
-
             return payload
 
         def get_single_variant_payload(self):
@@ -1844,18 +1798,18 @@ class Catalog:
                         'measurement': {'weight': {'unit': 'POUNDS', 'value': self.weight}},
                         'requiresShipping': True,
                         'sku': self.sku,
-                        'tracked': True,
-                    },
-                    'inventoryQuantities': {
-                        'availableQuantity': self.buffered_quantity,
-                        'locationId': creds.shopify_location_id,
+                        'tracked': True if not self.is_preorder else False,
                     },
                     'inventoryPolicy': 'DENY',
                     'price': self.default_price,
                     'taxable': False,
                 }
             }
-            print(f'Single Variant Payload: {payload}')
+
+            if not self.is_preorder:
+                payload['input']['inventoryQuantities']['availableQuantity'] = self.buffered_quantity
+                payload['input']['inventoryQuantities']['locationId'] = creds.shopify_location_id
+
             return payload
 
         def get_inventory_payload(self):
@@ -1872,7 +1826,6 @@ class Catalog:
                             'quantity': child.buffered_quantity,
                         }
                     )
-            print(f'Inventory Payload: {payload}')
             return payload
 
         def get_variant_image_payload(self):
@@ -1911,7 +1864,6 @@ class Catalog:
                     image.image_id = response['media_ids'][x]
 
                 if len(self.variants) > 1:
-                    print('Creating Multiple Variants')
                     # Save Default Option Value ID for Deletion
                     delete_target = self.variants[0].option_value_id
                     # Create Variants in Bulk
@@ -1935,8 +1887,6 @@ class Catalog:
                     Shopify.Product.Variant.Image.create(self.product_id, self.get_variant_image_payload())
 
                 else:
-                    # Update Default Variant
-                    print('Updating Default Variant')
                     single_payload = self.get_single_variant_payload()
                     Shopify.Product.Variant.update_single(single_payload)
 
@@ -1971,6 +1921,7 @@ class Catalog:
             else:
                 create()
 
+            Shopify.Product.Media.reorder(self)
             # Update Inventory
             Shopify.Inventory.update(self.get_inventory_payload())
 
@@ -2009,7 +1960,6 @@ class Catalog:
                                                     WHERE CP_CATEG_ID = '{category}')
                                 """
                             parent_response = self.db.query_db(q)
-                            print(parent_response)
                             try:
                                 result.append(parent_response[0][0])
                             except:

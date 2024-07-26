@@ -139,21 +139,45 @@ mutation DeleteMetafieldStorefrontVisibility($id: ID!) {
 }
 
 query metafieldDefinition($id: ID!) {
-    metafieldDefinition(id: $id) {
+  metafieldDefinition(id: $id) {
+    id
+    name
+    namespace
+    description
+    key
+    pinnedPosition
+    ownerType
+    type {
+      name
+    }
+    validations {
+      name
+      type
+      value
+    }
+  }
+}
+
+query metafieldDefinitions {
+  metafieldDefinitions(first: 250, ownerType: PRODUCT) {
+    edges {
+      node {
         id
         name
-        description
         namespace
+        description
         key
-        type {
-            category
-            name
-            valueType
-            supportedValidations {
-                name
-                type
-            }
-        }
         pinnedPosition
+        ownerType
+        type {
+          name
+        }
+        validations {
+          name
+          type
+          value
+        }
+      }
     }
+  }
 }

@@ -1,19 +1,16 @@
 import requests
-
-import setup.utilities as utilities
 from integration.database import Database
 from integration.shopify_api import Shopify
 from setup import creds
 import setup.date_presets as date_presets
-from customer_tools.customers import lookup_customer
-
+from datetime import datetime
 import integration.object_processor as object_processor
 
 from setup.error_handler import ProcessOutErrorHandler
 
 
 class Customers:
-    def __init__(self, last_sync):
+    def __init__(self, last_sync=datetime(1970, 1, 1)):
         self.last_sync = last_sync
         self.db = Database.db
         self.logger = ProcessOutErrorHandler.logger
@@ -29,25 +26,7 @@ class Customers:
         response = self.db.query_db(query)
         customer_list = [x[0] for x in response] if response is not None else []
         if customer_list:
-            if len(customer_list) == 1:
-                customer_list = f"('{customer_list[0]}')"
-            else:
-                customer_list = str(tuple(customer_list))
-
-            query = f"""
-            UPDATE {creds.ar_cust_table}
-            SET LST_MAINT_DT = GETDATE()
-            WHERE CUST_NO IN {customer_list}"""
-
-            response = self.db.query_db(query, commit=True)
-
-            if response['code'] == 200:
-                self.logger.success('Customer timestamps updated.')
-            else:
-                self.error_handler.add_error_v(
-                    error=f'Error updating customer timestamps.\n\nQuery: {query}\n\nResponse: {response}',
-                    origin='update_customer_timestamps',
-                )
+            Database.Counterpoint.Customer.update_timestamps(customer_list)
 
     def get_cp_customers(self):
         query = f"""
@@ -226,14 +205,17 @@ class Customers:
             def create():
                 self.logger.info(f'Creating customer {self.cust_no}')
                 self.shopify_cust_id = Shopify.Customer.create(write_customer_payload())
+                Database.Shopify.Customer.insert(self)
 
             def update():
                 self.logger.info(f'Updating customer {self.cust_no}')
                 Shopify.Customer.update(write_customer_payload())
+                Database.Shopify.Customer.update(self)
 
             def delete():
                 self.logger.info(f'Deleting customer {self.cust_no}')
                 Shopify.Customer.delete(self.shopify_cust_id)
+                Database.Shopify.Customer.delete(self)
 
             del_query = f"""
             SELECT CUST_NO FROM {creds.ar_cust_table}

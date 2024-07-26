@@ -1,12 +1,55 @@
 from setup import creds
 from setup import query_engine
 from setup.error_handler import ProcessOutErrorHandler
+from datetime import datetime
 
 
 class Database:
     db = query_engine.QueryEngine()
     error_handler = ProcessOutErrorHandler.error_handler
     logger = ProcessOutErrorHandler.logger
+
+    class Counterpoint:
+        class Customer:
+            table = creds.ar_cust_table
+
+            def get(last_sync=datetime(1970, 1, 1), customer_no=None, customer_list=None):
+                if customer_no:
+                    customer_filter = f"AND CP.CUST_NO = '{customer_no}'"
+                elif customer_list:
+                    customer_filter = f'AND CP.CUST_NO IN {tuple(customer_list)}'
+                else:
+                    customer_filter = ''
+
+                query = f"""
+                SELECT cp.CUST_NO, FST_NAM, LST_NAM, EMAIL_ADRS_1, PHONE_1, LOY_PTS_BAL, ADRS_1, CITY, STATE, ZIP_COD, CNTRY,
+                MW.SHOP_CUST_ID
+                FROM {Database.Counterpoint.Customer.table} CP
+                FULL OUTER JOIN {creds.shopify_customer_table} MW on CP.CUST_NO = MW.cust_no
+                WHERE CP.LST_MAINT_DT > '{last_sync}' and CUST_NAM_TYP = 'P' {customer_filter}
+                """
+                return Database.db.query_db(query)
+
+            def update_timestamps(customer_list):
+                if len(customer_list) == 1:
+                    customer_list = f"('{customer_list[0]}')"
+                else:
+                    customer_list = str(tuple(customer_list))
+                query = f"""
+                UPDATE {Database.Counterpoint.Customer.table}
+                SET LST_MAINT_DT = GETDATE()
+                WHERE CUST_NO IN {customer_list}"""
+
+                response = Database.db.query_db(query, commit=True)
+
+                if response['code'] == 200:
+                    Database.logger.success('Customer timestamps updated.')
+                else:
+                    Database.error_handler.add_error_v(
+                        error=f'Error updating customer timestamps.\n\nQuery: {query}\n\nResponse: {response}',
+                        origin='update_customer_timestamps',
+                    )
+                    raise Exception(response['message'])
 
     class Shopify:
         def rebuild_tables(self):
@@ -81,7 +124,7 @@ class Database:
                                             CREATE TABLE {Database.Shopify.customer_table} (
                                             ID int IDENTITY(1,1) PRIMARY KEY,
                                             CUST_NO varchar(50) NOT NULL,
-                                            BC_CUST_ID int,
+                                            SHOP_CUST_ID int,
                                             LST_MAINT_DT datetime NOT NULL DEFAULT(current_timestamp)
                                             );
                                             """,
@@ -111,11 +154,14 @@ class Database:
                                             CREATE TABLE {Database.Shopify.metafield_table}(
                                             META_ID bigint NOT NULL, 
                                             NAME varchar(50) NOT NULL, 
+                                            DESCR varchar(255),
                                             NAME_SPACE varchar(50), 
                                             META_KEY varchar(50), 
                                             TYPE varchar(50), 
-                                            PIN bit, 
+                                            PINNED_POS bit, 
                                             OWNER_TYPE varchar(50),
+                                            VALID_NAME varchar(50),
+                                            VALID_VALUE varchar(255),
                                             LST_MAINT_DT DATETIME DEFAULT(current_timestamp))""",
                     'qr': f"""
                                             CREATE TABLE {creds.qr_table} (
@@ -165,6 +211,56 @@ class Database:
 
         class Customer:
             table = creds.shopify_customer_table
+
+            def get(customer_no=None):
+                if customer_no:
+                    query = f"""
+                            SELECT * FROM {Database.Shopify.Customer.table}
+                            WHERE CUST_NO = '{customer_no}'
+                            """
+                else:
+                    query = f"""
+                            SELECT * FROM {Database.Shopify.Customer.table}
+                            """
+                return Database.db.query_db(query)
+
+            def insert(customer):
+                query = f"""
+                        INSERT INTO {Database.Shopify.Customer.table} (CUST_NO, SHOP_CUST_ID)
+                        VALUES ('{customer.cp_cust_no}', {customer.shopify_cust_no})
+                        """
+                response = Database.db.query_db(query, commit=True)
+                if response['code'] == 200:
+                    Database.logger.success(f'Customer {customer.cust_no} added to Middleware.')
+                else:
+                    error = f'Error adding customer {customer.cust_no} to Middleware. \nQuery: {query}\nResponse: {response}'
+                    Database.error_handler.add_error_v(error=error)
+                    raise Exception(error)
+
+            def update(customer):
+                query = f"""
+                        UPDATE {Database.Shopify.Customer.table}
+                        SET SHOP_CUST_ID = {customer.shopify_cust_no}, LST_MAINT_DT = GETDATE()
+                        WHERE CUST_NO = '{customer.cp_cust_no}'
+                        """
+
+                response = Database.db.query_db(query, commit=True)
+                if response['code'] == 200:
+                    Database.logger.success(f'Customer {customer.cust_no} updated in Middleware.')
+                else:
+                    error = f'Error updating customer {customer.cust_no} in Middleware. \nQuery: {query}\nResponse: {response}'
+                    Database.error_handler.add_error_v(error=error)
+                    raise Exception(error)
+
+            def delete(customer):
+                query = f'DELETE FROM {Database.Shopify.Customer.table} WHERE CUST_NO = {customer.cp_cust_no}'
+                response = Database.db.query_db(query, commit=True)
+                if response['code'] == 200:
+                    Database.logger.success(f'Customer {customer.cp_cust_no} deleted from Middleware.')
+                else:
+                    error = f'Error deleting customer {customer.cp_cust_no} from Middleware. \n Query: {query}\nResponse: {response}'
+                    Database.error_handler.add_error_v(error=error)
+                    raise Exception(error)
 
         class Order:
             table = creds.shopify_order_table
@@ -525,77 +621,106 @@ class Database:
         class Metafield_Definition:
             table = creds.shopify_metafield_table
 
-            def get(definition_id):
-                query = f"""
-                        SELECT * FROM {creds.shopify_metafield_table}
-                        WHERE META_ID = {definition_id}
-                        """
-                response = Database.db.query_db(query)
-                if response is not None:
-                    return {
-                        'META_ID': f'gid://shopify/MetafieldDefinition/{response[0]}',
-                        'NAME': response[1],
-                        'NAME_SPACE': response[2],
-                        'META_KEY': response[3],
-                        'TYPE': response[4],
-                        'PIN': response[5],
-                        'OWNER_TYPE': response[6],
-                        'LST_MAINT_DT': response[7],
-                    }
+            def get(definition_id=None):
+                if definition_id:
+                    where_filter = f'WHERE META_ID = {definition_id}'
+                else:
+                    where_filter = ''
 
-            def get_all():
-                query = f"""
-                        SELECT * FROM {creds.shopify_metafield_table}
-                        """
+                query = f'SELECT * FROM {creds.shopify_metafield_table} {where_filter}'
                 response = Database.db.query_db(query)
                 if response is not None:
-                    result = {}
+                    result = []
                     for row in response:
-                        result[row[1]] = {
-                            'META_ID': f'gid://shopify/MetafieldDefinition/{row[0]}',
-                            'NAME': row[1],
-                            'NAME_SPACE': row[2],
-                            'META_KEY': row[3],
-                            'TYPE': row[4],
-                            'PIN': row[5],
-                            'OWNER_TYPE': row[6],
-                            'LST_MAINT_DT': row[7],
-                        }
-
+                        result.append(
+                            {
+                                'META_ID': row[0],
+                                'NAME': row[1],
+                                'DESCR': row[2],
+                                'NAME_SPACE': row[3],
+                                'META_KEY': row[4],
+                                'TYPE': row[5],
+                                'PINNED_POS': row[6],
+                                'OWNER_TYPE': row[7],
+                                'VALID_1_NAME': row[8],
+                                'VALID_1_VALUE': row[9],
+                                'VALID_1_TYPE': row[10],
+                                'VALID_2_NAME': row[11],
+                                'VALID_2_VALUE': row[12],
+                                'VALID_2_TYPE': row[13],
+                                'VALID_3_NAME': row[14],
+                                'VALID_3_VALUE': row[15],
+                                'VALID_3_TYPE': row[16],
+                                'VALID_4_NAME': row[17],
+                                'VALID_4_VALUE': row[18],
+                                'VALID_4_TYPE': row[19],
+                                'VALID_5_NAME': row[20],
+                                'VALID_5_VALUE': row[21],
+                                'VALID_5_TYPE': row[22],
+                            }
+                        )
                     return result
 
             def insert(values):
+                number_of_validations = len(values['VALIDATIONS'])
+                if number_of_validations > 0:
+                    validation_columns = ', ' + ', '.join(
+                        [
+                            f'VALID_{i+1}_NAME, VALID_{i+1}_VALUE, VALID_{i+1}_TYPE'
+                            for i in range(number_of_validations)
+                        ]
+                    )
+
+                    validation_values = ', ' + ', '.join(
+                        [
+                            f"'{values['VALIDATIONS'][i]['NAME']}', '{values['VALIDATIONS'][i]['VALUE']}', '{values['VALIDATIONS'][i]['TYPE']}'"
+                            for i in range(number_of_validations)
+                        ]
+                    )
+                else:
+                    validation_columns = ''
+                    validation_values = ''
+
                 query = f"""
-                        INSERT INTO {creds.shopify_metafield_table} (META_ID, NAME, NAME_SPACE, META_KEY, TYPE, PIN, OWNER_TYPE)
-                        VALUES {values['META_ID'], values['NAME'], values['NAME_SPACE'], values['META_KEY'], values['TYPE'], values['PIN'], values['OWNER_TYPE']}
+                        INSERT INTO {creds.shopify_metafield_table} (META_ID, NAME, DESCR, NAME_SPACE, META_KEY, 
+                        TYPE, PINNED_POS, OWNER_TYPE {validation_columns})
+                        VALUES({values['META_ID']}, '{values['NAME']}', '{values['DESCR']}', 
+                        '{values['NAME_SPACE']}', '{values['META_KEY']}', '{values['TYPE']}',
+                        {values['PINNED_POS']}, '{values['OWNER_TYPE']}' {validation_values})
                         """
+
                 response = Database.db.query_db(query, commit=True)
                 if response['code'] != 200:
-                    raise Exception(response['message'])
+                    error = f'Error inserting metafield definition {values["META_ID"]}. \nQuery: {query}\nResponse: {response}'
+                    raise Exception(error)
 
             def update(values):
                 query = f"""
                         UPDATE {creds.shopify_metafield_table}
-                        SET NAME = {values['NAME']}, NAME_SPACE = {values['NAME_SPACE']}, META_KEY = {values['META_KEY']}, TYPE = {values['TYPE']}, PIN = {values['PIN']}, OWNER_TYPE = {values['OWNER_TYPE']}, LST_MAINT_DT = GETDATE()
+                        SET NAME =  '{values['NAME']}',
+                        DESCR = '{values['DESCR']}',
+                        NAME_SPACE = '{values['NAME_SPACE']}',
+                        META_KEY = '{values['META_KEY']}',
+                        TYPE = '{values['TYPE']}',
+                        PINNED_POS = {values['PIN']},
+                        OWNER_TYPE = '{values['OWNER_TYPE']}',
+                        VALID_NAME = '{values['VALID_NAME']}',
+                        VALID_VALUE = '{values['VALID_VALUE']}',
+                        VALID_TYPE = '{values['VALID_TYPE']}',
+                        LST_MAINT_DT = GETDATE()
                         WHERE META_ID = {values['META_ID']}
+
                         """
                 response = Database.db.query_db(query, commit=True)
                 if response['code'] != 200:
                     raise Exception(response['message'])
 
-            def delete(definition_id):
-                query = f"""
-                        DELETE FROM {creds.shopify_metafield_table}
-                        WHERE META_ID = {definition_id}
-                        """
-                response = Database.db.query_db(query, commit=True)
-                if response['code'] != 200:
-                    raise Exception(response['message'])
-
-            def delete_all():
-                query = f"""
-                        DELETE FROM {creds.shopify_metafield_table}
-                        """
+            def delete(definition_id=None):
+                if definition_id:
+                    where_filter = f'WHERE META_ID = {definition_id}'
+                else:
+                    where_filter = ''
+                query = f'DELETE FROM {creds.shopify_metafield_table} {where_filter}'
                 response = Database.db.query_db(query, commit=True)
                 if response['code'] != 200:
                     raise Exception(response['message'])
@@ -663,4 +788,4 @@ class Database:
 
 
 if __name__ == '__main__':
-    print(Database.Shopify.Collection.get_cp_categ_id(482197405990))
+    print(Database.Shopify.Metafield_Definition.get())
