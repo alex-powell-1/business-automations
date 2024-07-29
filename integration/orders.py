@@ -29,7 +29,9 @@ class Order:
 
     def get_payload(self):
         if self.payload is None:
-            self.payload = self.oapi.get_post_order_payload(bc_order=self.get_bc_order(), cust_no=self.get_cust_no())
+            self.payload = self.oapi.get_post_order_payload(
+                bc_order=self.get_bc_order(), cust_no=self.get_cust_no()
+            )
         return self.payload
 
     def post_order(self, cust_no_override: str = None):
@@ -57,4 +59,4 @@ class OrderProcessor:
 
 
 if __name__ == '__main__':
-    OrderProcessor([1176]).process()
+    print(Order(138).get_bc_order())

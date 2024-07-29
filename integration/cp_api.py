@@ -388,7 +388,7 @@ class OrderAPI(DocumentAPI):
             new_bal = 0
         else:
             new_bal = points_balance + points_earned
-        
+
         query = f"""
         UPDATE AR_CUST
         SET LOY_PTS_BAL = {new_bal}
@@ -668,11 +668,21 @@ class OrderAPI(DocumentAPI):
         if (len(bc_order['shipping_addresses']['url']) or 0) > 0:
             write_shipping_adr()
 
+    @staticmethod
+    def convert_shopify_order_format_to_bc_order_format(shopify_order: dict):
+        """Convert Shopify order format to BigCommerce order format"""
+        bc_order = {}
+
+        # Order Number
+        bc_order['order_number'] = shopify_order['id']
+
     # This function will run the whole ordeal using the provided BigCommerce order_id.
     # cust_no_override is used to override the customer number for the order when posted to Counterpoint.
     # Session can be provided to use the same http session for all requests.
     @staticmethod
-    def post_order(order_id: str | int, cust_no_override: str = None, session: requests.Session = requests.Session()):
+    def post_order(
+        order_id: str | int, cust_no_override: str = None, session: requests.Session = requests.Session()
+    ):
         oapi = OrderAPI(session=session)
 
         bc_order = OrderAPI.get_order(order_id)
@@ -816,7 +826,9 @@ class OrderAPI(DocumentAPI):
                 refund_index = self.get_refund_index(
                     tkt_num=payload['PS_DOC_HDR']['TKT_NUM'], suffix=PARTIAL_REFUND_SUFFIX
                 )
-                self.write_ticket_no(doc_id, f"{payload["PS_DOC_HDR"]["TKT_NUM"]}{PARTIAL_REFUND_SUFFIX}{refund_index}")
+                self.write_ticket_no(
+                    doc_id, f"{payload["PS_DOC_HDR"]["TKT_NUM"]}{PARTIAL_REFUND_SUFFIX}{refund_index}"
+                )
         except:
             pass
 
@@ -862,7 +874,9 @@ class OrderAPI(DocumentAPI):
         try:
             if payload['PS_DOC_HDR']['TKT_NUM'] and payload['PS_DOC_HDR']['TKT_NUM'] != '':
                 if self.is_refund(bc_order):
-                    refund_index = self.get_refund_index(tkt_num=payload['PS_DOC_HDR']['TKT_NUM'], suffix=REFUND_SUFFIX)
+                    refund_index = self.get_refund_index(
+                        tkt_num=payload['PS_DOC_HDR']['TKT_NUM'], suffix=REFUND_SUFFIX
+                    )
                     self.write_ticket_no(doc_id, f"{payload["PS_DOC_HDR"]["TKT_NUM"]}{REFUND_SUFFIX}{refund_index}")
                 else:
                     self.write_ticket_no(doc_id, f"{payload["PS_DOC_HDR"]["TKT_NUM"]}")
@@ -1308,7 +1322,9 @@ class OrderAPI(DocumentAPI):
 
                 if self.is_pr():
                     refund_index = int(
-                        self.get_refund_index(tkt_num=payload['PS_DOC_HDR']['TKT_NUM'], suffix=PARTIAL_REFUND_SUFFIX)
+                        self.get_refund_index(
+                            tkt_num=payload['PS_DOC_HDR']['TKT_NUM'], suffix=PARTIAL_REFUND_SUFFIX
+                        )
                     )
                     tkt_no = f"{payload['PS_DOC_HDR']['TKT_NUM']}{PARTIAL_REFUND_SUFFIX}{refund_index}"
                 else:
@@ -1909,11 +1925,11 @@ class OrderAPI(DocumentAPI):
     # Get the BigCommerce order object for a given order ID.
     @staticmethod
     def get_order(order_id: str | int):
-        url = f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v2/orders/{order_id}'
+        url = f'https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v2/orders/{order_id}'
         order = JsonTools.get_json(url)
 
         order['transactions'] = JsonTools.get_json(
-            f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/orders/{order_id}/transactions'
+            f'https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/orders/{order_id}/transactions'
         )
         order = JsonTools.unpack(order)
 
@@ -1924,7 +1940,7 @@ class OrderAPI(DocumentAPI):
 class JsonTools:
     @staticmethod
     def get_json(url: str):
-        response = requests.get(url, headers=creds.bc_api_headers)
+        response = requests.get(url, headers=creds.test_bc_api_headers)
         return response.json()
 
     @staticmethod
@@ -1960,7 +1976,7 @@ class JsonTools:
             elif key == 'gift_certificate_id' and value is not None:
                 try:
                     myjson = JsonTools.get_json(
-                        f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v2/gift_certificates/{value}'
+                        f'https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v2/gift_certificates/{value}'
                     )
                     obj[key] = myjson
                 except:

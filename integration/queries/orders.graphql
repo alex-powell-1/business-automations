@@ -1,18 +1,99 @@
 query order($id: ID!) {
-  node(id: $id) {
-    id
-    ... on Order {
-      name
+    node(id: $id) {
+        id
+        ... on Order {
+            id
+            name
+
+            billingAddress {
+                address1
+                address2
+                city
+                company
+                country
+                firstName
+                lastName
+                phone
+                province
+                zip
+            }
+
+            createdAt
+
+            customer {
+                id
+            }
+
+            email
+            note
+            requiresShipping
+
+            shippingAddress {
+                address1
+                address2
+                city
+                company
+                country
+                firstName
+                lastName
+                phone
+                province
+                zip
+            }
+
+            shippingLine {
+                discountedPriceSet {
+                    presentmentMoney {
+                        amount
+                    }
+                }
+            }
+
+            updatedAt
+
+            currentSubtotalPriceSet {
+                presentmentMoney {
+                    amount
+                }
+            }
+
+            currentTotalPriceSet {
+                presentmentMoney {
+                    amount
+                }
+            }
+
+            displayFinancialStatus
+            displayFulfillmentStatus
+
+            lineItems(first: 100) {
+                edges {
+                    node {
+                        id
+                        name
+
+                        discountedTotalSet {
+                            presentmentMoney {
+                                amount
+                            }
+                        }
+
+                        quantity
+                        sku
+                        isGiftCard
+                    }
+                }
+            }
+        }
     }
-  }
 }
 
-query orders{
-  orders(first: 10) {
-    edges {
-      node {
-        id
-      }
+query orders {
+    orders(first: 10) {
+        edges {
+            node {
+                id
+            }
+        }
     }
-  }
 }

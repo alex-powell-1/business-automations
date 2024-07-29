@@ -71,6 +71,21 @@ class Shopify:
 
     class Order:
         queries = './integration/queries/orders.graphql'
+        prefix = 'gid://shopify/Order/'
+
+        @staticmethod
+        def get(order_id: int = None, all=False):
+            response = Shopify.Query(
+                document=Shopify.Order.queries,
+                operation_name='order',
+                variables={'id': f'{Shopify.Order.prefix}{order_id}'},
+            )
+            return response.data
+
+        @staticmethod
+        def get_all():
+            response = Shopify.Query(document=Shopify.Order.queries, operation_name='orders')
+            return response.data
 
     class Customer:
         queries = './integration/queries/customers.graphql'
