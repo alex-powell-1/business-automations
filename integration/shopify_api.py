@@ -859,6 +859,7 @@ class Shopify:
                     'NAME_SPACE': x['node']['namespace'],
                     'META_KEY': x['node']['key'],
                     'TYPE': x['node']['type']['name'],
+                    'PIN': 1 if x['node']['pinnedPosition'] else 0,
                     'PINNED_POS': x['node']['pinnedPosition'] if x['node']['pinnedPosition'] else 0,
                     'OWNER_TYPE': x['node']['ownerType'],
                     'VALIDATIONS': [
@@ -874,32 +875,56 @@ class Shopify:
                 # Create all default metafields from Database and replace META_ID with new META_ID
                 metafields = Database.Shopify.Metafield_Definition.get()
                 for i in metafields:
-                    variables = {
-                        'definition': {
-                            'name': i['NAME'].title(),
-                            'namespace': i['NAME_SPACE'],
-                            'key': i['META_KEY'].replace(' ', '_').lower(),
-                            'type': i['TYPE'],
-                            'pin': True if i['PIN'] else False,
-                            'ownerType': i['OWNER_TYPE'],
+                    if i['NAME_SPACE'] == 'custom':
+                        variables = {
+                            'definition': {
+                                'name': i['NAME'].title(),
+                                'description': i['DESCR'],
+                                # 'namespace': i['NAME_SPACE'],
+                                'namespace': 'product-status',
+                                'key': i['META_KEY'].replace(' ', '_').lower(),
+                                'type': i['TYPE'],
+                                'pin': True if i['PIN'] == 1 else False,
+                                'ownerType': i['OWNER_TYPE'],
+                            }
                         }
-                    }
-                    response = Shopify.Query(
-                        document=Shopify.MetafieldDefinition.queries,
-                        variables=variables,
-                        operation_name='CreateMetafieldDefinition',
-                    )
 
-                    metafield_id = response.data['metafieldDefinitionCreate']['createdDefinition']['id'].split('/')[
-                        -1
-                    ]
+                        variables['definition']['validations'] = [
+                            {'name': v['NAME'], 'value': v['VALUE']} for v in i['VALIDATIONS'] if v['NAME']
+                        ]
+                        if i['PIN'] == 1:
+                            variables['definition']['pinnedPosition'] = i['PINNED_POS']
 
-                    update_values = {'META_ID': metafield_id, 'META_KEY': i['META_KEY']}
-                    # This doesn't work yet...
-                    Database.Shopify.Metafield_Definition.update(i['META_ID'], update_values)
+                        try:
+                            response = Shopify.Query(
+                                document=Shopify.MetafieldDefinition.queries,
+                                variables=variables,
+                                operation_name='CreateMetafieldDefinition',
+                            )
+                        except:
+                            print(f'Error creating {i["NAME"]}')
+                            continue
+
+                        metafield_id = response.data['metafieldDefinitionCreate']['createdDefinition']['id'].split(
+                            '/'
+                        )[-1]
+
+                        update_values = {
+                            'META_ID': metafield_id,
+                            'NAME': i['NAME'],
+                            'DESCR': i['DESCR'],
+                            'NAME_SPACE': i['NAME_SPACE'],
+                            'META_KEY': i['META_KEY'],
+                            'TYPE': i['TYPE'],
+                            'PIN': i['PIN'],
+                            'PINNED_POS': i['PINNED_POS'],
+                            'OWNER_TYPE': i['OWNER_TYPE'],
+                        }
+                        # This doesn't work yet...
+                        # Database.Shopify.Metafield_Definition.update(i['META_ID'], update_values)
 
             else:
-                # Create single metafield from arguments
+                # Create single metafield from payload
                 response = Shopify.Query(
                     document=Shopify.MetafieldDefinition.queries,
                     variables=payload,
@@ -914,6 +939,7 @@ class Shopify:
                     'META_KEY': i['name'].replace(' ', '_').lower(),
                     'TYPE': i['type'],
                     'PIN': 1,
+                    'PINNED_POS': 0,
                     'OWNER_TYPE': 'PRODUCT',
                 }
 
@@ -1026,6 +1052,9 @@ if __name__ == '__main__':
     # response = Shopify.MetafieldDefinition.get()
     # for i in response:
     #     Database.Shopify.Metafield_Definition.insert(i)
-    response = Database.Shopify.Metafield_Definition.get(46624604327)
-
-    # Shopify.MetafieldDefinition.create()
+    # print(i)
+    # print()
+    # if i['NAME_SPACE'] == 'product-specification':
+    #     Shopify.MetafieldDefinition.delete(i['META_ID'])
+    #     Database.Shopify.Metafield_Definition.delete(i['META_ID'])
+    Shopify.MetafieldDefinition.create()

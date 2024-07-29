@@ -31,7 +31,7 @@ class Catalog:
 
     all_binding_ids = get_all_binding_ids()
     mw_brands = set()
-    metafields = Database.Shopify.Metafield_Definition.get_all()
+    metafields = Database.Shopify.Metafield_Definition.get()
 
     def __init__(self, last_sync=datetime(1970, 1, 1)):
         self.last_sync = last_sync
@@ -340,15 +340,10 @@ class Catalog:
         #     self.process_images()
 
         # Sync Products
-        # self.get_products()  # Get all products that have been updated since the last sync
-        self.sync_queue = [{'sku': '10344', 'binding_id': 'B0001'}]
+        self.get_products()  # Get all products that have been updated since the last sync
 
-        # Small Bound Product
-        # self.sync_queue = [{'sku': 'SYUFICG01', 'binding_id': 'B0050'}]
-
-        # single product
-        # self.sync_queue = [{'sku': '200899'}, {'sku': 'SYUFICG01', 'binding_id': 'B0050'}]
-        # self.sync_queue = [{'sku': '200899'}]
+        # test product queue
+        # self.sync_queue = [{'sku': '10344', 'binding_id': 'B0001'}, {'sku': '200899'}, {'sku': 'SYUFICG01', 'binding_id': 'B0050'}]
 
         if not self.sync_queue:
             Catalog.logger.success('No products to sync.')
@@ -1916,12 +1911,12 @@ class Catalog:
 
                 Database.Shopify.Product.sync(product=self)
 
-            if self.product_id:
-                update()
-            else:
-                create()
+            # if self.product_id:
+            #     update()
+            # else:
+            #     create()
 
-            Shopify.Product.Media.reorder(self)
+            # Shopify.Product.Media.reorder(self)
             # Update Inventory
             Shopify.Inventory.update(self.get_inventory_payload())
 
@@ -2183,38 +2178,74 @@ class Catalog:
                 Will check IM_ITEM. IM_PRC, IM_INV, EC_ITEM_DESCR, EC_CATEG_ITEM, and Image tables
                 have an after update Trigger implemented for updating IM_ITEM.LST_MAINT_DT."""
 
-                query = f""" select ITEM.{creds.cp_field_binding_id} as 'Binding ID(0)', ITEM.IS_ECOMM_ITEM as 'Web 
-                Enabled(1)', ISNULL(ITEM.IS_ADM_TKT, 'N') as 'Is Parent(2)', MW_PROD.PRODUCT_ID as 'Product ID (3)', 
-                MW_PROD.VARIANT_ID as 'Variant ID(4)', ITEM.USR_CPC_IS_ENABLED 
-                as 'Web Visible(5)', ITEM.USR_ALWAYS_ONLINE as 'ALWAYS ONLINE(6)', ITEM.IS_FOOD_STMP_ITEM as 
-                'GIFT_WRAP(7)', ITEM.PROF_COD_1 as 'BRAND(8)', ITEM.ECOMM_NEW as 'IS_FEATURED(9)', 
-                ITEM.USR_IN_STORE_ONLY as 'IN_STORE_ONLY(10)', ITEM.USR_PROF_ALPHA_27 as 'SORT ORDER(11)', 
-                ISNULL(ITEM.ADDL_DESCR_1, '') as 'WEB_TITLE(12)', ISNULL(ITEM.ADDL_DESCR_2, '') as 'META_TITLE(13)', 
-                ISNULL(USR_PROF_ALPHA_21, '') as 'META_DESCRIPTION(14)', ISNULL(ITEM.USR_PROF_ALPHA_17, 
-                '') as 'VARIANT NAME(15)', ITEM.STAT as 'STATUS(16)', ISNULL(ITEM.REG_PRC, 0) as 'REG_PRC(17)', 
-                ISNULL(ITEM.PRC_1, 0) as 'PRC_1(18)', PRC.PRC_2 as 'PRC_2(19)', CAST(ISNULL(INV.QTY_AVAIL, 
-                0) as INTEGER) as 'QUANTITY_AVAILABLE(20)', CAST(ISNULL(ITEM.PROF_NO_1, 0) as INTEGER) as 'BUFFER(
-                21)', ITEM.ITEM_TYP as 'ITEM_TYPE(22)', ITEM.LONG_DESCR as 'LONG_DESCR(23)', 
-                ISNULL(ITEM.USR_PROF_ALPHA_26, '') as 'SEARCH_KEYWORDS(24)', ITEM.USR_PROF_ALPHA_19 as 
-                'PREORDER_MESSAGE(25)', ISNULL(EC_ITEM_DESCR.HTML_DESCR, '') as 'HTML_DESCRIPTION(26)', 
-                ISNULL(USR_PROF_ALPHA_22, '') as 'ALT_TEXT_1(27)', ISNULL(USR_PROF_ALPHA_23, '') as 'ALT_TEXT_2(28)', 
-                ISNULL(USR_PROF_ALPHA_24, '') as 'ALT_TEXT_3(29)', ISNULL(USR_PROF_ALPHA_25, '') as 'ALT_TEXT_4(30)', 
-                PROF_ALPHA_1 as 'BOTANICAL_NAM(31)', ISNULL(PROF_ALPHA_2, '') as 'CLIMATE_ZONE(32)', 
-                ISNULL(PROF_ALPHA_3, '') as 'PLANT_TYPE(33)', ISNULL(PROF_ALPHA_4, '') as 'TYPE(34)', 
-                ISNULL(PROF_ALPHA_5, '') as 'HEIGHT(35)', ISNULL(USR_PROF_ALPHA_6, '') as 'WIDTH(36)', 
-                ISNULL(USR_PROF_ALPHA_7, '') as 'SUN_EXPOSURE(37)', ISNULL(USR_PROF_ALPHA_8, '') as 'BLOOM_TIME(38)', 
-                ISNULL(USR_PROF_ALPHA_9, '') as 'BLOOM_COLOR(39)', ISNULL(USR_PROF_ALPHA_10, 
-                '') as 'ATTRACTS_POLLINATORS(40)', ISNULL(USR_PROF_ALPHA_11, '') as 'GROWTH_RATE(41)', 
-                ISNULL(USR_PROF_ALPHA_12, '') as 'DEER_RESISTANT(42)', ISNULL(USR_PROF_ALPHA_13, '') as 'SOIL_TYPE(
-                43)', ISNULL(USR_PROF_ALPHA_14, '') as 'COLOR(44)', ISNULL(USR_PROF_ALPHA_15, '') as 'SIZE(45)', 
-                ITEM.LST_MAINT_DT as 'LST_MAINT_DT(46)', ISNULL(ITEM.LST_COST, 0) as 'LAST_COST(47)', ITEM.ITEM_NO as 
-                'ITEM_NO (48)', stuff(( select ',' + EC_CATEG_ITEM.CATEG_ID from EC_CATEG_ITEM where 
-                EC_CATEG_ITEM.ITEM_NO =ITEM.ITEM_NO for xml path('')),1,1,'') as 'categories(49)',
+                query = f""" 
+                
+                SELECT MW_PROD.ID as 'mw_db_id(0)', 
+                ITEM.{creds.cp_field_binding_id} as 'Binding ID(1)', 
+                ISNULL(ITEM.IS_ADM_TKT, 'N') as 'Is Parent(2)', 
+                MW_PROD.PRODUCT_ID as 'Product ID (3)', 
+                MW_PROD.VARIANT_ID as 'Variant ID(4)', 
+                ITEM.USR_PROF_ALPHA_17 as 'VARIANT NAME(5)', 
+                MW_PROD.INVENTORY_ID as 'INVENTORY_ID(6)', 
 
-                MW_PROD.ID as 'db_id(50)', MW_PROD.CUSTOM_FIELDS as 'custom_field_ids(51)', ITEM.LONG_DESCR as 'long_descr(52)',
-                MW_PROD.BINDING_ID as 'mw_binding_id(53)', ITEM.USR_IS_PREORDER as 'is_preorder(54)', 
-                ITEM.USR_PREORDER_REL_DT as 'preorder_release_date(55)', ITEM.USR_PROF_ALPHA_18 as 'CUSTOM_URL(56)', 
-                MW_PROD.INVENTORY_ID as 'inventory_id(57)', 
+
+                
+                ITEM.USR_CPC_IS_ENABLED as 'Web Visible(5)', 
+                ITEM.ECOMM_NEW as 'IS_FEATURED(9)', 
+                ITEM.USR_IN_STORE_ONLY as 'IN_STORE_ONLY(10)',
+                ITEM.USR_IS_PREORDER as 'is_preorder(54)', 
+                ITEM.USR_PREORDER_REL_DT as 'preorder_release_date(55)', 
+                 
+                ITEM.USR_PROF_ALPHA_27 as 'SORT ORDER(11)', 
+                
+                ISNULL(ITEM.ADDL_DESCR_1, '') as 'WEB_TITLE(12)', 
+                ISNULL(ITEM.ADDL_DESCR_2, '') as 'META_TITLE(13)', 
+                ISNULL(USR_PROF_ALPHA_21, '') as 'META_DESCRIPTION(14)', 
+                ITEM.STAT as 'STATUS(16)', 
+                
+                ISNULL(ITEM.REG_PRC, 0) as 'REG_PRC(17)', 
+                ISNULL(ITEM.PRC_1, 0) as 'PRC_1(18)', 
+                PRC.PRC_2 as 'PRC_2(19)', 
+                
+                CAST(ISNULL(INV.QTY_AVAIL, 0) as INTEGER) as 'QUANTITY_AVAILABLE(20)', 
+                CAST(ISNULL(ITEM.PROF_NO_1, 0) as INTEGER) as 'BUFFER(21)', 
+                
+                stuff(( select ',' + EC_CATEG_ITEM.CATEG_ID from EC_CATEG_ITEM where 
+                EC_CATEG_ITEM.ITEM_NO =ITEM.ITEM_NO for xml path('')),1,1,'') as 'categories(49)',
+                ITEM.ITEM_TYP as 'ITEM_TYPE(22)', 
+                ITEM.PROF_COD_1 as 'BRAND(8)', 
+                ITEM.LONG_DESCR as 'LONG_DESCR(23)', 
+                ISNULL(ITEM.USR_PROF_ALPHA_26, '') as 'TAGS(24)', 
+                ITEM.USR_PROF_ALPHA_19 as 'PREORDER_MESSAGE(25)', 
+                ISNULL(EC_ITEM_DESCR.HTML_DESCR, '') as 'HTML_DESCRIPTION(26)', 
+                
+                ISNULL(USR_PROF_ALPHA_22, '') as 'ALT_TEXT_1(27)', 
+                ISNULL(USR_PROF_ALPHA_23, '') as 'ALT_TEXT_2(28)', 
+                ISNULL(USR_PROF_ALPHA_24, '') as 'ALT_TEXT_3(29)', 
+                ISNULL(USR_PROF_ALPHA_25, '') as 'ALT_TEXT_4(30)', 
+                
+                PROF_ALPHA_1 as 'BOTANICAL_NAM(31)', 
+                ISNULL(PROF_ALPHA_2, '') as 'CLIMATE_ZONE(32)', 
+                ISNULL(PROF_ALPHA_3, '') as 'PLANT_TYPE(33)', 
+                ISNULL(PROF_ALPHA_4, '') as 'TYPE(34)', 
+                ISNULL(PROF_ALPHA_5, '') as 'HEIGHT(35)', 
+                ISNULL(USR_PROF_ALPHA_6, '') as 'WIDTH(36)', 
+                ISNULL(USR_PROF_ALPHA_7, '') as 'SUN_EXPOSURE(37)', 
+                ISNULL(USR_PROF_ALPHA_8, '') as 'BLOOM_TIME(38)', 
+                ISNULL(USR_PROF_ALPHA_9, '') as 'BLOOM_COLOR(39)', 
+                ISNULL(USR_PROF_ALPHA_10, '') as 'ATTRACTS_POLLINATORS(40)', 
+                ISNULL(USR_PROF_ALPHA_11, '') as 'GROWTH_RATE(41)', 
+                ISNULL(USR_PROF_ALPHA_12, '') as 'DEER_RESISTANT(42)', 
+                ISNULL(USR_PROF_ALPHA_13, '') as 'SOIL_TYPE(43)', 
+                ISNULL(USR_PROF_ALPHA_14, '') as 'COLOR(44)', 
+                ISNULL(USR_PROF_ALPHA_15, '') as 'SIZE(45)', 
+                ITEM.LST_MAINT_DT as 'LST_MAINT_DT(46)', 
+                ISNULL(ITEM.LST_COST, 0) as 'LAST_COST(47)', 
+                ITEM.ITEM_NO as 'ITEM_NO (48)', 
+                
+                MW_PROD.BINDING_ID as 'mw_binding_id(53)', 
+
+                ITEM.USR_PROF_ALPHA_18 as 'CUSTOM_URL(56)', 
 
                 MW_PROD.CF_BOTAN_NAM as 'custom_botanical_name(58)',
                 MW_PROD.CF_CLIM_ZON as 'custom_climate_zone(59)',
@@ -2243,17 +2274,15 @@ class Catalog:
                 item = self.db.query_db(query)
                 if item is not None:
                     details = {
-                        'sku': item[0][48],
-                        'db_id': item[0][50],
-                        'binding_id': item[0][0],
-                        'is_bound': True if item[0][0] else False,
-                        'web_enabled': True if item[0][1] == 'Y' else False,
+                        'mw_db_id': item[0][0],
+                        'binding_id': item[0][1],
+                        'is_bound': True if item[0][1] else False,
                         'is_parent': item[0][2],
                         'product_id': item[0][3],
                         'variant_id': item[0][4],
-                        'inventory_id': item[0][57],
+                        'variant_name': item[0][5],
+                        'inventory_id': item[0][6],
                         'web_visible': True if item[0][5] == 'Y' else False,
-                        'always_online': True if item[0][6] == 'Y' else False,
                         'gift_wrap': True if item[0][7] == 'Y' else False,
                         'brand': item[0][8],
                         'is_featured': True if item[0][9] == 'Y' else False,
@@ -2262,7 +2291,6 @@ class Catalog:
                         'web_title': item[0][12],
                         'meta_title': item[0][13],
                         'meta_description': item[0][14],
-                        'variant_name': item[0][15],
                         'status': item[0][16],
                         # Product Pricing
                         'reg_price': item[0][17],
@@ -2273,7 +2301,6 @@ class Catalog:
                         'buffer': item[0][21],
                         # Additional Details
                         'item_type': item[0][22],
-                        'long_description': item[0][23],
                         'search_keywords': item[0][24],
                         'preorder_message': item[0][25],
                         'html_description': item[0][26],
@@ -2601,5 +2628,5 @@ class Catalog:
 if __name__ == '__main__':  #
     from datetime import datetime
 
-    cat = Catalog()
+    cat = Catalog(last_sync=datetime(2024, 7, 27))
     cat.sync()

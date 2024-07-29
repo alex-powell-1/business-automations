@@ -29,14 +29,7 @@ class Customers:
             Database.Counterpoint.Customer.update_timestamps(customer_list)
 
     def get_cp_customers(self):
-        query = f"""
-        SELECT cp.CUST_NO, FST_NAM, LST_NAM, EMAIL_ADRS_1, PHONE_1, LOY_PTS_BAL, ADRS_1, CITY, STATE, ZIP_COD, CNTRY,
-        MW.SHOP_CUST_ID
-        FROM {creds.ar_cust_table} CP
-        FULL OUTER JOIN {creds.shopify_customer_table} MW on CP.CUST_NO = MW.cust_no
-        WHERE LST_MAINT_DT > '{self.last_sync}' and CUST_NAM_TYP = 'P'
-        """
-        response = self.db.query_db(query)
+        response = Database.Counterpoint.Customer.get()
         return [self.Customer(x, self.error_handler) for x in response] if response is not None else []
 
     def get_mw_customer(self):
@@ -58,11 +51,11 @@ class Customers:
 
     class Customer:
         def __init__(self, cust_result):
-            self.cust_no = cust_result[0]
+            self.cp_cust_no = cust_result[0]
             self.db = Database.db
             self.fst_nam = cust_result[1]
             self.lst_nam = cust_result[2]
-            self.email = cust_result[3] if cust_result[3] else f'{self.cust_no}@store.com'
+            self.email = cust_result[3] if cust_result[3] else f'{self.cp_cust_no}@store.com'
             self.phone = cust_result[4]
             self.loyalty_points = cust_result[5]
             self.address: str = cust_result[6]
@@ -70,7 +63,7 @@ class Customers:
             self.state = cust_result[8]
             self.zip = cust_result[9]
             self.country = cust_result[10]
-            self.shopify_cust_id = cust_result[11]
+            self.shopify_cust_no = cust_result[11]
 
             self.error_handler = Customers.error_handler
             self.logger = Customers.logger
@@ -86,7 +79,7 @@ class Customers:
             if self.address is not None and self.state is not None and self.zip is not None:
                 if self.address.replace(' ', '').isalpha() or self.address.replace(' ', '').isnumeric():
                     self.error_handler.add_error_v(
-                        f'Customer {self.cust_no} has malformed address: {self.address}.'
+                        f'Customer {self.cp_cust_no} has malformed address: {self.address}.'
                     )
                     return False
 
@@ -112,15 +105,15 @@ class Customers:
                                 'namespace': 'counterpoint',
                                 'key': 'customer_number',
                                 'type': 'single_line_text_field',
-                                'value': self.cust_no,
+                                'value': self.cp_cust_no,
                             }
                         ],
                     }
                 }
 
                 # Add optional fields if they are provided
-                if self.shopify_cust_id is not None:
-                    variables['input']['id'] = f'{Shopify.Customer.prefix}{self.shopify_cust_id}'
+                if self.shopify_cust_no is not None:
+                    variables['input']['id'] = f'{Shopify.Customer.prefix}{self.shopify_cust_no}'
 
                 if self.email:
                     variables['input']['email'] = self.email
@@ -203,30 +196,30 @@ class Customers:
                 return variables
 
             def create():
-                self.logger.info(f'Creating customer {self.cust_no}')
-                self.shopify_cust_id = Shopify.Customer.create(write_customer_payload())
+                self.logger.info(f'Creating customer {self.cp_cust_no}')
+                self.shopify_cust_no = Shopify.Customer.create(write_customer_payload())
                 Database.Shopify.Customer.insert(self)
 
             def update():
-                self.logger.info(f'Updating customer {self.cust_no}')
+                self.logger.info(f'Updating customer {self.cp_cust_no}')
                 Shopify.Customer.update(write_customer_payload())
                 Database.Shopify.Customer.update(self)
 
             def delete():
-                self.logger.info(f'Deleting customer {self.cust_no}')
-                Shopify.Customer.delete(self.shopify_cust_id)
+                self.logger.info(f'Deleting customer {self.cp_cust_no}')
+                Shopify.Customer.delete(self.shopify_cust_no)
                 Database.Shopify.Customer.delete(self)
 
             del_query = f"""
             SELECT CUST_NO FROM {creds.ar_cust_table}
-            WHERE CUST_NO = '{self.cust_no}'
+            WHERE CUST_NO = '{self.cp_cust_no}'
             """
 
             response = self.db.query_db(del_query)
             if response is None or len(response) == 0:
                 return delete()
 
-            if self.shopify_cust_id is not None:
+            if self.shopify_cust_no is not None:
                 update()
             else:
                 create()
@@ -235,16 +228,18 @@ class Customers:
             query = f"""
             UPDATE AR_CUST
             SET LOY_PTS_BAL = 0, LST_MAINT_DT = GETDATE()
-            WHERE CUST_NO = '{self.cust_no}'
+            WHERE CUST_NO = '{self.cp_cust_no}'
             """
             response = self.db.query_db(query, commit=True)
             if response['code'] == 200:
-                self.logger.success(f'Customer {self.cust_no} loyalty points set to 0.')
+                self.logger.success(f'Customer {self.cp_cust_no} loyalty points set to 0.')
             else:
-                self.error_handler.add_error_v(error=f'Error setting customer {self.cust_no} loyalty points to 0.')
+                self.error_handler.add_error_v(
+                    error=f'Error setting customer {self.cp_cust_no} loyalty points to 0.'
+                )
 
         def update_loyalty_points(self):
-            Shopify.Customer.StoreCredit.update(self.shopify_cust_id, self.loyalty_points)
+            Shopify.Customer.StoreCredit.update(self.shopify_cust_no, self.loyalty_points)
 
 
 if __name__ == '__main__':

@@ -642,21 +642,14 @@ class Database:
                                 'TYPE': row[5],
                                 'PINNED_POS': row[6],
                                 'OWNER_TYPE': row[7],
-                                'VALID_1_NAME': row[8],
-                                'VALID_1_VALUE': row[9],
-                                'VALID_1_TYPE': row[10],
-                                'VALID_2_NAME': row[11],
-                                'VALID_2_VALUE': row[12],
-                                'VALID_2_TYPE': row[13],
-                                'VALID_3_NAME': row[14],
-                                'VALID_3_VALUE': row[15],
-                                'VALID_3_TYPE': row[16],
-                                'VALID_4_NAME': row[17],
-                                'VALID_4_VALUE': row[18],
-                                'VALID_4_TYPE': row[19],
-                                'VALID_5_NAME': row[20],
-                                'VALID_5_VALUE': row[21],
-                                'VALID_5_TYPE': row[22],
+                                'VALIDATIONS': [
+                                    {'NAME': row[8], 'TYPE': row[9], 'VALUE': row[10]},
+                                    {'NAME': row[11], 'TYPE': row[12], 'VALUE': row[13]},
+                                    {'NAME': row[14], 'TYPE': row[15], 'VALUE': row[16]},
+                                    {'NAME': row[17], 'TYPE': row[18], 'VALUE': row[19]},
+                                    {'NAME': row[20], 'TYPE': row[21], 'VALUE': row[22]},
+                                ],
+                                'PIN': row[23],
                             }
                         )
                     return result
@@ -683,10 +676,10 @@ class Database:
 
                 query = f"""
                         INSERT INTO {creds.shopify_metafield_table} (META_ID, NAME, DESCR, NAME_SPACE, META_KEY, 
-                        TYPE, PINNED_POS, OWNER_TYPE {validation_columns})
+                        TYPE, PIN, PINNED_POS, OWNER_TYPE {validation_columns})
                         VALUES({values['META_ID']}, '{values['NAME']}', '{values['DESCR']}', 
                         '{values['NAME_SPACE']}', '{values['META_KEY']}', '{values['TYPE']}',
-                        {values['PINNED_POS']}, '{values['OWNER_TYPE']}' {validation_values})
+                        {values['PIN']}, {values['PINNED_POS']}, '{values['OWNER_TYPE']}' {validation_values})
                         """
 
                 response = Database.db.query_db(query, commit=True)
@@ -697,16 +690,15 @@ class Database:
             def update(values):
                 query = f"""
                         UPDATE {creds.shopify_metafield_table}
-                        SET NAME =  '{values['NAME']}',
+                        SET META_ID = {values['META_ID']},
+                        NAME =  '{values['NAME']}',
                         DESCR = '{values['DESCR']}',
                         NAME_SPACE = '{values['NAME_SPACE']}',
                         META_KEY = '{values['META_KEY']}',
                         TYPE = '{values['TYPE']}',
-                        PINNED_POS = {values['PIN']},
+                        PINNED_POS = {values['PINNED_POS']},
                         OWNER_TYPE = '{values['OWNER_TYPE']}',
-                        VALID_NAME = '{values['VALID_NAME']}',
-                        VALID_VALUE = '{values['VALID_VALUE']}',
-                        VALID_TYPE = '{values['VALID_TYPE']}',
+                        {', '.join([f"VALID_{i+1}_NAME = '{values['VALIDATIONS'][i]['NAME']}', VALID_{i+1}_VALUE = '{values['VALIDATIONS'][i]['VALUE']}', VALID_{i+1}_TYPE = '{values['VALIDATIONS'][i]['TYPE']}'" for i in range(len(values['VALIDATIONS']))])},
                         LST_MAINT_DT = GETDATE()
                         WHERE META_ID = {values['META_ID']}
 
