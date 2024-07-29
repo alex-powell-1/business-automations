@@ -52,7 +52,6 @@ def handle_exception(e):
 @limiter.limit('20/minute')  # 10 requests per minute
 def get_service_information():
     token = request.headers.get('Authorization').split(' ')[1]
-
     url = 'https://www.google.com/recaptcha/api/siteverify'
     payload = {'secret': creds.recaptcha_secret, 'response': token}
     response = requests.post(url, data=payload)
@@ -317,7 +316,7 @@ def shopify():
         connection = pika.BlockingConnection(pika.ConnectionParameters('localhost'))
         channel = connection.channel()
 
-        channel.queue_declare(queue='shopify', durable=True)
+        channel.queue_declare(queue='shopify_orders', durable=True)
 
         channel.basic_publish(
             exchange='',
@@ -396,14 +395,6 @@ def serve_file(path):
 
 @app.route('/qr/<qr_id>', methods=['GET'])
 def qr_tracker(qr_id):
-    """Redirects to the target URL for the given QR code ID"""
-    # default_url = creds.company_url
-    # target_url = QR.get_url(qr_id)
-    # if not target_url:
-    #     return redirect(default_url)
-    # else:
-    #     QR.visit(qr_id)  # Increment visit count, update last scan time
-    #     return redirect(target_url)
     QR.visit(qr_id)
     return jsonify({'success': True}), 200
 
