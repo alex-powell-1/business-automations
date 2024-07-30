@@ -176,6 +176,10 @@ query order($id: ID!) {
                     amount
                 }
             }
+
+            discountCode
+
+            discountCodes
         }
     }
 }

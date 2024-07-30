@@ -190,69 +190,29 @@ class Shopify:
                     ]
                 },
                 'coupons': {'url': []},
-                # "transactions": {
-                #     "data": [
-                #         {
-                #             "id": 862718791,
-                #             "order_id": "100",
-                #             "event": "purchase",
-                #             "method": "credit_card",
-                #             "amount": 10,
-                #             "currency": "USD",
-                #             "gateway": "bigpaypay",
-                #             "gateway_transaction_id": "",
-                #             "payment_method_id": "bigpaypay.zzzblackhole",
-                #             "status": "ok",
-                #             "test": True,
-                #             "fraud_review": False,
-                #             "reference_transaction_id": None,
-                #             "date_created": "2024-07-29T15:08:23+00:00",
-                #             "avs_result": {
-                #                 "code": "",
-                #                 "message": "",
-                #                 "street_match": "",
-                #                 "postal_match": "",
-                #             },
-                #             "cvv_result": {"code": "", "message": ""},
-                #             "credit_card": {
-                #                 "card_type": "visa",
-                #                 "card_iin": "411111",
-                #                 "card_last4": "1111",
-                #                 "card_expiry_month": 5,
-                #                 "card_expiry_year": 2029,
-                #             },
-                #             "gift_certificate": None,
-                #             "store_credit": None,
-                #             "offline": None,
-                #             "custom": None,
-                #             "payment_instrument_token": None,
-                #             "custom_provider_field_result": None,
-                #         }
-                #     ],
-                #     "meta": {
-                #         "pagination": {
-                #             "total": 1,
-                #             "count": 1,
-                #             "per_page": 50,
-                #             "current_page": 1,
-                #             "total_pages": 1,
-                #             "links": {"current": "?page=1&limit=50"},
-                #         }
-                #     },
-                # },
+                'transactions': {'data': []},
             }
 
             if hdsc > 0:
                 bc_order['coupons']['url'] = [{'amount': hdsc}]
 
-            # transactions = []
+            transactions = []
 
-            # for transaction in snode['transactions']:
-            #     amount = float(get_money(transaction['amountSet']))
+            for transaction in snode['transactions']:
+                amount = float(get_money(transaction['amountSet']))
 
-            #     transactions.append({})
+                if transaction['gateway'] == 'gift_card':
+                    transaction['gateway'] = 'gift_certificate'
 
-            # bc_order['transactions'] = {'data': transactions}
+                transactions.append(
+                    {
+                        'method': transaction['gateway'],
+                        'amount': amount,
+                        'gift_certificate': {'code': 'ABC123', 'remaining_balance': 0},
+                    }
+                )
+
+            bc_order['transactions']['data'] = transactions
 
             return bc_order
 
