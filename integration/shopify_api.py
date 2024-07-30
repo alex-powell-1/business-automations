@@ -129,7 +129,7 @@ class Shopify:
                 return money['presentmentMoney']['amount']
 
             snode = shopify_order['node']
-            discountedPrice = get_money(snode['shippingLine']['discountedPriceSet'])
+            shippingCost = float(get_money(snode['shippingLine']['discountedPriceSet']))
 
             hdsc = float(get_money(snode['totalDiscountsSet']))
 
@@ -144,9 +144,7 @@ class Shopify:
                 'status': snode['displayFulfillmentStatus'],
                 'subtotal_ex_tax': price,
                 'subtotal_inc_tax': price,
-                'base_shipping_cost': float(
-                    snode['shippingLine']['discountedPriceSet']['presentmentMoney']['amount']
-                ),
+                'base_shipping_cost': shippingCost,
                 'total_ex_tax': price,
                 'total_inc_tax': price,
                 'items_total': snode['subtotalLineItemsQuantity'],
@@ -157,7 +155,7 @@ class Shopify:
                 'store_credit_amount': '0.0000',  # TODO: Add store credit amount
                 'gift_certificate_amount': '0.0000',  # TODO: Add gift certificate amount
                 'customer_message': snode['note'],
-                'discount_amount': discountedPrice,  # TODO: Add discount amount
+                'discount_amount': '0.0000',  # TODO: Add discount amount
                 'coupon_discount': '0.0000',  # TODO: Add coupon discount
                 'shipping_address_count': 1,  # TODO: Add shipping address count
                 'billing_address': {
@@ -246,6 +244,15 @@ class Shopify:
 
             if hdsc > 0:
                 bc_order['coupons']['url'] = [{'amount': hdsc}]
+
+            # transactions = []
+
+            # for transaction in snode['transactions']:
+            #     amount = float(get_money(transaction['amountSet']))
+
+            #     transactions.append({})
+
+            # bc_order['transactions'] = {'data': transactions}
 
             return bc_order
 

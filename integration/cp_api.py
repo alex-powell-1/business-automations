@@ -165,7 +165,6 @@ class OrderAPI(DocumentAPI):
                 }
 
                 line_items.append(line_item)
-                print('LINE ITEM INCREASED')
                 self.total_lin_items += 1
 
         return line_items
