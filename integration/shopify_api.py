@@ -1235,12 +1235,12 @@ class Shopify:
 
 
 if __name__ == '__main__':
-    # response = Shopify.MetafieldDefinition.get()
-    # for i in response:
-    #     Database.Shopify.Metafield_Definition.insert(i)
+    response = Shopify.MetafieldDefinition.get()
+    for i in response:
+        Database.Shopify.Metafield_Definition.insert(i)
     # print(i)
     # print()
     # if i['NAME_SPACE'] == 'product-specification':
     #     Shopify.MetafieldDefinition.delete(i['META_ID'])
     #     Database.Shopify.Metafield_Definition.delete(i['META_ID'])
-    Shopify.MetafieldDefinition.create()
+    # Shopify.MetafieldDefinition.create()

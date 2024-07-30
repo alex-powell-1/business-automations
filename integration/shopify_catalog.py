@@ -340,10 +340,14 @@ class Catalog:
         #     self.process_images()
 
         # Sync Products
-        self.get_products()  # Get all products that have been updated since the last sync
+        # self.get_products()  # Get all products that have been updated since the last sync
 
         # test product queue
-        # self.sync_queue = [{'sku': '10344', 'binding_id': 'B0001'}, {'sku': '200899'}, {'sku': 'SYUFICG01', 'binding_id': 'B0050'}]
+        self.sync_queue = [
+            {'sku': '10344', 'binding_id': 'B0001'}
+            # {'sku': '200899'},
+            # {'sku': 'SYUFICG01', 'binding_id': 'B0050'},
+        ]
 
         if not self.sync_queue:
             Catalog.logger.success('No products to sync.')
@@ -919,54 +923,43 @@ class Catalog:
             # Product Information
             self.product_id = None
             self.option_id = None
-            self.web_title: str = ''
-            self.long_descr = ''
-            self.default_price = 0.0
-            self.cost = 0.0
-            self.sale_price = 0.0
-            self.weight = 0.1
-            self.width = 0.1
-            self.height = 0.1
-            self.depth = 0.1
+            self.web_title = None
+            self.long_descr = None
+            self.default_price = None
+            self.cost = None
+            self.sale_price = None
+            self.weight = None
             self.buffered_quantity = 0
-            self.is_price_hidden = False
-            self.brand = ''
-            self.html_description = ''
-            self.search_keywords = ''
-            self.meta_title = ''
-            self.meta_description = ''
+            self.brand = None
+            self.html_description = None
+            self.tags = None
+            self.meta_title = None
+            self.meta_description = None
             self.visible: bool = False
             self.featured: bool = False
-            self.sort_order = 0
-            self.gift_wrap: bool = False
+            self.sort_order = None
             self.in_store_only: bool = False
             self.is_preorder = False
             self.is_preorder_only = False
-            self.preorder_message = ''
+            self.preorder_message = None
             self.preorder_release_date = None
-            self.is_free_shipping = False
-            self.alt_text_1 = ''
-            self.alt_text_2 = ''
-            self.alt_text_3 = ''
-            self.alt_text_4 = ''
+            self.alt_text_1 = None
+            self.alt_text_2 = None
+            self.alt_text_3 = None
+            self.alt_text_4 = None
             self.custom_url = None
 
             # Custom Fields
-            self.custom_botanical_name = {'id': None, 'value': None}
-            self.custom_climate_zone = {'id': None, 'value': None}
-            self.custom_plant_type = {'id': None, 'value': None}
-            self.custom_type = {'id': None, 'value': None}
-            self.custom_height = {'id': None, 'value': None}
-            self.custom_width = {'id': None, 'value': None}
-            self.custom_sun_exposure = {'id': None, 'value': None}
-            self.custom_bloom_time = {'id': None, 'value': None}
-            self.custom_bloom_color = {'id': None, 'value': None}
-            self.custom_attracts_pollinators = {'id': None, 'value': None}
-            self.custom_growth_rate = {'id': None, 'value': None}
-            self.custom_deer_resistant = {'id': None, 'value': None}
-            self.custom_soil_type = {'id': None, 'value': None}
-            self.custom_color = {'id': None, 'value': None}
-            self.custom_size = {'id': None, 'value': None}
+            self.meta_botanical_name = None
+            self.meta_climate_zone = None
+            self.meta_climate_zone_list = None
+            self.meta_plant_type = None
+            self.meta_height = None
+            self.meta_width = None
+            self.meta_size = None
+            self.meta_bloom_season = None
+            self.meta_features = None
+            self.meta_colors = None
 
             self.lst_maint_dt = datetime(1970, 1, 1)
 
@@ -1046,33 +1039,61 @@ class Catalog:
                         self.brand = bound.brand
                         self.sort_order = bound.sort_order
                         self.html_description = bound.html_description
-                        self.search_keywords = bound.search_keywords
+                        self.tags = bound.tags
                         self.meta_title = bound.meta_title
                         self.meta_description = bound.meta_description
                         self.visible = bound.visible
                         self.featured = bound.featured
-                        self.gift_wrap = bound.gift_wrap
-                        self.custom_botanical_name = bound.custom_botanical_name
-                        self.custom_climate_zone = bound.custom_climate_zone
-                        self.custom_plant_type = bound.custom_plant_type
-                        self.custom_type = bound.custom_type
-                        self.custom_height = bound.custom_height
-                        self.custom_width = bound.custom_width
-                        self.custom_sun_exposure = bound.custom_sun_exposure
-                        self.custom_bloom_time = bound.custom_bloom_time
-                        self.custom_bloom_color = bound.custom_bloom_color
-                        self.custom_attracts_pollinators = bound.custom_attracts_pollinators
-                        self.custom_growth_rate = bound.custom_growth_rate
-                        self.custom_deer_resistant = bound.custom_deer_resistant
-                        self.custom_soil_type = bound.custom_soil_type
-                        self.custom_color = bound.custom_color
-                        self.custom_size = bound.custom_size
                         self.cp_ecommerce_categories = bound.cp_ecommerce_categories
-                        self.custom_url = bound.custom_url
                         self.long_descr = bound.long_descr
                         self.is_preorder = bound.is_preorder
                         self.preorder_release_date = bound.preorder_release_date
                         self.preorder_message = bound.preorder_message
+
+                        # Product Description
+                        self.product_id = bound.product_id
+                        self.web_title = bound.web_title
+                        self.long_descr = bound.long_descr
+                        self.html_description = bound.html_description
+                        self.meta_title = bound.meta_title
+                        self.meta_description = bound.meta_description
+                        self.brand = bound.brand
+                        self.sort_order = bound.sort_order
+                        # Prices/Cost
+                        self.default_price = bound.price_1
+                        self.cost = bound.cost
+                        self.sale_price = bound.price_2
+                        self.taxable = bound.taxable
+                        # Inventory
+                        self.buffered_quantity = bound.quantity_available - bound.buffer
+                        if self.buffered_quantity < 0:
+                            self.buffered_quantity = 0
+                        # Collections and Tags
+                        self.tags = bound.tags
+                        self.cp_ecommerce_categories = bound.cp_ecommerce_categories
+                        # Statuses
+                        self.in_store_only = bound.in_store_only
+                        self.visible = bound.visible
+                        self.featured = bound.featured
+                        self.is_preorder = bound.is_preorder
+                        self.preorder_release_date = bound.preorder_release_date
+                        self.preorder_message = bound.preorder_message
+                        # Meta Fields
+                        self.meta_botanical_name = bound.meta_botanical_name
+                        self.meta_climate_zone = bound.meta_climate_zone
+                        self.meta_climate_zone_list = bound.meta_climate_zone_list
+                        self.meta_plant_type = bound.meta_plant_type
+                        self.meta_height = bound.meta_height
+                        self.meta_width = bound.meta_width
+                        self.meta_size = bound.meta_size
+                        self.meta_bloom_season = bound.meta_bloom_season
+                        self.meta_features = bound.meta_features
+                        self.meta_colors = bound.meta_colors
+
+                        # Shipping
+                        self.weight = bound.weight
+                        # Last Maintenance Date
+                        self.lst_maint_dt = bound.lst_maint_dt
 
                 def get_binding_id_images():
                     binding_images = []
@@ -1103,7 +1124,6 @@ class Catalog:
                 # Get last maintained date of all the variants and set product last maintained date to the latest
                 # Add Variant Images to image list and establish which image is the variant thumbnail
                 lst_maint_dt_list = []
-
                 for variant in self.variants:
                     variant_image_count = 0
                     # While we are here, let's get all the last maintenance dates for the variants
@@ -1121,52 +1141,51 @@ class Catalog:
             def get_single_product_details():
                 self.variants.append(self.Variant(self.sku, last_run_date=last_sync))
                 single = self.variants[0]
+                # Product Description
                 self.product_id = single.product_id
                 self.web_title = single.web_title
+                self.long_descr = single.long_descr
+                self.html_description = single.html_description
+                self.meta_title = single.meta_title
+                self.meta_description = single.meta_description
+                self.brand = single.brand
+                self.sort_order = single.sort_order
+                # Prices/Cost
                 self.default_price = single.price_1
                 self.cost = single.cost
                 self.sale_price = single.price_2
-                self.weight = single.weight
-                self.width = single.width
-                self.height = single.height
-                self.depth = single.depth
-                self.brand = single.brand
-                self.in_store_only = single.in_store_only
-                self.sort_order = single.sort_order
+                self.taxable = single.taxable
+                # Inventory
                 self.buffered_quantity = single.quantity_available - single.buffer
                 if self.buffered_quantity < 0:
                     self.buffered_quantity = 0
-                self.html_description = single.html_description
-                self.search_keywords = single.search_keywords
-                self.meta_title = single.meta_title
-                self.meta_description = single.meta_description
+                # Collections and Tags
+                self.tags = single.tags
+                self.cp_ecommerce_categories = single.cp_ecommerce_categories
+                # Media
+                self.images = single.images
+                # Statuses
+                self.in_store_only = single.in_store_only
                 self.visible = single.visible
                 self.featured = single.featured
-                self.gift_wrap = single.gift_wrap
-                self.custom_botanical_name = single.custom_botanical_name
-                self.custom_climate_zone = single.custom_climate_zone
-                self.custom_plant_type = single.custom_plant_type
-                self.custom_type = single.custom_type
-                self.custom_height = single.custom_height
-                self.custom_width = single.custom_width
-                self.custom_sun_exposure = single.custom_sun_exposure
-                self.custom_bloom_time = single.custom_bloom_time
-                self.custom_bloom_color = single.custom_bloom_color
-                self.custom_attracts_pollinators = single.custom_attracts_pollinators
-                self.custom_growth_rate = single.custom_growth_rate
-                self.custom_deer_resistant = single.custom_deer_resistant
-                self.custom_soil_type = single.custom_soil_type
-                self.custom_color = single.custom_color
-                self.custom_size = single.custom_size
-                self.cp_ecommerce_categories = single.cp_ecommerce_categories
-                self.images = single.images
-                self.custom_url = single.custom_url
-                # Set the product last maintained date to the single product's last maintained date
-                self.lst_maint_dt = single.lst_maint_dt
-                self.long_descr = single.long_descr
                 self.is_preorder = single.is_preorder
                 self.preorder_release_date = single.preorder_release_date
                 self.preorder_message = single.preorder_message
+                # Meta Fields
+                self.meta_botanical_name = single.meta_botanical_name
+                self.meta_climate_zone = single.meta_climate_zone
+                self.meta_climate_zone_list = single.meta_climate_zone_list
+                self.meta_plant_type = single.meta_plant_type
+                self.meta_height = single.meta_height
+                self.meta_width = single.meta_width
+                self.meta_size = single.meta_size
+                self.meta_bloom_season = single.meta_bloom_season
+                self.meta_features = single.meta_features
+                self.meta_colors = single.meta_colors
+                # Shipping
+                self.weight = single.weight
+                # Last Maintenance Date
+                self.lst_maint_dt = single.lst_maint_dt
 
             if self.is_bound:
                 get_bound_product_details()
@@ -1206,7 +1225,7 @@ class Catalog:
             if self.is_bound:
                 # Test for missing variant names
                 for child in self.variants:
-                    if child.variant_name == '':
+                    if not child.variant_name:
                         message = f'Product {child.sku} is missing a variant name. Validation failed.'
                         Catalog.error_handler.add_error_v(error=message, origin='Input Validation')
                         return False
@@ -1221,8 +1240,8 @@ class Catalog:
             # ALL PRODUCTS
             if check_web_title:
                 # Test for missing web title
-                if self.web_title is None or self.web_title == '':
-                    if self.long_descr is None or self.long_descr == '':
+                if not self.web_title:
+                    if not self.long_descr:
                         message = f'Product {self.binding_id} is missing a web title and long description. Validation failed.'
                         Catalog.error_handler.add_error_v(error=message, origin='Input Validation')
                         return False
@@ -1378,7 +1397,7 @@ class Catalog:
 
             return True
 
-        def get_product_payload(self):
+        def get_payload(self):
             """Build the payload for creating a product in BigCommerce.
             This will include all variants, images, and custom fields."""
 
@@ -1685,11 +1704,7 @@ class Catalog:
             product_payload = {
                 'input': {
                     'title': self.web_title,
-                    'productType': self.custom_type['value'] if self.custom_type else None,
-                    'descriptionHtml': self.html_description,
-                    'seo': {'title': self.meta_title, 'description': self.meta_description},
                     'status': 'ACTIVE' if self.visible else 'DRAFT',
-                    'tags': self.search_keywords.split(','),
                     # 'metafields': get_custom_fields(),
                 },
                 'media': create_image_payload(),
@@ -1697,13 +1712,28 @@ class Catalog:
             if self.product_id:
                 product_payload['input']['id'] = f'gid://shopify/Product/{self.product_id}'
 
+            if self.html_description:
+                product_payload['input']['descriptionHtml'] = self.html_description
+
             if self.brand:
                 product_payload['input']['vendor'] = get_brand_name(self.brand)
+
+            if self.custom_type:
+                product_payload['input']['productType'] = self.custom_type
+
+            if self.tags:
+                product_payload['input']['tags'] = self.tags.split(',')
 
             if self.shopify_collections:
                 product_payload['input']['collectionsToJoin'] = [
                     f'gid://shopify/Collection/{x}' for x in self.shopify_collections
                 ]
+
+            if self.meta_title:
+                product_payload['input']['seo']['title'] = self.meta_title
+
+            if self.meta_description:
+                product_payload['input']['seo']['description'] = self.meta_description
 
             if not self.product_id:  # new product
                 # If Add Standalone Variant Option - will be deleted later
@@ -1733,7 +1763,7 @@ class Catalog:
                     'price': child.price_1,  # May be overwritten by price_2 (below)
                     'compareAtPrice': child.price_1,  # Retail price before sales
                     'optionValues': {'optionName': 'Option'},
-                    'taxable': False,
+                    'taxable': True if self.taxable else False,
                 }
 
                 if child.variant_id:
@@ -1746,6 +1776,7 @@ class Catalog:
                         }
 
                 if child.price_2:
+                    # If price_2 is set, use the lower of the two prices for sale price
                     variant_payload['price'] = min(child.price_1, child.price_2)
 
                 if self.is_bound:
@@ -1843,7 +1874,7 @@ class Catalog:
             def create():
                 """Create new product in Shopify and Middleware."""
                 # Create Base Product
-                response = Shopify.Product.create(self.get_product_payload())
+                response = Shopify.Product.create(self.get_payload())
                 self.product_id = response['product_id']
                 self.option_id = response['option_ids'][0]
 
@@ -1894,7 +1925,7 @@ class Catalog:
 
             def update():
                 """Will update existing product. Will clear out custom field data and reinsert."""
-                product_payload = self.get_product_payload()
+                product_payload = self.get_payload()
                 response = Shopify.Product.update(product_payload)
                 self.option_id = response['option_ids'][0]
 
@@ -1918,7 +1949,8 @@ class Catalog:
 
             # Shopify.Product.Media.reorder(self)
             # Update Inventory
-            Shopify.Inventory.update(self.get_inventory_payload())
+            # Shopify.Inventory.update(self.get_inventory_payload())
+            print(self)
 
         def replace_image(self, image) -> bool:
             """Replace image in BigCommerce and SQL."""
@@ -1966,7 +1998,7 @@ class Catalog:
 
         def delete_product(self, sku, binding_id=None):
             """Delete Product from BigCommerce and Middleware."""
-            self.db_id = None
+            self.mw_db_id = None
             if self.product_id:
                 product_id = self.product_id
             else:
@@ -1987,7 +2019,7 @@ class Catalog:
                 print('Parent Product. Will delete product.')
                 self.delete_product(sku=sku, binding_id=binding_id)
             else:
-                # self.db_id = None # does this make sense. Should it be child only?
+                # self.mw_db_id = None # does this make sense. Should it be child only?
                 variant_id = Database.Shopify.Product.Variant.get_variant_id(sku=sku)  # Use for MW deletion
                 # Shopify.Product.Variant.delete(variant_id)
                 option_value_id = Database.Shopify.Product.Variant.get_option_value_id(sku=sku)
@@ -2068,7 +2100,7 @@ class Catalog:
                 product_data = self.get_variant_details()
 
                 # Product Information
-                self.db_id = product_data['db_id']
+                self.mw_db_id = product_data['mw_db_id']
                 self.binding_id = product_data['binding_id']
                 self.mw_binding_id = product_data['mw_binding_id']
                 self.is_parent = True if product_data['is_parent'] == 'Y' else False
@@ -2077,85 +2109,155 @@ class Catalog:
                 self.inventory_id: int = product_data['inventory_id'] if product_data['inventory_id'] else None
                 self.option_id = None
                 self.option_value_id = None
+                # E-Commerce Categories
+                self.cp_ecommerce_categories = product_data['cp_ecommerce_categories']
+
+                # Status
+                self.visible: bool = product_data['web_visible']
+                self.featured: bool = product_data['is_featured']
+                self.is_preorder = product_data['is_preorder']
+                self.preorder_release_date = product_data['preorder_release_date']
+                self.preorder_message = product_data['preorder_message']
+
+                # Product Details
                 self.web_title: str = product_data['web_title']
                 self.long_descr = product_data['long_descr']
                 self.variant_name = product_data['variant_name']
                 self.status = product_data['status']
+                self.brand = product_data['brand']
+                self.html_description = product_data['html_description']
+                self.tags = product_data['tags']
+                self.meta_title = product_data['meta_title']
+                self.meta_description = product_data['meta_description']
+
+                # Pricing
+                self.wholesale_price = float(product_data['reg_price'])
                 self.price_1 = float(product_data['price_1'])
-                self.cost = float(product_data['cost'])
                 self.price_2 = float(product_data['price_2']) if product_data['price_2'] else None
+                self.cost = float(product_data['cost'])
+                self.taxable = product_data['taxable']
+
                 # Inventory Levels
                 self.quantity_available = product_data['quantity_available']
                 self.buffer = product_data['buffer']
                 self.buffered_quantity = self.quantity_available - self.buffer
                 if self.buffered_quantity < 0:
                     self.buffered_quantity = 0
-                self.weight = 0.1
-                self.width = 0.1
-                self.height = 0.1
-                self.depth = 0.1
+                self.weight = product_data['weight']
                 self.in_store_only = product_data['in_store_only']
                 self.sort_order = product_data['sort_order']
-                self.is_price_hidden = False
-                # Purchasing Disabled is for Variants Only
-                self.purchasing_disabled = False
-                self.purchasing_disabled_message = ''
-                # Brand
-                self.brand = product_data['brand']
-                self.html_description = product_data['html_description']
-                self.search_keywords = product_data['search_keywords']
-                self.meta_title = product_data['meta_title']
-                self.meta_description = product_data['meta_description']
-                self.visible: bool = product_data['web_visible']
-                self.featured: bool = product_data['is_featured']
-                self.gift_wrap: bool = product_data['gift_wrap']
-                self.is_free_shipping = False
-                self.is_preorder = product_data['is_preorder']
-                self.preorder_release_date = product_data['preorder_release_date']
-                self.preorder_message = product_data['preorder_message']
+
+                # Alt Text
                 self.alt_text_1 = product_data['alt_text_1']
                 self.alt_text_2 = product_data['alt_text_2']
                 self.alt_text_3 = product_data['alt_text_3']
                 self.alt_text_4 = product_data['alt_text_4']
 
-                # Custom Fields
-                self.custom_botanical_name = product_data['custom_botanical_name']
-                self.custom_climate_zone = product_data['custom_climate_zone']
-                self.custom_plant_type = product_data['custom_plant_type']
-                self.custom_type = product_data['custom_type']
-                self.custom_height = product_data['custom_height']
-                self.custom_width = product_data['custom_width']
-                self.custom_sun_exposure = product_data['custom_sun_exposure']
-                self.custom_bloom_time = product_data['custom_bloom_time']
-                self.custom_bloom_color = product_data['custom_bloom_color']
-                self.custom_attracts_pollinators = product_data['custom_attracts_pollinators']
-                self.custom_growth_rate = product_data['custom_growth_rate']
-                self.custom_deer_resistant = product_data['custom_deer_resistant']
-                self.custom_soil_type = product_data['custom_soil_type']
-                self.custom_color = product_data['custom_color']
-                self.custom_size = product_data['custom_size']
+                self.cf_type = product_data['custom_type']  # Shows on Shopify Catalog Backend
 
-                # Custom URL
-                custom_url = product_data['custom_url']
-                if custom_url:
-                    self.custom_url = '-'.join(str(re.sub('[^A-Za-z0-9 ]+', '', custom_url)).split(' '))
-                else:
-                    self.custom_url = None
+                # Custom Fields
+                self.meta_plant_type = product_data['custom_plant_type']
+                self.meta_botanical_name = product_data['custom_botanical_name']
+
+                # Climate Zone
+                climate_zone_min = product_data['custom_climate_zone_min']
+                climate_zone_max = product_data['custom_climate_zone_max']
+                # '3B - 11a'
+                self.meta_climate_zone = f'{climate_zone_min} - {climate_zone_max}'
+                # [3, 4, 5, 6, 7, 8, 9, 10, 11]
+                self.meta_climate_zone_list = self.get_size_range(climate_zone_min, climate_zone_max, '')
+
+                # Height
+                height_min = product_data['custom_height_min']
+                height_max = product_data['custom_height_max']
+                height_unit = product_data['custom_height_unit']
+                self.meta_height = self.get_size_range(height_min, height_max, height_unit)
+
+                # Width
+                width_min = product_data['custom_width_min']
+                width_max = product_data['custom_width_max']
+                width_unit = product_data['custom_width_unit']
+                self.meta_width = self.get_size_range(width_min, width_max, width_unit)
+
+                # Light Requirements
+                self.meta_light_requirements = [
+                    {'name': 'Full Sun', 'value': product_data['custom_full_sun']},
+                    {'name': 'Part Sun', 'value': product_data['custom_part_sun']},
+                    {'name': 'Part Shade', 'value': product_data['custom_part_shade']},
+                    {'name': 'Full Shade', 'value': product_data['custom_full_shade']},
+                ]
+                # Render self.cf_light_requirements to comma separated string
+                self.meta_light_requirements = ', '.join(
+                    [x['name'] for x in self.meta_light_requirements if x['value']]
+                )
+
+                # Bloom Season
+                self.meta_bloom_season = [
+                    {'name': 'Spring Blooms', 'value': product_data['custom_bloom_spring']},
+                    {'name': 'Summer Blooms', 'value': product_data['custom_bloom_summer']},
+                    {'name': 'Fall Blooms', 'value': product_data['custom_bloom_fall']},
+                    {'name': 'Winter Blooms', 'value': product_data['custom_bloom_winter']},
+                ]
+
+                # Render self.cf_bloom_season to comma separated string
+                self.meta_bloom_season = ', '.join([x['name'] for x in self.meta_bloom_season if x['value']])
+
+                # Colors
+                self.meta_colors = [
+                    {'name': 'Pink', 'value': product_data['custom_color_pink']},
+                    {'name': 'Red', 'value': product_data['custom_color_red']},
+                    {'name': 'Orange', 'value': product_data['custom_color_orange']},
+                    {'name': 'Yellow', 'value': product_data['custom_color_yellow']},
+                    {'name': 'Green', 'value': product_data['custom_color_green']},
+                    {'name': 'Blue', 'value': product_data['custom_color_blue']},
+                    {'name': 'Purple', 'value': product_data['custom_color_purple']},
+                    {'name': 'White', 'value': product_data['custom_color_white']},
+                    {'name': 'Custom', 'value': product_data['custom_color_custom']},
+                ]
+
+                # Render self.colors to comma separated string
+                self.meta_colors = ', '.join([x['name'] for x in self.meta_colors if x['value']])
+
+                # Features
+                self.meta_features = [
+                    {'name': 'Low Maintenance', 'value': product_data['custom_low_maintenance']},
+                    {'name': 'Evergreen', 'value': product_data['custom_evergreen']},
+                    {'name': 'Privacy Option', 'value': product_data['custom_privacy']},
+                    {'name': 'Specimen', 'value': product_data['custom_specimen']},
+                    {'name': 'Drought Tolerant', 'value': product_data['custom_drought_tolerance']},
+                    {'name': 'Heat Tolerant', 'value': product_data['custom_heat_tolerance']},
+                    {'name': 'Cold Tolerant', 'value': product_data['custom_cold_tolerance']},
+                    {'name': 'Fast Growing', 'value': product_data['custom_fast_growth']},
+                    {'name': 'Attracts Pollinators', 'value': product_data['custom_attracts_pollinators']},
+                    {'name': 'Attracts Wildlife', 'value': product_data['custom_attracts_wildlife']},
+                    {'name': 'Native', 'value': product_data['custom_native']},
+                    {'name': 'Fragrant', 'value': product_data['custom_fragrant']},
+                    {'name': 'Deer Resistant', 'value': product_data['custom_deer_resistant']},
+                    {'name': 'Easy to Grow', 'value': product_data['custom_easy_to_grow']},
+                    {'name': 'Low Light', 'value': product_data['custom_low_light']},
+                    {'name': 'Tropical', 'value': product_data['custom_tropical']},
+                    {'name': 'Vining', 'value': product_data['custom_vining']},
+                    {'name': 'Air Purifying', 'value': product_data['custom_air_purifying']},
+                    {'name': 'Pet Friendly', 'value': product_data['custom_pet_friendly']},
+                    {'name': 'Slow Growing', 'value': product_data['custom_slow_growth']},
+                    {'name': 'Edible', 'value': product_data['custom_edible']},
+                ]
+
+                # If self.meta_bloom_season is not empty, add 'Flowering' as a feature
+                if self.meta_bloom_season:
+                    self.meta_features.append({'name': 'Flowering', 'value': True})
+
+                # Render self.features to comma separated string
+                self.meta_features = ', '.join([x['name'] for x in self.meta_features if x['value']])
+
+                # Get Size
+                self.meta_size = product_data['custom_size']
 
                 # Product Images
                 self.images = []
 
                 # Dates
                 self.lst_maint_dt = product_data['lst_maint_dt']
-
-                # E-Commerce Categories
-
-                self.cp_ecommerce_categories = product_data['cp_ecommerce_categories']
-
-                # Product Schema (i.e. Bound, Single, Variant.)
-                self.item_schema = ''
-                # Processing Method
-                self.processing_method = ''
 
                 # Initialize Images
                 if get_images:
@@ -2181,7 +2283,7 @@ class Catalog:
                 query = f""" 
                 
                 SELECT MW_PROD.ID as 'mw_db_id(0)', 
-                ITEM.{creds.cp_field_binding_id} as 'Binding ID(1)', 
+                ITEM.USR_PROF_ALPHA_16 as 'Binding ID(1)', 
                 ISNULL(ITEM.IS_ADM_TKT, 'N') as 'Is Parent(2)', 
                 MW_PROD.PRODUCT_ID as 'Product ID (3)', 
                 MW_PROD.VARIANT_ID as 'Variant ID(4)', 
@@ -2189,155 +2291,227 @@ class Catalog:
                 MW_PROD.INVENTORY_ID as 'INVENTORY_ID(6)', 
 
 
-                
-                ITEM.USR_CPC_IS_ENABLED as 'Web Visible(5)', 
-                ITEM.ECOMM_NEW as 'IS_FEATURED(9)', 
-                ITEM.USR_IN_STORE_ONLY as 'IN_STORE_ONLY(10)',
-                ITEM.USR_IS_PREORDER as 'is_preorder(54)', 
-                ITEM.USR_PREORDER_REL_DT as 'preorder_release_date(55)', 
-                 
-                ITEM.USR_PROF_ALPHA_27 as 'SORT ORDER(11)', 
-                
-                ISNULL(ITEM.ADDL_DESCR_1, '') as 'WEB_TITLE(12)', 
-                ISNULL(ITEM.ADDL_DESCR_2, '') as 'META_TITLE(13)', 
-                ISNULL(USR_PROF_ALPHA_21, '') as 'META_DESCRIPTION(14)', 
-                ITEM.STAT as 'STATUS(16)', 
-                
-                ISNULL(ITEM.REG_PRC, 0) as 'REG_PRC(17)', 
-                ISNULL(ITEM.PRC_1, 0) as 'PRC_1(18)', 
-                PRC.PRC_2 as 'PRC_2(19)', 
-                
-                CAST(ISNULL(INV.QTY_AVAIL, 0) as INTEGER) as 'QUANTITY_AVAILABLE(20)', 
-                CAST(ISNULL(ITEM.PROF_NO_1, 0) as INTEGER) as 'BUFFER(21)', 
-                
+                                
+                ITEM.USR_CPC_IS_ENABLED as 'Web Visible(7)', 
+                ITEM.ECOMM_NEW as 'IS_FEATURED(8)', 
+                ITEM.USR_IN_STORE_ONLY as 'IN_STORE_ONLY(9)',
+                ITEM.USR_IS_PREORDER as 'is_preorder(10)', 
+                ITEM.USR_PREORDER_REL_DT as 'preorder_release_date(11)', 
+                ITEM.USR_PROF_ALPHA_19 as 'PREORDER_MESSAGE(12)', 
+
+                                
+                ITEM.USR_PROF_ALPHA_27 as 'SORT ORDER(13)', 
+                                
+                ITEM.ADDL_DESCR_1 as 'WEB_TITLE(14)', 
+                ITEM.ADDL_DESCR_2 as 'META_TITLE(15)', 
+                USR_PROF_ALPHA_21 as 'META_DESCRIPTION(16)', 
+                EC_ITEM_DESCR.HTML_DESCR as 'HTML_DESCRIPTION(17)', 
+
+                ITEM.STAT as 'STATUS(18)', 
+                                
+                ISNULL(ITEM.REG_PRC, 0) as 'REG_PRC(19)', 
+                ISNULL(ITEM.PRC_1, 0) as 'PRC_1(20)', 
+                PRC.PRC_2 as 'PRC_2(21)', 
+                ISNULL(ITEM.LST_COST, 0) as 'COST(22)', 
+
+                CAST(ISNULL(INV.QTY_AVAIL, 0) as INTEGER) as 'QUANTITY_AVAILABLE(23)', 
+                CAST(ISNULL(ITEM.PROF_NO_1, 0) as INTEGER) as 'BUFFER(24)', 
+                                
                 stuff(( select ',' + EC_CATEG_ITEM.CATEG_ID from EC_CATEG_ITEM where 
-                EC_CATEG_ITEM.ITEM_NO =ITEM.ITEM_NO for xml path('')),1,1,'') as 'categories(49)',
-                ITEM.ITEM_TYP as 'ITEM_TYPE(22)', 
-                ITEM.PROF_COD_1 as 'BRAND(8)', 
-                ITEM.LONG_DESCR as 'LONG_DESCR(23)', 
-                ISNULL(ITEM.USR_PROF_ALPHA_26, '') as 'TAGS(24)', 
-                ITEM.USR_PROF_ALPHA_19 as 'PREORDER_MESSAGE(25)', 
-                ISNULL(EC_ITEM_DESCR.HTML_DESCR, '') as 'HTML_DESCRIPTION(26)', 
-                
-                ISNULL(USR_PROF_ALPHA_22, '') as 'ALT_TEXT_1(27)', 
-                ISNULL(USR_PROF_ALPHA_23, '') as 'ALT_TEXT_2(28)', 
-                ISNULL(USR_PROF_ALPHA_24, '') as 'ALT_TEXT_3(29)', 
-                ISNULL(USR_PROF_ALPHA_25, '') as 'ALT_TEXT_4(30)', 
-                
-                PROF_ALPHA_1 as 'BOTANICAL_NAM(31)', 
-                ISNULL(PROF_ALPHA_2, '') as 'CLIMATE_ZONE(32)', 
-                ISNULL(PROF_ALPHA_3, '') as 'PLANT_TYPE(33)', 
-                ISNULL(PROF_ALPHA_4, '') as 'TYPE(34)', 
-                ISNULL(PROF_ALPHA_5, '') as 'HEIGHT(35)', 
-                ISNULL(USR_PROF_ALPHA_6, '') as 'WIDTH(36)', 
-                ISNULL(USR_PROF_ALPHA_7, '') as 'SUN_EXPOSURE(37)', 
-                ISNULL(USR_PROF_ALPHA_8, '') as 'BLOOM_TIME(38)', 
-                ISNULL(USR_PROF_ALPHA_9, '') as 'BLOOM_COLOR(39)', 
-                ISNULL(USR_PROF_ALPHA_10, '') as 'ATTRACTS_POLLINATORS(40)', 
-                ISNULL(USR_PROF_ALPHA_11, '') as 'GROWTH_RATE(41)', 
-                ISNULL(USR_PROF_ALPHA_12, '') as 'DEER_RESISTANT(42)', 
-                ISNULL(USR_PROF_ALPHA_13, '') as 'SOIL_TYPE(43)', 
-                ISNULL(USR_PROF_ALPHA_14, '') as 'COLOR(44)', 
-                ISNULL(USR_PROF_ALPHA_15, '') as 'SIZE(45)', 
-                ITEM.LST_MAINT_DT as 'LST_MAINT_DT(46)', 
-                ISNULL(ITEM.LST_COST, 0) as 'LAST_COST(47)', 
-                ITEM.ITEM_NO as 'ITEM_NO (48)', 
-                
-                MW_PROD.BINDING_ID as 'mw_binding_id(53)', 
+                EC_CATEG_ITEM.ITEM_NO =ITEM.ITEM_NO for xml path('')),1,1,'') as 'categories(25)',
+                ITEM.ITEM_TYP as 'ITEM_TYPE(26)', 
+                ITEM.PROF_COD_1 as 'BRAND(27)', 
+                ITEM.LONG_DESCR as 'LONG_DESCR(28)', 
+                ISNULL(ITEM.USR_PROF_ALPHA_26, '') as 'TAGS(29)', 
+                                
+                USR_PROF_ALPHA_22 as 'ALT_TEXT_1(30)', 
+                USR_PROF_ALPHA_23 as 'ALT_TEXT_2(31)', 
+                USR_PROF_ALPHA_24 as 'ALT_TEXT_3(32)', 
+                USR_PROF_ALPHA_25 as 'ALT_TEXT_4(33)', 
+                                
+                BOTAN_NAM as 'BOTANICAL_NAM(34)', 
+                ZONE_MIN as 'CLIMATE_ZONE MIN(35)',
+                ZONE_MAX as 'CLIMATE_ZONE MAX(36)',
+                PROF_ALPHA_3 as 'PLANT_TYPE(37)', 
+                PROF_ALPHA_4 as 'TYPE(38)', 
 
-                ITEM.USR_PROF_ALPHA_18 as 'CUSTOM_URL(56)', 
+                HEIGHT_MIN as 'HEIGHT_MIN(39)',
+                HEIGHT_MAX as 'HEIGHT_MAX(40)',
+                PROF_COD_3 as 'HEIGHT_UNIT(41)',
+                
+                WIDTH_MIN as 'WIDTH_MIN(42)',
+                WIDTH_MAX as 'WIDTH_MAX(43)',
+                PROF_COD_4 as 'WIDTH_UNIT(44)', 
 
-                MW_PROD.CF_BOTAN_NAM as 'custom_botanical_name(58)',
-                MW_PROD.CF_CLIM_ZON as 'custom_climate_zone(59)',
-                MW_PROD.CF_PLANT_TYP as 'custom_plant_type(60)',
-                MW_PROD.CF_TYP as 'custom_type(61)',
-                MW_PROD.CF_HEIGHT as 'custom_height(62)',
-                MW_PROD.CF_WIDTH as 'custom_width(63)',
-                MW_PROD.CF_SUN_EXP as 'custom_sun_exposure(64)',
-                MW_PROD.CF_BLOOM_TIM as 'custom_bloom_time(65)',
-                MW_PROD.CF_FLOW_COL as 'custom_bloom_color(66)',
-                MW_PROD.CF_POLLIN as 'custom_attracts_pollinators(67)',
-                MW_PROD.CF_GROWTH_RT as 'custom_growth_rate(68)',
-                MW_PROD.CF_DEER_RES as 'custom_deer_resistant(69)',
-                MW_PROD.CF_SOIL_TYP as 'custom_soil_type(70)',
-                MW_PROD.CF_COLOR as 'custom_color(71)',
-                MW_PROD.CF_SIZE as 'custom_size(72)'
+                FULL_SUN as '45',
+                PART_SUN as '46',
+                PART_SHADE as '47',
+                FULL_SHADE as '48',
+
+                BLOOM_SPRING as 'BLOOM_SPRING(49)',
+                BLOOM_SUMMER as 'BLOOM_SUMMER(50)',
+                BLOOM_FALL as 'BLOOM_FALL(51)',
+                BLOOM_WINTER as 'BLOOM_WINTER(52)',
+
+                COLOR_PINK as 'COLOR_PINK(53)',
+                COLOR_RED as 'COLOR_RED(54)',
+                COLOR_ORANGE as 'COLOR_ORANGE(55)',
+                COLOR_YELLOW as 'COLOR_YELLOW(56)',
+                COLOR_GREEN as 'COLOR_GREEN(57)',
+                COLOR_BLUE as 'COLOR_BLUE(58)',
+                COLOR_PURPLE as 'COLOR_PURPLE(59)',
+                COLOR_WHITE as 'COLOR_WHITE(60)',
+                COLOR_CUSTOM as 'COLOR_CUSTOM(61)',
+
+                LOW_MAINT as 'LOW_MAINT(62)',
+                EVERGREEN as 'EVERGREEN(63)',
+                PRIVACY as 'PRIVACY(64)',
+                SPECIMEN as 'SPECIMENT(65)',
+                DROUGHT_TOL as 'DROUGHT_TOL(66)',
+                HEAT_TOL as 'HEAT_TOL(67)',
+                COLD_TOL as 'COLD_TOL(68)',
+                                
+                FAST_GROW as 'FAST_GROW(69)',
+                ATTRCT_BEES as 'ATTRCT_BEES(70)',
+                ATTR_WILDLIFE as 'ATTR_WILDLIFE(71)',
+                NATIVE as 'NATIVE(72)',
+                FRAGRANT as 'FRAGRANT(73)',
+                DEER_RESIST as 'DEER_RESIST(74)',
+                EASY_TO_GROW as 'EASY_TO_GROW(75)',
+                LOW_LIGHT as 'LOW_LIGHT(76)',
+                TROPICAL as 'TROPICAL(77)',
+                VINING as 'VINING(78)',
+                AIR_PURE as 'AIR_PURE(79)',
+                PET_FRIENDLY as 'PET_FRIENDLY(80)',
+                SLOW_GROW as 'SLOW_GROW(81)',
+                EDIBLE as 'EDIBLE(82)',
+
+                ITEM.LST_MAINT_DT as 'LST_MAINT_DT(83)', 
+                WEIGHT as 'WEIGHT(84)',
+                IS_TXBL as 'TAXABLE(85)',
+                MW_PROD.BINDING_ID as 'MW_BINDING_ID(86)',
+                USR_PROF_ALPHA_17 as 'CUSTOM_SIZE(87)'
 
                 FROM IM_ITEM ITEM
                 LEFT OUTER JOIN IM_PRC PRC ON ITEM.ITEM_NO=PRC.ITEM_NO
                 LEFT OUTER JOIN IM_INV INV ON ITEM.ITEM_NO=INV.ITEM_NO
                 LEFT OUTER JOIN EC_ITEM_DESCR ON ITEM.ITEM_NO=EC_ITEM_DESCR.ITEM_NO
-                LEFT OUTER JOIN {creds.shopify_product_table} MW_PROD ON ITEM.ITEM_NO=MW_PROD.ITEM_NO
+                LEFT OUTER JOIN  {creds.shopify_product_table} MW_PROD ON ITEM.ITEM_NO=MW_PROD.ITEM_NO
                 LEFT OUTER JOIN IM_ITEM_PROF_COD COD ON ITEM.PROF_COD_1 = COD.PROF_COD
                 WHERE ITEM.ITEM_NO = '{self.sku}'"""
 
                 item = self.db.query_db(query)
                 if item is not None:
                     details = {
+                        # Product ID Info
                         'mw_db_id': item[0][0],
                         'binding_id': item[0][1],
+                        'mw_binding_id': item[0][86],
                         'is_bound': True if item[0][1] else False,
                         'is_parent': item[0][2],
                         'product_id': item[0][3],
                         'variant_id': item[0][4],
                         'variant_name': item[0][5],
                         'inventory_id': item[0][6],
-                        'web_visible': True if item[0][5] == 'Y' else False,
-                        'gift_wrap': True if item[0][7] == 'Y' else False,
-                        'brand': item[0][8],
-                        'is_featured': True if item[0][9] == 'Y' else False,
-                        'in_store_only': True if item[0][10] == 'Y' else False,
-                        'sort_order': int(item[0][11]) if item[0][11] else 0,
-                        'web_title': item[0][12],
-                        'meta_title': item[0][13],
-                        'meta_description': item[0][14],
-                        'status': item[0][16],
+                        # Product Status
+                        'web_visible': True if item[0][7] == 'Y' else False,
+                        'is_featured': True if item[0][8] == 'Y' else False,
+                        'in_store_only': True if item[0][9] == 'Y' else False,
+                        'is_preorder': True if item[0][10] == 'Y' else False,
+                        'preorder_release_date': convert_to_utc(item[0][11]) if item[0][11] else None,
+                        'preorder_message': item[0][12],
+                        'sort_order': int(item[0][13]) if item[0][13] else 0,
+                        # Product Description
+                        'web_title': item[0][14],
+                        'meta_title': item[0][15],
+                        'meta_description': item[0][16],
+                        'html_description': item[0][17],
+                        'status': item[0][18],
                         # Product Pricing
-                        'reg_price': item[0][17],
-                        'price_1': item[0][18],
-                        'price_2': item[0][19],
+                        'reg_price': item[0][19],
+                        'price_1': item[0][20],
+                        'price_2': item[0][21],
+                        'cost': item[0][22],
                         # # Inventory Levels
-                        'quantity_available': item[0][20],
-                        'buffer': item[0][21],
+                        'quantity_available': item[0][23],
+                        'buffer': item[0][24],
+                        # E-Commerce Categories
+                        'cp_ecommerce_categories': str(item[0][24]).split(',') if item[0][25] else [],
                         # Additional Details
-                        'item_type': item[0][22],
-                        'search_keywords': item[0][24],
-                        'preorder_message': item[0][25],
-                        'html_description': item[0][26],
-                        'alt_text_1': item[0][27],
-                        'alt_text_2': item[0][28],
-                        'alt_text_3': item[0][29],
-                        'alt_text_4': item[0][30],
+                        'item_type': item[0][26],  # Inventory/Non-Inventory
+                        'brand': item[0][27],
+                        'long_descr': item[0][28],
+                        'tags': item[0][29],
+                        # Alt Text
+                        'alt_text_1': item[0][30],
+                        'alt_text_2': item[0][31],
+                        'alt_text_3': item[0][32],
+                        'alt_text_4': item[0][33],
                         # Custom Fields
-                        'custom_botanical_name': {'id': item[0][58], 'value': item[0][31]},
-                        'custom_climate_zone': {'id': item[0][59], 'value': item[0][32]},
-                        'custom_plant_type': {'id': item[0][60], 'value': item[0][33]},
-                        'custom_type': {'id': item[0][61], 'value': item[0][34]},
-                        'custom_height': {'id': item[0][62], 'value': item[0][35]},
-                        'custom_width': {'id': item[0][63], 'value': item[0][36]},
-                        'custom_sun_exposure': {'id': item[0][64], 'value': item[0][37]},
-                        'custom_bloom_time': {'id': item[0][65], 'value': item[0][38]},
-                        'custom_bloom_color': {'id': item[0][66], 'value': item[0][39]},
-                        'custom_attracts_pollinators': {'id': item[0][67], 'value': item[0][40]},
-                        'custom_growth_rate': {'id': item[0][68], 'value': item[0][41]},
-                        'custom_deer_resistant': {'id': item[0][69], 'value': item[0][42]},
-                        'custom_soil_type': {'id': item[0][70], 'value': item[0][43]},
-                        'custom_color': {'id': item[0][71], 'value': item[0][44]},
-                        'custom_size': {'id': item[0][72], 'value': item[0][45]},
-                        'lst_maint_dt': item[0][46],
-                        'cost': item[0][47],
-                        'cp_ecommerce_categories': str(item[0][49]).split(',') if item[0][49] else [],
-                        'custom_url': item[0][56],
-                        'long_descr': item[0][52],
-                        'mw_binding_id': item[0][53],
-                        'is_preorder': True if item[0][54] == 'Y' else False,
-                        'preorder_release_date': convert_to_utc(item[0][55]) if item[0][55] else None,
+                        'custom_botanical_name': item[0][34],
+                        'custom_climate_zone_min': item[0][35],
+                        'custom_climate_zone_max': item[0][36],
+                        'custom_plant_type': item[0][37],
+                        'custom_type': item[0][38],  # Shows on Shopify Catalog Backend
+                        'custom_height_min': item[0][39],
+                        'custom_height_max': item[0][40],
+                        'custom_height_unit': item[0][41],
+                        'custom_width_min': item[0][42],
+                        'custom_width_max': item[0][43],
+                        'custom_width_unit': item[0][44],
+                        'custom_size': item[0][87],
+                        # Light Requirements
+                        'custom_full_sun': True if item[0][45] == 'Y' else False,
+                        'custom_part_sun': True if item[0][46] == 'Y' else False,
+                        'custom_part_shade': True if item[0][47] == 'Y' else False,
+                        'custom_full_shade': True if item[0][48] == 'Y' else False,
+                        'custom_bloom_spring': True if item[0][49] == 'Y' else False,
+                        'custom_bloom_summer': True if item[0][50] == 'Y' else False,
+                        'custom_bloom_fall': True if item[0][51] == 'Y' else False,
+                        'custom_bloom_winter': True if item[0][52] == 'Y' else False,
+                        # Colors
+                        'custom_color_pink': True if item[0][53] == 'Y' else False,
+                        'custom_color_red': True if item[0][54] == 'Y' else False,
+                        'custom_color_orange': True if item[0][55] == 'Y' else False,
+                        'custom_color_yellow': True if item[0][56] == 'Y' else False,
+                        'custom_color_green': True if item[0][57] == 'Y' else False,
+                        'custom_color_blue': True if item[0][58] == 'Y' else False,
+                        'custom_color_purple': True if item[0][59] == 'Y' else False,
+                        'custom_color_white': True if item[0][60] == 'Y' else False,
+                        'custom_color_custom': True if item[0][61] == 'Y' else False,
+                        # Features
+                        'custom_low_maintenance': True if item[0][62] == 'Y' else False,
+                        'custom_evergreen': True if item[0][63] == 'Y' else False,
+                        'custom_privacy': True if item[0][64] == 'Y' else False,
+                        'custom_specimen': True if item[0][65] == 'Y' else False,
+                        'custom_drought_tolerance': True if item[0][66] == 'Y' else False,
+                        'custom_heat_tolerance': True if item[0][67] == 'Y' else False,
+                        'custom_cold_tolerance': True if item[0][68] == 'Y' else False,
+                        'custom_fast_growth': True if item[0][69] == 'Y' else False,
+                        'custom_attracts_pollinators': True if item[0][70] == 'Y' else False,
+                        'custom_attracts_wildlife': True if item[0][71] == 'Y' else False,
+                        'custom_native': True if item[0][72] == 'Y' else False,
+                        'custom_fragrant': True if item[0][73] == 'Y' else False,
+                        'custom_deer_resistant': True if item[0][74] == 'Y' else False,
+                        'custom_easy_to_grow': True if item[0][75] == 'Y' else False,
+                        'custom_low_light': True if item[0][76] == 'Y' else False,
+                        'custom_tropical': True if item[0][77] == 'Y' else False,
+                        'custom_vining': True if item[0][78] == 'Y' else False,
+                        'custom_air_purifying': True if item[0][79] == 'Y' else False,
+                        'custom_pet_friendly': True if item[0][80] == 'Y' else False,
+                        'custom_slow_growth': True if item[0][81] == 'Y' else False,
+                        'custom_edible': True if item[0][82] == 'Y' else False,
+                        # Dates
+                        'lst_maint_dt': item[0][83],
+                        # Shipping
+                        'weight': item[0][84],
+                        'taxable': True if item[0][85] == 'Y' else False,
                     }
                     return details
 
             def validate_product(self):
                 # Test for missing variant name
-                if self.variant_name == '':
+                if not self.variant_name:
                     Catalog.error_handler.add_error_v(
                         f'Product {self.sku} is missing a variant name. Validation failed.',
                         origin='Product Validation',
@@ -2351,6 +2525,15 @@ class Catalog:
                     raise Exception(f'Product {self.sku} is missing a price 1. Validation failed.')
 
                 return True
+
+            def get_size_range(self, min, max, unit=''):
+                """Return a list of size values between min and max"""
+                print(f'in get size range: min: {min}, max: {max}, unit:{unit}')
+                if min and max:
+                    # use regex to extract numbers from beginning of string
+                    min = int(re.search(r'\d+', str(min)).group())
+                    max = int(re.search(r'\d+', str(max)).group())
+                    return [f'{x} {unit}' for x in range(min, max + 1)]
 
             def get_local_product_images(self):
                 """Get local image information for product"""
@@ -2625,7 +2808,7 @@ class Catalog:
                     Catalog.logger.log(f'Resized {self.image_name}')
 
 
-if __name__ == '__main__':  #
+if __name__ == '__main__':
     from datetime import datetime
 
     cat = Catalog(last_sync=datetime(2024, 7, 27))
