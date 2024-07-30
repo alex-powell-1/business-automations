@@ -374,10 +374,10 @@ class Database:
 
             def sync(product):
                 for variant in product.variants:
-                    if variant.db_id is None:
-                        Database.Shopify.Product.Variant.insert(product=product, variant=variant)
-                    else:
+                    if variant.mw_db_id:
                         Database.Shopify.Product.Variant.update(product=product, variant=variant)
+                    else:
+                        Database.Shopify.Product.Variant.insert(product=product, variant=variant)
 
                 for image in product.images:
                     if image.db_id is None:
@@ -436,7 +436,9 @@ class Database:
 
                     insert_query = f"""
                         INSERT INTO {Database.Shopify.Product.table} (ITEM_NO, BINDING_ID, IS_PARENT, 
-                        PRODUCT_ID, VARIANT_ID, INVENTORY_ID, VARIANT_NAME, OPTION_ID, OPTION_VALUE_ID, CATEG_ID
+                        PRODUCT_ID, VARIANT_ID, INVENTORY_ID, VARIANT_NAME, OPTION_ID, OPTION_VALUE_ID, CATEG_ID, 
+                        CF_BOTAN_NAM, CF_PLANT_TYP, CF_HEIGHT, CF_WIDTH, CF_CLIM_ZON, CF_CLIM_ZON_LST,
+                        CF_COLOR, CF_SIZE, CF_BLOOM_SEAS, CF_LIGHT_REQ, CF_FEATURES
                         )
                          
                         VALUES ('{variant.sku}', {f"'{product.binding_id}'" if product.binding_id else 'NULL'}, 
@@ -446,28 +448,20 @@ class Database:
                         {f"'{variant.variant_name}'" if variant.variant_name else "NULL"}, 
                         {variant.option_id if variant.option_id else "NULL"}, 
                         {variant.option_value_id if variant.option_value_id else "NULL"}, 
-                        {f"'{categories_string}'" if categories_string else "NULL"}
+                        {f"'{categories_string}'" if categories_string else "NULL"},
+                        {variant.meta_botanical_name['id'] if variant.meta_botanical_name['id'] else "NULL"},
+                        {variant.meta_plant_type['id'] if variant.meta_plant_type['id'] else "NULL"},
+                        {variant.meta_height['id'] if variant.meta_height['id'] else "NULL"},
+                        {variant.meta_width['id'] if variant.meta_width['id'] else "NULL"},
+                        {variant.meta_climate_zone['id'] if variant.meta_climate_zone['id'] else "NULL"},
+                        {variant.meta_climate_zone_list['id'] if variant.meta_climate_zone_list['id'] else "NULL"},
+                        {variant.meta_colors['id'] if variant.meta_colors['id'] else "NULL"},
+                        {variant.meta_size['id'] if variant.meta_size['id'] else "NULL"},
+                        {variant.meta_bloom_season['id'] if variant.meta_bloom_season['id'] else "NULL"},
+                        {variant.meta_light_requirements['id'] if variant.meta_light_requirements['id'] else "NULL"},
+                        {variant.meta_features['id'] if variant.meta_features['id'] else "NULL"}
                         )
                         """
-                    future_values_add = """{variant.botanical_name_id if variant.botanical_name_id else "NULL"},
-                        {variant.climate_zone_id if variant.climate_zone_id else "NULL"},
-                        {variant.plant_type_id if variant.plant_type_id else "NULL"},
-                        {variant.type_id if variant.type_id else "NULL"},
-                        {variant.height_id if variant.height_id else "NULL"},
-                        {variant.width_id if variant.width_id else "NULL"},
-                        {variant.sun_exposure_id if variant.sun_exposure_id else "NULL"},
-                        {variant.bloom_time_id if variant.bloom_time_id else "NULL"},
-                        {variant.flower_color_id if variant.flower_color_id else "NULL"},
-                        {variant.pollinator_id if variant.pollinator_id else "NULL"},
-                        {variant.growth_rate_id if variant.growth_rate_id else "NULL"},
-                        {variant.deer_resistant_id if variant.deer_resistant_id else "NULL"},
-                        {variant.soil_type_id if variant.soil_type_id else "NULL"},
-                        {variant.color_id if variant.color_id else "NULL"},
-                        {variant.size_id if variant.size_id else "NULL"}"""
-
-                    future_columns = """CF_BOTAN_NAM, CF_CLIM_ZON, CF_PLANT_TYP, CF_TYP, CF_HEIGHT, CF_WIDTH, CF_SUN_EXP, CF_BLOOM_TIM,
-                        CF_FLOW_COL, CF_POLLIN, CF_GROWTH_RT, CF_DEER_RES, CF_SOIL_TYP, CF_COLOR, CF_SIZE"""
-
                     response = product.db.query_db(insert_query, commit=True)
                     if response['code'] == 200:
                         Database.logger.success(
@@ -498,25 +492,20 @@ class Database:
                         OPTION_ID = {variant.option_id if variant.option_id else "NULL"}, 
                         OPTION_VALUE_ID = {variant.option_value_id if variant.option_value_id else "NULL"},  
                         CATEG_ID = {f"'{categories_string}'" if categories_string else "NULL"}, 
+                        CF_BOTAN_NAM = {variant.meta_botanical_name['id'] if variant.meta_botanical_name['id'] else "NULL"},
+                        CF_PLANT_TYP = {variant.meta_plant_type['id'] if variant.meta_plant_type['id'] else "NULL"},
+                        CF_HEIGHT = {variant.meta_height['id'] if variant.meta_height['id'] else "NULL"},
+                        CF_WIDTH = {variant.meta_width['id'] if variant.meta_width['id'] else "NULL"},
+                        CF_CLIM_ZON = {variant.meta_climate_zone['id'] if variant.meta_climate_zone['id'] else "NULL"},
+                        CF_CLIM_ZON_LST = {variant.meta_climate_zone_list['id'] if variant.meta_climate_zone_list['id'] else "NULL"},
+                        CF_COLOR = {variant.meta_colors['id'] if variant.meta_colors['id'] else "NULL"},
+                        CF_SIZE = {variant.meta_size['id'] if variant.meta_size['id'] else "NULL"},
+                        CF_BLOOM_SEAS = {variant.meta_bloom_season['id'] if variant.meta_bloom_season['id'] else "NULL"},
+                        CF_LIGHT_REQ = {variant.meta_light_requirements['id'] if variant.meta_light_requirements['id'] else "NULL"},
+                        CF_FEATURES = {variant.meta_features['id'] if variant.meta_features['id'] else "NULL"},
                         LST_MAINT_DT = GETDATE() 
-                        WHERE ID = {variant.db_id}
+                        WHERE ID = {variant.mw_db_id}
                         """
-                    future = """CF_BOTAN_NAM = {variant.custom_botanical_name['id'] if variant.botanical_name['id'] else "NULL"},
-                        CF_CLIM_ZON = {variant.custom_climate_zone['id'] if variant.climate_zone_id['id'] else "NULL"},
-                        CF_PLANT_TYP = {variant.plant_type_id if variant.plant_type_id else "NULL"},
-                        CF_TYP = {variant.type_id if variant.type_id else "NULL"},
-                        CF_HEIGHT = {variant.height_id if variant.height_id else "NULL"},
-                        CF_WIDTH = {variant.width_id if variant.width_id else "NULL"},
-                        CF_SUN_EXP = {variant.sun_exposure_id if variant.sun_exposure_id else "NULL"},
-                        CF_BLOOM_TIM = {variant.bloom_time_id if variant.bloom_time_id else "NULL"},
-                        CF_FLOW_COL = {variant.flower_color_id if variant.flower_color_id else "NULL"},
-                        CF_POLLIN = {variant.pollinator_id if variant.pollinator_id else "NULL"},
-                        CF_GROWTH_RT = {variant.growth_rate_id if variant.growth_rate_id else "NULL"},
-                        CF_DEER_RES = {variant.deer_resistant_id if variant.deer_resistant_id else "NULL"},
-                        CF_SOIL_TYP = {variant.soil_type_id if variant.soil_type_id else "NULL"},
-                        CF_COLOR = {variant.color_id if variant.color_id else "NULL"},
-                        CF_SIZE = {variant.size_id if variant.size_id else "NULL"},"""
-
                     response = Database.db.query_db(update_query, commit=True)
                     if response['code'] == 200:
                         Database.logger.success(
@@ -558,7 +547,7 @@ class Database:
                     PRODUCT_ID, IMAGE_ID, THUMBNAIL, IMAGE_NUMBER, SORT_ORDER,
                     IS_BINDING_IMAGE, BINDING_ID, IS_VARIANT_IMAGE, DESCR, SIZE)
                     VALUES (
-                    '{image.image_name}', {f"'{image.sku}'" if image.sku != '' else 'NULL'},
+                    '{image.name}', {f"'{image.sku}'" if image.sku != '' else 'NULL'},
                     '{image.file_path}', {image.product_id}, {image.image_id}, '{1 if image.is_thumbnail else 0}', 
                     '{image.image_number}', '{image.sort_order}', '{image.is_binding_image}',
                     {f"'{image.binding_id}'" if image.binding_id else 'NULL'}, '{image.is_variant_image}',
@@ -566,18 +555,18 @@ class Database:
                     {image.size})"""
                     insert_img_response = Database.db.query_db(img_insert, commit=True)
                     if insert_img_response['code'] == 200:
-                        Database.logger.success(f'SQL INSERT Image {image.image_name}: Success')
+                        Database.logger.success(f'SQL INSERT Image {image.name}: Success')
                     else:
-                        error = f'Error inserting image {image.image_name} into Middleware. \nQuery: {img_insert}\nResponse: {insert_img_response}'
+                        error = f'Error inserting image {image.name} into Middleware. \nQuery: {img_insert}\nResponse: {insert_img_response}'
                         Database.error_handler.add_error_v(
-                            error=error, origin=f'Database.Shopify.Product.Image.insert({image.image_name})'
+                            error=error, origin=f'Database.Shopify.Product.Image.insert({image.name})'
                         )
                         raise Exception(error)
 
                 def update(image):
                     q = f"""
                     UPDATE {creds.shopify_image_table}
-                    SET IMAGE_NAME = '{image.image_name}', ITEM_NO = '{image.sku}', FILE_PATH = '{image.file_path}',
+                    SET IMAGE_NAME = '{image.name}', ITEM_NO = '{image.sku}', FILE_PATH = '{image.file_path}',
                     PRODUCT_ID = '{image.product_id}', IMAGE_ID = '{image.image_id}',
                     THUMBNAIL = '{1 if image.is_thumbnail else 0}', IMAGE_NUMBER = '{image.image_number}',
                     SORT_ORDER = '{image.sort_order}', IS_BINDING_IMAGE = '{image.is_binding_image}',
@@ -589,13 +578,11 @@ class Database:
 
                     res = Database.db.query_db(q, commit=True)
                     if res['code'] == 200:
-                        Database.logger.success(f'SQL UPDATE Image {image.image_name}: Success')
+                        Database.logger.success(f'SQL UPDATE Image {image.name}: Success')
                     else:
-                        error = (
-                            f'Error updating image {image.image_name} in Middleware. \nQuery: {q}\nResponse: {res}'
-                        )
+                        error = f'Error updating image {image.name} in Middleware. \nQuery: {q}\nResponse: {res}'
                         Database.error_handler.add_error_v(
-                            error=error, origin=f'Database.Shopify.Product.Image.update({image.image_name})'
+                            error=error, origin=f'Database.Shopify.Product.Image.update({image.name})'
                         )
                         raise Exception(error)
 
@@ -604,15 +591,13 @@ class Database:
                         q = f'DELETE FROM {creds.shopify_image_table} WHERE IMAGE_ID = {image_id}'
                     else:
                         if image.image_id is None:
-                            image.image_id = Database.Shopify.Product.Image.get_image_id(filename=image.image_name)
+                            image.image_id = Database.Shopify.Product.Image.get_image_id(filename=image.name)
                         q = f'DELETE FROM {creds.shopify_image_table} WHERE IMAGE_ID = {image.image_id}'
                     res = Database.db.query_db(q, commit=True)
                     if res['code'] == 200:
                         Database.logger.success(f'Query: {q}\nSQL DELETE Image')
                     else:
-                        error = (
-                            f'Error deleting image {image.image_name} in Middleware. \nQuery: {q}\nResponse: {res}'
-                        )
+                        error = f'Error deleting image {image.name} in Middleware. \nQuery: {q}\nResponse: {res}'
                         Database.error_handler.add_error_v(
                             error=error, origin=f'Database.Shopify.Product.Image.delete(query:\n{q})'
                         )
@@ -630,28 +615,26 @@ class Database:
                 query = f'SELECT * FROM {creds.shopify_metafield_table} {where_filter}'
                 response = Database.db.query_db(query)
                 if response is not None:
-                    result = []
+                    result = {}
                     for row in response:
-                        result.append(
-                            {
-                                'META_ID': row[0],
-                                'NAME': row[1],
-                                'DESCR': row[2],
-                                'NAME_SPACE': row[3],
-                                'META_KEY': row[4],
-                                'TYPE': row[5],
-                                'PINNED_POS': row[6],
-                                'OWNER_TYPE': row[7],
-                                'VALIDATIONS': [
-                                    {'NAME': row[8], 'TYPE': row[9], 'VALUE': row[10]},
-                                    {'NAME': row[11], 'TYPE': row[12], 'VALUE': row[13]},
-                                    {'NAME': row[14], 'TYPE': row[15], 'VALUE': row[16]},
-                                    {'NAME': row[17], 'TYPE': row[18], 'VALUE': row[19]},
-                                    {'NAME': row[20], 'TYPE': row[21], 'VALUE': row[22]},
-                                ],
-                                'PIN': row[23],
-                            }
-                        )
+                        result[row[1]] = {
+                            'META_ID': row[0],
+                            'NAME': row[1],
+                            'DESCR': row[2],
+                            'NAME_SPACE': row[3],
+                            'META_KEY': row[4],
+                            'TYPE': row[5],
+                            'PINNED_POS': row[6],
+                            'OWNER_TYPE': row[7],
+                            'VALIDATIONS': [
+                                {'NAME': row[8], 'TYPE': row[9], 'VALUE': row[10]},
+                                {'NAME': row[11], 'TYPE': row[12], 'VALUE': row[13]},
+                                {'NAME': row[14], 'TYPE': row[15], 'VALUE': row[16]},
+                                {'NAME': row[17], 'TYPE': row[18], 'VALUE': row[19]},
+                                {'NAME': row[20], 'TYPE': row[21], 'VALUE': row[22]},
+                            ],
+                            'PIN': row[23],
+                        }
                     return result
 
             def insert(values):
