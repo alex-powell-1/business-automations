@@ -98,40 +98,42 @@ class Shopify:
                 def get_money(money: dict):
                     return money['presentmentMoney']['amount']
 
-                shopify_products.append(
-                    {
-                        'id': item['id'],
-                        'sku': item['sku'],
-                        'type': 'giftcertificate' if item['isGiftCard'] else 'physical',
-                        'base_price': get_money(item['discountedTotalSet']),
-                        'price_ex_tax': get_money(item['discountedTotalSet']),
-                        'price_inc_tax': get_money(item['discountedTotalSet']),
-                        'price_tax': 0,
-                        'base_total': get_money(item['discountedTotalSet']),
-                        'total_ex_tax': get_money(item['discountedTotalSet']),
-                        'total_inc_tax': get_money(item['discountedTotalSet']),
-                        'total_tax': 0,
-                        'quantity': item['quantity'],
-                        'base_cost_price': get_money(item['discountedTotalSet']),
-                        'cost_price_inc_tax': get_money(item['discountedTotalSet']),
-                        'cost_price_ex_tax': get_money(item['discountedTotalSet']),
-                        'cost_price_tax': 0,
-                        'is_refunded': False,
-                        'quantity_refunded': 0,
-                        'refund_amount': 0,
-                        'return_id': 0,
-                        'fixed_shipping_cost': 0,
-                        'gift_certificate_id': None,
-                        'applied_discounts': [],
-                        'discounted_total_inc_tax': get_money(item['discountedTotalSet']),
-                    }
-                )
+                price = float(get_money(item['originalTotalSet']))
+
+                pl = {
+                    'id': item['id'],
+                    'sku': item['sku'],
+                    'type': 'giftcertificate' if item['isGiftCard'] else 'physical',
+                    'base_price': price,
+                    'price_ex_tax': price,
+                    'price_inc_tax': price,
+                    'price_tax': 0,
+                    'base_total': price,
+                    'total_ex_tax': price,
+                    'total_inc_tax': price,
+                    'total_tax': 0,
+                    'quantity': item['quantity'],
+                    'is_refunded': False,
+                    'quantity_refunded': 0,
+                    'refund_amount': 0,
+                    'return_id': 0,
+                    'fixed_shipping_cost': 0,
+                    'gift_certificate_id': None,
+                    'discounted_total_inc_tax': get_money(item['discountedTotalSet']),
+                    'applied_discounts': [],
+                }
+
+                shopify_products.append(pl)
 
             def get_money(money: dict):
                 return money['presentmentMoney']['amount']
 
             snode = shopify_order['node']
             discountedPrice = get_money(snode['shippingLine']['discountedPriceSet'])
+
+            hdsc = float(get_money(snode['totalDiscountsSet']))
+
+            price = float(get_money(snode['currentSubtotalPriceSet'])) + hdsc
 
             bc_order = {
                 'id': snode['name'],
@@ -140,24 +142,13 @@ class Shopify:
                 'date_modified': snode['updatedAt'],
                 'status_id': 11,  # TODO: Add status id
                 'status': snode['displayFulfillmentStatus'],
-                'subtotal_ex_tax': get_money(snode['currentSubtotalPriceSet']),
-                'subtotal_inc_tax': get_money(snode['currentSubtotalPriceSet']),
-                'base_shipping_cost': discountedPrice,
-                'shipping_cost_ex_tax': discountedPrice,
-                'shipping_cost_inc_tax': discountedPrice,
-                'shipping_cost_tax': discountedPrice,
-                'shipping_cost_tax_class_id': 2,  # TODO: Add shipping tax class id
-                'base_handling_cost': discountedPrice,
-                'handling_cost_ex_tax': discountedPrice,
-                'handling_cost_inc_tax': discountedPrice,
-                'handling_cost_tax': discountedPrice,
-                'handling_cost_tax_class_id': 2,  # TODO: Add handling tax class id
-                'base_wrapping_cost': discountedPrice,
-                'wrapping_cost_ex_tax': discountedPrice,
-                'wrapping_cost_inc_tax': discountedPrice,
-                'wrapping_cost_tax': discountedPrice,
-                'total_ex_tax': get_money(snode['currentTotalPriceSet']),
-                'total_inc_tax': get_money(snode['currentTotalPriceSet']),
+                'subtotal_ex_tax': price,
+                'subtotal_inc_tax': price,
+                'base_shipping_cost': float(
+                    snode['shippingLine']['discountedPriceSet']['presentmentMoney']['amount']
+                ),
+                'total_ex_tax': price,
+                'total_inc_tax': price,
                 'items_total': snode['subtotalLineItemsQuantity'],
                 'items_shipped': 0,  # TODO: Add items shipped
                 'payment_method': None,  # TODO: Add payment method
@@ -166,7 +157,7 @@ class Shopify:
                 'store_credit_amount': '0.0000',  # TODO: Add store credit amount
                 'gift_certificate_amount': '0.0000',  # TODO: Add gift certificate amount
                 'customer_message': snode['note'],
-                'discount_amount': '0.0000',  # TODO: Add discount amount
+                'discount_amount': discountedPrice,  # TODO: Add discount amount
                 'coupon_discount': '0.0000',  # TODO: Add coupon discount
                 'shipping_address_count': 1,  # TODO: Add shipping address count
                 'billing_address': {
@@ -201,8 +192,6 @@ class Shopify:
                     ]
                 },
                 'coupons': {'url': []},
-                'store_default_currency_code': 'USD',
-                'custom_status': 'Awaiting Fulfillment',  # TODO: Add custom status
                 # "transactions": {
                 #     "data": [
                 #         {
@@ -254,6 +243,9 @@ class Shopify:
                 #     },
                 # },
             }
+
+            if hdsc > 0:
+                bc_order['coupons']['url'] = [{'amount': hdsc}]
 
             return bc_order
 

@@ -165,6 +165,7 @@ class OrderAPI(DocumentAPI):
                 }
 
                 line_items.append(line_item)
+                print('LINE ITEM INCREASED')
                 self.total_lin_items += 1
 
         return line_items
@@ -463,9 +464,9 @@ class OrderAPI(DocumentAPI):
 
         print('here 1')
 
-        print(self.get_line_items_from_bc_products(bc_products))
-        print(self.get_gift_cards_from_bc_products(bc_products))
-        print(self.get_payment_from_bc_order(bc_order))
+        # print(self.get_line_items_from_bc_products(bc_products))
+        # print(self.get_gift_cards_from_bc_products(bc_products))
+        # print(self.get_payment_from_bc_order(bc_order))
 
         print('here 3')
         payload = {

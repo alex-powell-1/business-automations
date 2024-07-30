@@ -74,6 +74,18 @@ query order($id: ID!) {
                         id
                         name
 
+                        originalTotalSet {
+                            presentmentMoney {
+                                amount
+                            }
+                        }
+
+                        totalDiscountSet {
+                            presentmentMoney {
+                                amount
+                            }
+                        }
+
                         discountedTotalSet {
                             presentmentMoney {
                                 amount
@@ -152,6 +164,16 @@ query order($id: ID!) {
 
                 paymentIcon {
                     url
+                }
+            }
+
+            originalTotalPriceSet {
+                presentmentMoney {
+                    amount
+                }
+
+                shopMoney {
+                    amount
                 }
             }
         }
