@@ -13,7 +13,7 @@ from setup import creds, product_engine
 from setup.order_engine import Order, utc_to_local
 from setup.error_handler import ProcessInErrorHandler
 
-from integration.orders import Order as BCOrder
+from integration.orders import Order as ShopifyOrder
 
 
 class RabbitMQConsumer:
@@ -182,7 +182,7 @@ class RabbitMQConsumer:
             # else:
             #     self.logger.info(f'Skipping Order #{order_id}: Payment Status: {order.payment_status}')
 
-            # # BCOrder(order_id).process()
+            ShopifyOrder(order_id).post_shopify_order()
 
         except Exception as err:
             error_type = 'General Catch'
