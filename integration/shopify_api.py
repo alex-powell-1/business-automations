@@ -93,7 +93,7 @@ class Shopify:
 
             shopify_products = []
 
-            for _item in snode['lineItems']['edges']:
+            for _item in shopify_order['node']['lineItems']['edges']:
                 item = _item['node']
 
                 def get_money(money: dict):
