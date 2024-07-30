@@ -1,6 +1,7 @@
 from integration.cp_api import OrderAPI
 
 from setup.error_handler import ProcessInErrorHandler
+from integration.shopify_api import Shopify
 
 
 class Order:
@@ -10,6 +11,7 @@ class Order:
         self.bc_order = None
         self.cust_no = None
         self.payload = None
+        self.shopify_order = None
 
     def print_order(self):
         print(self.get_bc_order())
@@ -22,10 +24,19 @@ class Order:
             self.bc_order = OrderAPI.get_order(self.order_id)
         return self.bc_order
 
+    def get_shopify_order(self):
+        if self.shopify_order is None:
+            self.shopify_order = Shopify.Order.as_bc_order(self.order_id)
+        return self.shopify_order
+
     def get_cust_no(self):
         if self.cust_no is None:
             self.cust_no = OrderAPI.get_cust_no(self.get_bc_order())
         return self.cust_no
+
+    def get_shopify_cust_no(self):
+        if self.cust_no is None:
+            self.cust_no = OrderAPI.get_cust_no(self.get_shopify_order())
 
     def get_payload(self):
         if self.payload is None:

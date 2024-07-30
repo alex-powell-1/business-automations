@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from integration.database import Database
 from setup.error_handler import ProcessInErrorHandler
 from customer_tools import customers
+from integration.shopify_api import Shopify
 
 
 ORDER_PREFIX = ''
@@ -669,23 +670,30 @@ class OrderAPI(DocumentAPI):
             write_shipping_adr()
 
     @staticmethod
-    def convert_shopify_order_format_to_bc_order_format(shopify_order: dict):
+    def post_shopify_order(shopify_order_id: str | int):
         """Convert Shopify order format to BigCommerce order format"""
-        bc_order = {}
+        bc_order = Shopify.Order.as_bc_order(shopify_order_id)
 
-        # Order Number
-        bc_order['order_number'] = shopify_order['id']
+        OrderAPI.post_order(order_id=shopify_order_id, bc_order_override=bc_order)
 
     # This function will run the whole ordeal using the provided BigCommerce order_id.
     # cust_no_override is used to override the customer number for the order when posted to Counterpoint.
     # Session can be provided to use the same http session for all requests.
     @staticmethod
     def post_order(
-        order_id: str | int, cust_no_override: str = None, session: requests.Session = requests.Session()
+        order_id: str | int,
+        cust_no_override: str = None,
+        session: requests.Session = requests.Session(),
+        bc_order_override=None,
     ):
         oapi = OrderAPI(session=session)
 
-        bc_order = OrderAPI.get_order(order_id)
+        bc_order = {}
+
+        if bc_order_override is None:
+            bc_order = OrderAPI.get_order(order_id)
+        else:
+            bc_order = bc_order_override
 
         if str(bc_order['payment_status']).lower() in ['declined', '']:
             oapi.error_handler.add_error_v('Order payment declined')
