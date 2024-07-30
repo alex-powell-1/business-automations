@@ -1,6 +1,7 @@
 from integration.cp_api import OrderAPI
 
 from setup.error_handler import ProcessInErrorHandler
+from integration.shopify_api import Shopify
 
 
 class Order:
@@ -10,6 +11,7 @@ class Order:
         self.bc_order = None
         self.cust_no = None
         self.payload = None
+        self.shopify_order = None
 
     def print_order(self):
         print(self.get_bc_order())
@@ -22,19 +24,40 @@ class Order:
             self.bc_order = OrderAPI.get_order(self.order_id)
         return self.bc_order
 
+    def get_shopify_order(self):
+        if self.shopify_order is None:
+            self.shopify_order = Shopify.Order.as_bc_order(self.order_id)
+        return self.shopify_order
+
     def get_cust_no(self):
         if self.cust_no is None:
             self.cust_no = OrderAPI.get_cust_no(self.get_bc_order())
         return self.cust_no
 
+    def get_shopify_cust_no(self):
+        if self.cust_no is None:
+            self.cust_no = OrderAPI.get_cust_no(self.get_shopify_order())
+
     def get_payload(self):
         if self.payload is None:
-            self.payload = self.oapi.get_post_order_payload(bc_order=self.get_bc_order(), cust_no=self.get_cust_no())
+            self.payload = self.oapi.get_post_order_payload(
+                bc_order=self.get_bc_order(), cust_no=self.get_cust_no()
+            )
         return self.payload
 
     def post_order(self, cust_no_override: str = None):
         try:
             OrderAPI.post_order(self.order_id, cust_no_override=cust_no_override)
+        except Exception as e:
+            ProcessInErrorHandler.error_handler.add_error_v(
+                error=f'Error processing order {self.order_id}', origin='integration.orders'
+            )
+
+            ProcessInErrorHandler.error_handler.add_error_v(error=str(e), origin='integration.orders')
+
+    def post_shopify_order(self, cust_no_override: str = None):
+        try:
+            OrderAPI.post_shopify_order(self.order_id, cust_no_override=cust_no_override)
         except Exception as e:
             ProcessInErrorHandler.error_handler.add_error_v(
                 error=f'Error processing order {self.order_id}', origin='integration.orders'
@@ -57,4 +80,4 @@ class OrderProcessor:
 
 
 if __name__ == '__main__':
-    OrderProcessor([1176]).process()
+    Order('5570286354599').post_shopify_order(cust_no_override='OL-100778')

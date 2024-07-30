@@ -70,6 +70,192 @@ class Shopify:
 
     class Order:
         queries = './integration/queries/orders.graphql'
+        prefix = 'gid://shopify/Order/'
+
+        @staticmethod
+        def get(order_id: int):
+            response = Shopify.Query(
+                document=Shopify.Order.queries,
+                operation_name='order',
+                variables={'id': f'{Shopify.Order.prefix}{order_id}'},
+            )
+            return response.data
+
+        @staticmethod
+        def get_all():
+            response = Shopify.Query(document=Shopify.Order.queries, operation_name='orders')
+            return response.data
+
+        @staticmethod
+        def as_bc_order(order_id: int):
+            shopify_order = Shopify.Order.get(order_id)
+
+            shopify_products = []
+
+            for _item in shopify_order['node']['lineItems']['edges']:
+                item = _item['node']
+
+                def get_money(money: dict):
+                    return money['presentmentMoney']['amount']
+
+                shopify_products.append(
+                    {
+                        'id': item['id'],
+                        'sku': item['sku'],
+                        'type': 'giftcertificate' if item['isGiftCard'] else 'physical',
+                        'base_price': get_money(item['discountedTotalSet']),
+                        'price_ex_tax': get_money(item['discountedTotalSet']),
+                        'price_inc_tax': get_money(item['discountedTotalSet']),
+                        'price_tax': 0,
+                        'base_total': get_money(item['discountedTotalSet']),
+                        'total_ex_tax': get_money(item['discountedTotalSet']),
+                        'total_inc_tax': get_money(item['discountedTotalSet']),
+                        'total_tax': 0,
+                        'quantity': item['quantity'],
+                        'base_cost_price': get_money(item['discountedTotalSet']),
+                        'cost_price_inc_tax': get_money(item['discountedTotalSet']),
+                        'cost_price_ex_tax': get_money(item['discountedTotalSet']),
+                        'cost_price_tax': 0,
+                        'is_refunded': False,
+                        'quantity_refunded': 0,
+                        'refund_amount': 0,
+                        'return_id': 0,
+                        'fixed_shipping_cost': 0,
+                        'gift_certificate_id': None,
+                        'applied_discounts': [],
+                        'discounted_total_inc_tax': get_money(item['discountedTotalSet']),
+                    }
+                )
+
+            def get_money(money: dict):
+                return money['presentmentMoney']['amount']
+
+            snode = shopify_order['node']
+            discountedPrice = get_money(snode['shippingLine']['discountedPriceSet'])
+
+            bc_order = {
+                'id': snode['name'],
+                'customer_id': snode['customer']['id'],
+                'date_created': snode['createdAt'],
+                'date_modified': snode['updatedAt'],
+                'status_id': 11,  # TODO: Add status id
+                'status': snode['displayFulfillmentStatus'],
+                'subtotal_ex_tax': get_money(snode['currentSubtotalPriceSet']),
+                'subtotal_inc_tax': get_money(snode['currentSubtotalPriceSet']),
+                'base_shipping_cost': discountedPrice,
+                'shipping_cost_ex_tax': discountedPrice,
+                'shipping_cost_inc_tax': discountedPrice,
+                'shipping_cost_tax': discountedPrice,
+                'shipping_cost_tax_class_id': 2,  # TODO: Add shipping tax class id
+                'base_handling_cost': discountedPrice,
+                'handling_cost_ex_tax': discountedPrice,
+                'handling_cost_inc_tax': discountedPrice,
+                'handling_cost_tax': discountedPrice,
+                'handling_cost_tax_class_id': 2,  # TODO: Add handling tax class id
+                'base_wrapping_cost': discountedPrice,
+                'wrapping_cost_ex_tax': discountedPrice,
+                'wrapping_cost_inc_tax': discountedPrice,
+                'wrapping_cost_tax': discountedPrice,
+                'total_ex_tax': get_money(snode['currentTotalPriceSet']),
+                'total_inc_tax': get_money(snode['currentTotalPriceSet']),
+                'items_total': snode['subtotalLineItemsQuantity'],
+                'items_shipped': 0,  # TODO: Add items shipped
+                'payment_method': None,  # TODO: Add payment method
+                'payment_status': snode['displayFinancialStatus'],
+                'refunded_amount': '0.0000',  # TODO: Add refunded amount
+                'store_credit_amount': '0.0000',  # TODO: Add store credit amount
+                'gift_certificate_amount': '0.0000',  # TODO: Add gift certificate amount
+                'customer_message': snode['note'],
+                'discount_amount': '0.0000',  # TODO: Add discount amount
+                'coupon_discount': '0.0000',  # TODO: Add coupon discount
+                'shipping_address_count': 1,  # TODO: Add shipping address count
+                'billing_address': {
+                    'first_name': snode['billingAddress']['firstName'],
+                    'last_name': snode['billingAddress']['lastName'],
+                    'company': snode['billingAddress']['company'],
+                    'street_1': snode['billingAddress']['address1'],
+                    'street_2': snode['billingAddress']['address2'],
+                    'city': snode['billingAddress']['city'],
+                    'state': snode['billingAddress']['province'],
+                    'zip': snode['billingAddress']['zip'],
+                    'country': snode['billingAddress']['country'],
+                    'phone': snode['billingAddress']['phone'],
+                    'email': snode['email'],
+                },
+                'products': {'url': shopify_products},
+                'shipping_addresses': {
+                    'url': [
+                        {
+                            'first_name': (snode['shippingAddress'] or {'firstName': None})['firstName'],
+                            'last_name': (snode['shippingAddress'] or {'lastName': None})['lastName'],
+                            'company': (snode['shippingAddress'] or {'company': None})['company'],
+                            'street_1': (snode['shippingAddress'] or {'address1': None})['address1'],
+                            'street_2': (snode['shippingAddress'] or {'address2': None})['address2'],
+                            'city': (snode['shippingAddress'] or {'city': None})['city'],
+                            'state': (snode['shippingAddress'] or {'province': None})['province'],
+                            'zip': (snode['shippingAddress'] or {'zip': None})['zip'],
+                            'country': (snode['shippingAddress'] or {'country': None})['country'],
+                            'phone': (snode['shippingAddress'] or {'phone': None})['phone'],
+                            'email': snode['email'],
+                        }
+                    ]
+                },
+                'coupons': {'url': []},
+                'store_default_currency_code': 'USD',
+                'custom_status': 'Awaiting Fulfillment',  # TODO: Add custom status
+                # "transactions": {
+                #     "data": [
+                #         {
+                #             "id": 862718791,
+                #             "order_id": "100",
+                #             "event": "purchase",
+                #             "method": "credit_card",
+                #             "amount": 10,
+                #             "currency": "USD",
+                #             "gateway": "bigpaypay",
+                #             "gateway_transaction_id": "",
+                #             "payment_method_id": "bigpaypay.zzzblackhole",
+                #             "status": "ok",
+                #             "test": True,
+                #             "fraud_review": False,
+                #             "reference_transaction_id": None,
+                #             "date_created": "2024-07-29T15:08:23+00:00",
+                #             "avs_result": {
+                #                 "code": "",
+                #                 "message": "",
+                #                 "street_match": "",
+                #                 "postal_match": "",
+                #             },
+                #             "cvv_result": {"code": "", "message": ""},
+                #             "credit_card": {
+                #                 "card_type": "visa",
+                #                 "card_iin": "411111",
+                #                 "card_last4": "1111",
+                #                 "card_expiry_month": 5,
+                #                 "card_expiry_year": 2029,
+                #             },
+                #             "gift_certificate": None,
+                #             "store_credit": None,
+                #             "offline": None,
+                #             "custom": None,
+                #             "payment_instrument_token": None,
+                #             "custom_provider_field_result": None,
+                #         }
+                #     ],
+                #     "meta": {
+                #         "pagination": {
+                #             "total": 1,
+                #             "count": 1,
+                #             "per_page": 50,
+                #             "current_page": 1,
+                #             "total_pages": 1,
+                #             "links": {"current": "?page=1&limit=50"},
+                #         }
+                #     },
+                # },
+            }
+
+            return bc_order
 
     class Customer:
         queries = './integration/queries/customers.graphql'

@@ -1,18 +1,169 @@
 query order($id: ID!) {
-  node(id: $id) {
-    id
-    ... on Order {
-      name
+    node(id: $id) {
+        id
+        ... on Order {
+            id
+            name
+
+            billingAddress {
+                address1
+                address2
+                city
+                company
+                country
+                firstName
+                lastName
+                phone
+                province
+                zip
+            }
+
+            createdAt
+
+            customer {
+                id
+            }
+
+            email
+            note
+            requiresShipping
+
+            shippingAddress {
+                address1
+                address2
+                city
+                company
+                country
+                firstName
+                lastName
+                phone
+                province
+                zip
+            }
+
+            shippingLine {
+                discountedPriceSet {
+                    presentmentMoney {
+                        amount
+                    }
+                }
+            }
+
+            updatedAt
+
+            currentSubtotalPriceSet {
+                presentmentMoney {
+                    amount
+                }
+            }
+
+            currentTotalPriceSet {
+                presentmentMoney {
+                    amount
+                }
+            }
+
+            displayFinancialStatus
+            displayFulfillmentStatus
+
+            subtotalLineItemsQuantity
+
+            lineItems(first: 250) {
+                edges {
+                    node {
+                        id
+                        name
+
+                        discountedTotalSet {
+                            presentmentMoney {
+                                amount
+                            }
+                        }
+
+                        quantity
+                        sku
+                        isGiftCard
+                    }
+                }
+            }
+
+            billingAddressMatchesShippingAddress
+            cancelReason
+            cancellation {
+                staffNote
+            }
+            cancelledAt
+
+            cartDiscountAmountSet {
+                presentmentMoney {
+                    amount
+                }
+            }
+            currentCartDiscountAmountSet {
+                presentmentMoney {
+                    amount
+                }
+            }
+
+            closed
+            closedAt
+
+            currentTaxLines {
+                rate
+                ratePercentage
+                title
+                priceSet {
+                    presentmentMoney {
+                        amount
+                    }
+                }
+            }
+
+            currentTotalAdditionalFeesSet {
+                presentmentMoney {
+                    amount
+                }
+            }
+
+            currentTotalDiscountsSet {
+                presentmentMoney {
+                    amount
+                }
+            }
+
+            totalDiscountsSet {
+                presentmentMoney {
+                    amount
+                }
+            }
+
+            returnStatus
+
+            transactions(first: 10) {
+                amountSet {
+                    presentmentMoney {
+                        amount
+                    }
+                }
+                status
+                gateway
+                formattedGateway
+                kind
+
+                paymentIcon {
+                    url
+                }
+            }
+        }
     }
-  }
 }
 
-query orders{
-  orders(first: 10) {
-    edges {
-      node {
-        id
-      }
+query orders {
+    orders(first: 10) {
+        edges {
+            node {
+                id
+            }
+        }
     }
-  }
 }
