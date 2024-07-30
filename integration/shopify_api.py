@@ -196,23 +196,23 @@ class Shopify:
             if hdsc > 0:
                 bc_order['coupons']['url'] = [{'amount': hdsc}]
 
-            transactions = []
+            # transactions = []
 
-            for transaction in snode['transactions']:
-                amount = float(get_money(transaction['amountSet']))
+            # for transaction in snode['transactions']:
+            #     amount = float(get_money(transaction['amountSet']))
 
-                if transaction['gateway'] == 'gift_card':
-                    transaction['gateway'] = 'gift_certificate'
+            #     if transaction['gateway'] == 'gift_card':
+            #         transaction['gateway'] = 'gift_certificate'
 
-                transactions.append(
-                    {
-                        'method': transaction['gateway'],
-                        'amount': amount,
-                        'gift_certificate': {'code': 'ABC123', 'remaining_balance': 0},
-                    }
-                )
+            #     transactions.append(
+            #         {
+            #             'method': transaction['gateway'],
+            #             'amount': amount,
+            #             'gift_certificate': {'code': 'ABC123', 'remaining_balance': 0},
+            #         }
+            #     )
 
-            bc_order['transactions']['data'] = transactions
+            # bc_order['transactions']['data'] = transactions
 
             return bc_order
 
