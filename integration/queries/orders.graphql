@@ -86,6 +86,69 @@ query order($id: ID!) {
                     }
                 }
             }
+
+            billingAddressMatchesShippingAddress
+            cancelReason
+            cancellation {
+                staffNote
+            }
+            cancelledAt
+
+            cartDiscountAmountSet {
+                presentmentMoney {
+                    amount
+                }
+            }
+            currentCartDiscountAmountSet {
+                presentmentMoney {
+                    amount
+                }
+            }
+
+            closed
+            closedAt
+
+            currentTaxLines {
+                rate
+                ratePercentage
+                title
+                priceSet {
+                    presentmentMoney {
+                        amount
+                    }
+                }
+            }
+
+            currentTotalAdditionalFeesSet {
+                presentmentMoney {
+                    amount
+                }
+            }
+
+            currentTotalDiscountsSet {
+                presentmentMoney {
+                    amount
+                }
+            }
+
+            totalDiscountsSet {
+                presentmentMoney {
+                    amount
+                }
+            }
+
+            returnStatus
+
+            transactions(first: 10) {
+                amountSet {
+                    presentmentMoney {
+                        amount
+                    }
+                }
+                status
+                gateway
+                formattedGateway
+            }
         }
     }
 }
