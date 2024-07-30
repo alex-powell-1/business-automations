@@ -335,9 +335,9 @@ class Catalog:
         # self.category_tree.sync()
 
         # if not initial:
-        #     # Process Product Deletions and Images
-        #     # self.process_product_deletes()
-        #     self.process_images()
+        # Process Product Deletions and Images
+        # self.process_product_deletes()
+        # self.process_images()
 
         # Sync Products
         # self.get_products()  # Get all products that have been updated since the last sync
@@ -345,7 +345,7 @@ class Catalog:
         # test product queue
         self.sync_queue = [
             {'sku': '10344', 'binding_id': 'B0001'}
-            # {'sku': '200899'},
+            # {'sku': '200860'},
             # {'sku': 'SYUFICG01', 'binding_id': 'B0050'},
         ]
 
@@ -684,12 +684,7 @@ class Catalog:
 
         def process_menus(self):
             """Recursively updates menus in Shopify."""
-            main_menu = {
-                'id': 'gid://shopify/Menu/205591937191',
-                'title': 'Menu menu',
-                'handle': 'main-menu',
-                'items': [],
-            }
+            main_menu = {'id': creds.shopify_main_menu_id, 'title': 'Menu menu', 'handle': 'main-menu', 'items': []}
 
             def menu_helper(category):
                 # Sort category children by sort order
@@ -924,6 +919,7 @@ class Catalog:
             self.product_id = None
             self.option_id = None
             self.web_title = None
+            self.type = None
             self.long_descr = None
             self.default_price = None
             self.cost = None
@@ -950,16 +946,17 @@ class Catalog:
             self.custom_url = None
 
             # Custom Fields
-            self.meta_botanical_name = None
-            self.meta_climate_zone = None
-            self.meta_climate_zone_list = None
-            self.meta_plant_type = None
-            self.meta_height = None
-            self.meta_width = None
-            self.meta_size = None
-            self.meta_bloom_season = None
-            self.meta_features = None
-            self.meta_colors = None
+            self.meta_botanical_name = {'id': None, 'value': None}
+            self.meta_climate_zone = {'id': None, 'value': None}
+            self.meta_climate_zone_list = {'id': None, 'value': None}
+            self.meta_plant_type = {'id': None, 'value': None}
+            self.meta_height = {'id': None, 'value': None}
+            self.meta_width = {'id': None, 'value': None}
+            self.meta_light_requirements = {'id': None, 'value': None}
+            self.meta_size = {'id': None, 'value': None}
+            self.meta_bloom_season = {'id': None, 'value': None}
+            self.meta_features = {'id': None, 'value': None}
+            self.meta_colors = {'id': None, 'value': None}
 
             self.lst_maint_dt = datetime(1970, 1, 1)
 
@@ -989,7 +986,7 @@ class Catalog:
                     for k, v in variant.__dict__.items():
                         result += f'    {k}: {v}\n'
                     for image in variant.images:
-                        result += f'Image: {image.image_name}\n'
+                        result += f'Image: {image.name}\n'
                         result += f'    Thumbnail: {image.is_thumbnail}\n'
                         result += f'    Variant Image: {image.is_variant_image}\n'
                         result += f'    Sort Order: {image.sort_order}\n'
@@ -1032,6 +1029,7 @@ class Catalog:
                     if bound.is_parent:
                         self.product_id = bound.product_id
                         self.web_title = bound.web_title
+                        self.type = bound.type
                         self.default_price = bound.price_1
                         self.cost = bound.cost
                         self.sale_price = bound.price_2
@@ -1083,6 +1081,7 @@ class Catalog:
                         self.meta_climate_zone = bound.meta_climate_zone
                         self.meta_climate_zone_list = bound.meta_climate_zone_list
                         self.meta_plant_type = bound.meta_plant_type
+                        self.meta_light_requirements = bound.meta_light_requirements
                         self.meta_height = bound.meta_height
                         self.meta_width = bound.meta_width
                         self.meta_size = bound.meta_size
@@ -1114,7 +1113,7 @@ class Catalog:
                                 self.images.append(binding_img)
                             else:
                                 Catalog.error_handler.add_error_v(
-                                    error=f'Image {binding_img.image_name} failed validation. Image will not be added to product.',
+                                    error=f'Image {binding_img.name} failed validation. Image will not be added to product.',
                                     origin='Image Validation',
                                 )
 
@@ -1144,6 +1143,7 @@ class Catalog:
                 # Product Description
                 self.product_id = single.product_id
                 self.web_title = single.web_title
+                self.type = single.type
                 self.long_descr = single.long_descr
                 self.html_description = single.html_description
                 self.meta_title = single.meta_title
@@ -1175,6 +1175,7 @@ class Catalog:
                 self.meta_botanical_name = single.meta_botanical_name
                 self.meta_climate_zone = single.meta_climate_zone
                 self.meta_climate_zone_list = single.meta_climate_zone_list
+                self.meta_light_requirements = single.meta_light_requirements
                 self.meta_plant_type = single.meta_plant_type
                 self.meta_height = single.meta_height
                 self.meta_width = single.meta_width
@@ -1404,239 +1405,17 @@ class Catalog:
             def get_custom_fields():
                 result = []
 
-                if self.custom_botanical_name:
-                    cf_custom_botanical_name = {'value': self.custom_botanical_name['value']}
-
-                    if self.custom_botanical_name['id']:
-                        # Update Custom Field
-                        cf_custom_botanical_name['id'] = (
-                            f'{Shopify.Product.Metafield.prefix}{self.custom_botanical_name["id"]}'
-                        )
+                if self.meta_botanical_name:
+                    print(self.meta_botanical_name)
+                    botantical_name_data = {'value': self.meta_botanical_name['value']}
+                    if self.meta_botanical_name['id']:
+                        botantical_name_data['id'] = self.meta_botanical_name['id']
                     else:
-                        # Create Custom Field
-                        cf_custom_botanical_name['key'] = Catalog.metafields['botanical name']['META_KEY']
-                        cf_custom_botanical_name['type'] = Catalog.metafields['botanical name']['TYPE']
-                        cf_custom_botanical_name['namespace'] = Catalog.metafields['botanical name']['NAME_SPACE']
+                        botantical_name_data['namespace'] = Catalog.metafields['Botanical Name']['NAME_SPACE']
+                        botantical_name_data['key'] = Catalog.metafields['Botanical Name']['META_KEY']
+                        botantical_name_data['type'] = Catalog.metafields['Botanical Name']['TYPE']
 
-                    result.append(cf_custom_botanical_name)
-
-                if self.custom_climate_zone:
-                    cf_custom_climate_zone = {'value': self.custom_climate_zone['value']}
-
-                    if self.custom_climate_zone['id']:
-                        # Update Custom Field
-                        cf_custom_climate_zone['id'] = (
-                            f'{Shopify.Product.Metafield.prefix}{self.custom_climate_zone["id"]}'
-                        )
-                    else:
-                        # Create Custom Field
-                        cf_custom_climate_zone['key'] = Catalog.metafields['climate zone']['META_KEY']
-                        cf_custom_climate_zone['type'] = Catalog.metafields['climate zone']['TYPE']
-                        cf_custom_climate_zone['namespace'] = Catalog.metafields['climate zone']['NAME_SPACE']
-
-                    result.append(cf_custom_climate_zone)
-
-                if self.custom_plant_type:
-                    cf_custom_plant_type = {'value': self.custom_plant_type['value']}
-
-                    if self.custom_plant_type['id']:
-                        # Update Custom Field
-                        cf_custom_plant_type['id'] = (
-                            f'{Shopify.Product.Metafield.prefix}{self.custom_plant_type["id"]}'
-                        )
-                    else:
-                        # Create Custom Field
-                        cf_custom_plant_type['key'] = Catalog.metafields['plant type']['META_KEY']
-                        cf_custom_plant_type['type'] = Catalog.metafields['plant type']['TYPE']
-                        cf_custom_plant_type['namespace'] = Catalog.metafields['plant type']['NAME_SPACE']
-
-                    result.append(cf_custom_plant_type)
-
-                if self.custom_type:
-                    cf_custom_type = {'value': self.custom_type['value']}
-
-                    if self.custom_type['id']:
-                        # Update Custom Field
-                        cf_custom_type['id'] = f'{Shopify.Product.Metafield.prefix}{self.custom_type["id"]}'
-                    else:
-                        # Create Custom Field
-                        cf_custom_type['key'] = Catalog.metafields['type']['META_KEY']
-                        cf_custom_type['type'] = Catalog.metafields['type']['TYPE']
-                        cf_custom_type['namespace'] = Catalog.metafields['type']['NAME_SPACE']
-
-                    result.append(cf_custom_type)
-
-                if self.custom_height:
-                    cf_custom_height = {'value': self.custom_height['value']}
-
-                    if self.custom_height['id']:
-                        # Update Custom Field
-                        cf_custom_height['id'] = f'{Shopify.Product.Metafield.prefix}{self.custom_height["id"]}'
-                    else:
-                        # Create Custom Field
-                        cf_custom_height['key'] = Catalog.metafields['mature height']['META_KEY']
-                        cf_custom_height['type'] = Catalog.metafields['mature height']['TYPE']
-                        cf_custom_height['namespace'] = Catalog.metafields['mature height']['NAME_SPACE']
-
-                    result.append(cf_custom_height)
-
-                if self.custom_width:
-                    cf_custom_width = {'value': self.custom_width['value']}
-
-                    if self.custom_width['id']:
-                        # Update Custom Field
-                        cf_custom_width['id'] = f'{Shopify.Product.Metafield.prefix}{self.custom_width["id"]}'
-                    else:
-                        # Create Custom Field
-                        cf_custom_width['key'] = Catalog.metafields['mature width']['META_KEY']
-                        cf_custom_width['type'] = Catalog.metafields['mature width']['TYPE']
-                        cf_custom_width['namespace'] = Catalog.metafields['mature width']['NAME_SPACE']
-
-                    result.append(cf_custom_width)
-
-                if self.custom_sun_exposure:
-                    cf_custom_sun_exposure = {'value': self.custom_sun_exposure['value']}
-
-                    if self.custom_sun_exposure['id']:
-                        # Update Custom Field
-                        cf_custom_sun_exposure['id'] = (
-                            f'{Shopify.Product.Metafield.prefix}{self.custom_sun_exposure["id"]}'
-                        )
-                    else:
-                        # Create Custom Field
-                        cf_custom_sun_exposure['key'] = Catalog.metafields['sun exposure']['META_KEY']
-                        cf_custom_sun_exposure['type'] = Catalog.metafields['sun exposure']['TYPE']
-                        cf_custom_sun_exposure['namespace'] = Catalog.metafields['sun exposure']['NAME_SPACE']
-
-                    result.append(cf_custom_sun_exposure)
-
-                if self.custom_bloom_time:
-                    cf_custom_bloom_time = {'value': self.custom_bloom_time['value']}
-
-                    if self.custom_bloom_time['id']:
-                        # Update Custom Field
-                        cf_custom_bloom_time['id'] = (
-                            f'{Shopify.Product.Metafield.prefix}{self.custom_bloom_time["id"]}'
-                        )
-                    else:
-                        # Create Custom Field
-                        cf_custom_bloom_time['key'] = Catalog.metafields['bloom time']['META_KEY']
-                        cf_custom_bloom_time['type'] = Catalog.metafields['bloom time']['TYPE']
-                        cf_custom_bloom_time['namespace'] = Catalog.metafields['bloom time']['NAME_SPACE']
-
-                    result.append(cf_custom_bloom_time)
-
-                if self.custom_bloom_color:
-                    cf_custom_bloom_color = {'value': self.custom_bloom_color['value']}
-
-                    if self.custom_bloom_color['id']:
-                        # Update Custom Field
-                        cf_custom_bloom_color['id'] = (
-                            f'{Shopify.Product.Metafield.prefix}{self.custom_bloom_color["id"]}'
-                        )
-                    else:
-                        # Create Custom Field
-                        cf_custom_bloom_color['key'] = Catalog.metafields['bloom color']['META_KEY']
-                        cf_custom_bloom_color['type'] = Catalog.metafields['bloom color']['TYPE']
-                        cf_custom_bloom_color['namespace'] = Catalog.metafields['bloom color']['NAME_SPACE']
-
-                    result.append(cf_custom_bloom_color)
-
-                if self.custom_attracts_pollinators:
-                    cf_custom_attracts_pollinators = {'value': self.custom_attracts_pollinators['value']}
-
-                    if self.custom_attracts_pollinators['id']:
-                        # Update Custom Field
-                        cf_custom_attracts_pollinators['id'] = (
-                            f'{Shopify.Product.Metafield.prefix}{self.custom_attracts_pollinators["id"]}'
-                        )
-                    else:
-                        # Create Custom Field
-                        cf_custom_attracts_pollinators['key'] = Catalog.metafields['attracts pollinators'][
-                            'META_KEY'
-                        ]
-                        cf_custom_attracts_pollinators['type'] = Catalog.metafields['attracts pollinators']['TYPE']
-                        cf_custom_attracts_pollinators['namespace'] = Catalog.metafields['attracts pollinators'][
-                            'NAME_SPACE'
-                        ]
-
-                    result.append(cf_custom_attracts_pollinators)
-
-                if self.custom_growth_rate:
-                    cf_custom_growth_rate = {'value': self.custom_growth_rate['value']}
-
-                    if self.custom_growth_rate['id']:
-                        # Update Custom Field
-                        cf_custom_growth_rate['id'] = (
-                            f'{Shopify.Product.Metafield.prefix}{self.custom_growth_rate["id"]}'
-                        )
-                    else:
-                        # Create Custom Field
-                        cf_custom_growth_rate['key'] = Catalog.metafields['growth rate']['META_KEY']
-                        cf_custom_growth_rate['type'] = Catalog.metafields['growth rate']['TYPE']
-                        cf_custom_growth_rate['namespace'] = Catalog.metafields['growth rate']['NAME_SPACE']
-
-                    result.append(cf_custom_growth_rate)
-
-                if self.custom_deer_resistant:
-                    cf_custom_deer_resistant = {'value': 'true' if self.custom_deer_resistant['value'] else 'false'}
-
-                    if self.custom_deer_resistant['id']:
-                        # Update Custom Field
-                        cf_custom_deer_resistant['id'] = (
-                            f'{Shopify.Product.Metafield.prefix}{self.custom_deer_resistant["id"]}'
-                        )
-                    else:
-                        # Create Custom Field
-                        cf_custom_deer_resistant['key'] = Catalog.metafields['deer resistant']['META_KEY']
-                        cf_custom_deer_resistant['type'] = Catalog.metafields['deer resistant']['TYPE']
-                        cf_custom_deer_resistant['namespace'] = Catalog.metafields['deer resistant']['NAME_SPACE']
-
-                    result.append(cf_custom_deer_resistant)
-
-                if self.custom_soil_type:
-                    cf_custom_soil_type = {'value': self.custom_soil_type['value']}
-
-                    if self.custom_soil_type['id']:
-                        # Update Custom Field
-                        cf_custom_soil_type['id'] = (
-                            f'{Shopify.Product.Metafield.prefix}{self.custom_soil_type["id"]}'
-                        )
-                    else:
-                        # Create Custom Field
-                        cf_custom_soil_type['key'] = Catalog.metafields['soil type']['META_KEY']
-                        cf_custom_soil_type['type'] = Catalog.metafields['soil type']['TYPE']
-                        cf_custom_soil_type['namespace'] = Catalog.metafields['soil type']['NAME_SPACE']
-
-                    result.append(cf_custom_soil_type)
-
-                if self.custom_color:
-                    cf_custom_color = {'value': self.custom_color['value']}
-
-                    if self.custom_color['id']:
-                        # Update Custom Field
-                        cf_custom_color['id'] = f'{Shopify.Product.Metafield.prefix}{self.custom_color["id"]}'
-                    else:
-                        # Create Custom Field
-                        cf_custom_color['key'] = Catalog.metafields['color']['META_KEY']
-                        cf_custom_color['type'] = Catalog.metafields['color']['TYPE']
-                        cf_custom_color['namespace'] = Catalog.metafields['color']['NAME_SPACE']
-
-                    result.append(cf_custom_color)
-
-                if self.custom_size:
-                    cf_custom_size = {'value': self.custom_size['value']}
-
-                    if self.custom_size['id']:
-                        # Update Custom Field
-                        cf_custom_size['id'] = f'{Shopify.Product.Metafield.prefix}{self.custom_size["id"]}'
-                    else:
-                        # Create Custom Field
-                        cf_custom_size['key'] = Catalog.metafields['size']['META_KEY']
-                        cf_custom_size['type'] = Catalog.metafields['size']['TYPE']
-                        cf_custom_size['namespace'] = Catalog.metafields['size']['NAME_SPACE']
-
-                    result.append(cf_custom_size)
+                    result.append(botantical_name_data)
 
                 return result
 
@@ -1656,16 +1435,22 @@ class Catalog:
                 for image in self.images:
                     image_size = Catalog.get_filesize(image.file_path)
                     if image_size != image.size:
+                        print(f'\n\nHERE. Image NAME: {image.name} Image: {image.size}\n\n')
                         image.size = image_size
                         file_list.append(image.file_path)
                         stagedUploadsCreateVariables['input'].append(
                             {
-                                'filename': image.image_name,
+                                'filename': image.name,
                                 'mimeType': 'image/jpg',
                                 'httpMethod': 'POST',
                                 'resource': 'IMAGE',
                             }
                         )
+
+                print(json.dumps(stagedUploadsCreateVariables, indent=4))
+
+                print('\n file list')
+                print(file_list)
 
                 if file_list:
                     uploaded_files = Shopify.Product.Files.create(
@@ -1675,17 +1460,24 @@ class Catalog:
                         for image in self.images:
                             if file['file_path'] == image.file_path:
                                 image.image_url = file['url']
+                                image_payload = {
+                                    'originalSource': image.image_url,
+                                    'alt': image.description,
+                                    'mediaContentType': 'IMAGE',
+                                }
+                                result.append(image_payload)
 
-                    for image in self.images:
-                        image_payload = {
-                            'originalSource': image.image_url,
-                            'alt': image.description,
-                            'mediaContentType': 'IMAGE',
-                        }
-                        if image.image_id:
-                            image_payload['id'] = f'gid://shopify/MediaImage/{image.image_id}'
+                    # for image in self.images:
+                    #     if image.image_url:
+                    #         image_payload = {
+                    #             'originalSource': image.image_url,
+                    #             'alt': image.description,
+                    #             'mediaContentType': 'IMAGE',
+                    #         }
+                    #         if image.image_id:
+                    #             image_payload['id'] = f'gid://shopify/MediaImage/{image.image_id}'
 
-                        result.append(image_payload)
+                    #     result.append(image_payload)
 
                 return result
 
@@ -1705,7 +1497,8 @@ class Catalog:
                 'input': {
                     'title': self.web_title,
                     'status': 'ACTIVE' if self.visible else 'DRAFT',
-                    # 'metafields': get_custom_fields(),
+                    'seo': {},
+                    'metafields': get_custom_fields(),
                 },
                 'media': create_image_payload(),
             }
@@ -1718,8 +1511,8 @@ class Catalog:
             if self.brand:
                 product_payload['input']['vendor'] = get_brand_name(self.brand)
 
-            if self.custom_type:
-                product_payload['input']['productType'] = self.custom_type
+            if self.type:
+                product_payload['input']['productType'] = self.type
 
             if self.tags:
                 product_payload['input']['tags'] = self.tags.split(',')
@@ -1754,7 +1547,6 @@ class Catalog:
                 variant_payload = {
                     'inventoryItem': {
                         'cost': child.cost,
-                        'measurement': {'weight': {'unit': 'POUNDS', 'value': self.weight}},
                         'tracked': True if not self.is_preorder else False,
                         'requiresShipping': True,
                         'sku': child.sku,
@@ -1788,6 +1580,11 @@ class Catalog:
                     else:
                         variant_payload['optionValues']['name'] = 'Default Title'
 
+                if child.weight:
+                    variant_payload['inventoryItem']['measurement'] = {
+                        'weight': {'unit': 'POUNDS', 'value': child.weight}
+                    }
+
                 # Add Variant Image
                 for image in child.images:
                     if image.is_variant_image:
@@ -1797,7 +1594,7 @@ class Catalog:
                             stagedUploadsCreateVariables = {
                                 'input': [
                                     {
-                                        'filename': image.image_name,
+                                        'filename': image.name,
                                         'mimeType': 'image/jpg',
                                         'httpMethod': 'POST',
                                         'resource': 'IMAGE',
@@ -1821,7 +1618,7 @@ class Catalog:
                     'id': f'gid://shopify/ProductVariant/{self.variants[0].variant_id}',
                     'inventoryItem': {
                         'cost': self.cost,
-                        'measurement': {'weight': {'unit': 'POUNDS', 'value': self.weight}},
+                        'measurement': {},
                         'requiresShipping': True,
                         'sku': self.sku,
                         'tracked': True if not self.is_preorder else False,
@@ -1829,12 +1626,20 @@ class Catalog:
                     'inventoryPolicy': 'DENY',
                     'price': self.default_price,
                     'taxable': False,
+                    'inventoryQuantities': {},
                 }
             }
 
             if not self.is_preorder:
                 payload['input']['inventoryQuantities']['availableQuantity'] = self.buffered_quantity
                 payload['input']['inventoryQuantities']['locationId'] = creds.shopify_location_id
+
+            if self.weight:
+                payload['input']['inventoryItem']['measurement'] = {
+                    'weight': {'unit': 'POUNDS', 'value': self.weight}
+                }
+            if self.sale_price:
+                payload['input']['price'] = min(self.sale_price, self.default_price)
 
             return payload
 
@@ -1942,15 +1747,14 @@ class Catalog:
 
                 Database.Shopify.Product.sync(product=self)
 
-            # if self.product_id:
-            #     update()
-            # else:
-            #     create()
+            if self.product_id:
+                update()
+            else:
+                create()
 
             # Shopify.Product.Media.reorder(self)
             # Update Inventory
-            # Shopify.Inventory.update(self.get_inventory_payload())
-            print(self)
+            Shopify.Inventory.update(self.get_inventory_payload())
 
         def replace_image(self, image) -> bool:
             """Replace image in BigCommerce and SQL."""
@@ -2102,6 +1906,7 @@ class Catalog:
                 # Product Information
                 self.mw_db_id = product_data['mw_db_id']
                 self.binding_id = product_data['binding_id']
+                self.type = product_data['type']
                 self.mw_binding_id = product_data['mw_binding_id']
                 self.is_parent = True if product_data['is_parent'] == 'Y' else False
                 self.product_id: int = product_data['product_id'] if product_data['product_id'] else None
@@ -2153,105 +1958,144 @@ class Catalog:
                 self.alt_text_3 = product_data['alt_text_3']
                 self.alt_text_4 = product_data['alt_text_4']
 
-                self.cf_type = product_data['custom_type']  # Shows on Shopify Catalog Backend
-
                 # Custom Fields
-                self.meta_plant_type = product_data['custom_plant_type']
-                self.meta_botanical_name = product_data['custom_botanical_name']
+                self.meta_plant_type = {
+                    'id': product_data['custom_plant_type_id'],
+                    'value': product_data['custom_plant_type'],
+                }
+
+                self.meta_botanical_name = {
+                    'id': product_data['custom_botanical_name_id'],
+                    'value': product_data['custom_botanical_name'],
+                }
 
                 # Climate Zone
                 climate_zone_min = product_data['custom_climate_zone_min']
                 climate_zone_max = product_data['custom_climate_zone_max']
                 # '3B - 11a'
-                self.meta_climate_zone = f'{climate_zone_min} - {climate_zone_max}'
+                self.meta_climate_zone = {
+                    'id': product_data['custom_climate_zone_id'],
+                    'value': f'{climate_zone_min} - {climate_zone_max}',
+                }
                 # [3, 4, 5, 6, 7, 8, 9, 10, 11]
-                self.meta_climate_zone_list = self.get_size_range(climate_zone_min, climate_zone_max, '')
+                self.meta_climate_zone_list = {
+                    'id': product_data['custom_climate_zone_list_id'],
+                    'value': self.get_size_range(climate_zone_min, climate_zone_max, ''),
+                }
 
                 # Height
                 height_min = product_data['custom_height_min']
                 height_max = product_data['custom_height_max']
                 height_unit = product_data['custom_height_unit']
-                self.meta_height = self.get_size_range(height_min, height_max, height_unit)
+
+                self.meta_height = {
+                    'id': product_data['custom_height_id'],
+                    'value': self.get_size_range(height_min, height_max, height_unit),
+                }
 
                 # Width
                 width_min = product_data['custom_width_min']
                 width_max = product_data['custom_width_max']
                 width_unit = product_data['custom_width_unit']
-                self.meta_width = self.get_size_range(width_min, width_max, width_unit)
+
+                self.meta_width = {
+                    'id': product_data['custom_width_id'],
+                    'value': self.get_size_range(width_min, width_max, width_unit),
+                }
 
                 # Light Requirements
-                self.meta_light_requirements = [
-                    {'name': 'Full Sun', 'value': product_data['custom_full_sun']},
-                    {'name': 'Part Sun', 'value': product_data['custom_part_sun']},
-                    {'name': 'Part Shade', 'value': product_data['custom_part_shade']},
-                    {'name': 'Full Shade', 'value': product_data['custom_full_shade']},
-                ]
-                # Render self.cf_light_requirements to comma separated string
-                self.meta_light_requirements = ', '.join(
-                    [x['name'] for x in self.meta_light_requirements if x['value']]
-                )
+                self.meta_light_requirements = {
+                    'id': product_data['custom_light_req_id'],
+                    'value': [
+                        {'name': 'Full Sun', 'value': product_data['custom_full_sun']},
+                        {'name': 'Part Sun', 'value': product_data['custom_part_sun']},
+                        {'name': 'Part Shade', 'value': product_data['custom_part_shade']},
+                        {'name': 'Full Shade', 'value': product_data['custom_full_shade']},
+                    ],
+                }
+
+                # # Render self.cf_light_requirements to comma separated string
+                # self.meta_light_requirements = {
+                #     'id': product_data['custom_light_req_id'],
+                #     'value': ', '.join([x['name'] for x in self.meta_light_requirements if x['value']]),
+                # }
 
                 # Bloom Season
-                self.meta_bloom_season = [
-                    {'name': 'Spring Blooms', 'value': product_data['custom_bloom_spring']},
-                    {'name': 'Summer Blooms', 'value': product_data['custom_bloom_summer']},
-                    {'name': 'Fall Blooms', 'value': product_data['custom_bloom_fall']},
-                    {'name': 'Winter Blooms', 'value': product_data['custom_bloom_winter']},
-                ]
+                self.meta_bloom_season = {
+                    'id': product_data['custom_bloom_season_id'],
+                    'value': [
+                        {'name': 'Spring', 'value': product_data['custom_bloom_spring']},
+                        {'name': 'Summer', 'value': product_data['custom_bloom_summer']},
+                        {'name': 'Fall', 'value': product_data['custom_bloom_fall']},
+                        {'name': 'Winter', 'value': product_data['custom_bloom_winter']},
+                    ],
+                }
 
-                # Render self.cf_bloom_season to comma separated string
-                self.meta_bloom_season = ', '.join([x['name'] for x in self.meta_bloom_season if x['value']])
+                # # Render self.cf_bloom_season to comma separated string
+                # self.meta_bloom_season = {
+                #     'id': product_data['custom_bloom_season_id'],
+                #     'value': ', '.join([x['name'] for x in self.meta_bloom_season if x['value']]),
+                # }
 
                 # Colors
-                self.meta_colors = [
-                    {'name': 'Pink', 'value': product_data['custom_color_pink']},
-                    {'name': 'Red', 'value': product_data['custom_color_red']},
-                    {'name': 'Orange', 'value': product_data['custom_color_orange']},
-                    {'name': 'Yellow', 'value': product_data['custom_color_yellow']},
-                    {'name': 'Green', 'value': product_data['custom_color_green']},
-                    {'name': 'Blue', 'value': product_data['custom_color_blue']},
-                    {'name': 'Purple', 'value': product_data['custom_color_purple']},
-                    {'name': 'White', 'value': product_data['custom_color_white']},
-                    {'name': 'Custom', 'value': product_data['custom_color_custom']},
-                ]
+                self.meta_colors = {
+                    'id': product_data['custom_color_id'],
+                    'value': [
+                        {'name': 'Pink', 'value': product_data['custom_color_pink']},
+                        {'name': 'Red', 'value': product_data['custom_color_red']},
+                        {'name': 'Orange', 'value': product_data['custom_color_orange']},
+                        {'name': 'Yellow', 'value': product_data['custom_color_yellow']},
+                        {'name': 'Green', 'value': product_data['custom_color_green']},
+                        {'name': 'Blue', 'value': product_data['custom_color_blue']},
+                        {'name': 'Purple', 'value': product_data['custom_color_purple']},
+                        {'name': 'White', 'value': product_data['custom_color_white']},
+                        {'name': 'Custom', 'value': product_data['custom_color_custom']},
+                    ],
+                }
 
-                # Render self.colors to comma separated string
-                self.meta_colors = ', '.join([x['name'] for x in self.meta_colors if x['value']])
+                # # Render self.colors to comma separated string
+                # self.meta_colors = {
+                #     'id': product_data['custom_color_id'],
+                #     'value': ', '.join([x['name'] for x in self.meta_colors if x['value']]),
+                # }
 
                 # Features
-                self.meta_features = [
-                    {'name': 'Low Maintenance', 'value': product_data['custom_low_maintenance']},
-                    {'name': 'Evergreen', 'value': product_data['custom_evergreen']},
-                    {'name': 'Privacy Option', 'value': product_data['custom_privacy']},
-                    {'name': 'Specimen', 'value': product_data['custom_specimen']},
-                    {'name': 'Drought Tolerant', 'value': product_data['custom_drought_tolerance']},
-                    {'name': 'Heat Tolerant', 'value': product_data['custom_heat_tolerance']},
-                    {'name': 'Cold Tolerant', 'value': product_data['custom_cold_tolerance']},
-                    {'name': 'Fast Growing', 'value': product_data['custom_fast_growth']},
-                    {'name': 'Attracts Pollinators', 'value': product_data['custom_attracts_pollinators']},
-                    {'name': 'Attracts Wildlife', 'value': product_data['custom_attracts_wildlife']},
-                    {'name': 'Native', 'value': product_data['custom_native']},
-                    {'name': 'Fragrant', 'value': product_data['custom_fragrant']},
-                    {'name': 'Deer Resistant', 'value': product_data['custom_deer_resistant']},
-                    {'name': 'Easy to Grow', 'value': product_data['custom_easy_to_grow']},
-                    {'name': 'Low Light', 'value': product_data['custom_low_light']},
-                    {'name': 'Tropical', 'value': product_data['custom_tropical']},
-                    {'name': 'Vining', 'value': product_data['custom_vining']},
-                    {'name': 'Air Purifying', 'value': product_data['custom_air_purifying']},
-                    {'name': 'Pet Friendly', 'value': product_data['custom_pet_friendly']},
-                    {'name': 'Slow Growing', 'value': product_data['custom_slow_growth']},
-                    {'name': 'Edible', 'value': product_data['custom_edible']},
-                ]
+                self.meta_features = {
+                    'id': product_data['custom_features_id'],
+                    'value': [
+                        {'name': 'Low Maintenance', 'value': product_data['custom_low_maintenance']},
+                        {'name': 'Evergreen', 'value': product_data['custom_evergreen']},
+                        {'name': 'Privacy Option', 'value': product_data['custom_privacy']},
+                        {'name': 'Specimen', 'value': product_data['custom_specimen']},
+                        {'name': 'Drought Tolerant', 'value': product_data['custom_drought_tolerance']},
+                        {'name': 'Heat Tolerant', 'value': product_data['custom_heat_tolerance']},
+                        {'name': 'Cold Tolerant', 'value': product_data['custom_cold_tolerance']},
+                        {'name': 'Fast Growing', 'value': product_data['custom_fast_growth']},
+                        {'name': 'Attracts Pollinators', 'value': product_data['custom_attracts_pollinators']},
+                        {'name': 'Attracts Wildlife', 'value': product_data['custom_attracts_wildlife']},
+                        {'name': 'Native', 'value': product_data['custom_native']},
+                        {'name': 'Fragrant', 'value': product_data['custom_fragrant']},
+                        {'name': 'Deer Resistant', 'value': product_data['custom_deer_resistant']},
+                        {'name': 'Easy to Grow', 'value': product_data['custom_easy_to_grow']},
+                        {'name': 'Low Light', 'value': product_data['custom_low_light']},
+                        {'name': 'Tropical', 'value': product_data['custom_tropical']},
+                        {'name': 'Vining', 'value': product_data['custom_vining']},
+                        {'name': 'Air Purifying', 'value': product_data['custom_air_purifying']},
+                        {'name': 'Pet Friendly', 'value': product_data['custom_pet_friendly']},
+                        {'name': 'Slow Growing', 'value': product_data['custom_slow_growth']},
+                        {'name': 'Edible', 'value': product_data['custom_edible']},
+                    ],
+                }
 
                 # If self.meta_bloom_season is not empty, add 'Flowering' as a feature
                 if self.meta_bloom_season:
-                    self.meta_features.append({'name': 'Flowering', 'value': True})
+                    self.meta_features['value'].append({'name': 'Flowering', 'value': True})
 
-                # Render self.features to comma separated string
-                self.meta_features = ', '.join([x['name'] for x in self.meta_features if x['value']])
+                # # Render self.features to comma separated string
+                # self.meta_features = ', '.join([x['name'] for x in self.meta_features if x['value']])
 
                 # Get Size
-                self.meta_size = product_data['custom_size']
+                self.meta_size = {'id': product_data['custom_size_id'], 'value': product_data['custom_size']}
 
                 # Product Images
                 self.images = []
@@ -2282,13 +2126,13 @@ class Catalog:
 
                 query = f""" 
                 
-                SELECT MW_PROD.ID as 'mw_db_id(0)', 
+                SELECT MW.ID as 'mw_db_id(0)', 
                 ITEM.USR_PROF_ALPHA_16 as 'Binding ID(1)', 
                 ISNULL(ITEM.IS_ADM_TKT, 'N') as 'Is Parent(2)', 
-                MW_PROD.PRODUCT_ID as 'Product ID (3)', 
-                MW_PROD.VARIANT_ID as 'Variant ID(4)', 
+                MW.PRODUCT_ID as 'Product ID (3)', 
+                MW.VARIANT_ID as 'Variant ID(4)', 
                 ITEM.USR_PROF_ALPHA_17 as 'VARIANT NAME(5)', 
-                MW_PROD.INVENTORY_ID as 'INVENTORY_ID(6)', 
+                MW.INVENTORY_ID as 'INVENTORY_ID(6)', 
 
 
                                 
@@ -2369,8 +2213,7 @@ class Catalog:
                 SPECIMEN as 'SPECIMENT(65)',
                 DROUGHT_TOL as 'DROUGHT_TOL(66)',
                 HEAT_TOL as 'HEAT_TOL(67)',
-                COLD_TOL as 'COLD_TOL(68)',
-                                
+                COLD_TOL as 'COLD_TOL(68)',        
                 FAST_GROW as 'FAST_GROW(69)',
                 ATTRCT_BEES as 'ATTRCT_BEES(70)',
                 ATTR_WILDLIFE as 'ATTR_WILDLIFE(71)',
@@ -2389,14 +2232,27 @@ class Catalog:
                 ITEM.LST_MAINT_DT as 'LST_MAINT_DT(83)', 
                 WEIGHT as 'WEIGHT(84)',
                 IS_TXBL as 'TAXABLE(85)',
-                MW_PROD.BINDING_ID as 'MW_BINDING_ID(86)',
-                USR_PROF_ALPHA_17 as 'CUSTOM_SIZE(87)'
+                MW.BINDING_ID as 'MW_BINDING_ID(86)',
+                USR_PROF_ALPHA_17 as 'CUSTOM_SIZE(87)', 
+
+                MW.CF_BOTAN_NAM as 'CUSTOM_BOTANICAL_NAME_ID(88)',
+                MW.CF_PLANT_TYP as 'CUSTOM_PLANT_TYPE_ID(89)',
+                MW.CF_HEIGHT as 'CUSTOM_HEIGHT_ID(90)',
+                MW.CF_WIDTH as 'CUSTOM_WIDTH_ID(91)',
+                MW.CF_COLOR as 'CUSTOM_COLOR_ID(92)',
+                MW.CF_SIZE as 'CUSTOM_SIZE_ID(93)',
+                MW.CF_BLOOM_SEAS as 'CUSTOM_BLOOM_SEASON_ID(94)',
+                MW.CF_LIGHT_REQ as 'CUSTOM_LIGHT_REQ_ID(95)',
+                MW.CF_FEATURES as 'CUSTOM_FEATURES_ID(96)',
+                MW.CF_CLIM_ZON as 'CUSTOM_CLIMATE_ZONE_ID(97)',
+                MW.CF_CLIM_ZON_LST as 'CUSTOM_CLIMATE_ZONE_LIST_ID(98)'
+
 
                 FROM IM_ITEM ITEM
                 LEFT OUTER JOIN IM_PRC PRC ON ITEM.ITEM_NO=PRC.ITEM_NO
                 LEFT OUTER JOIN IM_INV INV ON ITEM.ITEM_NO=INV.ITEM_NO
                 LEFT OUTER JOIN EC_ITEM_DESCR ON ITEM.ITEM_NO=EC_ITEM_DESCR.ITEM_NO
-                LEFT OUTER JOIN  {creds.shopify_product_table} MW_PROD ON ITEM.ITEM_NO=MW_PROD.ITEM_NO
+                LEFT OUTER JOIN  {creds.shopify_product_table} MW ON ITEM.ITEM_NO=MW.ITEM_NO
                 LEFT OUTER JOIN IM_ITEM_PROF_COD COD ON ITEM.PROF_COD_1 = COD.PROF_COD
                 WHERE ITEM.ITEM_NO = '{self.sku}'"""
 
@@ -2438,7 +2294,7 @@ class Catalog:
                         # E-Commerce Categories
                         'cp_ecommerce_categories': str(item[0][24]).split(',') if item[0][25] else [],
                         # Additional Details
-                        'item_type': item[0][26],  # Inventory/Non-Inventory
+                        'item_type': item[0][26],  # Inventory/Non-Inventory NOT USED CURRENTLY
                         'brand': item[0][27],
                         'long_descr': item[0][28],
                         'tags': item[0][29],
@@ -2452,7 +2308,7 @@ class Catalog:
                         'custom_climate_zone_min': item[0][35],
                         'custom_climate_zone_max': item[0][36],
                         'custom_plant_type': item[0][37],
-                        'custom_type': item[0][38],  # Shows on Shopify Catalog Backend
+                        'type': item[0][38],  # Shows on Shopify Catalog Backend
                         'custom_height_min': item[0][39],
                         'custom_height_max': item[0][40],
                         'custom_height_unit': item[0][41],
@@ -2506,6 +2362,18 @@ class Catalog:
                         # Shipping
                         'weight': item[0][84],
                         'taxable': True if item[0][85] == 'Y' else False,
+                        # Custom Fields
+                        'custom_botanical_name_id': item[0][88],
+                        'custom_plant_type_id': item[0][89],
+                        'custom_height_id': item[0][90],
+                        'custom_width_id': item[0][91],
+                        'custom_color_id': item[0][92],
+                        'custom_size_id': item[0][93],
+                        'custom_bloom_season_id': item[0][94],
+                        'custom_light_req_id': item[0][95],
+                        'custom_features_id': item[0][96],
+                        'custom_climate_zone_id': item[0][97],
+                        'custom_climate_zone_list_id': item[0][98],
                     }
                     return details
 
@@ -2528,7 +2396,6 @@ class Catalog:
 
             def get_size_range(self, min, max, unit=''):
                 """Return a list of size values between min and max"""
-                print(f'in get size range: min: {min}, max: {max}, unit:{unit}')
                 if min and max:
                     # use regex to extract numbers from beginning of string
                     min = int(re.search(r'\d+', str(min)).group())
@@ -2556,7 +2423,7 @@ class Catalog:
                 result = []
                 for image in self.images:
                     image_payload = {
-                        'src': f'{creds.public_web_dav_photos}/{image.image_name}',
+                        'src': f'{creds.public_web_dav_photos}/{image.name}',
                         'position': image.image_number,
                         'alt': image.alt_text_1,
                     }
@@ -2586,9 +2453,9 @@ class Catalog:
             def __init__(self, image_name: str, product_id: int = None):
                 self.db = Database.db
                 self.db_id = None
-                self.image_name = image_name  # This is the file name
+                self.name = image_name  # This is the file name
                 self.sku = ''
-                self.file_path = f'{creds.photo_path}/{self.image_name}'
+                self.file_path = f'{creds.photo_path}/{self.name}'
                 self.image_url = ''
                 self.product_id = product_id
                 self.variant_id = None
@@ -2612,12 +2479,11 @@ class Catalog:
 
             def get_image_details(self):
                 """Get image details from SQL"""
-                query = f"SELECT * FROM {creds.shopify_image_table} WHERE IMAGE_NAME = '{self.image_name}'"
+                query = f"SELECT * FROM {creds.shopify_image_table} WHERE IMAGE_NAME = '{self.name}'"
                 response = self.db.query_db(query)
-
                 if response is not None:
                     self.db_id = response[0][0]
-                    self.image_name = response[0][1]
+                    self.name = response[0][1]
                     self.sku = response[0][2]
                     self.file_path = response[0][3]
                     self.product_id = response[0][4]
@@ -2644,10 +2510,10 @@ class Catalog:
                     size = (1280, 1280)
                     q = 90
                     exif_orientation = 0x0112
-                    if self.image_name.lower().endswith('jpg'):
+                    if self.name.lower().endswith('jpg'):
                         # Resize files larger than 1.8 MB
                         if self.size > 1800000:
-                            Catalog.logger.warn(f'Found large file {self.image_name}. Attempting to resize.')
+                            Catalog.logger.warn(f'Found large file {self.name}. Attempting to resize.')
                             try:
                                 im = Image.open(self.file_path)
                                 im.thumbnail(size, Image.LANCZOS)
@@ -2659,15 +2525,15 @@ class Catalog:
                                 self.size = os.path.getsize(self.file_path)
                             except Exception as e:
                                 Catalog.error_handler.add_error_v(
-                                    f'Error resizing {self.image_name}: {e}', origin='Image Resize'
+                                    f'Error resizing {self.name}: {e}', origin='Image Resize'
                                 )
                                 return False
                             else:
-                                Catalog.logger.success(f'Image {self.image_name} was resized.')
+                                Catalog.logger.success(f'Image {self.name} was resized.')
 
                     # Remove Alpha Layer and Convert PNG to JPG
-                    if self.image_name.lower().endswith('png'):
-                        Catalog.logger.warn(f'Found PNG file: {self.image_name}. Attempting to reformat.')
+                    if self.name.lower().endswith('png'):
+                        Catalog.logger.warn(f'Found PNG file: {self.name}. Attempting to reformat.')
                         try:
                             im = Image.open(self.file_path)
                             im.thumbnail(size, Image.LANCZOS)
@@ -2676,23 +2542,23 @@ class Catalog:
                             if code and code != 1:
                                 im = ImageOps.exif_transpose(im)
                             rgb_im = im.convert('RGB')
-                            new_image_name = self.image_name.split('.')[0] + '.jpg'
+                            new_image_name = self.name.split('.')[0] + '.jpg'
                             new_file_path = f'{creds.photo_path}/{new_image_name}'
                             rgb_im.save(new_file_path, 'JPEG', quality=q)
                             im.close()
                             os.remove(self.file_path)
                             self.file_path = new_file_path
-                            self.image_name = new_image_name
+                            self.name = new_image_name
                         except Exception as e:
                             Catalog.error_handler.add_error_v(
-                                error=f'Error converting {self.image_name}: {e}', origin='Reformat PNG'
+                                error=f'Error converting {self.name}: {e}', origin='Reformat PNG'
                             )
                             return False
                         else:
                             Catalog.logger.success('Conversion successful.')
 
                     # replace .JPEG with .JPG
-                    if self.image_name.lower().endswith('jpeg'):
+                    if self.name.lower().endswith('jpeg'):
                         Catalog.logger.warn('Found file ending with .JPEG. Attempting to reformat.')
                         try:
                             im = Image.open(self.file_path)
@@ -2701,32 +2567,32 @@ class Catalog:
                             code = im.getexif().get(exif_orientation, 1)
                             if code and code != 1:
                                 im = ImageOps.exif_transpose(im)
-                            new_image_name = self.image_name.split('.')[0] + '.jpg'
+                            new_image_name = self.name.split('.')[0] + '.jpg'
                             new_file_path = f'{creds.photo_path}/{new_image_name}'
                             im.save(new_file_path, 'JPEG', quality=q)
                             im.close()
                             os.remove(self.file_path)
                             self.file_path = new_file_path
-                            self.image_name = new_image_name
+                            self.name = new_image_name
                         except Exception as e:
                             Catalog.error_handler.add_error_v(
-                                error=f'Error converting {self.image_name}: {e}', origin='Image Rename JPEG'
+                                error=f'Error converting {self.name}: {e}', origin='Image Rename JPEG'
                             )
                             return False
                         else:
-                            Catalog.logger.success(f'Conversion successful for {self.image_name}')
+                            Catalog.logger.success(f'Conversion successful for {self.name}')
 
                     # check for description that is too long
                     if len(self.description) >= 500:
                         Catalog.error_handler.add_error_v(
-                            f'Description for {self.image_name} is too long. Validation failed.'
+                            f'Description for {self.name} is too long. Validation failed.'
                         )
                         return False
 
                     # Check for images with words or trailing numbers in the name
-                    if '^' in self.image_name and not self.image_name.split('.')[0].split('^')[1].isdigit():
+                    if '^' in self.name and not self.name.split('.')[0].split('^')[1].isdigit():
                         Catalog.error_handler.add_error_v(
-                            f'Image {self.image_name} is not valid.', origin='Image Validation'
+                            f'Image {self.name} is not valid.', origin='Image Validation'
                         )
                         return False
 
@@ -2757,15 +2623,15 @@ class Catalog:
 
                 def get_image_number():
                     image_number = 1
-                    if '^' in self.image_name and self.image_name.split('.')[0].split('^')[1].isdigit():
+                    if '^' in self.name and self.name.split('.')[0].split('^')[1].isdigit():
                         # secondary images
                         for x in range(1, 100):
-                            if int(self.image_name.split('.')[0].split('^')[1]) == x:
+                            if int(self.name.split('.')[0].split('^')[1]) == x:
                                 image_number = x + 1
                                 break
                     return image_number
 
-                self.sku, self.binding_id = get_item_no_from_image_name(self.image_name)
+                self.sku, self.binding_id = get_item_no_from_image_name(self.name)
                 self.image_number = get_image_number()
 
                 # self.size = os.path.getsize(self.file_path)
@@ -2798,14 +2664,14 @@ class Catalog:
                 size = (1280, 1280)
                 q = 90
                 exif_orientation = 0x0112
-                if self.image_name.endswith('jpg'):
+                if self.name.endswith('jpg'):
                     im = Image.open(self.file_path)
                     im.thumbnail(size, Image.LANCZOS)
                     code = im.getexif().get(exif_orientation, 1)
                     if code and code != 1:
                         im = ImageOps.exif_transpose(im)
                     im.save(self.file_path, 'JPEG', quality=q)
-                    Catalog.logger.log(f'Resized {self.image_name}')
+                    Catalog.logger.log(f'Resized {self.name}')
 
 
 if __name__ == '__main__':

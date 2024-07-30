@@ -63,7 +63,6 @@ class Shopify:
             endpoint = f'https://{Shopify.shop_url}/admin/api/2024-07/graphql.json'
             payload = {'query': query_doc, 'variables': variables, 'operationName': operation_name}
             response = requests.post(endpoint, headers=Shopify.headers, json=payload)
-            print('\n\n', response.text, '\n\n')
             try:
                 return response.json()
             except:
@@ -323,7 +322,6 @@ class Shopify:
                         variables={'id': f'gid://shopify/Customer/{i}'},
                         operation_name='customerDelete',
                     )
-                    print(response.data)
 
         class StoreCredit:
             queries = './integration/queries/storeCredit.graphql'
@@ -387,7 +385,6 @@ class Shopify:
                         document=Shopify.Product.queries, variables=variables, operation_name='products'
                     )
                     id_list += [x['node']['id'].split('/')[-1] for x in response.data['products']['edges']]
-                print(len(id_list))
                 return id_list
 
         def create(product_payload) -> tuple:
@@ -579,7 +576,7 @@ class Shopify:
                     variables['moves'].append(
                         {
                             'id': f'{Shopify.Product.Media.Image.prefix}{image.image_id}',
-                            'newPosition': str(image.sort_order),
+                            'newPosition': str(image.sort_order + 1),
                         }
                     )
                 response = Shopify.Query(
@@ -587,6 +584,9 @@ class Shopify:
                     variables=variables,
                     operation_name='productReorderMedia',
                 )
+                print()
+                print(variables)
+                print()
                 return response.data
 
             class Image:

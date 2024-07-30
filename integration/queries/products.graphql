@@ -25,6 +25,16 @@ mutation CreateProductWithNewMedia(
           }
         }
       }
+      metafields(first: 25) {
+        edges {
+          node {
+            id
+            key
+            value
+            namespace
+          }
+        }
+      }
     }
 
     userErrors {
@@ -57,7 +67,18 @@ mutation UpdateProductWithNewMedia(
           id
         }
       }
+      metafields(first: 25) {
+        edges {
+          node {
+            id
+            key
+            value
+            namespace
+          }
+        }
+      }
     }
+    
     userErrors {
       field
       message
