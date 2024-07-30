@@ -103,7 +103,7 @@ class Shopify:
                     {
                         'id': item['id'],
                         'sku': item['sku'],
-                        'type': 'giftcard' if item['isGiftCard'] else 'physical',
+                        'type': 'giftcertificate' if item['isGiftCard'] else 'physical',
                         'base_price': get_money(item['discountedTotalSet']),
                         'price_ex_tax': get_money(item['discountedTotalSet']),
                         'price_inc_tax': get_money(item['discountedTotalSet']),
