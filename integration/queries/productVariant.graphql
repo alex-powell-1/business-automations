@@ -74,6 +74,14 @@ mutation productVariantUpdate($input: ProductVariantInput!) {
       inventoryItem {
         id
       }
+      selectedOptions {
+        name
+        value
+        optionValue {
+          id
+          name
+        }
+      }
     }
     userErrors {
       field

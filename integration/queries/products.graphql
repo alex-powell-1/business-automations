@@ -137,6 +137,7 @@ query product($id: ID!) {
       edges {
         node {
           id
+          namespace
           key
         }
       }

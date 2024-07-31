@@ -430,15 +430,16 @@ class Database:
 
                 def insert(product, variant):
                     if product.shopify_collections:
-                        categories_string = ','.join(str(x) for x in product.shopify_collections)
+                        collection_string = ','.join(str(x) for x in product.shopify_collections)
                     else:
-                        categories_string = None
+                        collection_string = None
 
                     insert_query = f"""
                         INSERT INTO {Database.Shopify.Product.table} (ITEM_NO, BINDING_ID, IS_PARENT, 
                         PRODUCT_ID, VARIANT_ID, INVENTORY_ID, VARIANT_NAME, OPTION_ID, OPTION_VALUE_ID, CATEG_ID, 
                         CF_BOTAN_NAM, CF_PLANT_TYP, CF_HEIGHT, CF_WIDTH, CF_CLIM_ZON, CF_CLIM_ZON_LST,
-                        CF_COLOR, CF_SIZE, CF_BLOOM_SEAS, CF_LIGHT_REQ, CF_FEATURES
+                        CF_COLOR, CF_SIZE, CF_BLOOM_SEAS, CF_BLOOM_COLOR, CF_LIGHT_REQ, CF_FEATURES, CF_IS_PREORDER, 
+                        CF_PREORDER_DT, CF_PREORDER_MSG, CF_IS_FEATURED, CF_IN_STORE_ONLY
                         )
                          
                         VALUES ('{variant.sku}', {f"'{product.binding_id}'" if product.binding_id else 'NULL'}, 
@@ -448,18 +449,24 @@ class Database:
                         {f"'{variant.variant_name}'" if variant.variant_name else "NULL"}, 
                         {variant.option_id if variant.option_id else "NULL"}, 
                         {variant.option_value_id if variant.option_value_id else "NULL"}, 
-                        {f"'{categories_string}'" if categories_string else "NULL"},
-                        {variant.meta_botanical_name['id'] if variant.meta_botanical_name['id'] else "NULL"},
-                        {variant.meta_plant_type['id'] if variant.meta_plant_type['id'] else "NULL"},
-                        {variant.meta_height['id'] if variant.meta_height['id'] else "NULL"},
-                        {variant.meta_width['id'] if variant.meta_width['id'] else "NULL"},
-                        {variant.meta_climate_zone['id'] if variant.meta_climate_zone['id'] else "NULL"},
-                        {variant.meta_climate_zone_list['id'] if variant.meta_climate_zone_list['id'] else "NULL"},
-                        {variant.meta_colors['id'] if variant.meta_colors['id'] else "NULL"},
-                        {variant.meta_size['id'] if variant.meta_size['id'] else "NULL"},
-                        {variant.meta_bloom_season['id'] if variant.meta_bloom_season['id'] else "NULL"},
-                        {variant.meta_light_requirements['id'] if variant.meta_light_requirements['id'] else "NULL"},
-                        {variant.meta_features['id'] if variant.meta_features['id'] else "NULL"}
+                        {f"'{collection_string}'" if collection_string else "NULL"},
+                        {variant.meta_botanical_name['id'] if product.meta_botanical_name['id'] else "NULL"},
+                        {product.meta_plant_type['id'] if product.meta_plant_type['id'] else "NULL"},
+                        {product.meta_height['id'] if product.meta_height['id'] else "NULL"},
+                        {product.meta_width['id'] if product.meta_width['id'] else "NULL"},
+                        {product.meta_climate_zone['id'] if product.meta_climate_zone['id'] else "NULL"},
+                        {product.meta_climate_zone_list['id'] if product.meta_climate_zone_list['id'] else "NULL"},
+                        {product.meta_colors['id'] if product.meta_colors['id'] else "NULL"},
+                        {product.meta_size['id'] if product.meta_size['id'] else "NULL"},
+                        {product.meta_bloom_season['id'] if product.meta_bloom_season['id'] else "NULL"},
+                        {product.meta_bloom_color['id'] if product.meta_bloom_color['id'] else "NULL"},
+                        {product.meta_light_requirements['id'] if product.meta_light_requirements['id'] else "NULL"},
+                        {product.meta_features['id'] if product.meta_features['id'] else "NULL"},
+                        {product.meta_is_preorder['id'] if product.meta_is_preorder['id'] else "NULL"},
+                        {product.meta_preorder_release_date['id'] if product.meta_preorder_release_date['id'] else "NULL"},
+                        {product.meta_preorder_message['id'] if product.meta_preorder_message['id'] else "NULL"},
+                        {product.meta_is_featured['id'] if product.meta_is_featured['id'] else "NULL"},
+                        {product.meta_in_store_only['id'] if product.meta_in_store_only['id'] else "NULL"}
                         )
                         """
                     response = product.db.query_db(insert_query, commit=True)
@@ -476,9 +483,9 @@ class Database:
 
                 def update(product, variant):
                     if product.shopify_collections:
-                        categories_string = ','.join(str(x) for x in product.shopify_collections)
+                        collection_string = ','.join(str(x) for x in product.shopify_collections)
                     else:
-                        categories_string = None
+                        collection_string = None
 
                     update_query = f"""
                         UPDATE {Database.Shopify.Product.table} 
@@ -488,21 +495,27 @@ class Database:
                         PRODUCT_ID = {product.product_id if product.product_id else 'NULL'}, 
                         VARIANT_ID = {variant.variant_id if variant.variant_id else 'NULL'}, 
                         INVENTORY_ID = {variant.inventory_id if variant.inventory_id else 'NULL'}, 
-                        VARIANT_NAME = {f"'{variant.variant_name}'" if variant.variant_id else "NULL"}, 
+                        VARIANT_NAME = {f"'{variant.variant_name}'" if variant.variant_name else "NULL"}, 
                         OPTION_ID = {variant.option_id if variant.option_id else "NULL"}, 
                         OPTION_VALUE_ID = {variant.option_value_id if variant.option_value_id else "NULL"},  
-                        CATEG_ID = {f"'{categories_string}'" if categories_string else "NULL"}, 
-                        CF_BOTAN_NAM = {variant.meta_botanical_name['id'] if variant.meta_botanical_name['id'] else "NULL"},
-                        CF_PLANT_TYP = {variant.meta_plant_type['id'] if variant.meta_plant_type['id'] else "NULL"},
-                        CF_HEIGHT = {variant.meta_height['id'] if variant.meta_height['id'] else "NULL"},
-                        CF_WIDTH = {variant.meta_width['id'] if variant.meta_width['id'] else "NULL"},
-                        CF_CLIM_ZON = {variant.meta_climate_zone['id'] if variant.meta_climate_zone['id'] else "NULL"},
-                        CF_CLIM_ZON_LST = {variant.meta_climate_zone_list['id'] if variant.meta_climate_zone_list['id'] else "NULL"},
-                        CF_COLOR = {variant.meta_colors['id'] if variant.meta_colors['id'] else "NULL"},
-                        CF_SIZE = {variant.meta_size['id'] if variant.meta_size['id'] else "NULL"},
-                        CF_BLOOM_SEAS = {variant.meta_bloom_season['id'] if variant.meta_bloom_season['id'] else "NULL"},
-                        CF_LIGHT_REQ = {variant.meta_light_requirements['id'] if variant.meta_light_requirements['id'] else "NULL"},
-                        CF_FEATURES = {variant.meta_features['id'] if variant.meta_features['id'] else "NULL"},
+                        CATEG_ID = {f"'{collection_string}'" if collection_string else "NULL"}, 
+                        CF_BOTAN_NAM = {product.meta_botanical_name['id'] if product.meta_botanical_name['id'] else "NULL"},
+                        CF_PLANT_TYP = {product.meta_plant_type['id'] if product.meta_plant_type['id'] else "NULL"},
+                        CF_HEIGHT = {product.meta_height['id'] if product.meta_height['id'] else "NULL"},
+                        CF_WIDTH = {product.meta_width['id'] if product.meta_width['id'] else "NULL"},
+                        CF_CLIM_ZON = {product.meta_climate_zone['id'] if product.meta_climate_zone['id'] else "NULL"},
+                        CF_CLIM_ZON_LST = {product.meta_climate_zone_list['id'] if product.meta_climate_zone_list['id'] else "NULL"},
+                        CF_COLOR = {product.meta_colors['id'] if product.meta_colors['id'] else "NULL"},
+                        CF_SIZE = {product.meta_size['id'] if product.meta_size['id'] else "NULL"},
+                        CF_BLOOM_SEAS = {product.meta_bloom_season['id'] if product.meta_bloom_season['id'] else "NULL"},
+                        CF_BLOOM_COLOR = {product.meta_bloom_color['id'] if product.meta_bloom_color['id'] else "NULL"},
+                        CF_LIGHT_REQ = {product.meta_light_requirements['id'] if product.meta_light_requirements['id'] else "NULL"},
+                        CF_FEATURES = {product.meta_features['id'] if product.meta_features['id'] else "NULL"},
+                        CF_IS_PREORDER = {product.meta_is_preorder['id'] if product.meta_is_preorder['id'] else "NULL"},
+                        CF_PREORDER_DT = {product.meta_preorder_release_date['id'] if product.meta_preorder_release_date['id'] else "NULL"},
+                        CF_PREORDER_MSG = {product.meta_preorder_message['id'] if product.meta_preorder_message['id'] else "NULL"},
+                        CF_IS_FEATURED = {product.meta_is_featured['id'] if product.meta_is_featured['id'] else "NULL"},
+                        CF_IN_STORE_ONLY = {product.meta_in_store_only['id'] if product.meta_in_store_only['id'] else "NULL"},
                         LST_MAINT_DT = GETDATE() 
                         WHERE ID = {variant.mw_db_id}
                         """

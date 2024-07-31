@@ -49,9 +49,26 @@ class Shopify:
                     f'User Error: {self.user_errors}\nResponse: {json.dumps(self.response, indent=4)}'
                 )
             if self.errors or self.user_errors:
-                raise Exception(
-                    f'Operation Name: {operation_name}\n\nError: {self.errors}\n\nUser Error: {self.user_errors}\n\nVariables: {variables}'
-                )
+                if self.user_errors:
+                    for i in self.user_errors:
+                        if i == 'Key must be unique within this namespace on this resource':
+                            Shopify.Product.Metafield.delete(product_id=variables['input']['id'].split('/')[-1])
+                            for error in self.user_errors:
+                                if error == 'Key must be unique within this namespace on this resource':
+                                    # Remove from user errors
+                                    self.user_errors.remove(error)
+                            # Re-run query
+                            self.__init__(document, variables, operation_name)
+                        else:
+                            # Uncaught user error
+                            raise Exception(
+                                f'Operation Name: {operation_name}\n\nUser Error: {self.user_errors}\n\nVariables: {variables}'
+                            )
+                else:
+                    raise Exception(
+                        f'Operation Name: {operation_name}\n\nError: {self.errors}\n\nUser Error: {self.user_errors}\n\nVariables: {variables}'
+                    )
+
             if verbose_print:
                 print(operation_name, self)
 
@@ -416,6 +433,11 @@ class Shopify:
                 for x in response.data['productCreate']['product']['variants']['nodes']
             ]
 
+            meta_ids = [
+                {'id': x['node']['id'].split('/')[-1], 'namespace': x['node']['namespace'], 'key': x['node']['key']}
+                for x in response.data['productCreate']['product']['metafields']['edges']
+            ]
+
             result = {
                 'product_id': prod_id,
                 'media_ids': media_ids,
@@ -423,6 +445,7 @@ class Shopify:
                 'option_value_ids': option_value_ids,
                 'variant_ids': variant_ids,
                 'inventory_ids': inventory_ids,
+                'meta_ids': meta_ids,
             }
             return result
 
@@ -441,8 +464,12 @@ class Shopify:
                 x['id'].split('/')[-1] for x in response.data['productUpdate']['product']['media']['nodes']
             ]
             option_ids = [x['id'].split('/')[-1] for x in response.data['productUpdate']['product']['options']]
+            meta_ids = [
+                {'id': x['node']['id'].split('/')[-1], 'namespace': x['node']['namespace'], 'key': x['node']['key']}
+                for x in response.data['productUpdate']['product']['metafields']['edges']
+            ]
 
-            return {'media_ids': media_ids, 'option_ids': option_ids}
+            return {'media_ids': media_ids, 'option_ids': option_ids, 'meta_ids': meta_ids}
 
         def delete(product_id: int = None, all=False):
             if product_id:
@@ -522,6 +549,7 @@ class Shopify:
                     x['id'].split('/')[-1]
                     for x in response.data['productVariantsBulkUpdate']['product']['options'][0]['optionValues']
                 ]
+
                 return {'option_value_ids': option_value_ids, 'variant_ids': variant_ids}
 
             def delete(variant_id: int):
@@ -584,9 +612,6 @@ class Shopify:
                     variables=variables,
                     operation_name='productReorderMedia',
                 )
-                print()
-                print(variables)
-                print()
                 return response.data
 
             class Image:
@@ -691,7 +716,7 @@ class Shopify:
                 return response.data
 
         class Metafield:
-            queries = './integration/queries/metafield.graphql'
+            queries = './integration/queries/metafields.graphql'
             prefix = 'gid://shopify/Metafield/'
 
             def backfill_metafields_to_counterpoint():
@@ -708,101 +733,54 @@ class Shopify:
 
                     if not metafield_list:
                         continue
-                    try:
-                        bot_id = [x['id'] for x in metafield_list if x['key'] == 'botanical_name'][0]
-                    except:
-                        bot_id = None
+                    # need implementation here
+                    pass
 
-                    try:
-                        climate_id = [x['id'] for x in metafield_list if x['key'] == 'climate_zone'][0]
-                    except:
-                        climate_id = None
+            def set(product_id: int, namespace: str, key: str, value: str, type: str):
+                variables = {
+                    'ownerId': f'{Shopify.Product.prefix}{product_id}',
+                    'namespace': namespace,
+                    'key': key,
+                    'value': value,
+                    'type': type,
+                }
+                response = Shopify.Query(
+                    document=Shopify.Product.Metafield.queries, variables=variables, operation_name='MetafieldsSet'
+                )
+                return response.data
 
-                    try:
-                        plant_id = [x['id'] for x in metafield_list if x['key'] == 'plant_type'][0]
-                    except:
-                        plant_id = None
+            def delete(metafield_id: int = None, product_id: int = None):
+                if metafield_id:
+                    variables = {'input': {'id': f'{Shopify.Product.Metafield.prefix}{metafield_id}'}}
 
-                    try:
-                        type_id = [x['id'] for x in metafield_list if x['key'] == 'type'][0]
-                    except:
-                        type_id = None
-
-                    try:
-                        height_id = [x['id'] for x in metafield_list if x['key'] == 'mature_height'][0]
-                    except:
-                        height_id = None
-
-                    try:
-                        width_id = [x['id'] for x in metafield_list if x['key'] == 'mature_width'][0]
-                    except:
-                        width_id = None
-
-                    try:
-                        sun_id = [x['id'] for x in metafield_list if x['key'] == 'sun_exposure'][0]
-                    except:
-                        sun_id = None
-
-                    try:
-                        bloom_id = [x['id'] for x in metafield_list if x['key'] == 'bloom_time'][0]
-                    except:
-                        bloom_id = None
-
-                    try:
-                        color_id = [x['id'] for x in metafield_list if x['key'] == 'bloom_color'][0]
-                    except:
-                        color_id = None
-
-                    try:
-                        pollinator_id = [x['id'] for x in metafield_list if x['key'] == 'attracts_pollinators'][0]
-                    except:
-                        pollinator_id = None
-
-                    try:
-                        rate_id = [x['id'] for x in metafield_list if x['key'] == 'growth_rate'][0]
-                    except:
-                        rate_id = None
-
-                    try:
-                        deer_id = [x['id'] for x in metafield_list if x['key'] == 'deer_resistant'][0]
-                    except:
-                        deer_id = None
-
-                    try:
-                        soil_id = [x['id'] for x in metafield_list if x['key'] == 'soil_type'][0]
-                    except:
-                        soil_id = None
-
-                    try:
-                        size_id = [x['id'] for x in metafield_list if x['key'] == 'size'][0]
-                    except:
-                        size_id = None
-
-                    db = Database.db
-
-                    query = f"""
-                    UPDATE {creds.shopify_product_table}
-                    SET
-                        CF_BOTAN_NAM = {bot_id if bot_id else 'NULL'},
-                        CF_CLIM_ZON = {climate_id if climate_id else 'NULL'},
-                        CF_PLANT_TYP = {plant_id if plant_id else 'NULL'},
-                        CF_TYP =  {type_id if type_id else 'NULL'},
-                        CF_HEIGHT = {height_id if height_id else 'NULL'},
-                        CF_WIDTH = {width_id if width_id else 'NULL'},
-                        CF_SUN_EXP  = {sun_id if sun_id else 'NULL'},
-                        CF_BLOOM_TIM = {bloom_id if bloom_id else 'NULL'},
-                        CF_FLOW_COL = {color_id if color_id else 'NULL'},
-                        CF_POLLIN = {pollinator_id if pollinator_id else 'NULL'},
-                        CF_GROWTH_RT = {rate_id if rate_id else 'NULL'},
-                        CF_DEER_RES = {deer_id if deer_id else 'NULL'},
-                        CF_SOIL_TYP = {soil_id if soil_id else 'NULL'},
-                        CF_COLOR = {color_id if color_id else 'NULL'},
-                        CF_SIZE = {size_id if size_id else 'NULL'}
-                    WHERE
-                        PRODUCT_ID = {product_id}
-                    """
-                    response = db.query_db(query, commit=True)
-                    print(response)
+                    response = Shopify.Query(
+                        document=Shopify.Product.Metafield.queries,
+                        variables=variables,
+                        operation_name='metafieldDelete',
+                    )
+                    return response.data
+                elif product_id:
+                    response = Shopify.Product.get(product_id)
+                    variables = {
+                        'metafields': [
+                            # {
+                            #     'ownerId': x['node']['id'],
+                            #     'namespace': x['node']['namespace'],
+                            #     'key': x['node']['key'],
+                            # }
+                            x['node']['id']
+                            for x in response['product']['metafields']['edges']
+                        ]
+                    }
+                    # # remove variables with global namespace
+                    # variables['metafields'] = [x for x in variables['metafields'] if x['namespace'] != 'global']
+                    # response = Shopify.Query(
+                    #     document=Shopify.Product.Metafield.queries,
+                    #     variables=variables,
+                    #     operation_name='metafieldsDelete',
+                    # )
+                    for i in variables['metafields']:
+                        Shopify.Product.Metafield.delete(metafield_id=i.split('/')[-1])
 
         class Files:
             queries = './integration/queries/files.graphql'
@@ -1236,11 +1214,5 @@ class Shopify:
 
 if __name__ == '__main__':
     response = Shopify.MetafieldDefinition.get()
-    for i in response:
-        Database.Shopify.Metafield_Definition.insert(i)
-    # print(i)
-    # print()
-    # if i['NAME_SPACE'] == 'product-specification':
-    #     Shopify.MetafieldDefinition.delete(i['META_ID'])
-    #     Database.Shopify.Metafield_Definition.delete(i['META_ID'])
-    # Shopify.MetafieldDefinition.create()
+    for res in response:
+        Database.Shopify.Metafield_Definition.insert(res)
