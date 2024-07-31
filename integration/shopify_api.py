@@ -133,7 +133,8 @@ class Shopify:
 
             hdsc = float(get_money(snode['totalDiscountsSet']))
 
-            price = float(get_money(snode['currentSubtotalPriceSet'])) + hdsc
+            subtotal = float(get_money(snode['currentSubtotalPriceSet']))
+            total = float(get_money(snode['currentTotalPriceSet']))
 
             bc_order = {
                 'id': snode['name'],
@@ -142,11 +143,11 @@ class Shopify:
                 'date_modified': snode['updatedAt'],
                 'status_id': 11,  # TODO: Add status id
                 'status': snode['displayFulfillmentStatus'],
-                'subtotal_ex_tax': price,
-                'subtotal_inc_tax': price,
+                'subtotal_ex_tax': subtotal,
+                'subtotal_inc_tax': subtotal,
                 'base_shipping_cost': shippingCost,
-                'total_ex_tax': price,
-                'total_inc_tax': price,
+                'total_ex_tax': total,
+                'total_inc_tax': total,
                 'items_total': snode['subtotalLineItemsQuantity'],
                 'items_shipped': 0,  # TODO: Add items shipped
                 'payment_method': None,  # TODO: Add payment method
