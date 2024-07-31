@@ -115,40 +115,43 @@ class Shopify:
                 def get_money(money: dict):
                     return money['presentmentMoney']['amount']
 
-                shopify_products.append(
-                    {
-                        'id': item['id'],
-                        'sku': item['sku'],
-                        'type': 'giftcertificate' if item['isGiftCard'] else 'physical',
-                        'base_price': get_money(item['discountedTotalSet']),
-                        'price_ex_tax': get_money(item['discountedTotalSet']),
-                        'price_inc_tax': get_money(item['discountedTotalSet']),
-                        'price_tax': 0,
-                        'base_total': get_money(item['discountedTotalSet']),
-                        'total_ex_tax': get_money(item['discountedTotalSet']),
-                        'total_inc_tax': get_money(item['discountedTotalSet']),
-                        'total_tax': 0,
-                        'quantity': item['quantity'],
-                        'base_cost_price': get_money(item['discountedTotalSet']),
-                        'cost_price_inc_tax': get_money(item['discountedTotalSet']),
-                        'cost_price_ex_tax': get_money(item['discountedTotalSet']),
-                        'cost_price_tax': 0,
-                        'is_refunded': False,
-                        'quantity_refunded': 0,
-                        'refund_amount': 0,
-                        'return_id': 0,
-                        'fixed_shipping_cost': 0,
-                        'gift_certificate_id': None,
-                        'applied_discounts': [],
-                        'discounted_total_inc_tax': get_money(item['discountedTotalSet']),
-                    }
-                )
+                price = float(get_money(item['originalTotalSet']))
+
+                pl = {
+                    'id': item['id'],
+                    'sku': item['sku'],
+                    'type': 'giftcertificate' if item['isGiftCard'] else 'physical',
+                    'base_price': price,
+                    'price_ex_tax': price,
+                    'price_inc_tax': price,
+                    'price_tax': 0,
+                    'base_total': price,
+                    'total_ex_tax': price,
+                    'total_inc_tax': price,
+                    'total_tax': 0,
+                    'quantity': item['quantity'],
+                    'is_refunded': False,
+                    'quantity_refunded': 0,
+                    'refund_amount': 0,
+                    'return_id': 0,
+                    'fixed_shipping_cost': 0,
+                    'gift_certificate_id': None,
+                    'discounted_total_inc_tax': get_money(item['discountedTotalSet']),
+                    'applied_discounts': [],
+                }
+
+                shopify_products.append(pl)
 
             def get_money(money: dict):
                 return money['presentmentMoney']['amount']
 
             snode = shopify_order['node']
-            discountedPrice = get_money(snode['shippingLine']['discountedPriceSet'])
+            shippingCost = float(get_money(snode['shippingLine']['discountedPriceSet']))
+
+            hdsc = float(get_money(snode['totalDiscountsSet']))
+
+            subtotal = float(get_money(snode['currentSubtotalPriceSet']))
+            total = float(get_money(snode['currentTotalPriceSet']))
 
             bc_order = {
                 'id': snode['name'],
@@ -157,24 +160,11 @@ class Shopify:
                 'date_modified': snode['updatedAt'],
                 'status_id': 11,  # TODO: Add status id
                 'status': snode['displayFulfillmentStatus'],
-                'subtotal_ex_tax': get_money(snode['currentSubtotalPriceSet']),
-                'subtotal_inc_tax': get_money(snode['currentSubtotalPriceSet']),
-                'base_shipping_cost': discountedPrice,
-                'shipping_cost_ex_tax': discountedPrice,
-                'shipping_cost_inc_tax': discountedPrice,
-                'shipping_cost_tax': discountedPrice,
-                'shipping_cost_tax_class_id': 2,  # TODO: Add shipping tax class id
-                'base_handling_cost': discountedPrice,
-                'handling_cost_ex_tax': discountedPrice,
-                'handling_cost_inc_tax': discountedPrice,
-                'handling_cost_tax': discountedPrice,
-                'handling_cost_tax_class_id': 2,  # TODO: Add handling tax class id
-                'base_wrapping_cost': discountedPrice,
-                'wrapping_cost_ex_tax': discountedPrice,
-                'wrapping_cost_inc_tax': discountedPrice,
-                'wrapping_cost_tax': discountedPrice,
-                'total_ex_tax': get_money(snode['currentTotalPriceSet']),
-                'total_inc_tax': get_money(snode['currentTotalPriceSet']),
+                'subtotal_ex_tax': subtotal,
+                'subtotal_inc_tax': subtotal,
+                'base_shipping_cost': shippingCost,
+                'total_ex_tax': total,
+                'total_inc_tax': total,
                 'items_total': snode['subtotalLineItemsQuantity'],
                 'items_shipped': 0,  # TODO: Add items shipped
                 'payment_method': None,  # TODO: Add payment method
@@ -218,59 +208,29 @@ class Shopify:
                     ]
                 },
                 'coupons': {'url': []},
-                'store_default_currency_code': 'USD',
-                'custom_status': 'Awaiting Fulfillment',  # TODO: Add custom status
-                # "transactions": {
-                #     "data": [
-                #         {
-                #             "id": 862718791,
-                #             "order_id": "100",
-                #             "event": "purchase",
-                #             "method": "credit_card",
-                #             "amount": 10,
-                #             "currency": "USD",
-                #             "gateway": "bigpaypay",
-                #             "gateway_transaction_id": "",
-                #             "payment_method_id": "bigpaypay.zzzblackhole",
-                #             "status": "ok",
-                #             "test": True,
-                #             "fraud_review": False,
-                #             "reference_transaction_id": None,
-                #             "date_created": "2024-07-29T15:08:23+00:00",
-                #             "avs_result": {
-                #                 "code": "",
-                #                 "message": "",
-                #                 "street_match": "",
-                #                 "postal_match": "",
-                #             },
-                #             "cvv_result": {"code": "", "message": ""},
-                #             "credit_card": {
-                #                 "card_type": "visa",
-                #                 "card_iin": "411111",
-                #                 "card_last4": "1111",
-                #                 "card_expiry_month": 5,
-                #                 "card_expiry_year": 2029,
-                #             },
-                #             "gift_certificate": None,
-                #             "store_credit": None,
-                #             "offline": None,
-                #             "custom": None,
-                #             "payment_instrument_token": None,
-                #             "custom_provider_field_result": None,
-                #         }
-                #     ],
-                #     "meta": {
-                #         "pagination": {
-                #             "total": 1,
-                #             "count": 1,
-                #             "per_page": 50,
-                #             "current_page": 1,
-                #             "total_pages": 1,
-                #             "links": {"current": "?page=1&limit=50"},
-                #         }
-                #     },
-                # },
+                'transactions': {'data': []},
             }
+
+            if hdsc > 0:
+                bc_order['coupons']['url'] = [{'amount': hdsc}]
+
+            # transactions = []
+
+            # for transaction in snode['transactions']:
+            #     amount = float(get_money(transaction['amountSet']))
+
+            #     if transaction['gateway'] == 'gift_card':
+            #         transaction['gateway'] = 'gift_certificate'
+
+            #     transactions.append(
+            #         {
+            #             'method': transaction['gateway'],
+            #             'amount': amount,
+            #             'gift_certificate': {'code': 'ABC123', 'remaining_balance': 0},
+            #         }
+            #     )
+
+            # bc_order['transactions']['data'] = transactions
 
             return bc_order
 
