@@ -1,10 +1,9 @@
 from setup import creds
-from setup import query_engine
+from setup.query_engine import QueryEngine as db
 from setup.error_handler import ProcessInErrorHandler
 
 
 class QR:
-    db = query_engine.QueryEngine()
     logger = ProcessInErrorHandler.logger
     error_handler = ProcessInErrorHandler.error_handler
 
@@ -13,7 +12,7 @@ class QR:
         INSERT INTO SN_QR (QR_CODE, URL, PUBLICATION, MEDIUM, OFFER, DESCR, COUPON_CODE)
         Values('{qr_code}','{url}', '{publication}', '{medium}', '{offer}', '{description}', '{coupon_code}')
         """
-        response = QR.db.query_db(query, commit=True)
+        response = db.query(query, commit=True)
         if response['code'] == 200:
             QR.logger.success(f'QR Code {qr_code} inserted successfully')
             return True
@@ -26,7 +25,7 @@ class QR:
         SELECT ID FROM {creds.qr_table}
         WHERE QR_CODE = '{qr_code}'
         """
-        response = QR.db.query_db(query)
+        response = db.query(query)
         return len(response) > 0 if response else False
 
     def get_visit_count(qr_code):
@@ -34,7 +33,7 @@ class QR:
         SELECT VISIT_COUNT FROM {creds.qr_table}
         WHERE QR_CODE = '{qr_code}'
         """
-        response = QR.db.query_db(query)
+        response = db.query(query)
         return response[0][0] if response else 0
 
     def get_url(qr_code):
@@ -42,7 +41,7 @@ class QR:
         SELECT URL FROM {creds.qr_table}
         WHERE QR_CODE = '{qr_code}'
         """
-        response = QR.db.query_db(query)
+        response = db.query(query)
         return response[0][0] if response else None
 
     def visit(qr_code):
@@ -58,7 +57,7 @@ class QR:
         SET VISIT_COUNT = VISIT_COUNT + 1, LST_SCAN = GETDATE()
         WHERE QR_CODE = '{qr_code}'
         """
-        response = QR.db.query_db(query, commit=True)
+        response = db.query(query, commit=True)
         if response['code'] == 200:
             return True
         else:
@@ -70,7 +69,7 @@ class QR:
         DELETE FROM {creds.qr_table}
         WHERE QR_CODE = '{qr_code}'
         """
-        response = QR.db.query_db(query, commit=True)
+        response = db.query(query, commit=True)
         if response['code'] == 200:
             QR.logger.success(f'QR Code {qr_code} deleted successfully')
             return True

@@ -66,7 +66,15 @@
 
             <div id="main">
 
-                 {% if non_web_enabled_items != "<p>No Items</p>" %}
+                {% if invisible_items != "<p>No Items</p>" %}
+                <div>
+                    <h2>Non Web Visible Items</h2>
+                    {{ invisible_items }}
+                </div>
+                {% endif %}
+                
+                
+                {% if non_web_enabled_items != "<p>No Items</p>" %}
                  <div>
                     <h2>Non Web-Enabled Items</h2>
                     {{ non_web_enabled_items }}

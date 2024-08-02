@@ -4,12 +4,10 @@ import pandas
 
 from customer_tools.customers import is_current_customer, Customer
 from setup import creds
-from setup.query_engine import QueryEngine
+from setup.query_engine import QueryEngine as db
 from setup.error_handler import ScheduledTasksErrorHandler as error_handler
 
 console_logging = True
-
-db = QueryEngine()
 
 
 def get_government_customers():
@@ -22,7 +20,7 @@ def get_government_customers():
     NAM like '%university%' or
     NAM like '%schools%' or
     NAM like '%college')"""
-    response = db.query_db(query)
+    response = db.query(query)
     if response is not None:
         return [i[0] for i in response]
 
@@ -37,7 +35,7 @@ def set_government_pricing_tier():
     NAM like '%university%' or
     NAM like '%schools%' or
     NAM like '%college')"""
-    db.query_db(query, commit=True)
+    db.query(query, commit=True)
 
 
 def create_customer_log(cust_no, business_name, total_sales, previous_tier, new_tier):
@@ -65,7 +63,7 @@ def reassess_tiered_pricing(start_date, end_date, demote=False):
     SET PROF_ALPHA_1 = '1'
     WHERE CATEG_COD = 'WHOLESALE' and (PROF_ALPHA_1 IS NULL or PROF_ALPHA_1 = '')
     """
-    db.query_db(correct_null_query, commit=True)
+    db.query(correct_null_query, commit=True)
     error_handler.logger.info("All Wholesale Accounts with no pricing tier set to '1'")
 
     # Set all government customers to pricing tier 2
@@ -91,7 +89,7 @@ def reassess_tiered_pricing(start_date, end_date, demote=False):
     (1=0) ', 0, 0, 'SLS_EXT_PRC_A - RTN_EXT_PRC_VALID_A - RTN_EXT_PRC_NONVALID_A', 2
     """
 
-    wholesale_customers_during_period = db.query_db(sales_history_query)
+    wholesale_customers_during_period = db.query(sales_history_query)
 
     if wholesale_customers_during_period is not None:
         for i in wholesale_customers_during_period:

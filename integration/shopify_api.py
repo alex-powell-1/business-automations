@@ -52,13 +52,17 @@ class Shopify:
                 if self.user_errors:
                     for i in self.user_errors:
                         if i == 'Key must be unique within this namespace on this resource':
-                            Shopify.Product.Metafield.delete(product_id=variables['input']['id'].split('/')[-1])
+                            product_id = variables['input']['id'].split('/')[-1]
+                            Shopify.Product.Metafield.delete(product_id=product_id)
+                            Database.Shopify.Product.Metafield.delete(product_id=product_id)
                             for error in self.user_errors:
                                 if error == 'Key must be unique within this namespace on this resource':
                                     # Remove from user errors
                                     self.user_errors.remove(error)
                             # Re-run query
                             self.__init__(document, variables, operation_name)
+                        if i == 'Metafield does not exist':
+                            pass
                         else:
                             # Uncaught user error
                             raise Exception(
@@ -419,6 +423,10 @@ class Shopify:
                 raise Exception(
                     f'Error: {response.errors}\nUser Error: {response.user_errors}\nPayload: {product_payload}'
                 )
+            # result = {}
+            # for i in product_payload['media']:
+            #     # Get the image name from the payload and then match it with the parsed response URL
+            #     pass
 
             media_ids = [
                 x['id'].split('/')[-1] for x in response.data['productUpdate']['product']['media']['nodes']
@@ -502,15 +510,53 @@ class Shopify:
                     operation_name='productVariantsBulkUpdate',
                 )
 
-                variant_ids = [
-                    x['id'].split('/')[-1] for x in response.data['productVariantsBulkUpdate']['productVariants']
-                ]
-                option_value_ids = [
-                    x['id'].split('/')[-1]
-                    for x in response.data['productVariantsBulkUpdate']['product']['options'][0]['optionValues']
-                ]
+                result = {}
+                for i in variables['variants']:
+                    sku = i['inventoryItem']['sku']
+                    name = i['optionValues']['name']
+                    result[sku] = {
+                        'variant_id': [
+                            x['id'].split('/')[-1]
+                            for x in response.data['productVariantsBulkUpdate']['productVariants']
+                            if x['sku'] == sku
+                        ][0],
+                        'option_value_id': [
+                            x['id'].split('/')[-1]
+                            for x in response.data['productVariantsBulkUpdate']['product']['options'][0][
+                                'optionValues'
+                            ]
+                            if x['name'] == name
+                        ][0],
+                        # 'image_id': [
+                        #     x['image']['id'].split('/')[-1]
+                        #     for x in response.data['productVariantsBulkUpdate']['productVariants']
+                        #     if x['sku'] == sku and x['image'] is not None
+                        # ],
+                        'has_image': True
+                        if [
+                            x['image']['id'].split('/')[-1]
+                            for x in response.data['productVariantsBulkUpdate']['productVariants']
+                            if x['sku'] == sku and x['image'] is not None
+                        ]
+                        else False,
+                    }
 
-                return {'option_value_ids': option_value_ids, 'variant_ids': variant_ids}
+                # variant_ids = [
+                #     x['id'].split('/')[-1] for x in response.data['productVariantsBulkUpdate']['productVariants']
+                # ]
+                # option_value_ids = [
+                #     x['id'].split('/')[-1]
+                #     for x in response.data['productVariantsBulkUpdate']['product']['options'][0]['optionValues']
+                # ]
+                # image_ids = [
+                #     x['image']['id'].split('/')[-1]
+                #     for x in response.data['productVariantsBulkUpdate']['productVariants']
+                #     if x['image'] is not None
+                # ]
+
+                # result = {'option_value_ids': option_value_ids, 'variant_ids': variant_ids, 'image_ids': image_ids}
+                print(result)
+                return result
 
             def delete(variant_id: int):
                 response = Shopify.Query(
@@ -561,6 +607,7 @@ class Shopify:
             def reorder(product):
                 variables = {'id': f'{Shopify.Product.prefix}{product.product_id}', 'moves': []}
                 for image in product.images:
+                    print(f'Image Name: {image.name}, Image ID: {image.image_id}, Sort Order: {image.sort_order}')
                     variables['moves'].append(
                         {
                             'id': f'{Shopify.Product.Media.Image.prefix}{image.image_id}',
@@ -576,6 +623,28 @@ class Shopify:
 
             class Image:
                 prefix = 'gid://shopify/MediaImage/'
+
+                def get(product_id: int):
+                    response = Shopify.Query(
+                        document=Shopify.Product.Media.queries,
+                        variables={'id': f'{Shopify.Product.prefix}{product_id}'},
+                        operation_name='productMedia',
+                    )
+
+                    result = {}
+
+                    for i in response.data['product']['media']['nodes']:
+                        id = i['id'].split('/')[-1]
+                        result[id] = {
+                            'image_id': i['id'].split('/')[-1],
+                            'url': i['preview']['image']['url'],
+                            'alt_text': i['alt'],
+                            'status': i['preview']['status'],
+                        }
+                        if result[id]['status'] == 'READY':
+                            image_name = result[id]['url'].split('/')[-1].split('?')[0]
+                            result[id]['image_name'] = image_name
+                    print(result)
 
                 def create(image):
                     variables = {'productId': f'{Shopify.Product.prefix}{image.product_id}'}
@@ -1087,6 +1156,14 @@ class Shopify:
                 for i in metafields:
                     Shopify.MetafieldDefinition.delete(i['META_ID'])
 
+        def sync():
+            # Delete all metafield definitions from Database
+            Database.Shopify.Metafield_Definition.delete()
+            # Get all metafields from Shopify and insert into Database
+            response = Shopify.MetafieldDefinition.get()
+            for res in response:
+                Database.Shopify.Metafield_Definition.insert(res)
+
     class Webhook:
         queries = './integration/queries/webhooks.graphql'
         prefix = 'gid://shopify/WebhookSubscription'
@@ -1173,6 +1250,15 @@ class Shopify:
 
 
 if __name__ == '__main__':
-    response = Shopify.MetafieldDefinition.get()
-    for res in response:
-        Database.Shopify.Metafield_Definition.insert(res)
+    variables = {
+        'definition': {
+            'name': 'Image Name',
+            'namespace': 'product-image',
+            'key': 'image_name',
+            'description': 'Image name to be used with sync',
+            'type': 'single_line_text_field',
+            'ownerType': 'PRODUCTIMAGE',
+        }
+    }
+
+    Shopify.Product.get(8308344651943)

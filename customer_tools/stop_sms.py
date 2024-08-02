@@ -2,14 +2,12 @@ from datetime import datetime
 
 import setup.date_presets
 from setup import date_presets
-from setup.query_engine import QueryEngine
+from setup.query_engine import QueryEngine as db
 
 # from datetime import datetime
 # from customer_tools.customer_tools import Customer, get_customer_number_by_phone
 # from setup.create_log import create_customer_log
 # from setup.creds import unsubscribed_sms
-
-db = QueryEngine()
 
 
 # def get_phones_to_unsubscribe():
@@ -65,7 +63,7 @@ db = QueryEngine()
 
 def remove_refunds_from_sms_funnel(log_file):
     """Gets list of refunds from today"""
-    print(f"Remove Online Refunds from SMS Funnel: Starting at {datetime.now():%H:%M:%S}", file=log_file)
+    print(f'Remove Online Refunds from SMS Funnel: Starting at {datetime.now():%H:%M:%S}', file=log_file)
 
     # Get all refunds from a given day
     query = f"""
@@ -75,7 +73,7 @@ def remove_refunds_from_sms_funnel(log_file):
     WHERE TKT_NO like '%R1' AND BUS_DAT = '{setup.date_presets.today}'
     """
 
-    response = db.query_db(query)
+    response = db.query(query)
     if response is not None:
         for x in response:
             customer_number = x[1]
@@ -91,7 +89,7 @@ def remove_refunds_from_sms_funnel(log_file):
             AND hist.EVENT_NO != '{event_number}'
             ORDER BY hist.BUS_DAT DESC   
             """
-            response = db.query_db(query)
+            response = db.query(query)
 
             # If Customer has sales history prior to this event
             if response is not None:
@@ -110,9 +108,12 @@ def remove_refunds_from_sms_funnel(log_file):
                 SET LST_SAL_DAT = '{most_recent_timestamp}'
                 WHERE CUST_NO = '{customer_number}'
                 """
-                db.query_db(query, commit=True)
-                print(f"Customer: {customer_number} last sale date changed from {last_sale_date} "
-                      f"to {most_recent_timestamp}", file=log_file)
+                db.query(query, commit=True)
+                print(
+                    f'Customer: {customer_number} last sale date changed from {last_sale_date} '
+                    f'to {most_recent_timestamp}',
+                    file=log_file,
+                )
 
             # If customer has no sales history
             else:
@@ -121,14 +122,16 @@ def remove_refunds_from_sms_funnel(log_file):
                 SET LST_SAL_DAT = NULL, FST_SAL_DAT = NULL, LST_SAL_AMT = NULL
                 WHERE CUST_NO = '{customer_number}'
                 """
-                db.query_db(query, commit=True)
-                print(f"Customer: {customer_number} last sale date changed from {last_sale_date} "
-                      f"to NULL", file=log_file)
+                db.query(query, commit=True)
+                print(
+                    f'Customer: {customer_number} last sale date changed from {last_sale_date} ' f'to NULL',
+                    file=log_file,
+                )
     else:
-        print("No refunds today", file=log_file)
+        print('No refunds today', file=log_file)
 
-    print(f"Remove Online Refunds from SMS Funnel: Completed at {date_presets.today:%H:%M:%S}", file=log_file)
-    print("-----------------------", file=log_file)
+    print(f'Remove Online Refunds from SMS Funnel: Completed at {date_presets.today:%H:%M:%S}', file=log_file)
+    print('-----------------------', file=log_file)
 
 
 def has_refund(order_number) -> bool:
@@ -138,7 +141,7 @@ def has_refund(order_number) -> bool:
     FROM PS_TKT_HIST
     WHERE TKT_NO like '{order_number}%'
     """
-    response = db.query_db(query)
+    response = db.query(query)
     if response is not None:
         for x in response:
             if x[0][-2] == 'R':

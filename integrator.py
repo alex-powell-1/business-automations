@@ -21,7 +21,6 @@ class Integrator:
 
     def __init__(self):
         self.last_sync = get_last_sync()
-        self.db = Database()
         self.catalog = Catalog(last_sync=self.last_sync)
         self.customers = Customers(last_sync=self.last_sync)
         self.gift_certificates = GiftCertificates(last_sync=self.last_sync)
@@ -37,7 +36,7 @@ class Integrator:
         # self.customers.delete_customers()
         if rebuild:
             # Drop and rebuild the tables
-            self.db.rebuild_tables()
+            Database.Shopify.rebuild_tables()
 
         self.catalog = Catalog(last_sync=date_presets.business_start_date)
         self.sync(initial=True)

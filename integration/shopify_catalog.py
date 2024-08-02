@@ -1,26 +1,18 @@
-import asyncio
 import os
-import shutil
 import re
 import json
 from datetime import datetime
 
 import time
-import aiohttp
 
-from integration.requests_handler import BCRequests
 from integration.shopify_api import Shopify
-import requests
 from PIL import Image, ImageOps
-from requests.auth import HTTPDigestAuth
-import random
 
 from integration.database import Database
 
 from setup import creds
-from setup import query_engine
-from setup.utilities import get_all_binding_ids, convert_to_utc
-from setup.utilities import VirtualRateLimiter
+from setup.query_engine import QueryEngine as db
+from setup.utilities import get_all_binding_ids, get_product_images, convert_to_utc, parse_custom_url, get_filesize
 
 from setup.error_handler import ProcessOutErrorHandler
 
@@ -28,16 +20,16 @@ from setup.error_handler import ProcessOutErrorHandler
 class Catalog:
     error_handler = ProcessOutErrorHandler.error_handler
     logger = error_handler.logger
-
     all_binding_ids = get_all_binding_ids()
-    mw_brands = set()
     metafields = Database.Shopify.Metafield_Definition.get()
 
-    def __init__(self, last_sync=datetime(1970, 1, 1)):
+    def __init__(self, last_sync=datetime(1970, 1, 1), inventory_only=False):
         self.last_sync = last_sync
-        self.db = Database.db
-        self.category_tree = self.CategoryTree(last_sync=last_sync)
-        # Used to process preliminary deletions of products and images
+        self.inventory_only = inventory_only
+        if not self.inventory_only:
+            self.category_tree = self.CategoryTree(last_sync=last_sync)
+            # Used to process preliminary deletions of products and images
+            self.product_images = get_product_images()
         self.cp_items = []
         self.mw_items = []
         self.sync_queue = []
@@ -50,10 +42,10 @@ class Catalog:
 
     def get_products(self, test_mode=False):
         # Get data for self.cp_items and self.mw_items
-        counterpoint_items = self.db.query_db("SELECT ITEM_NO FROM IM_ITEM WHERE IS_ECOMM_ITEM = 'Y'")
+        counterpoint_items = db.query("SELECT ITEM_NO FROM IM_ITEM WHERE IS_ECOMM_ITEM = 'Y'")
         self.cp_items = [x[0] for x in counterpoint_items] if counterpoint_items else []
 
-        middleware_items = self.db.query_db(f'SELECT ITEM_NO FROM {creds.shopify_product_table}')
+        middleware_items = db.query(f'SELECT ITEM_NO FROM {creds.shopify_product_table}')
         self.mw_items = [x[0] for x in middleware_items] if middleware_items else []
 
         # Create the Sync Queue
@@ -67,7 +59,7 @@ class Catalog:
         ITEM.IS_ECOMM_ITEM = 'Y'
         ORDER BY {creds.cp_field_binding_id} DESC
         """
-        response = self.db.query_db(query)
+        response = db.query(query)
         if response is not None:
             result = []
             for item in response:
@@ -90,7 +82,7 @@ class Catalog:
                         FROM IM_ITEM
                         WHERE {creds.cp_field_binding_id} = '{binding_id}' AND IS_ECOMM_ITEM = 'Y' AND IS_ADM_TKT = 'Y'"""
 
-                        get_parent_response = self.db.query_db(query)
+                        get_parent_response = db.query(query)
 
                         if get_parent_response is not None:
                             # Parent(s) found
@@ -99,7 +91,7 @@ class Catalog:
                             if len(parent_list) > 1:
                                 Catalog.logger.warn(f'Multiple parents found for {binding_id}.')
                                 # Set Parent Status for new parent.
-                                parent_sku = self.set_parent(binding_id=binding_id, remove_current=True)
+                                parent_sku = Catalog.Product.set_parent(binding_id=binding_id, remove_current=True)
 
                             else:
                                 # Single Parent Found.
@@ -107,7 +99,7 @@ class Catalog:
                         else:
                             # Missing Parent! Will choose the lowest price web enabled variant as the parent.
                             Catalog.logger.warn(f'Parent SKU not found for {binding_id}.')
-                            parent_sku = self.set_parent(binding_id=binding_id)
+                            parent_sku = Catalog.Product.set_parent(binding_id=binding_id)
 
                         queue_payload = {'sku': parent_sku, 'binding_id': binding_id}
                 else:
@@ -124,46 +116,6 @@ class Catalog:
 
             Catalog.logger.info(f'Sync Queue: {self.sync_queue}')
 
-    def set_parent(self, binding_id, remove_current=False):
-        # Get Family Members.
-        family_members = Catalog.get_family_members(binding_id=binding_id, price=True)
-        # Choose the lowest price family member as the parent.
-        parent_sku = min(family_members, key=lambda x: x['price_1'])['sku']
-
-        Catalog.logger.info(f'Family Members: {family_members}, Target new parent item: {parent_sku}')
-
-        if remove_current:
-            # Remove Parent Status from all children.
-            remove_parent_query = f"""
-                    UPDATE IM_ITEM 
-                    SET IS_ADM_TKT = 'N', LST_MAINT_DT = GETDATE()
-                    WHERE {creds.cp_field_binding_id} = '{binding_id}'
-                    """
-            remove_parent_response = self.db.query_db(remove_parent_query, commit=True)
-            if remove_parent_response['code'] == 200:
-                Catalog.logger.success(f'Parent status removed from all children of binding: {binding_id}.')
-            else:
-                Catalog.error_handler.add_error_v(
-                    error=f'Error removing parent status from children of binding: {binding_id}. Response: {remove_parent_response}'
-                )
-
-        # Set Parent Status for new parent.
-        query = f"""
-        UPDATE IM_ITEM
-        SET IS_ADM_TKT = 'Y'
-        WHERE ITEM_NO = '{parent_sku}'
-        """
-        set_parent_response = self.db.query_db(query, commit=True)
-
-        if set_parent_response['code'] == 200:
-            Catalog.logger.success(f'Parent status set for {parent_sku}')
-        else:
-            Catalog.error_handler.add_error_v(
-                error=f'Error setting parent status for {parent_sku}. Response {set_parent_response}'
-            )
-
-        return parent_sku
-
     def process_product_deletes(self):
         # This compares the CP and MW product lists and deletes any products that are not in both lists.
         Catalog.logger.info('Processing Product Deletions.')
@@ -174,13 +126,15 @@ class Catalog:
         for item in self.sync_queue:
             if 'binding_id' not in item:
                 # Check if the target product has a binding ID in the middleware database.
-                mw_binding_id = Catalog.get_binding_id_from_sku(item['sku'], middleware=True)
+                mw_binding_id = Catalog.Product.get_binding_id(item['sku'], middleware=True)
                 if mw_binding_id:
                     # This is a former bound product. Delete it.
                     delete_targets.append(item['sku'])
             else:
                 # These products have a binding ID. Get all family members of the binding ID.
-                family_members = Catalog.get_family_members(binding_id=item['binding_id'], counterpoint=True)
+                family_members = Catalog.Product.get_family_members(
+                    binding_id=item['binding_id'], counterpoint=True
+                )
 
                 for member in family_members:
                     query = f"""
@@ -188,7 +142,7 @@ class Catalog:
                     FROM {creds.shopify_product_table}
                     WHERE ITEM_NO = '{member}'
                     """
-                    response = self.db.query_db(query)
+                    response = db.query(query)
 
                     if response is not None:
                         exists_in_mw = True if response[0][0] else False
@@ -206,10 +160,9 @@ class Catalog:
         if delete_targets:
             Catalog.logger.info(f'Product Delete Targets: {delete_targets}')
             for x in delete_targets:
-                self.delete_product(sku=x)
+                Catalog.Product.delete(sku=x)
         else:
             Catalog.logger.info('No products to delete.')
-        time.sleep(2)
 
         Catalog.logger.info('Processing Product Additions.')
         if add_targets:
@@ -217,88 +170,47 @@ class Catalog:
             for x in add_targets:
                 parent_sku = x['parent']
                 variant_sku = x['variant']
+
                 # Get Product ID associated with item.
-                product_id = Catalog.get_product_id_from_sku(parent_sku)
+                product_id = Catalog.Product.get_product_id(parent_sku)
 
                 if product_id is not None:
                     variant = Catalog.Product.Variant(sku=variant_sku, last_run_date=self.last_sync)
-                    variant.bc_post_variant(product_id=product_id)
+                    # Shopify post variant. Needs testing..
         else:
             Catalog.logger.info('No products to add.')
 
     def process_images(self):
-        """Assesses Image folder. Deletes images from MW and BC. Updates LST_MAINT_DT in CP if new images have been added."""
-
-        def get_local_images():
-            """Get a tuple of two sets:
-            1. all SKUs that have had their photo modified since the input date.
-            2. all file names that have been modified since the input date."""
-
-            all_files = []
-            # Iterate over all files in the directory
-            for filename in os.listdir(creds.photo_path):
-                if filename not in ['Thumbs.db', 'desktop.ini', '.DS_Store']:
-                    # filter out trailing filenames
-                    if '^' in filename:
-                        if filename.split('.')[0].split('^')[1].isdigit():
-                            all_files.append([filename, os.path.getsize(f'{creds.photo_path}/{filename}')])
-                    else:
-                        all_files.append([filename, os.path.getsize(f'{creds.photo_path}/{filename}')])
-
-            return all_files
+        """Assesses Image folder. Deletes images from MW and Shopify.
+        Updates LST_MAINT_DT in CP if new images have been added."""
 
         def get_middleware_images():
             query = f'SELECT IMAGE_NAME, SIZE FROM {creds.shopify_image_table}'
-            response = self.db.query_db(query)
+            response = db.query(query)
             return [[x[0], x[1]] for x in response] if response else []
-
-        def delete_image(image_name) -> bool:
-            """Takes in an image name and looks for matching image file in middleware. If found, delete."""
-            Catalog.logger.info(f'Deleting {image_name}')
-            image_query = f"""
-            SELECT img.PRODUCT_ID, prod.VARIANT_ID, IMAGE_ID, IS_VARIANT_IMAGE 
-            FROM SN_SHOP_IMAGES img
-            INNER JOIN SN_SHOP_PROD prod on img.ITEM_NO = prod.ITEM_NO
-            WHERE IMAGE_NAME = '{image_name}'
-            """
-
-            img_id_res = self.db.query_db(image_query)
-            if img_id_res is not None:
-                product_id, variant_id, image_id, is_variant = (
-                    img_id_res[0][0],
-                    img_id_res[0][1],
-                    img_id_res[0][2],
-                    img_id_res[0][3],
-                )
-
-            if is_variant:
-                print('This is a variant image. Delete from Shopify.')
-                Shopify.Product.Variant.Image.delete(
-                    product_id=product_id, variant_id=variant_id, image_id=image_id
-                )
-
-            Shopify.Product.Media.Image.delete(product_id=product_id, image_id=image_id, variant_id=variant_id)
-            Database.Shopify.Product.Image.delete(image_id=image_id)
 
         Catalog.logger.info('Processing Image Updates.')
         start_time = time.time()
-        local_images = get_local_images()
         mw_image_list = get_middleware_images()
 
-        delete_targets = Catalog.get_deletion_target(primary_source=local_images, secondary_source=mw_image_list)
+        delete_targets = Catalog.get_deletion_target(
+            primary_source=self.product_images, secondary_source=mw_image_list
+        )
 
         if delete_targets:
             Catalog.logger.info(message=f'Delete Targets: {delete_targets}')
             for x in delete_targets:
                 Catalog.logger.info(f'Deleting Image {x[0]}.\n')
                 Catalog.logger.warn('Skipping image deletion during testing.')
-                delete_image(x[0])
+                Catalog.Product.Image.delete(x[0])
         else:
             Catalog.logger.info('No image deletions found.')
 
         update_list = delete_targets
 
-        addition_targets = Catalog.get_deletion_target(primary_source=mw_image_list, secondary_source=local_images)
+        addition_targets = Catalog.get_deletion_target(
+            primary_source=mw_image_list, secondary_source=self.product_images
+        )
 
         if addition_targets:
             for x in addition_targets:
@@ -326,7 +238,7 @@ class Catalog:
                 f"WHERE (ITEM_NO in {sku_list} {where_filter}) and IS_ECOMM_ITEM = 'Y'"
             )
 
-            self.db.query_db(query, commit=True)
+            db.query(query, commit=True)
 
         Catalog.logger.info(f'Image Add/Delete Processing Complete. Time: {time.time() - start_time}')
 
@@ -340,15 +252,15 @@ class Catalog:
         # self.process_images()
 
         # Sync Products
-        # self.get_products()  # Get all products that have been updated since the last sync
+        self.get_products()  # Get all products that have been updated since the last sync
 
         # test product queue
-        self.sync_queue = [
-            # {'sku': '202836', 'binding_id': 'B0104'}
-            {'sku': '200806'}
-            # {'sku': '10338', 'binding_id': 'B0006'},
-            # {'sku': 'SYUFICG01', 'binding_id': 'B0050'},
-        ]
+        # self.sync_queue = [
+        #     # {'sku': '202836', 'binding_id': 'B0104'}
+        #     {'sku': '10002'}
+        #     # {'sku': '10338', 'binding_id': 'B0006'},
+        #     # {'sku': '202335', 'binding_id': 'B0151'},
+        # ]
 
         if not self.sync_queue:
             Catalog.logger.success('No products to sync.')
@@ -361,7 +273,7 @@ class Catalog:
             while len(self.sync_queue) > 0:
                 start_time = time.time()
                 target = self.sync_queue.pop()
-                prod = self.Product(target, last_sync=self.last_sync)
+                prod = self.Product(target, last_sync=self.last_sync, inventory_only=self.inventory_only)
                 prod.get_product_details(last_sync=self.last_sync)
                 Catalog.logger.info(
                     f'Processing Product: {prod.sku}, Binding: {prod.binding_id}, Title: {prod.web_title}'
@@ -384,197 +296,59 @@ class Catalog:
                 f'Fail Count: {fail_count}\n'
             )
 
-    def delete_product(self, sku, update_timestamp=False):
-        delete_payload = {'sku': sku}
-        binding_id = Catalog.get_binding_id_from_sku(sku, middleware=True)
-        if binding_id is not None:
-            delete_payload['binding_id'] = binding_id
-        else:
-            Catalog.logger.warn(f'Binding ID not found for {sku}.')
-
-        product = Catalog.Product(product_data=delete_payload, last_sync=self.last_sync)
-
-        if binding_id:
-            Catalog.logger.info(f'Deleting Product: {sku} with Binding ID: {binding_id}')
-            product.delete_variant(sku=sku, binding_id=binding_id)
-        else:
-            Catalog.logger.info(f'Deleting Product: {sku}')
-            Database.Shopify.Product.delete(sku=sku)
-
-        if update_timestamp:
-            Catalog.update_timestamp(sku=sku)
-
-    @staticmethod
-    def parse_custom_url_string(string: str):
-        """Uses regular expression to parse a string into a URL-friendly format."""
-        return '-'.join(str(re.sub('[^A-Za-z0-9 ]+', '', string)).lower().split(' '))
-
-    @staticmethod
-    def update_timestamp(sku):
-        """Updates the LST_MAINT_DT field in Counterpoint for a given SKU."""
-        query = f"""
-        UPDATE IM_ITEM
-        SET LST_MAINT_DT = GETDATE()
-        WHERE ITEM_NO = '{sku}'
-        """
-        response = Database.db.query_db(query, commit=True)
-        if response['code'] == 200:
-            Catalog.logger.success(f'Timestamp updated for {sku}.')
-        else:
-            Catalog.error_handler.add_error_v(error=f'Error updating timestamp for {sku}. Response: {response}')
-
-    @staticmethod
-    def get_product(item_no):
-        query = f"SELECT ITEM_NO, {creds.cp_field_binding_id} FROM IM_ITEM WHERE ITEM_NO = '{item_no}'"
-        response = Database.db.query_db(query)
-        if response is not None:
-            sku = response[0][0]
-            binding_id = response[0][1]
-        if binding_id:
-            return {'sku': sku, 'binding_id': binding_id}
-        else:
-            return {'sku': sku}
-
-    @staticmethod
-    def get_family_members(binding_id, count=False, price=False, counterpoint=False):
-        db = Database.db
-        """Get all items associated with a binding_id. If count is True, return the count."""
-        # return a count of items in family
-        if count:
-            query = f"""
-            SELECT COUNT(ITEM_NO)
-            FROM {creds.shopify_product_table}
-            WHERE BINDING_ID = '{binding_id}'
-            """
-            response = db.query_db(query)
-            return response[0][0]
-
-        else:
-            if price:
-                # include retail price for each item
-                query = f"""
-                SELECT ITEM_NO, PRC_1
-                FROM IM_ITEM
-                WHERE {creds.cp_field_binding_id} = '{binding_id}'
-                """
-                response = db.query_db(query)
-                if response is not None:
-                    return [{'sku': x[0], 'price_1': float(x[1])} for x in response]
-
-            elif counterpoint:
-                query = f"""
-                SELECT ITEM_NO
-                FROM IM_ITEM
-                WHERE {creds.cp_field_binding_id} = '{binding_id}' and IS_ECOMM_ITEM = 'Y'
-                """
-                response = db.query_db(query)
-                if response is not None:
-                    return [x[0] for x in response]
-
-            else:
-                query = f"""
-                SELECT ITEM_NO
-                FROM {creds.shopify_product_table}
-                WHERE BINDING_ID = '{binding_id}'
-                """
-                response = db.query_db(query)
-                if response is not None:
-                    return [x[0] for x in response]
-
-    @staticmethod
-    def get_binding_id_from_sku(sku, middleware=False):
-        if middleware:
-            query = f"""
-            SELECT BINDING_ID
-            FROM {creds.shopify_product_table}
-            WHERE ITEM_NO = '{sku}'
-            """
-        else:
-            query = f"""
-            SELECT {creds.cp_field_binding_id}
-            FROM IM_ITEM
-            WHERE ITEM_NO = '{sku}'
-            """
-        response = Database.db.query_db(query)
-        if response is not None:
-            return response[0][0]
-
-    @staticmethod
-    def get_product_id_from_sku(sku):
-        query = f"SELECT PRODUCT_ID FROM {creds.shopify_product_table} WHERE ITEM_NO = '{sku}'"
-        response = Database.db.query_db(query)
-        if response is not None:
-            return response[0][0]
-
-    @staticmethod
-    def get_filesize(filepath):
-        try:
-            file_size = os.path.getsize(filepath)
-        except FileNotFoundError:
-            return None
-        else:
-            return file_size
-
-    @staticmethod
-    def delete_image_from_webdav(image_name):
-        url = f'{creds.web_dav_product_photos}/{image_name}'
-        response = requests.delete(url, auth=HTTPDigestAuth(creds.web_dav_user, creds.web_dav_pw))
-        return response
-
     @staticmethod
     def get_deletion_target(primary_source, secondary_source):
         return [element for element in secondary_source if element not in primary_source]
 
     @staticmethod
-    def delete_collections():
-        # Get all categories from Middleware. Delete from Shopify and Middleware.
-        query = f'SELECT DISTINCT COLLECTION_ID FROM {creds.shopify_collection_table}'
-        response = Database.db.query_db(query)
-        parent_category_list = [x[0] for x in response] if response else []
-        while parent_category_list:
-            target = parent_category_list.pop()
-            Shopify.Collection.delete(collection_id=target)
-            Database.Shopify.Collection.delete(collection_id=target)
+    def delete(products=True, collections=True):
+        """Deletes all products, categories from BigCommerce and Middleware."""
 
-        # Check for any remaining categories in Shopify
-        response = Shopify.Collection.get_all()
-        if response:
-            for collection in response:
-                Shopify.Collection.delete(collection)
+        def delete_products():
+            # Get all product IDs from Middleware
+            query = f'SELECT DISTINCT PRODUCT_ID FROM {creds.shopify_product_table}'
+            response = db.query(query)
+            product_id_list = [x[0] for x in response] if response else []
 
-    @staticmethod
-    def delete_products():
-        """Deletes all products from BigCommerce and Middleware."""
-        # Get all product IDs from Middleware
-        query = f'SELECT DISTINCT PRODUCT_ID FROM {creds.shopify_product_table}'
-        response = Database.db.query_db(query)
-        product_id_list = [x[0] for x in response] if response else []
+            while product_id_list:
+                target = product_id_list.pop()
+                try:
+                    Shopify.Product.delete(product_id=target)
+                except Exception as e:
+                    Catalog.error_handler.add_error_v(
+                        error=f'Error deleting product {target}. {e}', origin='delete_products()'
+                    )
+                Database.Shopify.Product.delete(product_id=target)
 
-        while product_id_list:
-            target = product_id_list.pop()
-            try:
-                Shopify.Product.delete(product_id=target)
-            except Exception as e:
-                Catalog.error_handler.add_error_v(
-                    error=f'Error deleting product {target}. {e}', origin='delete_products()'
-                )
-            Database.Shopify.Product.delete(product_id=target)
+            # Check for any remaining products in Shopify
+            response = Shopify.Product.get_all()
+            if response:
+                for product in response:
+                    Shopify.Product.delete(product)
 
-        # Check for any remaining products in Shopify
-        response = Shopify.Product.get_all()
-        if response:
-            for product in response:
-                Shopify.Product.delete(product)
+        def delete_collections():
+            # Get all categories from Middleware. Delete from Shopify and Middleware.
+            query = f'SELECT DISTINCT COLLECTION_ID FROM {creds.shopify_collection_table}'
+            response = db.query(query)
+            parent_category_list = [x[0] for x in response] if response else []
+            while parent_category_list:
+                target = parent_category_list.pop()
+                Shopify.Collection.delete(collection_id=target)
+                Database.Shopify.Collection.delete(collection_id=target)
 
-    @staticmethod
-    def delete_catalog():
-        """Deletes all products, categories, and brands from BigCommerce and Middleware."""
-        Catalog.delete_products()
-        Catalog.delete_collections()
+            # Check for any remaining categories in Shopify
+            response = Shopify.Collection.get_all()
+            if response:
+                for collection in response:
+                    Shopify.Collection.delete(collection)
+
+        if products:
+            delete_products()
+        if collections:
+            delete_collections()
 
     class CategoryTree:
         def __init__(self, last_sync=datetime(1970, 1, 1)):
-            self.db = Database.db
             self.last_sync = last_sync
             self.categories = set()
             self.heads = []
@@ -587,8 +361,8 @@ class Catalog:
                     f"{'    ' * level}---------------------------------------\n"
                     f"{'    ' * level}Counterpoint Category ID: {category.cp_categ_id}\n"
                     f"{'    ' * level}Counterpoint Parent ID: {category.cp_parent_id}\n"
-                    f"{'    ' * level}Shopify Collection ID: {category.bc_categ_id}\n"
-                    f"{'    ' * level}BigCommerce Parent ID: {category.bc_parent_id}\n"
+                    f"{'    ' * level}Shopify Collection ID: {category.collection_id}\n"
+                    f"{'    ' * level}Shopify Parent ID: {category.shopify_parent_id}\n"
                     f"{'    ' * level}Sort Order: {category.sort_order}\n"
                     f"{'    ' * level}Last Maintenance Date: {category.lst_maint_dt}\n\n"
                 )
@@ -610,7 +384,7 @@ class Catalog:
             FROM EC_CATEG cp
             FULL OUTER JOIN {creds.shopify_collection_table} mw on cp.CATEG_ID=mw.CP_CATEG_ID
             """
-            response = self.db.query_db(query)
+            response = db.query(query)
             if response:
                 for x in response:
                     cp_categ_id = x[0]
@@ -666,7 +440,7 @@ class Catalog:
             queue = []
 
             def collections_h(category):
-                # Get BC Category ID and Parent ID
+                # Get Shopify Collection ID and Parent ID
                 if category.lst_maint_dt > self.last_sync:
                     queue.append(category)
                     if category.collection_id is None:
@@ -733,7 +507,7 @@ class Catalog:
 
             for category in queue:
                 if category.image_path:
-                    image_size = Catalog.get_filesize(category.image_path)
+                    image_size = get_filesize(category.image_path)
                     if image_size != category.image_size:
                         category.image_size = image_size
                         file_list.append(category.image_path)
@@ -763,7 +537,7 @@ class Catalog:
             FROM {creds.shopify_collection_table}
             WHERE CP_CATEG_ID = {cp_categ_id}
             """
-            response = self.db.query_db(query)
+            response = db.query(query)
             if response:
                 collection_id = response[0][0] if response and response[0][0] is not None else None
                 if collection_id:
@@ -828,7 +602,7 @@ class Catalog:
                 FROM {creds.shopify_collection_table}
                 WHERE CP_CATEG_ID = {self.cp_categ_id}
                 """
-                response = query_engine.QueryEngine().query_db(query)
+                response = db.query(query)
                 if response is not None:
                     shopify_category_id = response[0][0] if response[0][0] is not None else None
                     if shopify_category_id is not None:
@@ -846,18 +620,18 @@ class Catalog:
                                     FROM {creds.shopify_collection_table} 
                                     WHERE CP_CATEG_ID = {self.cp_categ_id})
                 """
-                response = query_engine.QueryEngine().query_db(query)
+                response = db.query(query)
                 return response[0][0] if response and response[0][0] is not None else 0
 
             def get_full_custom_url_path(self):
                 parent_id = self.cp_parent_id
                 url_path = []
-                url_path.append(Catalog.parse_custom_url_string(self.name))
+                url_path.append(parse_custom_url(self.name))
                 while parent_id != 0:
                     query = f'SELECT CATEG_NAME, CP_PARENT_ID FROM {creds.shopify_collection_table} WHERE CP_CATEG_ID = {parent_id}'
-                    response = query_engine.QueryEngine().query_db(query)
+                    response = db.query(query)
                     if response:
-                        url_path.append(Catalog.parse_custom_url_string(response[0][0] or ''))
+                        url_path.append(parse_custom_url(response[0][0] or ''))
                         parent_id = response[0][1]
                     else:
                         break
@@ -892,29 +666,21 @@ class Catalog:
                 return payload
 
     class Product:
-        def __init__(self, product_data, last_sync):
-            self.db = Database.db
-
+        def __init__(self, product_data, last_sync, inventory_only=False):
+            self.last_sync = last_sync
+            self.inventory_only = inventory_only
             self.sku = product_data['sku']
             self.binding_id = product_data['binding_id'] if 'binding_id' in product_data else None
-            # Will be set to True if product gets a success response from BigCommerce API on POST or PUT
-            self.is_uploaded = False
-
-            self.last_sync = last_sync
-
             # Determine if Bound
             self.is_bound = True if self.binding_id else False
-
-            # For Bound Items
-            self.total_variants: int = 0
-            # self.variants will be list of variant products
+            # self.variants will be list of variant objects
             self.variants: list = []
-
             # self.parent will be a list of parent products. If length of list > 1, product validation will fail
             self.parent: list = []
 
             # A list of image objects
             self.images: list = []
+            self.has_variant_image = False  # used during image processing
 
             # Product Information
             self.product_id = None
@@ -1015,12 +781,10 @@ class Catalog:
                 ORDER BY PRC_1
                 """
                 # Get children and append to child list in order of price
-                response = self.db.query_db(query)
-                print(response)
+                response = db.query(query)
                 if response is not None:
                     # Create Product objects for each child and add object to bound parent list
                     for item in response:
-                        print(f'Processing Variant: {item[0]}')
                         variant = self.Variant(item[0], last_run_date=last_sync)
                         self.variants.append(variant)
 
@@ -1030,15 +794,12 @@ class Catalog:
                 # Set parent
                 self.parent = [item for item in self.variants if item.is_parent]
 
-                # Set total children
-                self.total_variants = len(self.variants)
-
                 # Inherit Product Information from Parent Item
                 for bound in self.variants:
                     if bound.is_parent:
                         self.product_id = bound.product_id
                         self.web_title = bound.web_title
-                        self.type = bound.type
+                        # self.type = bound.type
                         self.default_price = bound.price_1
                         self.cost = bound.cost
                         self.sale_price = bound.price_2
@@ -1132,8 +893,9 @@ class Catalog:
                                     origin='Image Validation',
                                 )
 
-                # Add Binding ID Images to image list
-                get_binding_id_images()
+                if not self.inventory_only:
+                    # Add Binding ID Images to image list
+                    get_binding_id_images()
 
                 # Get last maintained date of all the variants and set product last maintained date to the latest
                 # Add Variant Images to image list and establish which image is the variant thumbnail
@@ -1154,12 +916,14 @@ class Catalog:
                 self.lst_maint_dt = max(lst_maint_dt_list)
 
             def get_single_product_details():
-                self.variants.append(self.Variant(self.sku, last_run_date=last_sync))
+                self.variants.append(
+                    self.Variant(self.sku, last_run_date=last_sync, inventory_only=self.inventory_only)
+                )
                 single = self.variants[0]
                 # Product Description
                 self.product_id = single.product_id
                 self.web_title = single.web_title
-                self.type = single.type
+                # self.type = single.type
                 self.long_descr = single.long_descr
                 self.html_description = single.html_description
                 self.meta_title = single.meta_title
@@ -1216,6 +980,7 @@ class Catalog:
                 get_single_product_details()
 
             self.shopify_collections = self.get_shopify_collections()
+            self.type = self.get_collection_names()[0] if self.get_collection_names() else None
 
             # Now all images are in self.images list and are in order by binding img first then variant img
 
@@ -1226,7 +991,6 @@ class Catalog:
             check_html_description = False
             min_description_length = 20
             check_missing_images = True
-            check_for_invalid_brand = False
             check_for_item_cost = False
 
             def set_parent(status: bool = True) -> None:
@@ -1241,7 +1005,7 @@ class Catalog:
                 SET IS_ADM_TKT = '{flag}', LST_MAINT_DT = GETDATE()
                 WHERE ITEM_NO = '{target_item}'
                 """
-                self.db.query_db(query, commit=True)
+                db.query(query, commit=True)
                 Catalog.logger.info(f'Parent status set to {flag} for {target_item}')
                 return self.get_product_details(last_sync=self.last_sync)
 
@@ -1286,7 +1050,7 @@ class Catalog:
                             SET ADDL_DESCR_1 = '{self.long_descr}'
                             WHERE ITEM_NO = '{self.sku}'"""
 
-                            self.db.query_db(query, commit=True)
+                            db.query(query, commit=True)
                             Catalog.logger.info(f'Web Title set to {self.web_title}')
                             self.web_title = self.long_descr
 
@@ -1305,7 +1069,7 @@ class Catalog:
                         FROM IM_ITEM
                         WHERE ADDL_DESCR_1 = '{self.web_title.replace("'", "''")}' AND IS_ECOMM_ITEM = 'Y'"""
 
-                    response = self.db.query_db(query)
+                    response = db.query(query)
 
                     if response:
                         if response[0][0] > 1:
@@ -1335,7 +1099,7 @@ class Catalog:
                                 UPDATE IM_ITEM
                                 SET ADDL_DESCR_1 = '{self.web_title.replace("'", "''")}'
                                 WHERE ITEM_NO = '{self.sku}'"""
-                            self.db.query_db(query, commit=True)
+                            db.query(query, commit=True)
 
             # Test for missing html description
             if check_html_description:
@@ -1350,30 +1114,6 @@ class Catalog:
                     message = f'Product {self.binding_id} is missing E-Commerce Categories. Validation failed.'
                     Catalog.error_handler.add_error_v(error=message, origin='Input Validation')
                     return False
-
-            # Test for missing brand
-            if check_for_invalid_brand:
-                # Test for missing brand
-                if self.brand:
-                    bc_brands = [x[0] for x in list(Catalog.mw_brands)]
-                    if self.brand not in bc_brands:
-                        message = f'Product {self.binding_id} has a brand, but it is not valid. Will delete invalid brand.'
-                        Catalog.logger.warn(message)
-                        if self.validation_retries > 0:
-                            self.reset_brand()
-                            self.validation_retries -= 1
-                            return self.validate_inputs()
-                        else:
-                            message = f'Product {self.binding_id} has an invalid brand. Validation failed.'
-                            Catalog.error_handler.add_error_v(error=message, origin='Input Validation')
-                            return False
-                else:
-                    message = f'Product {self.binding_id} is missing a brand. Will set to default.'
-                    if self.validation_retries > 0:
-                        self.reset_brand()
-                        self.validation_retries -= 1
-                        self.brand = creds.default_brand
-                    Catalog.logger.warn(message)
 
             # Test for missing cost
             if check_for_item_cost:
@@ -1416,7 +1156,7 @@ class Catalog:
                                 UPDATE IM_ITEM
                                 SET ADDL_DESCR_1 = NULL
                                 WHERE ITEM_NO = '{child.sku}'"""
-                                self.db.query_db(query, commit=True)
+                                db.query(query, commit=True)
 
             return True
 
@@ -1615,7 +1355,7 @@ class Catalog:
                         SET {creds.meta_color} = NULL
                         WHERE PRODUCT_ID = {self.product_id}
                         """
-                        self.db.query_db(query, commit=True)
+                        db.query(query, commit=True)
                     self.meta_colors['id'] = None
 
                 # Bloom Color
@@ -1640,7 +1380,7 @@ class Catalog:
                         SET {creds.meta_bloom_color} = NULL
                         WHERE PRODUCT_ID = {self.product_id}
                         """
-                        self.db.query_db(query, commit=True)
+                        db.query(query, commit=True)
                     self.meta_bloom_color['id'] = None
 
                 # Preorder Status - All products are either preorder or not
@@ -1729,7 +1469,7 @@ class Catalog:
                 stagedUploadsCreateVariables = {'input': []}
 
                 for image in self.images:
-                    image_size = Catalog.get_filesize(image.file_path)
+                    image_size = get_filesize(image.file_path)
                     if image_size != image.size:
                         print(f'\n\nHERE. Image NAME: {image.name} Image: {image.size}\n\n')
                         image.size = image_size
@@ -1758,18 +1498,6 @@ class Catalog:
                                 }
                                 result.append(image_payload)
 
-                    # for image in self.images:
-                    #     if image.image_url:
-                    #         image_payload = {
-                    #             'originalSource': image.image_url,
-                    #             'alt': image.description,
-                    #             'mediaContentType': 'IMAGE',
-                    #         }
-                    #         if image.image_id:
-                    #             image_payload['id'] = f'gid://shopify/MediaImage/{image.image_id}'
-
-                    #     result.append(image_payload)
-
                 return result
 
             def get_brand_name(brand):
@@ -1778,7 +1506,7 @@ class Catalog:
                 SELECT DESCR
                 FROM IM_ITEM_PROF_COD
                 WHERE PROF_COD = '{brand}'"""
-                response = self.db.query_db(query)
+                response = db.query(query)
                 if response:
                     return response[0][0]
                 else:
@@ -1879,7 +1607,7 @@ class Catalog:
                 # Add Variant Image
                 for image in child.images:
                     if image.is_variant_image:
-                        image_size = Catalog.get_filesize(image.file_path)
+                        image_size = get_filesize(image.file_path)
                         if image_size != image.size:
                             file_list = [image.file_path]
                             stagedUploadsCreateVariables = {
@@ -1954,14 +1682,22 @@ class Catalog:
             # Add Variant Image
             variant_image_payload = []
             for child in self.variants:
-                for image in child.images:
-                    if image.is_variant_image:
-                        variant_image_payload.append(
-                            {
-                                'id': f'{Shopify.Product.Variant.prefix}{child.variant_id}',
-                                'imageId': f'{Shopify.Product.Variant.Image.prefix}{image.image_id}',
-                            }
-                        )
+                print(f'Checking Variant: {child.sku}')
+                if not child.has_variant_image:
+                    print(f'Variant {child.sku} is missing an image. Checking images for variant')
+                    for image in child.images:
+                        print(f'Checking Image: {image.name}')
+                        if image.is_variant_image:
+                            print(f'Image: {image.name} is the variant image')
+                            print(f'Image ID: {image.image_id}')
+                            print(f'Variant ID: {child.variant_id}')
+                            variant_image_payload.append(
+                                {
+                                    'id': f'{Shopify.Product.Variant.prefix}{child.variant_id}',
+                                    'imageId': f'{Shopify.Product.Variant.Image.prefix}{image.image_id}',
+                                }
+                            )
+
             return variant_image_payload
 
         def process(self):
@@ -1992,7 +1728,8 @@ class Catalog:
                     delete_target = self.variants[0].option_value_id
                     # Create Variants in Bulk
                     self.variants[0].variant_id = None
-                    response = Shopify.Product.Variant.create_bulk(self.get_bulk_variant_payload())
+                    variant_payload = self.get_bulk_variant_payload()
+                    response = Shopify.Product.Variant.create_bulk(variant_payload)
 
                     for x, variant in enumerate(self.variants):
                         variant.variant_id = response['variant_ids'][x]
@@ -2026,38 +1763,50 @@ class Catalog:
                 product_payload = self.get_payload()
                 response = Shopify.Product.update(product_payload)
                 self.option_id = response['option_ids'][0]
-                print(f'Option ID: {self.option_id}')
                 if 'meta_ids' in response:
                     self.get_metafield_ids(response)
+
+                Shopify.Product.Media.reorder(self)
 
                 if 'media_ids' in response:
                     for x, image in enumerate(self.images):
                         image.image_id = response['media_ids'][x]
 
                 if self.is_bound:
-                    variant_payload = self.get_bulk_variant_payload()
-                    response = Shopify.Product.Variant.update_bulk(variant_payload)
-                    for x, variant in enumerate(self.variants):
-                        variant.variant_id = response['variant_ids'][x]
-                        variant.option_value_id = response['option_value_ids'][x]
+                    # Update the Variants
+                    response = Shopify.Product.Variant.update_bulk(self.get_bulk_variant_payload())
+                    # # Get Needed IDs
+                    # for x, variant in enumerate(self.variants):
+                    #     variant.variant_id = response['variant_ids'][x]
+                    #     variant.option_value_id = response['option_value_ids'][x]
+                    #     variant.option_id = self.option_id
+                    for variant in self.variants:
                         variant.option_id = self.option_id
+                        variant.option_value_id = response[variant.sku]['option_value_id']
+                        variant.variant_id = response[variant.sku]['variant_id']
+                        variant.has_variant_image = response[variant.sku]['has_image']
+
+                    # Update the Variant Images
+                    for variant in self.variants:
+                        if not variant.has_variant_image:
+                            print(f'HERE - Variant {variant.sku} has no variant image on SHOPIFY')
+                            variant_image_payload = self.get_variant_image_payload()
+                            print(f'Variant Image Payload: {variant_image_payload}')
+                            Shopify.Product.Variant.Image.create(self.product_id, variant_image_payload)
+                            break
 
                 else:
                     variant_payload = self.get_single_variant_payload()
                     response = Shopify.Product.Variant.update_single(variant_payload)
-                    # self.variants[0].option_id = self.option_id
-                    # self.variants[0].option_value_id = response['productVariantUpdate']['productVariant'][
-                    #     'selectedOptions'
-                    # ][0]['id']
 
                 Database.Shopify.Product.sync(product=self)
 
-            if self.product_id:
-                update()
-            else:
-                create()
+            if not self.inventory_only:
+                if self.product_id:
+                    update()
+                else:
+                    create()
 
-            # Shopify.Product.Media.reorder(self)
             # Update Inventory
             if not self.is_preorder:
                 Shopify.Inventory.update(self.get_inventory_payload())
@@ -2120,7 +1869,7 @@ class Catalog:
                         FROM {creds.shopify_collection_table}
                         WHERE CP_CATEG_ID = '{category}'
                         """
-                    response = self.db.query_db(q)
+                    response = db.query(q)
                     try:
                         result.append(response[0][0])
                     except:
@@ -2136,7 +1885,7 @@ class Catalog:
                                                     FROM SN_SHOP_CATEG
                                                     WHERE CP_CATEG_ID = '{category}')
                                 """
-                            parent_response = self.db.query_db(q)
+                            parent_response = db.query(q)
                             try:
                                 result.append(parent_response[0][0])
                             except:
@@ -2146,28 +1895,67 @@ class Catalog:
 
             return result
 
-        def delete_product(self, sku, binding_id=None):
+        def get_collection_names(self):
+            """Get Collection Names from Middleware Category IDs"""
+            result = []
+            if self.cp_ecommerce_categories:
+                for category in self.cp_ecommerce_categories:
+                    q = f"""
+                        SELECT DESCR
+                        FROM EC_CATEG
+                        WHERE CATEG_ID = '{category}'
+                        """
+                    response = db.query(q)
+                    try:
+                        result.append(response[0][0])
+                    except:
+                        continue
+                    else:
+                        top_level = False
+                        while not top_level:
+                            q = f"""
+                                SELECT DESCR
+                                FROM EC_CATEG
+                                WHERE CATEG_ID = (SELECT PARENT_ID
+                                                    FROM EC_CATEG
+                                                    WHERE CATEG_ID = '{category}')
+                                """
+                            parent_response = db.query(q)
+                            try:
+                                result.append(parent_response[0][0])
+                            except:
+                                top_level = True
+                            else:
+                                category = parent_response[0][0]
+            return result
+
+        @staticmethod
+        def delete(sku=None, binding_id=None, product_id=None, update_timestamp=False):
             """Delete Product from BigCommerce and Middleware."""
-            self.mw_db_id = None
-            if self.product_id:
-                product_id = self.product_id
-            else:
+            if not product_id:
                 if binding_id:
                     product_id = Database.Shopify.Product.get_id(binding_id=binding_id)
                 else:
                     product_id = Database.Shopify.Product.get_id(item_no=sku)
 
-            Shopify.Product.delete(product_id)
+            if product_id:
+                Shopify.Product.delete(product_id)
+
             Database.Shopify.Product.delete(product_id)
+
+            if sku and update_timestamp:
+                Catalog.Product.update_timestamp(sku)
 
         def delete_variant(self, sku, binding_id=None):
             """Delete Variant from BigCommerce and Middleware. This will also delete the option value from BigCommerce."""
             if self.is_last_variant(binding_id=binding_id):
                 print('Last Variant in Product. Will delete product.')
-                self.delete_product(sku=sku, binding_id=binding_id)
+                self.mw_db_id = None
+                Catalog.Product.delete(sku=sku, binding_id=binding_id)
             elif self.is_parent(sku):
                 print('Parent Product. Will delete product.')
-                self.delete_product(sku=sku, binding_id=binding_id)
+                self.mw_db_id = None
+                Catalog.Product.delete(sku=sku, binding_id=binding_id)
             else:
                 # self.mw_db_id = None # does this make sense. Should it be child only?
                 variant_id = Database.Shopify.Product.Variant.get_variant_id(sku=sku)  # Use for MW deletion
@@ -2199,7 +1987,7 @@ class Catalog:
             FROM {creds.shopify_product_table}
             WHERE ITEM_NO = '{sku}'
             """
-            response = self.db.query_db(query)
+            response = db.query(query)
             if response is not None:
                 return response[0][0] == 1
 
@@ -2211,7 +1999,7 @@ class Catalog:
                     SET IS_ADM_TKT = 'N', LST_MAINT_DT = GETDATE()
                     WHERE {creds.cp_field_binding_id} = '{self.binding_id}'
                     """
-            self.db.query_db(query, commit=True)
+            db.query(query, commit=True)
             print('Parent status removed from all children.')
 
         def is_last_variant(self, binding_id):
@@ -2221,30 +2009,152 @@ class Catalog:
             query = f"""SELECT COUNT(*) 
             FROM {creds.shopify_product_table} 
             WHERE BINDING_ID = '{binding_id}'"""
-            response = self.db.query_db(query)
+            response = db.query(query)
             if response is not None:
                 return response[0][0] == 1
 
         @staticmethod
         def get_all_binding_ids():
             binding_ids = set()
-            db = query_engine.QueryEngine()
             query = """
             SELECT {creds.cp_field_binding_id}
             FROM IM_ITEM
             WHERE {creds.cp_field_binding_id} IS NOT NULL
             """
-            response = db.query_db(query)
+            response = db.query(query)
             if response is not None:
                 for x in response:
                     binding_ids.add(x[0])
             return list(binding_ids)
 
+        @staticmethod
+        def get_product_id(sku):
+            query = f"SELECT PRODUCT_ID FROM {creds.shopify_product_table} WHERE ITEM_NO = '{sku}'"
+            response = db.query(query)
+            return response[0][0] if response is not None else None
+
+        @staticmethod
+        def get_binding_id(sku, middleware=False):
+            if middleware:
+                query = f"""
+                SELECT BINDING_ID
+                FROM {creds.shopify_product_table}
+                WHERE ITEM_NO = '{sku}'
+                """
+            else:
+                query = f"""
+                SELECT {creds.cp_field_binding_id}
+                FROM IM_ITEM
+                WHERE ITEM_NO = '{sku}'
+                """
+            response = db.query(query)
+            return response[0][0] if response and response[0][0] is not None else None
+
+        @staticmethod
+        def set_parent(binding_id, remove_current=False):
+            # Get Family Members.
+            family_members = Catalog.Product.get_family_members(binding_id=binding_id, price=True)
+            # Choose the lowest price family member as the parent.
+            parent_sku = min(family_members, key=lambda x: x['price_1'])['sku']
+
+            Catalog.logger.info(f'Family Members: {family_members}, Target new parent item: {parent_sku}')
+
+            if remove_current:
+                # Remove Parent Status from all children.
+                remove_parent_query = f"""
+                        UPDATE IM_ITEM 
+                        SET IS_ADM_TKT = 'N', LST_MAINT_DT = GETDATE()
+                        WHERE {creds.cp_field_binding_id} = '{binding_id}'
+                        """
+                remove_parent_response = db.query(remove_parent_query, commit=True)
+                if remove_parent_response['code'] == 200:
+                    Catalog.logger.success(f'Parent status removed from all children of binding: {binding_id}.')
+                else:
+                    Catalog.error_handler.add_error_v(
+                        error=f'Error removing parent status from children of binding: {binding_id}. Response: {remove_parent_response}'
+                    )
+
+            # Set Parent Status for new parent.
+            query = f"""
+            UPDATE IM_ITEM
+            SET IS_ADM_TKT = 'Y'
+            WHERE ITEM_NO = '{parent_sku}'
+            """
+            set_parent_response = db.query(query, commit=True)
+
+            if set_parent_response['code'] == 200:
+                Catalog.logger.success(f'Parent status set for {parent_sku}')
+            else:
+                Catalog.error_handler.add_error_v(
+                    error=f'Error setting parent status for {parent_sku}. Response {set_parent_response}'
+                )
+
+            return parent_sku
+
+        @staticmethod
+        def get_family_members(binding_id, count=False, price=False, counterpoint=False):
+            """Get all items associated with a binding_id. If count is True, return the count."""
+            # return a count of items in family
+            if count:
+                query = f"""
+                SELECT COUNT(ITEM_NO)
+                FROM {creds.shopify_product_table}
+                WHERE BINDING_ID = '{binding_id}'
+                """
+                response = db.query(query)
+                return response[0][0]
+
+            else:
+                if price:
+                    # include retail price for each item
+                    query = f"""
+                    SELECT ITEM_NO, PRC_1
+                    FROM IM_ITEM
+                    WHERE {creds.cp_field_binding_id} = '{binding_id}'
+                    """
+                    response = db.query(query)
+                    if response is not None:
+                        return [{'sku': x[0], 'price_1': float(x[1])} for x in response]
+
+                elif counterpoint:
+                    query = f"""
+                    SELECT ITEM_NO
+                    FROM IM_ITEM
+                    WHERE {creds.cp_field_binding_id} = '{binding_id}' and IS_ECOMM_ITEM = 'Y'
+                    """
+                    response = db.query(query)
+                    if response is not None:
+                        return [x[0] for x in response]
+
+                else:
+                    query = f"""
+                    SELECT ITEM_NO
+                    FROM {creds.shopify_product_table}
+                    WHERE BINDING_ID = '{binding_id}'
+                    """
+                    response = db.query(query)
+                    if response is not None:
+                        return [x[0] for x in response]
+
+        @staticmethod
+        def update_timestamp(sku):
+            """Updates the LST_MAINT_DT field in Counterpoint for a given SKU."""
+            query = f"""
+            UPDATE IM_ITEM
+            SET LST_MAINT_DT = GETDATE()
+            WHERE ITEM_NO = '{sku}'
+            """
+            response = db.query(query, commit=True)
+            if response['code'] == 200:
+                Catalog.logger.success(f'Timestamp updated for {sku}.')
+            else:
+                Catalog.error_handler.add_error_v(error=f'Error updating timestamp for {sku}. Response: {response}')
+
         class Variant:
-            def __init__(self, sku, last_run_date, get_images=True):
-                self.db = Database.db
+            def __init__(self, sku, last_run_date, inventory_only=False):
                 self.sku = sku
                 self.last_run_date = last_run_date
+                self.inventory_only = inventory_only
 
                 # Product ID Info
                 product_data = self.get_variant_details()
@@ -2294,7 +2204,7 @@ class Catalog:
                 self.buffered_quantity = self.quantity_available - self.buffer
                 if self.buffered_quantity < 0:
                     self.buffered_quantity = 0
-                self.weight = product_data['weight']
+                self.weight = float(product_data['weight']) if product_data['weight'] else None
                 self.in_store_only = product_data['in_store_only']
                 self.sort_order = product_data['sort_order']
 
@@ -2343,26 +2253,26 @@ class Catalog:
                 height_unit = product_data['custom_height_unit']
                 height_list = self.get_size_range(height_min, height_max, height_unit)
 
-                if height_list:
+                if height_list and height_unit:
                     self.meta_height = {
                         'id': product_data['custom_height_id'],
-                        'value': [{'value': float(x), 'unit': height_unit.lower()} for x in height_list],
+                        'value': [f'{x} {height_unit.lower()}' for x in height_list],
                     }
                 else:
-                    self.meta_height = {'id': None, 'value': None}
+                    self.meta_height = {'id': product_data['custom_height_id'], 'value': None}
 
                 # Width
                 width_min = product_data['custom_width_min']
                 width_max = product_data['custom_width_max']
                 width_unit = product_data['custom_width_unit']
                 width_list = self.get_size_range(width_min, width_max, width_unit)
-                if width_list:
+                if width_list and width_unit:
                     self.meta_width = {
                         'id': product_data['custom_width_id'],
-                        'value': [{'value': float(x), 'unit': width_unit.lower()} for x in width_list],
+                        'value': [f'{x} {width_unit.lower()}' for x in width_list],
                     }
                 else:
-                    self.meta_width = {'id': None, 'value': None}
+                    self.meta_width = {'id': product_data['custom_width_id'], 'value': None}
 
                 # Light Requirements
                 self.meta_light_requirements = {'id': product_data['custom_light_req_id'], 'value': []}
@@ -2462,7 +2372,6 @@ class Catalog:
                     color_list.append(product_data['custom_color_custom'])
 
                 if color_list:
-                    print('Color List:', color_list)
                     if 'Flowering' in self.meta_features['value']:
                         self.meta_bloom_color = {'id': product_data['custom_bloom_color_id'], 'value': color_list}
                         self.meta_colors = {'id': product_data['custom_color_id'], 'value': None}
@@ -2512,12 +2421,13 @@ class Catalog:
 
                 # Product Images
                 self.images = []
+                self.has_variant_image = False
 
                 # Dates
                 self.lst_maint_dt = product_data['lst_maint_dt']
 
                 # Initialize Images
-                if get_images:
+                if not self.inventory_only:
                     self.get_local_product_images()
 
                 # Initialize Variant Image URL
@@ -2677,8 +2587,7 @@ class Catalog:
                 LEFT OUTER JOIN IM_ITEM_PROF_COD COD ON ITEM.PROF_COD_1 = COD.PROF_COD
                 WHERE ITEM.ITEM_NO = '{self.sku}'"""
 
-                item = self.db.query_db(query)
-                print(item)
+                item = db.query(query)
                 if item is not None:
                     details = {
                         # Product ID Info
@@ -2807,8 +2716,8 @@ class Catalog:
                         'custom_size_unit': item[0][107],
                     }
 
-                    for k, v in details.items():
-                        print(f'{k}: {v}')
+                    # for k, v in details.items():
+                    #     print(f'{k}: {v}')
 
                     return details
 
@@ -2900,7 +2809,6 @@ class Catalog:
 
         class Image:
             def __init__(self, image_name: str, product_id: int = None):
-                self.db = Database.db
                 self.db_id = None
                 self.name = image_name  # This is the file name
                 self.sku = ''
@@ -2929,7 +2837,7 @@ class Catalog:
             def get_image_details(self):
                 """Get image details from SQL"""
                 query = f"SELECT * FROM {creds.shopify_image_table} WHERE IMAGE_NAME = '{self.name}'"
-                response = self.db.query_db(query)
+                response = db.query(query)
                 if response is not None:
                     self.db_id = response[0][0]
                     self.name = response[0][1]
@@ -3055,7 +2963,7 @@ class Catalog:
                                SELECT {creds.cp_field_binding_id} FROM IM_ITEM
                                WHERE ITEM_NO = '{item_no}'
                                """
-                        response = self.db.query_db(query)
+                        response = db.query(query)
                         if response is not None:
                             return response[0][0] if response[0][0] else ''
 
@@ -3096,7 +3004,7 @@ class Catalog:
                            SELECT {str(f'USR_PROF_ALPHA_{self.image_number + 21}')} FROM IM_ITEM
                            WHERE ITEM_NO = '{self.sku}'
                            """
-                    response = query_engine.QueryEngine().query_db(query)
+                    response = db.query(query)
 
                     if response is not None:
                         if response[0][0]:
@@ -3122,9 +3030,38 @@ class Catalog:
                     im.save(self.file_path, 'JPEG', quality=q)
                     Catalog.logger.log(f'Resized {self.name}')
 
+            @staticmethod
+            def delete(image_name):
+                """Takes in an image name and looks for matching image file in middleware. If found, delete."""
+                Catalog.logger.info(f'Deleting {image_name}')
+                image_query = f"""
+                SELECT img.PRODUCT_ID, prod.VARIANT_ID, IMAGE_ID, IS_VARIANT_IMAGE 
+                FROM SN_SHOP_IMAGES img
+                INNER JOIN SN_SHOP_PROD prod on img.ITEM_NO = prod.ITEM_NO
+                WHERE IMAGE_NAME = '{image_name}'
+                """
+
+                img_id_res = db.query(image_query)
+                if img_id_res is not None:
+                    product_id, variant_id, image_id, is_variant = (
+                        img_id_res[0][0],
+                        img_id_res[0][1],
+                        img_id_res[0][2],
+                        img_id_res[0][3],
+                    )
+
+                if is_variant:
+                    print('This is a variant image. Delete from Shopify.')
+                    Shopify.Product.Variant.Image.delete(
+                        product_id=product_id, variant_id=variant_id, image_id=image_id
+                    )
+
+                Shopify.Product.Media.Image.delete(product_id=product_id, image_id=image_id, variant_id=variant_id)
+                Database.Shopify.Product.Image.delete(image_id=image_id)
+
 
 if __name__ == '__main__':
     from datetime import datetime
 
-    cat = Catalog(last_sync=datetime(2024, 7, 29))
+    cat = Catalog(last_sync=datetime(2024, 8, 2, 14, 30, 00), inventory_only=True)
     cat.sync()

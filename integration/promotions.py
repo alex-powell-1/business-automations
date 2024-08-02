@@ -27,7 +27,7 @@ class Promotions:
 
     def get_promotions(self):
         # Get list of promotions from IM_PRC_GRP
-        response = self.db.query_db('SELECT GRP_COD FROM IM_PRC_GRP')
+        response = self.db.query('SELECT GRP_COD FROM IM_PRC_GRP')
         promotions = [x[0] for x in response] if response else []
         if promotions:
             # Get promotion details from IM_PRC_GRP and IM_PRC_GRP_RUL
@@ -38,7 +38,7 @@ class Promotions:
                 FROM IM_PRC_GRP GRP FULL OUTER JOIN {creds.bc_promo_table} MW ON GRP.GRP_COD = MW.GRP_COD
                 WHERE GRP.GRP_COD = '{promo}' and GRP.GRP_TYP = 'P'
                 """
-                response = self.db.query_db(query=query)
+                response = self.db.query(query=query)
                 promo_data = [x for x in response] if response else []
                 if promo_data:
                     for data in promo_data:
@@ -161,7 +161,7 @@ class Promotions:
             FULL OUTER JOIN SN_PROMO MW on rul.GRP_COD = MW.GRP_COD
             WHERE RUL.GRP_COD = '{self.grp_cod}'
             """
-            response = Database.db.query_db(query)
+            response = Database.db.query(query)
             self.price_rules = [self.PriceRule(rule) for rule in response] if response else []
 
         def has_bogo(self):
@@ -401,7 +401,9 @@ class Promotions:
                             item = Product(i)
                             current_sale_price = round(float(item.price_2), 2)
                             target_sale_price = get_target_price(item, target_method, target_amount)
-                            print(f'CURRENT SALE TYPE: {type(current_sale_price)}, OBJECT PRICE: {current_sale_price}')
+                            print(
+                                f'CURRENT SALE TYPE: {type(current_sale_price)}, OBJECT PRICE: {current_sale_price}'
+                            )
                             print(f'TARGET SALE TYPE: {type(target_sale_price)}, Sale_price: {target_sale_price}')
                             if current_sale_price != target_sale_price:
                                 print('NOT THE SAME')
@@ -418,7 +420,7 @@ class Promotions:
                                 VALUES('{i}', '{creds.on_sale_category}', '{counter}', '{new_timestamp}', 'POS')
                                 """
                                 # Updating Sale Price, Last Maintenance Date, and Adding to On Sale Category
-                                response = self.db.query_db(query, commit=True)
+                                response = self.db.query(query, commit=True)
                                 if response['code'] == 200:
                                     self.logger.success(
                                         f'Item: {i} Price 1: {item.price_1} adjusted to Sale Price: {target_sale_price}'
@@ -459,7 +461,7 @@ class Promotions:
                         DELETE FROM EC_CATEG_ITEM
                         {where_filter} AND CATEG_ID = '{creds.on_sale_category}'"""
                         # Removing Sale Price, Last Maintenance Date, and Removing from On Sale Category
-                        response = self.db.query_db(query, commit=True)
+                        response = self.db.query(query, commit=True)
 
                         if response['code'] == 200:
                             self.logger.success(f'Sale Price {self.grp_cod} removed successfully from {items}.')
@@ -474,7 +476,7 @@ class Promotions:
             INSERT INTO SN_PROMO(GRP_COD, BC_ID, ENABLED)
             VALUES('{self.grp_cod}', {self.bc_id}, {1 if self.enabled else 0})
             """
-            response = self.db.query_db(query, commit=True)
+            response = self.db.query(query, commit=True)
             if response['code'] == 200:
                 self.logger.success(f'Promotion {self.grp_cod} inserted successfully.')
                 return True
@@ -490,7 +492,7 @@ class Promotions:
             SET BC_ID = {self.bc_id}, ENABLED = {1 if self.enabled else 0}, LST_MAINT_DT = GETDATE()
             WHERE GRP_COD = '{self.grp_cod}'
             """
-            response = self.db.query_db(query, commit=True)
+            response = self.db.query(query, commit=True)
             if response['code'] == 200:
                 self.logger.success(f'Promotion {self.grp_cod} updated successfully.')
                 return True
@@ -505,7 +507,7 @@ class Promotions:
             DELETE FROM SN_PROMO
             WHERE BC_ID = {self.bc_id}
             """
-            response = self.db.query_db(query, commit=True)
+            response = self.db.query(query, commit=True)
             if response['code'] == 200:
                 self.logger.success(f'Promotion {self.grp_cod} deleted successfully.')
                 return True
@@ -581,7 +583,7 @@ class Promotions:
                         FROM IM_PRC_RUL_BRK
                         WHERE GRP_COD = '{self.grp_cod}' AND RUL_SEQ_NO = {self.rul_seq_no}
                         """
-                response = Database.db.query_db(query)
+                response = Database.db.query(query)
                 if response:
                     for break_data in response:
                         self.price_breaks.append(self.PriceBreak(break_data))
@@ -592,7 +594,7 @@ class Promotions:
                 else:
                     where_filter = ''
                 query = f'SELECT ITEM_NO FROM IM_ITEM {where_filter}'
-                response = Database.db.query_db(query)
+                response = Database.db.query(query)
                 if response:
                     for item in response:
                         item_no = item[0]

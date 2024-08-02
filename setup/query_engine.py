@@ -14,8 +14,7 @@ class Query:
         self.cb = cb
 
     def run_query(self):
-        qe = QueryEngine()
-        r = qe.query_db(self.query, commit=self.commit)
+        r = QueryEngine.query(self.query, commit=self.commit)
         if self.cb:
             self.cb(r)
 
@@ -47,17 +46,16 @@ class QueryQueue:
 
 
 class QueryEngine:
-    def __init__(self):
-        self.__SERVER = SERVER
-        self.__DATABASE = DATABASE
-        self.__USERNAME = USERNAME
-        self.__PASSWORD = PASSWORD
+    SERVER = SERVER
+    DATABASE = DATABASE
+    USERNAME = USERNAME
+    PASSWORD = PASSWORD
 
-    def query_db(self, query, commit=False):
+    def query(query, commit=False):
         """Runs Query Against SQL Database. Use Commit Kwarg for updating database"""
         connection = pyodbc.connect(
-            f'DRIVER={{ODBC Driver 18 for SQL Server}};SERVER={self.__SERVER};PORT=1433;DATABASE={self.__DATABASE};'
-            f'UID={self.__USERNAME};PWD={self.__PASSWORD};TrustServerCertificate=yes;timeout=3;ansi=True;'
+            f'DRIVER={{ODBC Driver 18 for SQL Server}};SERVER={QueryEngine.SERVER};PORT=1433;DATABASE={QueryEngine.DATABASE};'
+            f'UID={QueryEngine.USERNAME};PWD={QueryEngine.PASSWORD};TrustServerCertificate=yes;timeout=3;ansi=True;'
         )
 
         connection.setdecoding(pyodbc.SQL_CHAR, encoding='utf-16-le')

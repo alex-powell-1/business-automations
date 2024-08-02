@@ -33,8 +33,12 @@ class GiftCertificates:
 		WHERE CP.LST_MAINT_DT > '{self.last_sync}'
         """
 
-        response = self.db.query_db(query)
-        return [self.Certificate(x, error_handler=self.error_handler) for x in response] if response is not None else []
+        response = self.db.query(query)
+        return (
+            [self.Certificate(x, error_handler=self.error_handler) for x in response]
+            if response is not None
+            else []
+        )
 
     def get_bc_certificates(self):
         """Get all gift certificates from BigCommerce.
@@ -43,9 +47,7 @@ class GiftCertificates:
         page = 1
         more_pages = True
         while more_pages:
-            url = (
-                f' https://api.bigcommerce.com/stores/{creds.big_store_hash}/v2/gift_certificates?limit=250&page={page}'
-            )
+            url = f' https://api.bigcommerce.com/stores/{creds.big_store_hash}/v2/gift_certificates?limit=250&page={page}'
             response = requests.get(url, headers=creds.bc_api_headers)
 
             for certificate in response.json():
@@ -79,7 +81,7 @@ class GiftCertificates:
 				(GFC_NO, BC_GFC_ID)
 				VALUES ('{certificate_code}', {certificate_id})
 				"""
-            response = self.db.query_db(query, commit=True)
+            response = self.db.query(query, commit=True)
             if response['code'] == 200:
                 self.logger.success(f'Backfilled certificate {certificate_code}')
             else:
@@ -116,7 +118,7 @@ class GiftCertificates:
             WHERE CUST_NO = '{self.cust_no}'
             """
 
-            response = Database.db.query_db(query)
+            response = Database.db.query(query)
 
             blank_user = {'name': f'{self.cust_no}', 'email': f'{self.cust_no}@store.com'}
 
@@ -127,7 +129,9 @@ class GiftCertificates:
                         result.append(
                             {
                                 'name': f'{x[0]} {x[1]}',
-                                'email': (x[2] if (x[2] is not None and x[2] != '') else f'{self.cust_no}@store.com'),
+                                'email': (
+                                    x[2] if (x[2] is not None and x[2] != '') else f'{self.cust_no}@store.com'
+                                ),
                             }
                         )
 
@@ -150,7 +154,7 @@ class GiftCertificates:
                     (GFC_NO, BC_GFC_ID)
                     VALUES ('{self.gift_card_no}', {bc_id})
                     """
-                    self.db.query_db(query, commit=True)
+                    self.db.query(query, commit=True)
 
                 def update(self, bc_id: int):
                     query = f"""
@@ -158,7 +162,7 @@ class GiftCertificates:
                     SET BC_GFC_ID = {bc_id}
                     WHERE GFC_NO = '{self.gift_card_no}'
                     """
-                    self.db.query_db(query, commit=True)
+                    self.db.query(query, commit=True)
 
             return SQLSync(self.gift_card_no)
 

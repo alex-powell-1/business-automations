@@ -14,6 +14,14 @@ mutation CreateProductWithNewMedia(
       media(first: 75) {
         nodes {
           id
+          alt
+          mediaContentType
+          preview {
+            status
+            image {
+              url
+            }
+          }
         }
       }
       variants(first: 20) {
@@ -58,6 +66,10 @@ mutation UpdateProductWithNewMedia(
           mediaContentType
           preview {
             status
+            image
+            {
+              url
+              }
           }
         }
       }
@@ -78,7 +90,7 @@ mutation UpdateProductWithNewMedia(
         }
       }
     }
-    
+
     userErrors {
       field
       message
@@ -185,9 +197,17 @@ query product($id: ID!) {
       count
     }
     vendor
-    media(first: 40) {
+    media(first: 75) {
       nodes {
         id
+        alt
+        mediaContentType
+        preview {
+          status
+          image {
+            url
+          }
+        }
       }
     }
   }

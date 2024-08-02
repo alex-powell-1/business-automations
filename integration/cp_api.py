@@ -137,7 +137,7 @@ class OrderAPI(DocumentAPI):
                 WHERE ITEM_NO = '{product["sku"]}'
                 """
 
-                response = Database.db.query_db(query)
+                response = Database.db.query(query)
                 if response is not None:
                     try:
                         ext_cost = float(response[0][0])
@@ -290,7 +290,7 @@ class OrderAPI(DocumentAPI):
 
         self.total_discount_amount += abs(disc_amt)
 
-        response = Database.db.query_db(query, commit=True)
+        response = Database.db.query(query, commit=True)
 
         if response['code'] == 200:
             self.logger.success(f'Discount {disc_seq_no} created')
@@ -343,7 +343,7 @@ class OrderAPI(DocumentAPI):
         ('{doc_id}', {lin_seq_no}, {points_earned}, 'Y', 0, 'Basic', 5)
         """
 
-        response = Database.db.query_db(query, commit=True)
+        response = Database.db.query(query, commit=True)
 
         if response['code'] == 200:
             self.logger.success(f'Line loyalty points ({points_earned})')
@@ -366,7 +366,7 @@ class OrderAPI(DocumentAPI):
         SELECT LOY_PTS_BAL FROM {creds.ar_cust_table}
         WHERE CUST_NO = '{cust_no}'
         """
-        response = Database.db.query_db(query)
+        response = Database.db.query(query)
         points_balance = 0
         try:
             points_balance = float(response[0][0]) if response else 0
@@ -380,7 +380,7 @@ class OrderAPI(DocumentAPI):
         ('{doc_id}', 0, 0, 0, 0, 0, {points_earned}, {points_redeemed}, {points_balance})
         """
 
-        response = Database.db.query_db(wquery, commit=True)
+        response = Database.db.query(wquery, commit=True)
 
         if response['code'] == 200:
             self.logger.success('Loyalty points written')
@@ -398,7 +398,7 @@ class OrderAPI(DocumentAPI):
         WHERE CUST_NO = '{cust_no}'
         """
 
-        response = Database.db.query_db(query, commit=True)
+        response = Database.db.query(query, commit=True)
 
         if response['code'] == 200:
             self.logger.success('Cust Loyalty points written')
@@ -412,7 +412,7 @@ class OrderAPI(DocumentAPI):
         WHERE PAY_COD = 'LOYALTY' AND DOC_ID = '{doc_id}'
         """
 
-        response = Database.db.query_db(query)
+        response = Database.db.query(query)
 
         points_used = 0
 
@@ -759,7 +759,7 @@ class OrderAPI(DocumentAPI):
 
             oapi.logger.info('Attempting to cleanup order')
 
-            response = Database.db.query_db(query)
+            response = Database.db.query(query)
 
             if response is not None and len(response) > 0 and len(response) < 3:
                 for result in response:
@@ -769,7 +769,7 @@ class OrderAPI(DocumentAPI):
                     DELETE FROM PS_DOC_HDR WHERE DOC_ID = '{doc_id}'
                     """
 
-                    response = Database.db.query_db(query, commit=True)
+                    response = Database.db.query(query, commit=True)
 
                     if response['code'] == 200:
                         oapi.logger.success(f'Order {doc_id} deleted')
@@ -788,7 +788,7 @@ class OrderAPI(DocumentAPI):
         WHERE TKT_NO like '{tkt_num}{suffix}{index}'
         """
 
-        response = Database.db.query_db(query)
+        response = Database.db.query(query)
 
         try:
             ticket_amt = len(response)
@@ -924,7 +924,7 @@ class OrderAPI(DocumentAPI):
                 ('{doc_id}', '{gift_card["GFC_COD"]}', '{gift_card["GFC_NO"]}', {gift_card["AMT"]}, {gift_card["LIN_SEQ_NO"]}, '{gift_card["DESCR"]}', '{gift_card["CREATE_AS_STC"]}', {gift_card["GFC_SEQ_NO"]})
                 """
 
-                response = Database.db.query_db(query, commit=True)
+                response = Database.db.query(query, commit=True)
 
                 if response['code'] == 200:
                     self.logger.success('Gift card written')
@@ -933,7 +933,7 @@ class OrderAPI(DocumentAPI):
                     self.error_handler.add_error_v(response['message'])
 
                 def commit_query(query):
-                    response = Database.db.query_db(query, commit=True)
+                    response = Database.db.query(query, commit=True)
                     return response
 
                 def get_next_seq_no():
@@ -942,7 +942,7 @@ class OrderAPI(DocumentAPI):
                     WHERE GFC_NO = '{gift_card["GFC_NO"]}'
                     """
 
-                    response = Database.db.query_db(query)
+                    response = Database.db.query(query)
 
                     try:
                         return int(response[0][0]) + 1
@@ -1016,7 +1016,7 @@ class OrderAPI(DocumentAPI):
             WHERE DOC_ID = '{doc_id}'
             """
 
-            response = Database.db.query_db(query, commit=True)
+            response = Database.db.query(query, commit=True)
 
             if response['code'] == 200:
                 self.logger.success('Ticket number updated.')
@@ -1047,7 +1047,7 @@ class OrderAPI(DocumentAPI):
             bc_order['total_inc_tax'] = float(bc_order['refunded_amount'] or 0)
 
         def commit_query(query):
-            response = Database.db.query_db(query, commit=True)
+            response = Database.db.query(query, commit=True)
 
             return response
 
@@ -1062,7 +1062,7 @@ class OrderAPI(DocumentAPI):
                     WHERE GFC_NO = '{card_no}'
                     """
 
-                    response = Database.db.query_db(query)
+                    response = Database.db.query(query)
                     try:
                         return float(response[0][0])
                     except:
@@ -1077,7 +1077,7 @@ class OrderAPI(DocumentAPI):
                     WHERE GFC_NO = '{gift_card["GFC_NO"]}'
                     """
 
-                    response = Database.db.query_db(query)
+                    response = Database.db.query(query)
 
                     try:
                         return int(response[0][0]) + 1
@@ -1168,7 +1168,7 @@ class OrderAPI(DocumentAPI):
                 WHERE DOC_ID = '{doc_id}'
                 """
 
-                response = Database.db.query_db(query)
+                response = Database.db.query(query)
 
                 try:
                     return abs(float(response[0][0]))
@@ -1181,7 +1181,7 @@ class OrderAPI(DocumentAPI):
                 WHERE DOC_ID = '{doc_id}' AND PAY_COD = 'BIG'
                 """
 
-                response = Database.db.query_db(query)
+                response = Database.db.query(query)
 
                 try:
                     return abs(float(response[0][0]))
@@ -1194,7 +1194,7 @@ class OrderAPI(DocumentAPI):
                 WHERE DOC_ID = '{doc_id}' AND PAY_COD = 'LOYALTY'
                 """
 
-                response = Database.db.query_db(query)
+                response = Database.db.query(query)
 
                 try:
                     return int(response[0][0]) > 0
@@ -1207,7 +1207,7 @@ class OrderAPI(DocumentAPI):
                 WHERE DOC_ID = '{doc_id}' AND PAY_COD = 'GC'
                 """
 
-                response = Database.db.query_db(query)
+                response = Database.db.query(query)
 
                 try:
                     return int(response[0][0]) > 0
@@ -1224,7 +1224,7 @@ class OrderAPI(DocumentAPI):
 
                 payload['PS_DOC_HDR']['PS_DOC_PMT'][get_ps_doc_pmt_index('BIG')]['AMT'] = -amt
 
-                response = Database.db.query_db(query, commit=True)
+                response = Database.db.query(query, commit=True)
 
                 if response['code'] == 200:
                     self.logger.success('Big payment updated')
@@ -1259,7 +1259,7 @@ class OrderAPI(DocumentAPI):
 
                 payload['PS_DOC_HDR']['PS_DOC_PMT'][get_ps_doc_pmt_index('LOYALTY')]['AMT'] = -amt
 
-                response = Database.db.query_db(query, commit=True)
+                response = Database.db.query(query, commit=True)
 
                 if response['code'] == 200:
                     self.logger.success('Loyalty payment updated')
@@ -1294,7 +1294,7 @@ class OrderAPI(DocumentAPI):
 
                 payload['PS_DOC_HDR']['PS_DOC_PMT'][get_ps_doc_pmt_index('GC')]['AMT'] = -amt
 
-                response = Database.db.query_db(query, commit=True)
+                response = Database.db.query(query, commit=True)
 
                 if response['code'] == 200:
                     self.logger.success('Gift card payment updated')
@@ -1369,7 +1369,7 @@ class OrderAPI(DocumentAPI):
                     WHERE GFC_NO = '{card_no}'
                     """
 
-                    response = Database.db.query_db(query)
+                    response = Database.db.query(query)
 
                     try:
                         return int(response[0][0])
@@ -1383,7 +1383,7 @@ class OrderAPI(DocumentAPI):
                 WHERE GFC_NO = '{card_no}' AND SEQ_NO = {get_last_gfc_activity_index()}
                 """
 
-                response = Database.db.query_db(query, commit=True)
+                response = Database.db.query(query, commit=True)
 
                 if response['code'] == 200:
                     self.logger.success('Gift card activity updated')
@@ -1397,7 +1397,7 @@ class OrderAPI(DocumentAPI):
                 WHERE GFC_NO = '{card_no}'
                 """
 
-                response = Database.db.query_db(query, commit=True)
+                response = Database.db.query(query, commit=True)
 
                 if response['code'] == 200:
                     self.logger.success('Gift card balance updated')
@@ -1412,7 +1412,7 @@ class OrderAPI(DocumentAPI):
                 WHERE CUST_NO = '{payload["PS_DOC_HDR"]["CUST_NO"]}'
                 """
 
-                response = Database.db.query_db(query, commit=True)
+                response = Database.db.query(query, commit=True)
 
                 if response['code'] == 200:
                     self.logger.success('Loyalty points added')
@@ -1467,7 +1467,7 @@ class OrderAPI(DocumentAPI):
             WHERE DOC_ID = '{doc_id}' AND LIN_SEQ_NO = {index}
             """
 
-            response = Database.db.query_db(query)
+            response = Database.db.query(query)
 
             try:
                 return float(response[0][0]) if response else None
@@ -1530,7 +1530,7 @@ class OrderAPI(DocumentAPI):
                 WHERE CUST_NO = '{payload["PS_DOC_HDR"]["CUST_NO"]}'
                 """
 
-                response = Database.db.query_db(query, commit=True)
+                response = Database.db.query(query, commit=True)
 
                 if response['code'] == 200:
                     self.logger.success('Loyalty points added')
@@ -1579,7 +1579,7 @@ class OrderAPI(DocumentAPI):
         WHERE DOC_ID = '{doc_id}'
         """
 
-        response = Database.db.query_db(query, commit=True)
+        response = Database.db.query(query, commit=True)
 
         if response['code'] == 200:
             self.logger.success('Date updated')
@@ -1602,7 +1602,7 @@ class OrderAPI(DocumentAPI):
         WHERE DOC_ID = '{doc_id}'
         """
 
-        response = Database.db.query_db(query, commit=True)
+        response = Database.db.query(query, commit=True)
 
         if response['code'] == 200:
             self.logger.success('Total removed')
@@ -1616,7 +1616,7 @@ class OrderAPI(DocumentAPI):
         WHERE DOC_ID = '{doc_id}'
         """
 
-        response = Database.db.query_db(query, commit=True)
+        response = Database.db.query(query, commit=True)
 
         if response['code'] == 200:
             self.logger.success('Loyalty program code updated')
@@ -1640,7 +1640,7 @@ class OrderAPI(DocumentAPI):
                 WHERE ITEM_NO = '{line_item["ITEM_NO"]}'
                 """
 
-                response = Database.db.query_db(query)
+                response = Database.db.query(query)
 
                 tot_ext_cost += float(response[0][0])
             except Exception as e:
@@ -1663,7 +1663,7 @@ class OrderAPI(DocumentAPI):
             ('{doc_id}', 'S', 0, '!', 0, {len(payload["PS_DOC_HDR"]["PS_DOC_LIN"])}, {gfc_amount}, 0, {sub_tot - document_discount}, 0, {tot_ext_cost}, {shipping_amt}, 0, 0, {tot_tndr}, 0, 0, 0, {tot_tndr}, 0, {self.total_hdr_disc}, {self.total_lin_disc}, {sub_tot}, 0)
             """
 
-        response = Database.db.query_db(query, commit=True)
+        response = Database.db.query(query, commit=True)
 
         if response['code'] == 200:
             self.logger.success('Total written')
@@ -1684,7 +1684,7 @@ class OrderAPI(DocumentAPI):
             WHERE DOC_ID = '{doc_id}'
             """
 
-        response = Database.db.query_db(query, commit=True)
+        response = Database.db.query(query, commit=True)
 
         if response['code'] == 200:
             self.logger.success('Updated line types')
@@ -1698,7 +1698,7 @@ class OrderAPI(DocumentAPI):
         WHERE DOC_ID = '{doc_id}'
         """
 
-        response = Database.db.query_db(query, commit=True)
+        response = Database.db.query(query, commit=True)
 
         if response['code'] == 200:
             self.logger.success('Updated payment application types')
@@ -1719,7 +1719,7 @@ class OrderAPI(DocumentAPI):
             WHERE DOC_ID = '{doc_id}'
             """
 
-        response = Database.db.query_db(query, commit=True)
+        response = Database.db.query(query, commit=True)
 
         if response['code'] == 200:
             self.logger.success('Updated line items')
@@ -1736,7 +1736,7 @@ class OrderAPI(DocumentAPI):
             WHERE DOC_ID = '{doc_id}'
             """
 
-        response = Database.db.query_db(query, commit=True)
+        response = Database.db.query(query, commit=True)
 
         if response['code'] == 200:
             self.logger.success('Updated line items to release')
@@ -1757,7 +1757,7 @@ class OrderAPI(DocumentAPI):
             WHERE DOC_ID = '{doc_id}'
             """
 
-        response = Database.db.query_db(query, commit=True)
+        response = Database.db.query(query, commit=True)
 
         if response['code'] == 200:
             self.logger.success('Updated line total')
@@ -1770,7 +1770,7 @@ class OrderAPI(DocumentAPI):
             SELECT ORIG_DOC_ID FROM PS_DOC_HDR_ORIG_DOC WHERE DOC_ID = '{doc_id}'
             """
 
-            response = Database.db.query_db(query)
+            response = Database.db.query(query)
             try:
                 return response[0][0]
             except:
@@ -1792,7 +1792,7 @@ class OrderAPI(DocumentAPI):
             WHERE DOC_ID = '{get_orig_doc_id()}'
             """
 
-        response = Database.db.query_db(query, commit=True)
+        response = Database.db.query(query, commit=True)
 
         if response['code'] == 200:
             self.logger.success('Updated shipping charge')
@@ -1803,7 +1803,7 @@ class OrderAPI(DocumentAPI):
         if not self.is_refund(bc_order):
 
             def commit_query(query):
-                response = Database.db.query_db(query, commit=True)
+                response = Database.db.query(query, commit=True)
                 return response
 
             def get_value(table, column, index):
@@ -1812,7 +1812,7 @@ class OrderAPI(DocumentAPI):
                 WHERE DOC_ID = '{doc_id}' AND LIN_SEQ_NO = {index}
                 """
 
-                response = Database.db.query_db(query)
+                response = Database.db.query(query)
 
                 try:
                     return float(response[0][0]) if response else None
@@ -1858,7 +1858,7 @@ class OrderAPI(DocumentAPI):
             SELECT ORIG_DOC_ID FROM PS_DOC_HDR_ORIG_DOC WHERE DOC_ID = '{doc_id}'
             """
 
-            response = Database.db.query_db(query)
+            response = Database.db.query(query)
             try:
                 return response[0][0]
             except:
@@ -1871,7 +1871,7 @@ class OrderAPI(DocumentAPI):
             SELECT CUST_NO FROM PS_DOC_HDR WHERE DOC_ID = '{doc_id}'
             """
 
-            response = Database.db.query_db(query)
+            response = Database.db.query(query)
 
             try:
                 return response[0][0]
@@ -1885,7 +1885,7 @@ class OrderAPI(DocumentAPI):
         UPDATE AR_CUST
         SET NO_OF_ORDS = NO_OF_ORDS - 1
         WHERE CUST_NO = '{customer_number}'"""
-        response = Database.db.query_db(query, commit=True)
+        response = Database.db.query(query, commit=True)
         if response['code'] == 200:
             self.logger.success('Updated customer order count')
         else:
@@ -1900,7 +1900,7 @@ class OrderAPI(DocumentAPI):
             WHERE DOC_ID = '{doc_id}'
         )
         """
-        response = Database.db.query_db(query, commit=True)
+        response = Database.db.query(query, commit=True)
 
         if response['code'] == 200:
             self.logger.success('Removed original document')
@@ -1913,7 +1913,7 @@ class OrderAPI(DocumentAPI):
         WHERE DOC_ID = '{doc_id}'
         """
 
-        response = Database.db.query_db(query, commit=True)
+        response = Database.db.query(query, commit=True)
 
         if response['code'] == 200:
             self.logger.success('Removed original document reference')

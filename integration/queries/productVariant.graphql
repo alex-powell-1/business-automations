@@ -101,11 +101,16 @@ mutation productVariantsBulkUpdate(
         id
         optionValues {
           id
+          name
         }
       }
     }
     productVariants {
       id
+      sku
+      image {
+        id
+      }
     }
     userErrors {
       field

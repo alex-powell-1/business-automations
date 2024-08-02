@@ -1,6 +1,4 @@
-from setup.query_engine import QueryEngine
-
-db = QueryEngine()
+from setup.query_engine import QueryEngine as db
 
 
 def get_redemptions(card_no, start_date, end_date=None, before=False, log_individually=False):
@@ -17,7 +15,7 @@ def get_redemptions(card_no, start_date, end_date=None, before=False, log_indivi
                 FROM SY_GFC_ACTIV
                 WHERE ACTIV_TYP = 'R' AND {where_filter} AND GFC_NO = '{card_no}'"""
 
-    response = db.query_db(query=query)
+    response = db.query(query=query)
     if response is None:
         return 0
     total_redemptions = 0
@@ -28,7 +26,7 @@ def get_redemptions(card_no, start_date, end_date=None, before=False, log_indivi
 
 def get_all_gift_cards():
     query = """SELECT GFC_NO, ORIG_AMT FROM SY_GFC"""
-    response = db.query_db(query=query)
+    response = db.query(query=query)
     return [{'card_no': x[0], 'orig_amt': x[1]} for x in response] if response else []
 
 

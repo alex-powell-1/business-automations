@@ -1,19 +1,19 @@
 from reporting import product_reports
 import matplotlib.pyplot as plt
-from setup.query_engine import QueryEngine
+from setup.query_engine import QueryEngine as db
 from setup.date_presets import *
 
 
-def sales_over_time_multi(items, start_date, end_date, mode="quantity"):
+def sales_over_time_multi(items, start_date, end_date, mode='quantity'):
     """Takes an array of item numbers and creates a data visualization for qty sold over a given time period"""
-    y_label = ""
+    y_label = ''
     result = {}
-    if mode == "sales":
-        key_data = "CALC_EXT_PRC"
-        y_label = "Revenue"
+    if mode == 'sales':
+        key_data = 'CALC_EXT_PRC'
+        y_label = 'Revenue'
 
-    elif mode == "quantity":
-        key_data = "QTY_SOLD"
+    elif mode == 'quantity':
+        key_data = 'QTY_SOLD'
         y_label = 'Qty Sold'
 
     for x in items:
@@ -22,11 +22,10 @@ def sales_over_time_multi(items, start_date, end_date, mode="quantity"):
         FROM PS_TKT_HIST_LIN
         WHERE ITEM_NO = '{x}' AND BUS_DAT >= '{start_date} 00:00:00' and BUS_DAT <= '{end_date}'
         """
-        db = QueryEngine()
-        response = db.query_db(query)
+        response = db.query(query)
         if response is not None:
             for y in response:
-                date = y[0].strftime("%m-%d")
+                date = y[0].strftime('%m-%d')
                 item = y[1]
                 qty_sold = int(y[2])
                 try:
@@ -56,18 +55,13 @@ def sales_over_time_multi(items, start_date, end_date, mode="quantity"):
     plt.show()
 
 
-def top_item_visualization(start_date, end_date, category, mode="sales"):
-    items = product_reports.create_top_items_report(start_date, end_date,
-                                                    mode=mode,
-                                                    number_of_items=10,
-                                                    category=category,
-                                                    return_format=3)
-    sales_over_time_multi(items=items,
-                          start_date=start_date,
-                          end_date=end_date,
-                          mode=mode)
+def top_item_visualization(start_date, end_date, category, mode='sales'):
+    items = product_reports.create_top_items_report(
+        start_date, end_date, mode=mode, number_of_items=10, category=category, return_format=3
+    )
+    sales_over_time_multi(items=items, start_date=start_date, end_date=end_date, mode=mode)
 
 
 # Example
 # Creates graph of sales (by qty) of top trees from this time period last year.
-top_item_visualization(one_year_ago, last_year_forecast, "TREES", mode="quantity")
+top_item_visualization(one_year_ago, last_year_forecast, 'TREES', mode='quantity')

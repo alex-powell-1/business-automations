@@ -1,9 +1,7 @@
-from setup.query_engine import QueryEngine
+from setup.query_engine import QueryEngine as db
 import pandas as pd
 from mlxtend.preprocessing import TransactionEncoder
 from mlxtend.frequent_patterns import apriori
-
-db = QueryEngine()
 
 
 def get_tickets():
@@ -12,7 +10,7 @@ def get_tickets():
     FROM PS_TKT_HIST
     ORDER BY TKT_DT DESC
     """
-    response = db.query_db(query)
+    response = db.query(query)
     if response is not None:
         tickets = []
         for x in response:
@@ -26,7 +24,7 @@ def get_ticket_items(ticket_number):
     PS_TKT_HIST_LIN
     WHERE TKT_NO = '{ticket_number}'
     """
-    response = db.query_db(query)
+    response = db.query(query)
     if response is not None:
         ticket_items = []
         for x in response:
@@ -39,7 +37,7 @@ def get_distinct_items():
     SELECT DISTINCT TOP 10 ITEM_NO
     FROM PS_TKT_HIST_LIN
     """
-    response = db.query_db(query)
+    response = db.query(query)
     if response is not None:
         distinct_items = []
         for x in response:
@@ -52,7 +50,7 @@ def get_tickets_with_item(item):
     SELECT TKT_NO
     FROM PS_TKT_HIST_LIN
     WHERE ITEM_NO = '{item}'"""
-    response = db.query_db(query)
+    response = db.query(query)
     if response is not None:
         tickets = []
         for x in response:
@@ -61,11 +59,10 @@ def get_tickets_with_item(item):
 
 
 def ticket_dataset():
-
     distinct_items = get_distinct_items()
     # for item in distinct_items:
     for item in ['10200']:
-        print(f"ITEM NUMBER: {item}")
+        print(f'ITEM NUMBER: {item}')
         dataset = []
         tickets_with_item = get_tickets_with_item(item)
         for ticket in tickets_with_item:
@@ -79,5 +76,6 @@ def ticket_dataset():
         frequent_itemsets = apriori(df_itemsets, min_support=0.06, use_colnames=True)
         frequent_itemsets['length'] = frequent_itemsets['itemsets'].apply(lambda itemset: len(itemset))
         return frequent_itemsets[frequent_itemsets['length'] >= 2]
+
 
 print(ticket_dataset())

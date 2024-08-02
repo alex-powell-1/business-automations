@@ -3,13 +3,12 @@ from datetime import datetime
 import pandas as pd
 
 from setup import creds
-from setup.query_engine import QueryEngine
+from setup.query_engine import QueryEngine as db
 from setup.webDAV_engine import WebDAVClient
 from setup.error_handler import ScheduledTasksErrorHandler as error_handler
 
 
 def create_inventory_csv(retail=True):
-    db = QueryEngine()
     if retail:
         # RETAIL AVAILABILITY
         query = """
@@ -29,7 +28,7 @@ def create_inventory_csv(retail=True):
         'grasses','ground','perennial','supplies') 
         ORDER BY item.long_descr
         """
-    response = db.query_db(query)
+    response = db.query(query)
     if response is not None:
         item_list = []
         for x in response:

@@ -23,7 +23,7 @@ class Customers:
         """Update the last maintenance date for all customers in the Middleware who have been updated in
         the AR_LOY_PT_ADJ_HIST table since the last sync."""
         query = f"""SELECT CUST_NO FROM AR_LOY_PT_ADJ_HIST WHERE LST_MAINT_DT > '{self.last_sync}'"""
-        response = self.db.query_db(query)
+        response = self.db.query(query)
         customer_list = [x[0] for x in response] if response is not None else []
         if customer_list:
             Database.Counterpoint.Customer.update_timestamps(customer_list)
@@ -36,7 +36,7 @@ class Customers:
         query = f"""
         SELECT BC_CUST_ID FROM {creds.bc_customer_table}
         """
-        response = self.db.query_db(query)
+        response = self.db.query(query)
         if response is not None:
             result = []
             for x in response:
@@ -215,7 +215,7 @@ class Customers:
             WHERE CUST_NO = '{self.cp_cust_no}'
             """
 
-            response = self.db.query_db(del_query)
+            response = self.db.query(del_query)
             if response is None or len(response) == 0:
                 return delete()
 
@@ -230,7 +230,7 @@ class Customers:
             SET LOY_PTS_BAL = 0, LST_MAINT_DT = GETDATE()
             WHERE CUST_NO = '{self.cp_cust_no}'
             """
-            response = self.db.query_db(query, commit=True)
+            response = self.db.query(query, commit=True)
             if response['code'] == 200:
                 self.logger.success(f'Customer {self.cp_cust_no} loyalty points set to 0.')
             else:
