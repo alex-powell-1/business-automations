@@ -144,14 +144,32 @@ def gift_card_recipient():
     if not request.headers.get('Authorization'):
         new_uuid = uuidu.uuid4()
 
-        # Create new database entry for new_uuid -> gift_card_recipient
+        # Create new database entry for new_uuid -> gift_card_recipient, lst_maint_dt
 
         return jsonify({'uuid': new_uuid, 'message': 'Recipient updated.'}), 200
     else:
         uuid = request.headers.get('Authorization')
 
-        # Update database entry for uuid -> gift_card_recipient
-        return jsonify({'uuid': uuid, 'message': 'Recipient updated.'}), 200
+        # Update database entry for uuid -> gift_card_recipient, lst_maint_dt
+        return jsonify({'message': 'Recipient updated.'}), 200
+
+
+@app.route('/update-uuid-email', methods=['POST'])
+@limiter.limt('20 per minute')
+def update_uuid_email():
+    data = request.json
+    email = data['email']
+
+    if not email:
+        return jsonify({'error': 'No email provided'}), 400
+
+    if not request.headers.get('Authorization'):
+        return jsonify({'error': 'No uuid provided'}), 400
+
+    uuid = request.headers.get('Authorization')
+
+    # Update database entry for uuid -> email, lst_maint_dt
+    return jsonify({'message': 'Email updated.'}), 200
 
 
 @app.route('/newsletter', methods=['POST'])
