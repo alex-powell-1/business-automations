@@ -147,3 +147,17 @@ mutation productVariantAppendMedia($productId: ID!, $variantMedia: [ProductVaria
     }
   }
 }
+
+
+# query productVariants($id: ID!) {
+#   productVariants(query:gid://shopify/Product/8308343963815) {
+#     edges {
+#       node {
+#         id
+#         image {
+#           id
+#         }
+#       }
+#     }
+#   }
+# }

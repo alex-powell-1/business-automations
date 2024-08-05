@@ -14,14 +14,14 @@ from setup import creds
 from setup.query_engine import QueryEngine as db
 from setup.utilities import get_all_binding_ids, get_product_images, convert_to_utc, parse_custom_url, get_filesize
 
-from setup.error_handler import ProcessOutErrorHandler
+from setup.error_handler import Logger, ErrorHandler
 
 
 class Catalog:
-    error_handler = ProcessOutErrorHandler.error_handler
-    logger = error_handler.logger
     all_binding_ids = get_all_binding_ids()
     metafields = Database.Shopify.Metafield_Definition.get()
+    logger = Logger(f"{creds.log_main}/integration/process_out/log_{datetime.now().strftime("%m_%d_%y")}.log")
+    error_handler = ErrorHandler(logger)
 
     def __init__(self, last_sync=datetime(1970, 1, 1), inventory_only=False):
         self.last_sync = last_sync
@@ -246,21 +246,21 @@ class Catalog:
         # # # Sync Category Tree
         # self.category_tree.sync()
 
-        # if not initial:
-        # Process Product Deletions and Images
-        # self.process_product_deletes()
-        # self.process_images()
+        if not initial:
+            # Process Product Deletions and Images
+            self.process_product_deletes()
+            self.process_images()
 
         # Sync Products
-        self.get_products()  # Get all products that have been updated since the last sync
+        # self.get_products()  # Get all products that have been updated since the last sync
 
         # test product queue
-        # self.sync_queue = [
-        #     # {'sku': '202836', 'binding_id': 'B0104'}
-        #     {'sku': '10002'}
-        #     # {'sku': '10338', 'binding_id': 'B0006'},
-        #     # {'sku': '202335', 'binding_id': 'B0151'},
-        # ]
+        self.sync_queue = [
+            # {'sku': '202836', 'binding_id': 'B0104'}
+            {'sku': '202843', 'binding_id': 'B0133'}
+            # {'sku': '10338', 'binding_id': 'B0006'},
+            # {'sku': '202335', 'binding_id': 'B0151'},
+        ]
 
         if not self.sync_queue:
             Catalog.logger.success('No products to sync.')
@@ -274,11 +274,11 @@ class Catalog:
                 start_time = time.time()
                 target = self.sync_queue.pop()
                 prod = self.Product(target, last_sync=self.last_sync, inventory_only=self.inventory_only)
-                prod.get_product_details(last_sync=self.last_sync)
+                prod.get(last_sync=self.last_sync)
                 Catalog.logger.info(
                     f'Processing Product: {prod.sku}, Binding: {prod.binding_id}, Title: {prod.web_title}'
                 )
-                if prod.validate_inputs():
+                if prod.validate():
                     prod.process()
                     success_count += 1
                 else:
@@ -300,7 +300,6 @@ class Catalog:
     def get_deletion_target(primary_source, secondary_source):
         return [element for element in secondary_source if element not in primary_source]
 
-    @staticmethod
     def delete(products=True, collections=True):
         """Deletes all products, categories from BigCommerce and Middleware."""
 
@@ -315,7 +314,7 @@ class Catalog:
                 try:
                     Shopify.Product.delete(product_id=target)
                 except Exception as e:
-                    Catalog.error_handler.add_error_v(
+                    Logger.error_handler.add_error_v(
                         error=f'Error deleting product {target}. {e}', origin='delete_products()'
                     )
                 Database.Shopify.Product.delete(product_id=target)
@@ -767,7 +766,7 @@ class Catalog:
                     variant_index += 1
             return result
 
-        def get_product_details(self, last_sync):
+        def get(self, last_sync):
             """Get product details from Counterpoint and Middleware"""
 
             def get_bound_product_details():
@@ -984,7 +983,7 @@ class Catalog:
 
             # Now all images are in self.images list and are in order by binding img first then variant img
 
-        def validate_inputs(self):
+        def validate(self):
             """Validate product inputs to check for errors in user input"""
             check_web_title = True
             check_for_missing_categories = False
@@ -1007,7 +1006,7 @@ class Catalog:
                 """
                 db.query(query, commit=True)
                 Catalog.logger.info(f'Parent status set to {flag} for {target_item}')
-                return self.get_product_details(last_sync=self.last_sync)
+                return self.get(last_sync=self.last_sync)
 
             if self.is_bound:
                 # Test for missing variant names
@@ -1456,34 +1455,52 @@ class Catalog:
                 return result
 
             def create_image_payload():
-                sort_order = 0
-                for x in self.images:
-                    if sort_order == 0:
-                        x.is_thumbnail = True
-                    x.sort_order = sort_order
-                    sort_order += 1
+                # sort_order = 0
+                # for x in self.images:
+                #     if sort_order == 0:
+                #         x.is_thumbnail = True
+                #     x.sort_order = sort_order
+                #     sort_order += 1
 
                 result = []
 
                 file_list = []
                 stagedUploadsCreateVariables = {'input': []}
 
+                updated = False
                 for image in self.images:
                     image_size = get_filesize(image.file_path)
                     if image_size != image.size:
-                        print(f'\n\nHERE. Image NAME: {image.name} Image: {image.size}\n\n')
-                        image.size = image_size
-                        file_list.append(image.file_path)
-                        stagedUploadsCreateVariables['input'].append(
-                            {
-                                'filename': image.name,
-                                'mimeType': 'image/jpg',
-                                'httpMethod': 'POST',
-                                'resource': 'IMAGE',
-                            }
-                        )
+                        updated = True
+                if updated:
+                    # Delete all current images for the product
+                    if self.product_id:
+                        # if self.is_bound:
+                        # for x in self.variants:
+                        #     Shopify.Product.Variant.Image.delete(
+                        #         product_id=self.product_id, variant_id=x.variant_id
+                        #     )
+                        Shopify.Product.Media.Image.delete(product_id=self.product_id)
+                        Database.Shopify.Product.Image.delete(product_id=self.product_id)
+                        for image in self.images:
+                            # Reset Image Properties
+                            image.image_id = None
+                            image.image_url = None
+                            image.db_id = None
+                            # Get Size
+                            image.size = get_filesize(image.file_path)
+                            # Add to file list
+                            file_list.append(image.file_path)
+                            stagedUploadsCreateVariables['input'].append(
+                                {
+                                    'filename': image.name,
+                                    'mimeType': 'image/jpg',
+                                    'httpMethod': 'POST',
+                                    'resource': 'IMAGE',
+                                }
+                            )
 
-                if file_list:
+                    # Upload new images
                     uploaded_files = Shopify.Product.Files.create(
                         variables=stagedUploadsCreateVariables, file_list=file_list
                     )
@@ -1771,29 +1788,21 @@ class Catalog:
                 if 'media_ids' in response:
                     for x, image in enumerate(self.images):
                         image.image_id = response['media_ids'][x]
+                        image.product_id = self.product_id
 
                 if self.is_bound:
                     # Update the Variants
                     response = Shopify.Product.Variant.update_bulk(self.get_bulk_variant_payload())
-                    # # Get Needed IDs
-                    # for x, variant in enumerate(self.variants):
-                    #     variant.variant_id = response['variant_ids'][x]
-                    #     variant.option_value_id = response['option_value_ids'][x]
-                    #     variant.option_id = self.option_id
+
                     for variant in self.variants:
                         variant.option_id = self.option_id
                         variant.option_value_id = response[variant.sku]['option_value_id']
                         variant.variant_id = response[variant.sku]['variant_id']
                         variant.has_variant_image = response[variant.sku]['has_image']
 
-                    # Update the Variant Images
-                    for variant in self.variants:
-                        if not variant.has_variant_image:
-                            print(f'HERE - Variant {variant.sku} has no variant image on SHOPIFY')
-                            variant_image_payload = self.get_variant_image_payload()
-                            print(f'Variant Image Payload: {variant_image_payload}')
-                            Shopify.Product.Variant.Image.create(self.product_id, variant_image_payload)
-                            break
+                    # Wait for images to process
+                    time.sleep(3)
+                    Shopify.Product.Variant.Image.create(self.product_id, self.get_variant_image_payload())
 
                 else:
                     variant_payload = self.get_single_variant_payload()
@@ -2050,14 +2059,13 @@ class Catalog:
             response = db.query(query)
             return response[0][0] if response and response[0][0] is not None else None
 
-        @staticmethod
         def set_parent(binding_id, remove_current=False):
             # Get Family Members.
             family_members = Catalog.Product.get_family_members(binding_id=binding_id, price=True)
             # Choose the lowest price family member as the parent.
             parent_sku = min(family_members, key=lambda x: x['price_1'])['sku']
 
-            Catalog.logger.info(f'Family Members: {family_members}, Target new parent item: {parent_sku}')
+            Logger.info(f'Family Members: {family_members}, Target new parent item: {parent_sku}')
 
             if remove_current:
                 # Remove Parent Status from all children.
@@ -2721,7 +2729,7 @@ class Catalog:
 
                     return details
 
-            def validate_product(self):
+            def validate(self):
                 # Test for missing variant name
                 if not self.variant_name:
                     Catalog.error_handler.add_error_v(
@@ -3063,5 +3071,5 @@ class Catalog:
 if __name__ == '__main__':
     from datetime import datetime
 
-    cat = Catalog(last_sync=datetime(2024, 8, 2, 14, 30, 00), inventory_only=True)
+    cat = Catalog(last_sync=datetime(2024, 8, 5), inventory_only=False)
     cat.sync()

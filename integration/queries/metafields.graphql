@@ -2,6 +2,8 @@ mutation CreateMetafieldDefinition($definition: MetafieldDefinitionInput!) {
   metafieldDefinitionCreate(definition: $definition) {
     createdDefinition {
       id
+      key
+      namespace
       name
     }
     userErrors {
@@ -101,6 +103,7 @@ mutation metafieldsDelete($metafields: [MetafieldIdentifierInput!]!) {
 mutation MetafieldsSet($metafields: [MetafieldsSetInput!]!) {
   metafieldsSet(metafields: $metafields) {
     metafields {
+      id
       key
       namespace
       value
@@ -118,6 +121,7 @@ mutation MetafieldsSet($metafields: [MetafieldsSetInput!]!) {
 mutation CreateMetafieldStorefrontVisibility($input: MetafieldStorefrontVisibilityInput!) {
   metafieldStorefrontVisibilityCreate(input: $input) {
     metafieldStorefrontVisibility {
+      id
       namespace
       key
     }

@@ -599,13 +599,21 @@ class Database:
                         )
                         raise Exception(error)
 
-                def delete(image=None, image_id=None):
+                def delete(image=None, image_id=None, product_id=None):
                     if image_id:
-                        q = f'DELETE FROM {creds.shopify_image_table} WHERE IMAGE_ID = {image_id}'
-                    else:
+                        # Delete Single Image from Image ID
+                        q = f"DELETE FROM {creds.shopify_image_table} WHERE IMAGE_ID = '{image_id}'"
+                    elif image:
+                        # Delete Single Image from Image Object
                         if image.image_id is None:
                             image.image_id = Database.Shopify.Product.Image.get_image_id(filename=image.name)
-                        q = f'DELETE FROM {creds.shopify_image_table} WHERE IMAGE_ID = {image.image_id}'
+                        q = f"DELETE FROM {creds.shopify_image_table} WHERE IMAGE_ID = '{image.image_id}'"
+                    elif product_id:
+                        # Delete All Images from Product ID
+                        q = f"DELETE FROM {creds.shopify_image_table} WHERE PRODUCT_ID = '{product_id}'"
+                    else:
+                        Database.logger.warn('No image or image_id provided for deletion.')
+                        return
                     res = Database.db.query(q, commit=True)
                     if res['code'] == 200:
                         Database.logger.success(f'Query: {q}\nSQL DELETE Image')

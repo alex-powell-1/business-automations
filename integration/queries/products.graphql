@@ -205,7 +205,26 @@ query product($id: ID!) {
         preview {
           status
           image {
+            id
             url
+            metafield(namespace: "product-image", key: "name") {
+              id
+              value
+            }
+          }
+        }
+      }
+
+    }
+
+
+    images(first: 5) {
+      edges {
+        node {
+          id
+          metafield(namespace: "product-image", key: "name") {
+            id
+            value
           }
         }
       }
