@@ -23,6 +23,8 @@ from setup.error_handler import ProcessInErrorHandler, ProcessOutErrorHandler, L
 from setup import log_engine
 from qr.qr_codes import QR
 
+import uuid_utils as uuidu
+
 app = flask.Flask(__name__)
 
 limiter = Limiter(get_remote_address, app=app)
@@ -128,6 +130,28 @@ def stock_notification():
         df = pandas.DataFrame(stock_notification_data, columns=['date', 'email', str('item_no')])
         log_engine.write_log(df, creds.stock_notification_log)
         return 'Your submission was received.'
+
+
+@app.route('/gift-card-recipient', methods=['POST'])
+@limiter.limit('20 per minute')
+def gift_card_recipient():
+    data = request.json
+    recipient = data['recipient']
+
+    if not recipient:
+        return jsonify({'error': 'No recipient provided'}), 400
+
+    if not request.headers.get('Authorization'):
+        new_uuid = uuidu.uuid4()
+
+        # Create new database entry for new_uuid -> gift_card_recipient
+
+        return jsonify({'uuid': new_uuid, 'message': 'Recipient updated.'}), 200
+    else:
+        uuid = request.headers.get('Authorization')
+
+        # Update database entry for uuid -> gift_card_recipient
+        return jsonify({'uuid': uuid, 'message': 'Recipient updated.'}), 200
 
 
 @app.route('/newsletter', methods=['POST'])
