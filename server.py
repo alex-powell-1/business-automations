@@ -23,6 +23,10 @@ from setup.error_handler import ProcessInErrorHandler, ProcessOutErrorHandler, L
 from setup import log_engine
 from qr.qr_codes import QR
 
+from integration.database import Database
+
+import uuid_utils as uuidu
+
 app = flask.Flask(__name__)
 
 limiter = Limiter(get_remote_address, app=app)
@@ -128,6 +132,111 @@ def stock_notification():
         df = pandas.DataFrame(stock_notification_data, columns=['date', 'email', str('item_no')])
         log_engine.write_log(df, creds.stock_notification_log)
         return 'Your submission was received.'
+
+
+@app.route('/gift-card-recipient', methods=['POST'])
+@limiter.limit('20 per minute')
+def gift_card_recipient():
+    data = request.json
+    recipient = data['recipient']
+
+    if not recipient:
+        return jsonify({'error': 'No recipient provided'}), 400
+
+    if not request.headers.get('Authorization'):
+        new_uuid = uuidu.uuid4()
+
+        # Create new database entry for new_uuid -> gift_card_recipient, lst_maint_dt
+        try:
+            Database.db.query(
+                f"""
+                INSERT INTO SN_GFC_RECPS
+                (UUID, RECPT_EMAIL, RECPT_NAME, LST_MAINT_DT)
+                VALUES
+                ('{new_uuid}', '{recipient['email']}', '{recipient['name']}', GETDATE())
+                """
+            )
+        except:
+            return jsonify({'error': 'Error creating recipient'}), 400
+
+        return jsonify({'uuid': new_uuid, 'message': 'Recipient updated.'}), 200
+    else:
+        uuid = request.headers.get('Authorization')
+
+        # Update database entry for uuid -> gift_card_recipient, lst_maint_dt
+
+        try:
+            Database.db.query(
+                f"""
+                UPDATE SN_GFC_RECPS
+                SET RECPT_EMAIL = '{recipient['email']}',
+                RECPT_NAME = '{recipient['name']}', 
+                LST_MAINT_DT = GETDATE()
+                WHERE UUID = '{uuid}'
+                """
+            )
+        except:
+            return jsonify({'error': 'Error updating recipient'}), 400
+
+        return jsonify({'message': 'Recipient updated.'}), 200
+
+
+@app.route('/update-uuid-email', methods=['POST'])
+@limiter.limt('20 per minute')
+def update_uuid_email():
+    data = request.json
+    email = data['email']
+
+    if not email:
+        return jsonify({'error': 'No email provided'}), 400
+
+    if not request.headers.get('Authorization'):
+        return jsonify({'error': 'No uuid provided'}), 400
+
+    uuid = request.headers.get('Authorization')
+
+    # Update database entry for uuid -> email, lst_maint_dt
+    try:
+        Database.db.query(
+            f"""
+            UPDATE SN_GFC_RECPS
+            SET EMAIL = '{email}', LST_MAINT_DT = GETDATE()
+            WHERE UUID = '{uuid}'
+            """
+        )
+    except:
+        return jsonify({'error': 'Error updating'}), 400
+
+    return jsonify({'message': 'Email updated.'}), 200
+
+
+@app.route('/update-uuid-name', methods=['POST'])
+@limiter.limt('20 per minute')
+def update_uuid_name():
+    data = request.json
+    name = data['name']
+
+    if not name:
+        return jsonify({'error': 'No name provided'}), 400
+
+    if not request.headers.get('Authorization'):
+        return jsonify({'error': 'No uuid provided'}), 400
+
+    uuid = request.headers.get('Authorization')
+
+    # Update database entry for uuid -> name, lst_maint_dt
+    try:
+        Database.db.query(
+            f"""
+            UPDATE SN_GFC_RECPS
+            SET NAME = '{name}', LST_MAINT_DT = GETDATE()
+            WHERE UUID = '{uuid}'
+            """
+        )
+    except:
+        return jsonify({'error': 'Error updating'}), 400
+
+    return jsonify({'message': 'Name updated.'}), 200
 
 
 @app.route('/newsletter', methods=['POST'])

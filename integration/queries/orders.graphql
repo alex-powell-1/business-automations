@@ -55,10 +55,18 @@ query order($id: ID!) {
                 presentmentMoney {
                     amount
                 }
+
+                shopMoney {
+                    amount
+                }
             }
 
             currentTotalPriceSet {
                 presentmentMoney {
+                    amount
+                }
+
+                shopMoney {
                     amount
                 }
             }
@@ -193,3 +201,32 @@ query orders {
         }
     }
 }
+
+query giftCards {
+    giftCards(first: 10) {
+        edges {
+            node {
+                id
+                order {
+                    id
+                }
+            }
+        }
+    }
+}
+
+# query giftCard($id: ID!) {
+#     giftCard(id: $id) {
+#         id
+#         order {
+#             id
+#         }
+#         initialValue {
+#             amount
+#         }
+#         balance
+#         customer {
+#             id
+#         }
+#     }
+# }

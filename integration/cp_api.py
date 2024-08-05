@@ -224,7 +224,7 @@ class OrderAPI(DocumentAPI):
         payments = [
             {
                 'AMT': float(bc_order['total_inc_tax'] or 0),
-                'PAY_COD': 'BIG',
+                'PAY_COD': 'SHOP',
                 'FINAL_PMT': 'N',
                 'PMT_LIN_TYP': 'C' if self.is_refund() else 'T',
             }
@@ -1178,7 +1178,7 @@ class OrderAPI(DocumentAPI):
             def get_big_payment():
                 query = f"""
                 SELECT AMT FROM PS_DOC_PMT
-                WHERE DOC_ID = '{doc_id}' AND PAY_COD = 'BIG'
+                WHERE DOC_ID = '{doc_id}' AND PAY_COD = 'SHOP'
                 """
 
                 response = Database.db.query(query)
@@ -1219,10 +1219,10 @@ class OrderAPI(DocumentAPI):
                 UPDATE PS_DOC_PMT
                 SET AMT = {-amt},
                 HOME_CURNCY_AMT = {-amt}
-                WHERE DOC_ID = '{doc_id}' AND PAY_COD = 'BIG'
+                WHERE DOC_ID = '{doc_id}' AND PAY_COD = 'SHOP'
                 """
 
-                payload['PS_DOC_HDR']['PS_DOC_PMT'][get_ps_doc_pmt_index('BIG')]['AMT'] = -amt
+                payload['PS_DOC_HDR']['PS_DOC_PMT'][get_ps_doc_pmt_index('SHOP')]['AMT'] = -amt
 
                 response = Database.db.query(query, commit=True)
 
@@ -1238,7 +1238,7 @@ class OrderAPI(DocumentAPI):
                     SET AMT = {-amt},
                     HOME_CURNCY_AMT = {-amt}
                     WHERE DOC_ID = '{doc_id}' AND PMT_SEQ_NO in (
-                        SELECT PMT_SEQ_NO FROM PS_DOC_PMT WHERE DOC_ID = '{doc_id}' AND PAY_COD = 'BIG'
+                        SELECT PMT_SEQ_NO FROM PS_DOC_PMT WHERE DOC_ID = '{doc_id}' AND PAY_COD = 'SHOP'
                     )
                     """
                 )
@@ -1428,7 +1428,7 @@ class OrderAPI(DocumentAPI):
                 SET AMT = {total_paid},
                 HOME_CURNCY_AMT = {total_paid}
                 WHERE DOC_ID = '{doc_id}' AND PMT_SEQ_NO in (
-                    SELECT PMT_SEQ_NO FROM PS_DOC_PMT WHERE DOC_ID = '{doc_id}' AND PAY_COD = 'BIG'
+                    SELECT PMT_SEQ_NO FROM PS_DOC_PMT WHERE DOC_ID = '{doc_id}' AND PAY_COD = 'SHOP'
                 )
                 """
             )
