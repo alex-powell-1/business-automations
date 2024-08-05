@@ -507,6 +507,14 @@ class Shopify:
             queries = './integration/queries/productVariant.graphql'
             prefix = 'gid://shopify/ProductVariant/'
 
+            def get(product_id):
+                response = Shopify.Query(
+                    document=Shopify.Product.Variant.queries,
+                    variables={'id': f'{Shopify.Product.prefix}{product_id}'},
+                    operation_name='productVariants',
+                )
+                return response.data
+
             def create_bulk(variables):
                 response = Shopify.Query(
                     document=Shopify.Product.Variant.queries,
@@ -606,6 +614,11 @@ class Shopify:
                 queries = './integration/queries/media.graphql'
                 prefix = 'gid://shopify/MediaImage/'
 
+                def get(variant_id: int = None, product_id: int = None):
+                    if product_id:
+                        # Get all variant images for a product
+                        return
+
                 def create(product_id: int, variant_data: list):
                     print(variant_data)
                     variables = {
@@ -631,7 +644,7 @@ class Shopify:
                     }
 
                     response = Shopify.Query(
-                        document=Shopify.Product.Variant.queries,
+                        document=Shopify.Product.Variant.Image.queries,
                         variables=variables,
                         operation_name='productVariantDetachMedia',
                     )
@@ -667,20 +680,7 @@ class Shopify:
                         operation_name='productMedia',
                     )
 
-                    result = {}
-
-                    for i in response.data['product']['media']['nodes']:
-                        id = i['id'].split('/')[-1]
-                        result[id] = {
-                            'image_id': i['id'].split('/')[-1],
-                            'url': i['preview']['image']['url'],
-                            'alt_text': i['alt'],
-                            'status': i['preview']['status'],
-                        }
-                        if result[id]['status'] == 'READY':
-                            image_name = result[id]['url'].split('/')[-1].split('?')[0]
-                            result[id]['image_name'] = image_name
-                    print(result)
+                    return [x['id'].split('/')[-1] for x in response.data['product']['media']['nodes']]
 
                 def create(image):
                     variables = {'productId': f'{Shopify.Product.prefix}{image.product_id}'}
@@ -718,11 +718,21 @@ class Shopify:
                             'productId': f'{Shopify.Product.prefix}{image.product_id}',
                         }
 
-                    else:
+                    elif image_id and product_id:
                         variables = {
                             'mediaIds': [f'{Shopify.Product.Media.Image.prefix}{image_id}'],
                             'productId': f'{Shopify.Product.prefix}{product_id}',
                         }
+
+                    elif product_id:
+                        id_list = Shopify.Product.Media.Image.get(product_id)
+                        if id_list:
+                            variables = {
+                                'mediaIds': [f'{Shopify.Product.Media.Image.prefix}{x}' for x in id_list],
+                                'productId': f'{Shopify.Product.prefix}{product_id}',
+                            }
+                        else:
+                            return
 
                     response = Shopify.Query(
                         document=Shopify.Product.Media.queries,
@@ -801,13 +811,18 @@ class Shopify:
                     # need implementation here
                     pass
 
-            def set(product_id: int, namespace: str, key: str, value: str, type: str):
+            def get(owner_id):
+                variables = {'id': owner_id}
+                response = Shopify.Query(
+                    document=Shopify.Product.Metafield.queries, variables=variables, operation_name='getMetafield'
+                )
+                return response.data
+
+            def set(owner_id: int, namespace: str, key: str, value: str, type: str):
                 variables = {
-                    'ownerId': f'{Shopify.Product.prefix}{product_id}',
-                    'namespace': namespace,
-                    'key': key,
-                    'value': value,
-                    'type': type,
+                    'metafields': [
+                        {'ownerId': owner_id, 'namespace': namespace, 'key': key, 'value': value, 'type': type}
+                    ]
                 }
                 response = Shopify.Query(
                     document=Shopify.Product.Metafield.queries, variables=variables, operation_name='MetafieldsSet'
@@ -1286,15 +1301,4 @@ class Shopify:
 
 
 if __name__ == '__main__':
-    variables = {
-        'definition': {
-            'name': 'Image Name',
-            'namespace': 'product-image',
-            'key': 'image_name',
-            'description': 'Image name to be used with sync',
-            'type': 'single_line_text_field',
-            'ownerType': 'PRODUCTIMAGE',
-        }
-    }
-
-    Shopify.Product.get(8308344651943)
+    Shopify.Product.Variant.get(product_id=8308343963815)

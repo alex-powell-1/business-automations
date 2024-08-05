@@ -1,17 +1,18 @@
 from integration.shopify_catalog import Catalog
 from product_tools import inventory_upload
+from setup import creds
 
 
 from datetime import datetime
 
-from setup.error_handler import ProcessOutErrorHandler
+from setup.error_handler import Logger, ErrorHandler
 from setup.utilities import get_last_sync, set_last_sync
 from time import sleep
 
 
 class Inventory:
-    error_handler = ProcessOutErrorHandler.error_handler
-    logger = ProcessOutErrorHandler.logger
+    logger = Logger(f"{creds.log_main}/integration/process_out/log_{datetime.now().strftime("%m_%d_%y")}.log")
+    error_handler = ErrorHandler(logger)
 
     def __init__(self):
         self.last_sync = get_last_sync(file_name='last_inventory_sync.txt')
@@ -23,7 +24,7 @@ class Inventory:
     def sync(self, initial=False):
         start_sync_time = datetime.now()
         self.logger.header('Inventory Sync Starting')
-        self.catalog.sync(initial=initial)
+        self.catalog.sync()
         set_last_sync(file_name='last_inventory_sync.txt', start_time=start_sync_time)
         completion_time = (datetime.now() - start_sync_time).seconds
         Inventory.logger.info(f'Inventory Sync completion time: {completion_time} seconds')
@@ -44,7 +45,9 @@ if __name__ == '__main__':
                 delay = 300
                 step = 10
 
+            # Upload Inventory to file share.
             inventory_upload.upload_inventory()
+
             for i in range(step):
                 inventory = Inventory()
                 inventory.sync()

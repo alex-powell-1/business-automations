@@ -32,6 +32,7 @@ class RabbitMQConsumer:
         self.channel.queue_declare(queue=self.queue_name, durable=True)
 
     def callback(self, ch, method, properties, body):
+        self.logger.log_file = f'shopify_orders_{datetime.now().strftime("%m_%d_%y")}.log'
         order_id = body.decode()
         # Create order object
         self.logger.info(f'Beginning processing for Order #{order_id}')

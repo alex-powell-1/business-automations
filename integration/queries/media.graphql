@@ -108,6 +108,13 @@ mutation productVariantAppendMedia(
     product {
       id
     }
+    productVariants {
+      id
+    }
+    userErrors {
+      field
+      message
+    }
   }
 }
 

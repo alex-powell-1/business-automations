@@ -34,6 +34,7 @@ class RabbitMQConsumer:
         self.channel.queue_declare(queue=self.queue_name, durable=True)
 
     def callback(self, ch, method, properties, body):
+        self.logger.log_file = f'leads_{datetime.now().strftime("%m_%d_%y")}.log'
         json_body = json.loads(body.decode())
         first_name = json_body['first_name']
         last_name = json_body['last_name']
