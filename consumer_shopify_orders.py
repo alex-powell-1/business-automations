@@ -43,6 +43,9 @@ class RabbitMQConsumer:
 
         try:
             self.logger.info(f'Processing Order #{order_id}')
+
+            ShopifyOrder(order_id).post_shopify_order()
+
             # order = Order(order_id)
 
             # # Filter out DECLINED payments
@@ -181,8 +184,6 @@ class RabbitMQConsumer:
             #     )
             # else:
             #     self.logger.info(f'Skipping Order #{order_id}: Payment Status: {order.payment_status}')
-
-            ShopifyOrder(order_id).post_shopify_order()
 
         except Exception as err:
             error_type = 'General Catch'

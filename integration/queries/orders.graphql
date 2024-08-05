@@ -215,16 +215,18 @@ query giftCards {
     }
 }
 
-query giftCard($id: ID!) {
-    giftCard(id: $id) {
-        id
-        order {
-            id
-        }
-        initialValue
-        balance
-        customer {
-            id
-        }
-    }
-}
+# query giftCard($id: ID!) {
+#     giftCard(id: $id) {
+#         id
+#         order {
+#             id
+#         }
+#         initialValue {
+#             amount
+#         }
+#         balance
+#         customer {
+#             id
+#         }
+#     }
+# }

@@ -4,6 +4,7 @@ import json
 from setup.error_handler import ProcessOutErrorHandler
 from pathlib import Path
 from integration.database import Database
+from uuid_utils import uuid4
 
 verbose_print = True
 
@@ -121,6 +122,8 @@ class Shopify:
 
                 price = float(get_money(item['originalTotalSet']))
 
+                item['isGiftCard'] = item['sku'] == 'GFC'
+
                 pl = {
                     'id': item['id'],
                     'sku': item['sku'],
@@ -143,6 +146,26 @@ class Shopify:
                     'discounted_total_inc_tax': get_money(item['discountedTotalSet']),
                     'applied_discounts': [],
                 }
+
+                def send_gift_card():
+                    snode = shopify_order['node']
+                    email = snode['email']
+                    gift_card_code = pl['gift_certificate_id']['code']
+
+                    response = Database.db.query(
+                        f"""
+                        SELECT RECPT_EMAIL, RECPT_NAME from SN_GFC_RECPS
+                        WHERE EMAIL like '{email}'
+                        """
+                    )
+
+                    if response is not None:
+                        print(gift_card_code, response[0][0], response[0][1])
+                        # Send gift card email to recipient
+
+                if item['isGiftCard']:
+                    pl['gift_certificate_id'] = {'code': uuid4()}
+                    send_gift_card()
 
                 shopify_products.append(pl)
 
@@ -237,6 +260,19 @@ class Shopify:
             # bc_order['transactions']['data'] = transactions
 
             return bc_order
+
+        @staticmethod
+        def create_gift_card(balance: float):
+            input = {'initialValue': balance}
+
+            response = Shopify.Query(
+                document=Shopify.Order.queries, operation_name='giftCardCreate', variables={'input': input}
+            )
+
+            if response.errors or response.user_errors:
+                raise Exception(f'Error creating gift card: {response.errors}\nUser Errors: {response.user_errors}')
+
+            return response.data
 
     class Customer:
         queries = './integration/queries/customers.graphql'
