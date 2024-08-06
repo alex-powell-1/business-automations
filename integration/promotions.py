@@ -8,7 +8,7 @@ from setup import creds
 from setup.utilities import convert_to_utc
 from integration.catalog import Catalog
 from product_tools.products import Product
-from setup.utilities import VirtualRateLimiter, set_last_sync
+from setup.utilities import VirtualRateLimiter
 
 
 class Promotions:
@@ -420,7 +420,7 @@ class Promotions:
                                 VALUES('{i}', '{creds.on_sale_category}', '{counter}', '{new_timestamp}', 'POS')
                                 """
                                 # Updating Sale Price, Last Maintenance Date, and Adding to On Sale Category
-                                response = self.db.query(query, commit=True)
+                                response = self.db.query(query)
                                 if response['code'] == 200:
                                     self.logger.success(
                                         f'Item: {i} Price 1: {item.price_1} adjusted to Sale Price: {target_sale_price}'
@@ -461,7 +461,7 @@ class Promotions:
                         DELETE FROM EC_CATEG_ITEM
                         {where_filter} AND CATEG_ID = '{creds.on_sale_category}'"""
                         # Removing Sale Price, Last Maintenance Date, and Removing from On Sale Category
-                        response = self.db.query(query, commit=True)
+                        response = self.db.query(query)
 
                         if response['code'] == 200:
                             self.logger.success(f'Sale Price {self.grp_cod} removed successfully from {items}.')
@@ -476,7 +476,7 @@ class Promotions:
             INSERT INTO SN_PROMO(GRP_COD, BC_ID, ENABLED)
             VALUES('{self.grp_cod}', {self.bc_id}, {1 if self.enabled else 0})
             """
-            response = self.db.query(query, commit=True)
+            response = self.db.query(query)
             if response['code'] == 200:
                 self.logger.success(f'Promotion {self.grp_cod} inserted successfully.')
                 return True
@@ -492,7 +492,7 @@ class Promotions:
             SET BC_ID = {self.bc_id}, ENABLED = {1 if self.enabled else 0}, LST_MAINT_DT = GETDATE()
             WHERE GRP_COD = '{self.grp_cod}'
             """
-            response = self.db.query(query, commit=True)
+            response = self.db.query(query)
             if response['code'] == 200:
                 self.logger.success(f'Promotion {self.grp_cod} updated successfully.')
                 return True
@@ -507,7 +507,7 @@ class Promotions:
             DELETE FROM SN_PROMO
             WHERE BC_ID = {self.bc_id}
             """
-            response = self.db.query(query, commit=True)
+            response = self.db.query(query)
             if response['code'] == 200:
                 self.logger.success(f'Promotion {self.grp_cod} deleted successfully.')
                 return True

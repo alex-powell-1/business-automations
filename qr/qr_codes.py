@@ -12,7 +12,7 @@ class QR:
         INSERT INTO SN_QR (QR_CODE, URL, PUBLICATION, MEDIUM, OFFER, DESCR, COUPON_CODE)
         Values('{qr_code}','{url}', '{publication}', '{medium}', '{offer}', '{description}', '{coupon_code}')
         """
-        response = db.query(query, commit=True)
+        response = db.query(query)
         if response['code'] == 200:
             QR.logger.success(f'QR Code {qr_code} inserted successfully')
             return True
@@ -57,7 +57,7 @@ class QR:
         SET VISIT_COUNT = VISIT_COUNT + 1, LST_SCAN = GETDATE()
         WHERE QR_CODE = '{qr_code}'
         """
-        response = db.query(query, commit=True)
+        response = db.query(query)
         if response['code'] == 200:
             return True
         else:
@@ -69,7 +69,7 @@ class QR:
         DELETE FROM {creds.qr_table}
         WHERE QR_CODE = '{qr_code}'
         """
-        response = db.query(query, commit=True)
+        response = db.query(query)
         if response['code'] == 200:
             QR.logger.success(f'QR Code {qr_code} deleted successfully')
             return True

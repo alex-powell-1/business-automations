@@ -65,6 +65,9 @@ class ErrorHandler:
 
     def add_error_v(self, error: str, origin: str = None, type: str = 'ERROR'):
         err = self.add_error(error, origin=origin, type=type)
+        self.logger.log(
+            str(err)
+        )  # Added for verbose logging in server applications where print_errors is not called
         print(err)
 
     def print_errors(self):
@@ -152,14 +155,15 @@ class LeadFormErrorHandler:
 
 
 if __name__ == '__main__':
-    logger = GlobalErrorHandler.logger
-    error_handler = GlobalErrorHandler.error_handler
+    # logger = GlobalErrorHandler.logger
+    # error_handler = GlobalErrorHandler.error_handler
 
-    error_handler.add_error_v('This is an error message')
-    error_handler.add_error_v('This is a warning message', type='WARNING')
+    # error_handler.add_error_v('This is an error message')
+    # error_handler.add_error_v('This is a warning message', type='WARNING')
 
-    logger.success('This is a success message')
-    logger.warn('This is a warning message')
-    logger.info('This is an info message')
+    # logger.success('This is a success message')
+    # logger.warn('This is a warning message')
+    # logger.info('This is an info message')
 
-    error_handler.print_errors()
+    # error_handler.print_errors()
+    pass

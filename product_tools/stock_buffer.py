@@ -18,7 +18,7 @@ def set_stock_buffer_by_vendor(buffer: int, db_filter: str, filter_input: str, o
     SET PROF_NO_1 = '{buffer}', LST_MAINT_DT = GETDATE()
     WHERE {db_filter} = '{filter_input}' {nulls}
     """
-    db.query(query, commit=True)
+    db.query(query)
 
 
 def set_stock_buffer(category, base_buffer=3):

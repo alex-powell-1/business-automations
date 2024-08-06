@@ -85,7 +85,7 @@ def set_always_online(item_list, parent=False):
                 SET USR_ALWAYS_ONLINE = 'Y', LST_MAINT_DT = GETDATE()
                 {where_clause}
                 """
-                db.query(query, commit=True)
+                db.query(query)
                 print(f"Set Item: {x} to 'Always Online'")
                 always_online_status = get_product_details(x)[2]
                 create_log.create_product_log(

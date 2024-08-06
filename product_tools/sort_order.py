@@ -102,7 +102,7 @@ def sort_order_engine():
     SET USR_PROF_ALPHA_27 = NULL
     WHERE USR_PROF_ALPHA_16 IS NOT NULL AND IS_ADM_TKT = 'N'
     """
-    db.query(query, commit=True)
+    db.query(query)
 
     error_handler.logger.info('Flushed all child sort orders (with sales history)')
 

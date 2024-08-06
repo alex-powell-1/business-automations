@@ -80,7 +80,7 @@ def remove_wholesale_from_loyalty(log_file):
     SET LOY_PGM_COD = NULL, LOY_PTS_BAL = '0', LOY_CARD_NO = 'VOID', LST_MAINT_DT = GETDATE()
     WHERE CATEG_COD = 'WHOLESALE'
     """
-    db.query(query, commit=True)
+    db.query(query)
 
     print(f'Remove Wholesale From Loyalty: Finished at {datetime.now():%H:%M:%S}', file=log_file)
     print('-----------------------', file=log_file)

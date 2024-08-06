@@ -43,7 +43,7 @@ class Customers:
 			SET LST_MAINT_DT = GETDATE()
 			WHERE CUST_NO IN {customer_list}"""
 
-            response = self.db.query(query, commit=True)
+            response = self.db.query(query)
 
             if response['code'] == 200:
                 self.logger.success('Customer timestamps updated.')
@@ -124,7 +124,7 @@ class Customers:
                     query = f"""
                     DELETE FROM {creds.bc_customer_table} WHERE BC_CUST_ID in ({batch_string})
                     """
-                    sql_response = Database.db.query(query, commit=True)
+                    sql_response = Database.db.query(query)
 
                     if sql_response['code'] == 200:
                         self.logger.success(f'Customers:\n{batch_string}\nDeleted from Middleware.')
@@ -177,7 +177,7 @@ class Customers:
                         print(f'Customer found in counterpoint: {email} {phone} {cp_cust_id}')
                         query = f"""
 						INSERT INTO {creds.bc_customer_table} (CUST_NO, BC_CUST_ID) VALUES ('{cp_cust_id}', '{bc_cust_id}')"""
-                        response = Database.db.query(query, commit=True)
+                        response = Database.db.query(query)
 
                         if response['code'] == 200:
                             self.logger.success(f'Customer {cp_cust_id} added to Middleware.')
@@ -246,7 +246,7 @@ class Customers:
                     VALUES ('{self.cust_no}', {bc_cust_id})
                     """
 
-                    self.db.query(query, commit=True)
+                    self.db.query(query)
 
                 def update(self, bc_cust_id: int):
                     query = f"""
@@ -261,8 +261,8 @@ class Customers:
                     WHERE CUST_NO = '{self.cust_no}'
                     """
 
-                    self.db.query(query, commit=True)
-                    self.db.query(query2, commit=True)
+                    self.db.query(query)
+                    self.db.query(query2)
 
                 def delete(self):
                     query = f"""
@@ -270,7 +270,7 @@ class Customers:
                     WHERE CUST_NO = '{self.cust_no}'
                     """
 
-                    self.db.query(query, commit=True)
+                    self.db.query(query)
 
             return SQLSync(cust_no=self.cust_no)
 
@@ -495,7 +495,7 @@ class Customers:
 			SET LOY_PTS_BAL = 0, LST_MAINT_DT = GETDATE()
 			WHERE CUST_NO = '{self.cust_no}'
 			"""
-            response = self.db.query(query, commit=True)
+            response = self.db.query(query)
             if response['code'] == 200:
                 self.logger.success(f'Customer {self.cust_no} loyalty points set to 0.')
             else:

@@ -90,7 +90,7 @@ class SMSEngine:
             SET MBL_PHONE_1 = '{cp_phone}', SET PHONE_1 = NULL
             WHERE PHONE_1 = '{cp_phone}'
         """
-        response = QueryEngine.query(move_landline_query, commit=True)
+        response = QueryEngine.query(move_landline_query)
 
         if response['code'] == 200:
             SMSEngine.logger.success(f'Moved {phone_number} to landline for customer {cust_no}')
@@ -106,7 +106,7 @@ class SMSEngine:
         SET INCLUDE_IN_MARKETING_MAILOUTS = 'N'
         WHERE PHONE_1 = '{phone_number}' OR PHONE_2 = '{phone_number}'
         """
-        response = QueryEngine.query(query=query, commit=True)
+        response = QueryEngine.query(query=query)
         if response['code'] == 200:
             SMSEventHandler.logger.success(f'Unsubscribed {phone_number} from SMS')
         else:

@@ -77,7 +77,7 @@ def set_web_enabled(item_number, flag='Y'):
     SET IS_ECOMM_ITEM = '{flag}', LST_MAINT_DT = '{str(datetime.now())[:-6] + "000"}'
     WHERE ITEM_NO = '{item_number}'
     """
-    db.query(query, commit=True)
+    db.query(query)
 
 
 def set_web_visible(item_number, flag='Y'):
@@ -86,7 +86,7 @@ def set_web_visible(item_number, flag='Y'):
     SET USR_CPC_IS_ENABLED = '{flag}', LST_MAINT_DT = '{str(datetime.now())[:-6] + "000"}'
     WHERE ITEM_NO = '{item_number}'
     """
-    db.query(query, commit=True)
+    db.query(query)
 
 
 def get_non_web_enabled_active_products():
@@ -163,9 +163,9 @@ def set_ecommerce_flags():
 
 
 def remove_ecommerce_flags_from_merged_items():
-    query = f"""
+    query = """
     UPDATE IM_ITEM
     SET IS_ECOMM_ITEM = 'N', LST_MAINT_DT = GETDATE()
     WHERE USR_PROF_ALPHA_17 IS NOT NULL
     """
-    db.query(query, commit=True)
+    db.query(query)

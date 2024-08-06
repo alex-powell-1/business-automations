@@ -11,7 +11,7 @@ console_logging = True
 
 
 def get_government_customers():
-    query = f"""
+    query = """
     SELECT CUST_NO
     FROM AR_CUST
     WHERE CATEG_COD = 'WHOLESALE' and 
@@ -35,7 +35,7 @@ def set_government_pricing_tier():
     NAM like '%university%' or
     NAM like '%schools%' or
     NAM like '%college')"""
-    db.query(query, commit=True)
+    db.query(query)
 
 
 def create_customer_log(cust_no, business_name, total_sales, previous_tier, new_tier):
@@ -63,7 +63,7 @@ def reassess_tiered_pricing(start_date, end_date, demote=False):
     SET PROF_ALPHA_1 = '1'
     WHERE CATEG_COD = 'WHOLESALE' and (PROF_ALPHA_1 IS NULL or PROF_ALPHA_1 = '')
     """
-    db.query(correct_null_query, commit=True)
+    db.query(correct_null_query)
     error_handler.logger.info("All Wholesale Accounts with no pricing tier set to '1'")
 
     # Set all government customers to pricing tier 2

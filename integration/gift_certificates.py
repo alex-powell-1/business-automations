@@ -81,7 +81,7 @@ class GiftCertificates:
 				(GFC_NO, BC_GFC_ID)
 				VALUES ('{certificate_code}', {certificate_id})
 				"""
-            response = self.db.query(query, commit=True)
+            response = self.db.query(query)
             if response['code'] == 200:
                 self.logger.success(f'Backfilled certificate {certificate_code}')
             else:
@@ -154,7 +154,7 @@ class GiftCertificates:
                     (GFC_NO, BC_GFC_ID)
                     VALUES ('{self.gift_card_no}', {bc_id})
                     """
-                    self.db.query(query, commit=True)
+                    self.db.query(query)
 
                 def update(self, bc_id: int):
                     query = f"""
@@ -162,7 +162,7 @@ class GiftCertificates:
                     SET BC_GFC_ID = {bc_id}
                     WHERE GFC_NO = '{self.gift_card_no}'
                     """
-                    self.db.query(query, commit=True)
+                    self.db.query(query)
 
             return SQLSync(self.gift_card_no)
 

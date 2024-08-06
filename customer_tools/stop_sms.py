@@ -38,7 +38,7 @@ from setup.query_engine import QueryEngine as db
 #                 SET INCLUDE_IN_MARKETING_MAILOUTS = 'N', LST_MAINT_DT = '{str(datetime.now())[:-6] + "000"}'
 #                 WHERE PHONE_1 = '{x.phone_1}'
 #                 """
-#                 db.query_db(query, commit=True)
+#                 db.query_db(query)
 #                 x.set_customer_details()
 #                 if x.sms_subscribe == 'N':
 #                     print(f"Customer {x.number} now unsubscribed")
@@ -108,7 +108,7 @@ def remove_refunds_from_sms_funnel(log_file):
                 SET LST_SAL_DAT = '{most_recent_timestamp}'
                 WHERE CUST_NO = '{customer_number}'
                 """
-                db.query(query, commit=True)
+                db.query(query)
                 print(
                     f'Customer: {customer_number} last sale date changed from {last_sale_date} '
                     f'to {most_recent_timestamp}',
@@ -122,7 +122,7 @@ def remove_refunds_from_sms_funnel(log_file):
                 SET LST_SAL_DAT = NULL, FST_SAL_DAT = NULL, LST_SAL_AMT = NULL
                 WHERE CUST_NO = '{customer_number}'
                 """
-                db.query(query, commit=True)
+                db.query(query)
                 print(
                     f'Customer: {customer_number} last sale date changed from {last_sale_date} ' f'to NULL',
                     file=log_file,

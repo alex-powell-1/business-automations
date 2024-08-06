@@ -230,7 +230,7 @@ class Customers:
             SET LOY_PTS_BAL = 0, LST_MAINT_DT = GETDATE()
             WHERE CUST_NO = '{self.cp_cust_no}'
             """
-            response = self.db.query(query, commit=True)
+            response = self.db.query(query)
             if response['code'] == 200:
                 self.logger.success(f'Customer {self.cp_cust_no} loyalty points set to 0.')
             else:

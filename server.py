@@ -41,15 +41,16 @@ dev = False
 @app.errorhandler(ValidationError)
 def handle_validation_error(e):
     # Return a JSON response with a message indicating that the input data is invalid
-    return jsonify({'error': 'Invalid input data', 'message': str(e)}), 400
+    ProcessInErrorHandler.error_handler.add_error_v(error=f'Invalid input data: {e}', origin='validation_error')
+    return jsonify({'error': 'Invalid input data'}), 400
 
 
 @app.errorhandler(Exception)
 def handle_exception(e):
+    url = request.url
     # Return a JSON response with a generic error message
-    with open(creds.flask_error_log, 'a') as file:
-        print(str(e), file=file)
-    return jsonify({'error': 'An error occurred', 'message': str(e)}), 500
+    ProcessInErrorHandler.error_handler.add_error_v(error=f'An error occurred: {e}', origin=f'exception - {url}')
+    return jsonify({'error': f'An error occurred {e}'}), 500
 
 
 @app.route('/design', methods=['POST'])
@@ -149,18 +150,28 @@ def gift_card_recipient():
         return jsonify({'error': 'No recipient provided'}), 400
 
     if not request.headers.get('Authorization'):
-        new_uuid = uuidu.uuid4()
+        new_uuid = str(uuidu.uuid4())
 
         # Create new database entry for new_uuid -> gift_card_recipient, lst_maint_dt
         try:
-            Database.db.query(
-                f"""
+            query = f"""
                 INSERT INTO SN_GFC_RECPS
-                (UUID, RECPT_EMAIL, RECPT_NAME, LST_MAINT_DT)
+                (UUID, RECPT_EMAIL, RECPT_NAM, LST_MAINT_DT)
                 VALUES
-                ('{new_uuid}', '{recipient['email']}', '{recipient['name']}', GETDATE())
+                ('{new_uuid}', 
+                {f"'{recipient['email']}'" if recipient['email'] != '' else 'NULL'}, 
+                {f"'{recipient['name']}'" if recipient['name'] != '' else 'NULL'}, 
+                GETDATE())
                 """
-            )
+            response = Database.db.query(query=query)
+            if response['code'] != 200:
+                ProcessInErrorHandler.error_handler.add_error_v(
+                    error=f"""Error creating recipient.\n
+                    Query: {query} \n
+                    Response: Code: {response['code']}, Message: {response['message']}""",
+                    origin='gift_card_recipient',
+                )
+                return jsonify({'error': 'Error creating recipient'}), 400
         except:
             ProcessInErrorHandler.error_handler.add_error_v(
                 error='Error creating recipient', origin='gift_card_recipient'
@@ -174,15 +185,25 @@ def gift_card_recipient():
         # Update database entry for uuid -> gift_card_recipient, lst_maint_dt
 
         try:
-            Database.db.query(
+            response = Database.db.query(
                 f"""
                 UPDATE SN_GFC_RECPS
-                SET RECPT_EMAIL = '{recipient['email']}',
-                RECPT_NAME = '{recipient['name']}', 
+                SET RECPT_EMAIL = {f"'{recipient['email']}'" if recipient['email'] != '' else 'NULL'}, 
+                RECPT_NAM = {f"'{recipient['name']}'" if recipient['name'] != '' else 'NULL'}, 
                 LST_MAINT_DT = GETDATE()
                 WHERE UUID = '{uuid}'
-                """
+                """,
+                commit=True,
             )
+            if response['code'] != 200:
+                ProcessInErrorHandler.error_handler.add_error_v(
+                    error=f"""Error updating recipient.\n
+                    Query: {query} \n
+                    Response: Code: {response['code']}, Message: {response['message']}""",
+                    origin='gift_card_recipient',
+                )
+                return jsonify({'error': 'Error updating recipient'}), 400
+
         except Exception as e:
             ProcessInErrorHandler.error_handler.add_error_v(
                 error=f'Error updating recipient: {e}', origin='gift_card_recipient'
@@ -208,13 +229,20 @@ def update_uuid_email():
 
     # Update database entry for uuid -> email, lst_maint_dt
     try:
-        Database.db.query(
+        response = Database.db.query(
             f"""
             UPDATE SN_GFC_RECPS
             SET EMAIL = '{email}', LST_MAINT_DT = GETDATE()
             WHERE UUID = '{uuid}'
-            """
+            """,
+            commit=True,
         )
+        if response['code'] != 200:
+            ProcessInErrorHandler.error_handler.add_error_v(
+                error=f'Error updating: {response['message']}', origin='update-uuid-email'
+            )
+            return jsonify({'error': 'Error updating'}), 400
+
     except Exception as e:
         ProcessInErrorHandler.error_handler.add_error_v(error=f'Error updating: {e}', origin='update-uuid-email')
         return jsonify({'error': 'Error updating'}), 400
@@ -243,7 +271,8 @@ def update_uuid_name():
             UPDATE SN_GFC_RECPS
             SET NAME = '{name}', LST_MAINT_DT = GETDATE()
             WHERE UUID = '{uuid}'
-            """
+            """,
+            commit=True,
         )
     except Exception as e:
         ProcessInErrorHandler.error_handler.add_error_v(error=f'Error updating: {e}', origin='update-uuid-name')
@@ -315,7 +344,7 @@ def newsletter_signup():
                 from_address=creds.gmail_user,
                 from_pw=creds.gmail_pw,
                 recipients_list=recipient,
-                subject=f'Coupon Code: NEW10',
+                subject='Coupon Code: NEW10',
                 content=email_content,
                 mode='related',
                 logo=True,

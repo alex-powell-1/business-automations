@@ -14,7 +14,7 @@ def set_product_brand():
         SET PROF_COD_1 = '{v}', LST_MAINT_DT = GETDATE()
         WHERE LONG_DESCR like '%{k}%' and PROF_COD_1 IS NULL
         """
-        db.query(query, commit=True)
+        db.query(query)
 
 
 def set_company_brand():
@@ -23,7 +23,7 @@ def set_company_brand():
     SET PROF_COD_1 = '{creds.company_product_brand}', LST_MAINT_DT = GETDATE()
     WHERE PROF_COD_1 IS NULL
     """
-    db.query(query, commit=True)
+    db.query(query)
     error_handler.logger.info(f'Set null brand fields to {creds.company_product_brand}')
 
 

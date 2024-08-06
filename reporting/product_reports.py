@@ -715,7 +715,7 @@ def get_non_ecomm_enabled_items():
                 insert_query = f"""
                 INSERT INTO EC_CATEG_ITEM(ITEM_NO, CATEG_ID, LST_MAINT_DT, LST_MAINT_USR_ID)
                 VALUES('{x}', '{decor_cat}', GETDATE(), 'AP')"""
-                response = db.query(insert_query, commit=True)
+                response = db.query(insert_query)
                 if response['code'] != 200:
                     print(f'Error inserting item {x} into EC_CATEG_ITEM')
 

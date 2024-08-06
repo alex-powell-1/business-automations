@@ -120,7 +120,7 @@ def cp_create_coupon(code, description, amount, min_purchase, coupon_type='A', a
         VALUES ('{top_id}', '{code}', '{description}', '{coupon_type}', '{amount}', '{apply_to}', '{min_purchase}', '{store}')
         """
         try:
-            db.query(query, commit=True)
+            db.query(query)
         except Exception as e:
             error_handler.error_handler.add_error_v(error=f'CP Coupon Insertion Error: {e}', origin='coupons.py')
         else:
@@ -135,7 +135,7 @@ def cp_delete_coupon(code):
     DELETE FROM PS_DISC_COD WHERE DISC_COD = '{code}'
     """
     try:
-        db.query(query, commit=True)
+        db.query(query)
     except Exception as e:
         error_handler.error_handler.add_error_v(error=f'CP Coupon Deletion Error: {e}', origin='cp_delete_coupon')
     else:

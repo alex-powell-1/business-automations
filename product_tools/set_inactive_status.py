@@ -3,7 +3,7 @@ from datetime import datetime
 from product_tools.products import Product
 from setup.create_log import create_product_log
 from setup.creds import inactive_product_log
-from setup.query_engine import QueryEngine
+from setup.query_engine import QueryEngine as db
 from setup.error_handler import ScheduledTasksErrorHandler as error_handler
 
 # Inactive Product Automation
@@ -40,7 +40,7 @@ def set_inactive(item_number):
     SET STAT = 'V'
     WHERE ITEM_NO = '{item_number}'
     """
-    QueryEngine.query(query, commit=True)
+    db.query(query)
 
 
 def get_active_products_with_no_stock():
@@ -51,7 +51,7 @@ def get_active_products_with_no_stock():
     WHERE inv.QTY_AVAIL < 1 and item.STAT = 'A' AND item.CATEG_COD NOT IN ('SERVICES')
     ORDER BY inv.QTY_AVAIL DESC
     """
-    response = QueryEngine.query(query)
+    response = db.query(query)
     if response is not None:
         result = []
         for x in response:
@@ -65,7 +65,7 @@ def get_products_on_open_order():
     FROM PS_DOC_LIN
     WHERE LIN_TYP = 'O'
     """
-    response = QueryEngine.query(query)
+    response = db.query(query)
     item_list = []
     if response is not None:
         for x in response:
@@ -82,7 +82,7 @@ def get_bonnie_items():
     FROM IM_ITEM
     WHERE LONG_DESCR LIKE '%BONNIE%'
     """
-    response = QueryEngine.query(query)
+    response = db.query(query)
     item_list = []
     if response is not None:
         for x in response:
@@ -99,7 +99,7 @@ def get_products_on_quotes_or_holds():
     FROM PS_DOC_LIN
     WHERE LIN_TYP = 'S'
     """
-    response = QueryEngine.query(query)
+    response = db.query(query)
     item_list = []
     if response is not None:
         for x in response:

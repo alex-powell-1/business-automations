@@ -12,7 +12,7 @@ def set_availability_text():
     WHERE USR_PROF_ALPHA_20 IS NULL
     AND IS_ECOMM_ITEM = 'Y'
     """
-    db.query(query, commit=True)
+    db.query(query)
     print(f'Setting Availability Text: Completed at {datetime.now()}')
 
 

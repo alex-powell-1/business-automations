@@ -108,7 +108,7 @@ class Customer:
         SET INCLUDE_IN_MARKETING_MAILOUTS = 'N', LST_MAINT_DT = GETDATE()
         WHERE CUST_NO = '{self.number}'
         """
-        db.query(query, commit=True)
+        db.query(query)
         create_customer_log(
             customer_number=self.number,
             first_name=self.first_name,
@@ -126,7 +126,7 @@ class Customer:
         SET INCLUDE_IN_MARKETING_MAILOUTS = 'Y', LST_MAINT_DT = GETDATE()
         WHERE CUST_NO = '{self.number}'
         """
-        db.query(query, commit=True)
+        db.query(query)
 
     def get_total_spent(self, start_date, stop_date):
         pass
@@ -153,7 +153,7 @@ class Customer:
                 SET PROF_ALPHA_1 = {int(target_tier)}
                 WHERE CUST_NO = '{self.number}'
                 """
-        response = db.query(query, commit=True)
+        response = db.query(query)
         if response['code'] == 200:
             error_handler.logger.success(
                 f'{self.name}({self.number}) pricing tier updated from {current_tier} to {target_tier}'
@@ -545,7 +545,7 @@ def update_customer(
     WHERE CUST_NO = '{cust_no}'
     """
 
-    response = db.query(query, commit=True)
+    response = db.query(query)
 
     return response
 
@@ -662,7 +662,7 @@ def update_customer_shipping(
         ('{cust_no}', '{FST_NAM}', '{LST_NAM}', '{NAM}', '{NAM_UPR}', '{FST_NAM_UPR}', '{LST_NAM_UPR}', '{phone_number}', '{email_address}', '{street_address}', '{city}', '{state}', '{zip_code}', '{NAM}')
         """
 
-    response = db.query(query, commit=True)
+    response = db.query(query)
 
     return response
 
@@ -711,7 +711,7 @@ def set_negative_loyalty_points_to_zero(log_file):
             WHERE CUST_NO = '{x}'
             """
             try:
-                db.query(query, commit=True)
+                db.query(query)
             except Exception as err:
                 print(f'Error: {x} - {err}', file=log_file)
             else:
@@ -754,7 +754,7 @@ def set_contact_1():
                     SET CONTCT_1 = '{full_name}'
                     WHERE CUST_NO = '{x}'
                     """
-                    response = db.query(query, commit=True)
+                    response = db.query(query)
                     if response['code'] == 200:
                         error_handler.logger.info(
                             f"Customer {x}: " f"Contact 1 updated to: {full_name.replace("''", "'")}"

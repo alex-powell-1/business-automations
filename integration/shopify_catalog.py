@@ -238,7 +238,7 @@ class Catalog:
                 f"WHERE (ITEM_NO in {sku_list} {where_filter}) and IS_ECOMM_ITEM = 'Y'"
             )
 
-            db.query(query, commit=True)
+            db.query(query)
 
         Catalog.logger.info(f'Image Add/Delete Processing Complete. Time: {time.time() - start_time}')
 
@@ -1004,7 +1004,7 @@ class Catalog:
                 SET IS_ADM_TKT = '{flag}', LST_MAINT_DT = GETDATE()
                 WHERE ITEM_NO = '{target_item}'
                 """
-                db.query(query, commit=True)
+                db.query(query)
                 Catalog.logger.info(f'Parent status set to {flag} for {target_item}')
                 return self.get(last_sync=self.last_sync)
 
@@ -1049,7 +1049,7 @@ class Catalog:
                             SET ADDL_DESCR_1 = '{self.long_descr}'
                             WHERE ITEM_NO = '{self.sku}'"""
 
-                            db.query(query, commit=True)
+                            db.query(query)
                             Catalog.logger.info(f'Web Title set to {self.web_title}')
                             self.web_title = self.long_descr
 
@@ -1098,7 +1098,7 @@ class Catalog:
                                 UPDATE IM_ITEM
                                 SET ADDL_DESCR_1 = '{self.web_title.replace("'", "''")}'
                                 WHERE ITEM_NO = '{self.sku}'"""
-                            db.query(query, commit=True)
+                            db.query(query)
 
             # Test for missing html description
             if check_html_description:
@@ -1155,7 +1155,7 @@ class Catalog:
                                 UPDATE IM_ITEM
                                 SET ADDL_DESCR_1 = NULL
                                 WHERE ITEM_NO = '{child.sku}'"""
-                                db.query(query, commit=True)
+                                db.query(query)
 
             return True
 
@@ -1354,7 +1354,7 @@ class Catalog:
                         SET {creds.meta_color} = NULL
                         WHERE PRODUCT_ID = {self.product_id}
                         """
-                        db.query(query, commit=True)
+                        db.query(query)
                     self.meta_colors['id'] = None
 
                 # Bloom Color
@@ -1379,7 +1379,7 @@ class Catalog:
                         SET {creds.meta_bloom_color} = NULL
                         WHERE PRODUCT_ID = {self.product_id}
                         """
-                        db.query(query, commit=True)
+                        db.query(query)
                     self.meta_bloom_color['id'] = None
 
                 # Preorder Status - All products are either preorder or not
@@ -2008,7 +2008,7 @@ class Catalog:
                     SET IS_ADM_TKT = 'N', LST_MAINT_DT = GETDATE()
                     WHERE {creds.cp_field_binding_id} = '{self.binding_id}'
                     """
-            db.query(query, commit=True)
+            db.query(query)
             print('Parent status removed from all children.')
 
         def is_last_variant(self, binding_id):
@@ -2074,7 +2074,7 @@ class Catalog:
                         SET IS_ADM_TKT = 'N', LST_MAINT_DT = GETDATE()
                         WHERE {creds.cp_field_binding_id} = '{binding_id}'
                         """
-                remove_parent_response = db.query(remove_parent_query, commit=True)
+                remove_parent_response = db.query(remove_parent_query)
                 if remove_parent_response['code'] == 200:
                     Catalog.logger.success(f'Parent status removed from all children of binding: {binding_id}.')
                 else:
@@ -2088,7 +2088,7 @@ class Catalog:
             SET IS_ADM_TKT = 'Y'
             WHERE ITEM_NO = '{parent_sku}'
             """
-            set_parent_response = db.query(query, commit=True)
+            set_parent_response = db.query(query)
 
             if set_parent_response['code'] == 200:
                 Catalog.logger.success(f'Parent status set for {parent_sku}')
@@ -2152,7 +2152,7 @@ class Catalog:
             SET LST_MAINT_DT = GETDATE()
             WHERE ITEM_NO = '{sku}'
             """
-            response = db.query(query, commit=True)
+            response = db.query(query)
             if response['code'] == 200:
                 Catalog.logger.success(f'Timestamp updated for {sku}.')
             else:

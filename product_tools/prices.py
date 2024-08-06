@@ -24,7 +24,7 @@ def remove_sale_price(category=None):
             SET LST_MAINT_DT = GETDATE()
             WHERE ITEM_NO = '{x}'
             """
-            db.query(query, commit=True)
+            db.query(query)
             print(f'updated {x}')
     else:
         # Otherwise, get all items with a sale price
@@ -45,7 +45,7 @@ def remove_sale_price(category=None):
             SET LST_MAINT_DT = GETDATE()
             WHERE ITEM_NO = '{x}'
             """
-            db.query(query, commit=True)
+            db.query(query)
             print(f'updated {x}')
 
 
@@ -68,7 +68,7 @@ def set_sale_price_by_category(category, percentage_discount):
         SET LST_MAINT_DT = GETDATE()
         WHERE ITEM_NO = '{x}'
         """
-        db.query(query, commit=True)
+        db.query(query)
         print(f'updated {x}')
 
 
@@ -89,12 +89,12 @@ def set_reg_price_by_category(category, percentage_discount):
             SET REG_PRC = '{item_reg_price}'
             WHERE ITEM_NO = '{x}'
             """
-            db.query(query, commit=True)
+            db.query(query)
             print(f'#{counter}/{len(category_items)}: updated {x}')
             counter += 1
         except pyodbc.Error:
             time.sleep(3)
-            db.query(query, commit=True)
+            db.query(query)
         finally:
             counter += 1
 
@@ -146,10 +146,10 @@ def memorial_day_sale() -> None:
                 WHERE ITEM_NO = '{x}'
                 """
         try:
-            db.query(query, commit=True)
+            db.query(query)
         except pyodbc.Error:
             time.sleep(1)
-            db.query(query, commit=True)
+            db.query(query)
         print(f'Set Sale Price for {item.long_descr}{item.item_no} to {item_sale_price}')
         counter += 1
 
@@ -186,10 +186,10 @@ def memorial_day_sale() -> None:
             VALUES('{x}', '{creds.on_sale_category}', '{counter}', GETDATE(), 'AP')
             """
         try:
-            db.query(query, commit=True)
+            db.query(query)
         except pyodbc.Error:
             time.sleep(1)
-            db.query(query, commit=True)
+            db.query(query)
         print(f'Set Sale Price for {item.long_descr}{item.item_no} to {item_sale_price}')
         counter += 1
 
@@ -210,5 +210,5 @@ def remove_item_from_on_sale_section():
             query = f"""
             DELETE FROM EC_CATEG_ITEM
             WHERE ITEM_NO = '{x}' AND CATEG_ID = '{creds.on_sale_category}'"""
-            db.query(query, commit=True)
+            db.query(query)
             print(f'Removed {item.long_descr} from on sale section')

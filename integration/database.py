@@ -40,7 +40,7 @@ class Database:
                 SET LST_MAINT_DT = GETDATE()
                 WHERE CUST_NO IN {customer_list}"""
 
-                response = Database.db.query(query, commit=True)
+                response = Database.db.query(query)
 
                 if response['code'] == 200:
                     Database.logger.success('Customer timestamps updated.')
@@ -185,7 +185,7 @@ class Database:
                 }
 
                 for table in tables:
-                    Database.db.query(tables[table], commit=True)
+                    Database.db.query(tables[table])
 
             # Drop Tables
             def drop_tables():
@@ -200,7 +200,7 @@ class Database:
                 ]
 
                 def drop_table(table_name):
-                    Database.db.query(f'DROP TABLE {table_name}', commit=True)
+                    Database.db.query(f'DROP TABLE {table_name}')
 
                 for table in tables:
                     drop_table(table)
@@ -229,7 +229,7 @@ class Database:
                         INSERT INTO {Database.Shopify.Customer.table} (CUST_NO, SHOP_CUST_ID)
                         VALUES ('{customer.cp_cust_no}', {customer.shopify_cust_no})
                         """
-                response = Database.db.query(query, commit=True)
+                response = Database.db.query(query)
                 if response['code'] == 200:
                     Database.logger.success(f'Customer {customer.cust_no} added to Middleware.')
                 else:
@@ -244,7 +244,7 @@ class Database:
                         WHERE CUST_NO = '{customer.cp_cust_no}'
                         """
 
-                response = Database.db.query(query, commit=True)
+                response = Database.db.query(query)
                 if response['code'] == 200:
                     Database.logger.success(f'Customer {customer.cust_no} updated in Middleware.')
                 else:
@@ -254,7 +254,7 @@ class Database:
 
             def delete(customer):
                 query = f'DELETE FROM {Database.Shopify.Customer.table} WHERE CUST_NO = {customer.cp_cust_no}'
-                response = Database.db.query(query, commit=True)
+                response = Database.db.query(query)
                 if response['code'] == 200:
                     Database.logger.success(f'Customer {customer.cp_cust_no} deleted from Middleware.')
                 else:
@@ -290,7 +290,7 @@ class Database:
                 {category.image_size if category.image_size else 'NULL'},
                 '{category.lst_maint_dt:%Y-%m-%d %H:%M:%S}')
                 """
-                response = Database.db.query(query, commit=True)
+                response = Database.db.query(query)
                 if response['code'] == 200:
                     Database.logger.success(f'Category {category.name} added to Middleware.')
                 else:
@@ -310,7 +310,7 @@ class Database:
                 LST_MAINT_DT = '{category.lst_maint_dt:%Y-%m-%d %H:%M:%S}'
                 WHERE CP_CATEG_ID = {category.cp_categ_id}
                 """
-                response = Database.db.query(query, commit=True)
+                response = Database.db.query(query)
                 if response['code'] == 200:
                     Database.logger.success(f'Category {category.name} updated in Middleware.')
                 else:
@@ -329,7 +329,7 @@ class Database:
                         DELETE FROM {creds.shopify_collection_table}
                         WHERE CP_CATEG_ID = {cp_categ_id}
                         """
-                response = Database.db.query(query, commit=True)
+                response = Database.db.query(query)
                 if response['code'] == 200:
                     Database.logger.success(f'Category {cp_categ_id} deleted from Middleware.')
                 else:
@@ -344,7 +344,7 @@ class Database:
                         SET HTML_DESCR = '{description}'
                         WHERE CATEG_ID = '{cp_categ_id}'
                         """
-                response = Database.db.query(query, commit=True)
+                response = Database.db.query(query)
                 if response['code'] != 200:
                     print(query)
                     raise Exception(response['message'])
@@ -391,7 +391,7 @@ class Database:
 
             def delete(product_id):
                 query = f'DELETE FROM {Database.Shopify.Product.table} WHERE PRODUCT_ID = {product_id}'
-                response = Database.db.query(query, commit=True)
+                response = Database.db.query(query)
 
                 if response['code'] == 200:
                     Database.logger.success(f'Product {product_id} deleted from Middleware.')
@@ -469,7 +469,7 @@ class Database:
                         {product.meta_in_store_only['id'] if product.meta_in_store_only['id'] else "NULL"}
                         )
                         """
-                    response = Database.db.query(insert_query, commit=True)
+                    response = Database.db.query(insert_query)
                     if response['code'] == 200:
                         Database.logger.success(
                             f'SKU: {variant.sku}, Binding ID: {variant.binding_id} - INSERT Variant {product.sku}'
@@ -519,7 +519,7 @@ class Database:
                         LST_MAINT_DT = GETDATE() 
                         WHERE ID = {variant.mw_db_id}
                         """
-                    response = Database.db.query(update_query, commit=True)
+                    response = Database.db.query(update_query)
                     if response['code'] == 200:
                         Database.logger.success(
                             f'SKU: {variant.sku}, Binding ID: {variant.binding_id} - UPDATE Variant'
@@ -533,7 +533,7 @@ class Database:
 
                 def delete(variant_id):
                     query = f'DELETE FROM {Database.Shopify.Product.table} WHERE VARIANT_ID = {variant_id}'
-                    response = Database.db.query(query, commit=True)
+                    response = Database.db.query(query)
 
                     if response['code'] == 200:
                         Database.logger.success(f'Variant {variant_id} deleted from Middleware.')
@@ -566,7 +566,7 @@ class Database:
                     {f"'{image.binding_id}'" if image.binding_id else 'NULL'}, '{image.is_variant_image}',
                     {f"'{image.description.replace("'", "''")}'" if image.description != '' else 'NULL'},
                     {image.size})"""
-                    insert_img_response = Database.db.query(img_insert, commit=True)
+                    insert_img_response = Database.db.query(img_insert)
                     if insert_img_response['code'] == 200:
                         Database.logger.success(f'SQL INSERT Image {image.name}: Success')
                     else:
@@ -589,7 +589,7 @@ class Database:
                                 image.description != '' else 'NULL'}, SIZE = '{image.size}'
                     WHERE ID = {image.db_id}"""
 
-                    res = Database.db.query(q, commit=True)
+                    res = Database.db.query(q)
                     if res['code'] == 200:
                         Database.logger.success(f'SQL UPDATE Image {image.name}: Success')
                     else:
@@ -614,7 +614,7 @@ class Database:
                     else:
                         Database.logger.warn('No image or image_id provided for deletion.')
                         return
-                    res = Database.db.query(q, commit=True)
+                    res = Database.db.query(q)
                     if res['code'] == 200:
                         Database.logger.success(f'Query: {q}\nSQL DELETE Image')
                     else:
@@ -632,7 +632,7 @@ class Database:
                         SET {column} = NULL
                         WHERE PRODUCT_ID = {product_id}
                         """
-                        response = Database.db.query(query, commit=True)
+                        response = Database.db.query(query)
                         if response['code'] != 200:
                             raise Exception(response['message'])
 
@@ -698,7 +698,7 @@ class Database:
                         {values['PIN']}, {values['PINNED_POS']}, '{values['OWNER_TYPE']}' {validation_values})
                         """
 
-                response = Database.db.query(query, commit=True)
+                response = Database.db.query(query)
                 if response['code'] != 200:
                     error = f'Error inserting metafield definition {values["META_ID"]}. \nQuery: {query}\nResponse: {response}'
                     raise Exception(error)
@@ -719,7 +719,7 @@ class Database:
                         WHERE META_ID = {values['META_ID']}
 
                         """
-                response = Database.db.query(query, commit=True)
+                response = Database.db.query(query)
                 if response['code'] != 200:
                     raise Exception(response['message'])
 
@@ -729,7 +729,7 @@ class Database:
                 else:
                     where_filter = ''
                 query = f'DELETE FROM {creds.shopify_metafield_table} {where_filter}'
-                response = Database.db.query(query, commit=True)
+                response = Database.db.query(query)
                 if response['code'] != 200:
                     raise Exception(response['message'])
 
@@ -755,7 +755,7 @@ class Database:
                         INSERT INTO {Database.Shopify.Webhook.table} (HOOK_ID, TOPIC, DESTINATION, FORMAT, DOMAIN)
                         VALUES ({webhook_data['HOOK_ID']}, '{webhook_data['TOPIC']}', '{webhook_data['DESTINATION']}', '{webhook_data['FORMAT']}', '{webhook_data['DOMAIN']}')
                         """
-                response = Database.db.query(query, commit=True)
+                response = Database.db.query(query)
                 if response['code'] != 200:
                     raise Exception(response['message'])
 
@@ -768,20 +768,20 @@ class Database:
                         DOMAIN = '{webhook_data['DOMAIN']}'
                         WHERE HOOK_ID = {webhook_data['HOOK_ID']}
                         """
-                response = Database.db.query(query, commit=True)
+                response = Database.db.query(query)
                 if response['code'] != 200:
                     raise Exception(response['message'])
 
             def delete(hook_id=None, all=False):
                 if all:
-                    response = Database.db.query(f'DELETE FROM {Database.Shopify.Webhook.table}', commit=True)
+                    response = Database.db.query(f'DELETE FROM {Database.Shopify.Webhook.table}')
                     if response['code'] != 200:
                         raise Exception(response['message'])
                     else:
                         return 'All webhooks deleted'
                 elif hook_id:
                     response = Database.db.query(
-                        f'DELETE FROM {Database.Shopify.Webhook.table} WHERE HOOK_ID = {hook_id}', commit=True
+                        f'DELETE FROM {Database.Shopify.Webhook.table} WHERE HOOK_ID = {hook_id}'
                     )
                     if response['code'] != 200:
                         raise Exception(response['message'])

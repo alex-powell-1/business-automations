@@ -51,38 +51,33 @@ class QueryEngine:
     USERNAME = USERNAME
     PASSWORD = PASSWORD
 
-    def query(query, commit=False):
+    def query(query):
         """Runs Query Against SQL Database. Use Commit Kwarg for updating database"""
         connection = pyodbc.connect(
             f'DRIVER={{ODBC Driver 18 for SQL Server}};SERVER={QueryEngine.SERVER};PORT=1433;DATABASE={QueryEngine.DATABASE};'
-            f'UID={QueryEngine.USERNAME};PWD={QueryEngine.PASSWORD};TrustServerCertificate=yes;timeout=3;ansi=True;'
+            f'UID={QueryEngine.USERNAME};PWD={QueryEngine.PASSWORD};TrustServerCertificate=yes;timeout=3;ansi=True;',
+            autocommit=True,
         )
 
         connection.setdecoding(pyodbc.SQL_CHAR, encoding='utf-16-le')
         connection.setencoding('utf-16-le')
 
         cursor = connection.cursor()
-        if commit:
-            try:
-                cursor.execute(query)
-                connection.commit()
-            except ProgrammingError as e:
-                sql_data = {'code': f'{e.args[0]}', 'message': f'{e.args[1]}'}
-            except Error as e:
-                if e.args[0] == '40001':
-                    print('Deadlock Detected. Retrying Query')
-                    time.sleep(1)
-                    cursor.execute(query)
-                    connection.commit()
-                else:
-                    sql_data = {'code': f'{e.args[0]}', 'message': f'{e.args[1]}'}
+        try:
+            response = cursor.execute(query)
+            sql_data = response.fetchall()
+        except ProgrammingError as e:
+            if e.args[0] == 'No results.  Previous SQL was not a query.':
+                sql_data = {'Affected Rows': cursor.rowcount}
             else:
-                sql_data = {'code': 200, 'message': 'Query Successful'}
-        else:
-            try:
-                sql_data = cursor.execute(query).fetchall()
-            except ProgrammingError as e:
-                sql_data = {'code': f'{e.args[0]}', 'message': f'{e.args[1]}'}
+                sql_data = {'error': e, 'query': query}
+        except Error as e:
+            if e.args[0] == '40001':
+                print('Deadlock Detected. Retrying Query')
+                time.sleep(1)
+                cursor.execute(query)
+            else:
+                sql_data = {'code': f'{e.args[0]}', 'message': f'{e.args[1]}', 'query': query}
 
         cursor.close()
         connection.close()

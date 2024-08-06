@@ -173,7 +173,7 @@ class Product:
             SET PROF_NO_1 = '{buffer}', LST_MAINT_DT = '{str(datetime.now())[:-6] + "000"}'
             WHERE ITEM_NO = '{self.item_no}'"""
             # Update SQL Table
-            QueryEngine.query(query, commit=True)
+            QueryEngine.query(query)
             # Update Object Properties
             self.get_product_details()
             # Check for success
@@ -219,7 +219,7 @@ class Product:
             SET USR_PROF_ALPHA_27 = '{target_sort_order}', LST_MAINT_DT = '{str(datetime.now())[:-6] + "000"}'
             WHERE ITEM_NO = '{self.item_no}'
             """
-            QueryEngine.query(query, commit=True)
+            QueryEngine.query(query)
             self.get_product_details()
             # Check if write was successful
             if self.sort_order == target_sort_order:
@@ -268,7 +268,7 @@ class Product:
             SET ECOMM_NEW = '{status}', LST_MAINT_DT = '{str(datetime.now())[:-6] + "000"}'
             WHERE USR_PROF_ALPHA_16 = '{self.binding_key}' AND IS_ADM_TKT = 'Y'
             """
-        QueryEngine.query(query, commit=True)
+        QueryEngine.query(query)
         # Update the item details
         self.get_product_details()
         if status == 'Y':
@@ -322,7 +322,7 @@ class Product:
         SET PRC_2 = '{sale_price}', LST_MAINT_DT = GETDATE()
         WHERE ITEM_NO = '{self.item_no}'
         """
-        QueryEngine.query(query, commit=True)
+        QueryEngine.query(query)
         print(f'updated {self.long_descr} from ${self.price_1} to ${sale_price}')
 
     # def get_top_child_product(self):

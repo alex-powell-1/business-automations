@@ -1,6 +1,5 @@
 import asyncio
 import os
-import shutil
 import re
 import json
 from datetime import datetime
@@ -9,7 +8,6 @@ import time
 import aiohttp
 
 from integration.requests_handler import BCRequests
-from integration.shopify_api import Shopify
 import requests
 from PIL import Image, ImageOps
 from requests.auth import HTTPDigestAuth
@@ -140,7 +138,7 @@ class Catalog:
                     SET IS_ADM_TKT = 'N', LST_MAINT_DT = GETDATE()
                     WHERE {creds.cp_field_binding_id} = '{binding_id}'
                     """
-            remove_parent_response = self.db.query(remove_parent_query, commit=True)
+            remove_parent_response = self.db.query(remove_parent_query)
             if remove_parent_response['code'] == 200:
                 Catalog.logger.success(f'Parent status removed from all children of binding: {binding_id}.')
             else:
@@ -154,7 +152,7 @@ class Catalog:
         SET IS_ADM_TKT = 'Y'
         WHERE ITEM_NO = '{parent_sku}'
         """
-        set_parent_response = self.db.query(query, commit=True)
+        set_parent_response = self.db.query(query)
 
         if set_parent_response['code'] == 200:
             Catalog.logger.success(f'Parent status set for {parent_sku}')
@@ -303,7 +301,7 @@ class Catalog:
                     error=f'Error deleting image {image_name} from BigCommerce.', origin='Catalog.delete_image()'
                 )
             delete_images_query = f'DELETE FROM {creds.bc_image_table} ' f"WHERE IMAGE_ID = '{image_id}'"
-            response = self.db.query(delete_images_query, commit=True)
+            response = self.db.query(delete_images_query)
             if response['code'] == 200:
                 Catalog.logger.success(f'Image {image_name} deleted from SQL.')
             else:
@@ -367,7 +365,7 @@ class Catalog:
                 f"WHERE (ITEM_NO in {sku_list} {where_filter}) and IS_ECOMM_ITEM = 'Y'"
             )
 
-            self.db.query(query, commit=True)
+            self.db.query(query)
 
         Catalog.logger.info(f'Image Add/Delete Processing Complete. Time: {time.time() - start_time}')
 
@@ -462,7 +460,7 @@ class Catalog:
         SET LST_MAINT_DT = GETDATE()
         WHERE ITEM_NO = '{sku}'
         """
-        response = Database.db.query(query, commit=True)
+        response = Database.db.query(query)
         if response['code'] == 200:
             Catalog.logger.success(f'Timestamp updated for {sku}.')
         else:
@@ -593,7 +591,7 @@ class Catalog:
                     query = f"""
                     DELETE FROM {creds.bc_category_table} WHERE BC_CATEG_ID in ({batch_string})
                     """
-                    sql_response = Database.db.query(query, commit=True)
+                    sql_response = Database.db.query(query)
                     if sql_response['code'] == 200:
                         Catalog.logger.success(f'Categories {batch_string} deleted from Middleware.')
                     else:
@@ -608,7 +606,7 @@ class Catalog:
                     Catalog.logger.log(bc_response)
 
             query = f'DELETE FROM {creds.bc_category_table}'
-            response = Database.db.query(query, commit=True)
+            response = Database.db.query(query)
 
             if response['code'] == 200:
                 Catalog.logger.success(f'Category: {batch_string} deleted from Middleware.')
@@ -670,7 +668,7 @@ class Catalog:
                     DELETE FROM {creds.bc_product_table} WHERE PRODUCT_ID in ({batch_string})
                     DELETE FROM {creds.bc_image_table} WHERE PRODUCT_ID in ({batch_string})
                     """
-                    sql_response = Database.db.query(query, commit=True)
+                    sql_response = Database.db.query(query)
                     if sql_response['code'] == 200:
                         Catalog.logger.success(f'Products {batch_string} deleted from Middleware.')
                     else:
@@ -731,7 +729,7 @@ class Catalog:
                 if bc_response.status_code == 204:
                     Catalog.logger.success(f'Brand:\n{batch_string}\ndeleted from BigCommerce.')
                     query = f'DELETE FROM {creds.bc_brands_table} WHERE BC_BRAND_ID in ({batch_string})'
-                    response = Database.db.query(query, commit=True)
+                    response = Database.db.query(query)
                     if response['code'] == 200:
                         Catalog.logger.success(f'Brand:\n{batch_string}\ndeleted from Middleware.')
                     else:
@@ -850,7 +848,7 @@ class Catalog:
                         VALUES({cp_categ_id}, {cp_parent_id}, '{category_name}',
                         {sort_order}, 1, '{lst_maint_dt}')
                         """
-                        response = self.db.query(query, commit=True)
+                        response = self.db.query(query)
                         print(response)
 
                     else:
@@ -869,7 +867,7 @@ class Catalog:
                             LST_MAINT_DT = '{lst_maint_dt}'
                             WHERE CP_CATEG_ID = {sn_cp_categ_id}
                             """
-                            update_res = self.db.query(query, commit=True)
+                            update_res = self.db.query(query)
 
                             if update_res['code'] == 200:
                                 Catalog.logger.success(f'Category {category_name} updated in Middleware.')
@@ -963,7 +961,7 @@ class Catalog:
                                         WHERE CP_CATEG_ID = {cp_categ_id}
                                         """
                         try:
-                            self.db.query(query, commit=True)
+                            self.db.query(query)
                         except Exception as e:
                             print(f'Error deleting category from middleware: {e}')
                         else:
@@ -974,7 +972,7 @@ class Catalog:
                 else:
                     Catalog.logger.warn(f'BC Category {cp_categ_id} not found in Middleware.')
                     query = f'DELETE FROM {creds.bc_category_table} WHERE CP_CATEG_ID = {cp_categ_id}'
-                    del_res = self.db.query(query, commit=True)
+                    del_res = self.db.query(query)
                     if del_res['code'] == 200:
                         Catalog.logger.success(f'Category {cp_categ_id} deleted from Middleware.')
                     else:
@@ -1136,7 +1134,7 @@ class Catalog:
                 '{self.category_name}', {self.sort_order}, {1 if self.is_visible else 0})
                 """
                 try:
-                    db.query(query, commit=True)
+                    db.query(query)
                 except Exception as e:
                     print(f'Middleware: INSERT {self.category_name}: FAILED')
                     print(e)
@@ -1154,7 +1152,7 @@ class Catalog:
                 """
                 print(query)
                 try:
-                    db.query(query, commit=True)
+                    db.query(query)
                 except Exception as e:
                     print(f'Middleware: UPDATE {self.category_name} Category: FAILED')
                     print(e)
@@ -1182,7 +1180,7 @@ class Catalog:
                 WHERE CP_CATEG_ID = {self.cp_categ_id}
                 """
                 try:
-                    db.query(query, commit=True)
+                    db.query(query)
                 except Exception as e:
                     print(f'Error deleting category from middleware: {e}')
                 else:
@@ -1238,7 +1236,7 @@ class Catalog:
                 UPDATE IM_ITEM_PROF_COD
                 SET LST_MAINT_DT = GETDATE()
                 WHERE PROF_COD = '{target}'"""
-                response = db.query(query, commit=True)
+                response = db.query(query)
                 if response['code'] == 200:
                     Catalog.logger.success(f'Brand {target} updated in Counterpoint.')
                 else:
@@ -1341,7 +1339,7 @@ class Catalog:
                 DELETE FROM {creds.bc_brands_table}
                 WHERE CP_BRAND_ID = '{target}'
                 """
-                mw_brand_del_res = self.db.query(query, commit=True)
+                mw_brand_del_res = self.db.query(query)
                 if mw_brand_del_res['code'] != 200:
                     Catalog.error_handler.add_error_v(
                         error=f'Brand {target} deleted from middleware.',
@@ -1487,7 +1485,7 @@ class Catalog:
                     {f"'{self.custom_url}'" if self.custom_url else "NULL"})
                     """
                     try:
-                        response = self.db.query(query, commit=True)
+                        response = self.db.query(query)
                     except Exception as e:
                         print(f'MIDDLEWARE: Brand {self.name} INSERT: FAILED.\n')
                         print(e)
@@ -1532,7 +1530,7 @@ class Catalog:
                     WHERE CP_BRAND_ID = '{self.cp_brand_id}'
                     """
                     try:
-                        response = self.db.query(query, commit=True)
+                        response = self.db.query(query)
                     except Exception as e:
                         print(f'MIDDLEWARE: Brand {self.name} UPDATE: FAILED.\n')
                         print(e)
@@ -1910,7 +1908,7 @@ class Catalog:
                 SET IS_ADM_TKT = '{flag}', LST_MAINT_DT = GETDATE()
                 WHERE ITEM_NO = '{target_item}'
                 """
-                self.db.query(query, commit=True)
+                self.db.query(query)
                 Catalog.logger.info(f'Parent status set to {flag} for {target_item}')
                 return self.get_product_details(last_sync=self.last_sync)
 
@@ -1955,7 +1953,7 @@ class Catalog:
                             SET ADDL_DESCR_1 = '{self.long_descr}'
                             WHERE ITEM_NO = '{self.sku}'"""
 
-                            self.db.query(query, commit=True)
+                            self.db.query(query)
                             Catalog.logger.info(f'Web Title set to {self.web_title}')
                             self.web_title = self.long_descr
 
@@ -2004,7 +2002,7 @@ class Catalog:
                                 UPDATE IM_ITEM
                                 SET ADDL_DESCR_1 = '{self.web_title.replace("'", "''")}'
                                 WHERE ITEM_NO = '{self.sku}'"""
-                            self.db.query(query, commit=True)
+                            self.db.query(query)
 
             # Test for missing html description
             if check_html_description:
@@ -2086,7 +2084,7 @@ class Catalog:
                                 UPDATE IM_ITEM
                                 SET ADDL_DESCR_1 = NULL
                                 WHERE ITEM_NO = '{child.sku}'"""
-                                self.db.query(query, commit=True)
+                                self.db.query(query)
 
             # Need validations for character counts on all fields
             # print(f"Product {self.sku} has passed validation.")
@@ -2628,7 +2626,7 @@ class Catalog:
                 SET CUSTOM_FIELDS = NULL, LST_MAINT_DT = GETDATE() 
                 WHERE PRODUCT_ID = '{self.product_id}' AND IS_PARENT = 1
                 """
-            self.db.query(update_cf1_query, commit=True)
+            self.db.query(update_cf1_query)
 
         def bc_get_option_id(self):
             url = f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/products/{self.product_id}/options'
@@ -2708,7 +2706,7 @@ class Catalog:
                     delete_query = f"""DELETE FROM {creds.bc_product_table} WHERE PRODUCT_ID = '{product_id}' 
                     DELETE FROM {creds.bc_image_table} WHERE PRODUCT_ID = '{product_id}'"""
 
-                sql_del_res = self.db.query(delete_query, commit=True)
+                sql_del_res = self.db.query(delete_query)
                 if sql_del_res['code'] == 200:
                     Catalog.logger.success(f'Product {sku} deleted from BigCommerce and Middleware.')
                     return True
@@ -2787,7 +2785,7 @@ class Catalog:
 
                             # Step 4: Delete Variant from Middleware (Product and Image Tables)
                             delete_query = f"DELETE FROM {creds.bc_product_table} WHERE VARIANT_ID = '{variant_id}'"
-                            response = self.db.query(delete_query, commit=True)
+                            response = self.db.query(delete_query)
 
                             if response['code'] == 200:
                                 Catalog.logger.success(f'Variant {sku} deleted from Big Commerce and Middleware.')
@@ -2825,7 +2823,7 @@ class Catalog:
                 if img_del_res.status_code == 204:
                     Catalog.logger.success(f'Image {image_id} deleted from BigCommerce.')
                     delete_images_query = f'DELETE FROM {creds.bc_image_table} ' f"WHERE IMAGE_ID = '{image_id}'"
-                    sql_res = self.db.query(delete_images_query, commit=True)
+                    sql_res = self.db.query(delete_images_query)
                     if sql_res['code'] == 200:
                         Catalog.logger.success(f'Image {image_id} deleted from SQL.')
                     else:
@@ -2905,7 +2903,7 @@ class Catalog:
                 f"{f"'{custom_field_string}'" if custom_field_string else "NULL"})"
             )
 
-            insert_product_response = self.db.query(insert_query, commit=True)
+            insert_product_response = self.db.query(insert_query)
             if insert_product_response['code'] == 200:
                 # Catalog.logger.success(
                 #     f"SKU: {variant.sku}, Binding ID: {variant.binding_id} - INSERT Variant {self.sku}: Success"
@@ -2945,7 +2943,7 @@ class Catalog:
                 f"WHERE ID = {variant.db_id}"
             )
 
-            update_product_response = self.db.query(update_query, commit=True)
+            update_product_response = self.db.query(update_query)
             if update_product_response['code'] == 200:
                 # Catalog.logger.success(
                 #     f"SKU: {variant.sku}, Binding ID: {variant.binding_id} - UPDATE Variant {self.sku}: Success"
@@ -2973,7 +2971,7 @@ class Catalog:
                 SET PROF_COD_1 = NULL, LST_MOD_DT = GETDATE()
                 WHERE ITEM_NO = '{self.sku}'
                 """
-            self.db.query(reset_brand_query, commit=True)
+            self.db.query(reset_brand_query)
 
         def get_product_id(self, item_no=None, binding_id=None, image_id=None):
             """Get product ID from SQL using image ID. If not found, return None."""
@@ -3028,7 +3026,7 @@ class Catalog:
             {f"'{image.description.replace("'", "''")}'" if image.description != '' else 'NULL'},
             {image.size})"""
 
-            insert_img_response = self.db.query(img_insert, commit=True)
+            insert_img_response = self.db.query(img_insert)
             if insert_img_response['code'] == 200:
                 # Catalog.logger.success(f"SQL INSERT Image {image.image_name}: Success")
                 pass
@@ -3059,7 +3057,7 @@ class Catalog:
                 SIZE = '{image.size}'
                 WHERE ID = {image.id}"""
 
-            update_img_response = self.db.query(img_update, commit=True)
+            update_img_response = self.db.query(img_update)
 
             if update_img_response['code'] == 200:
                 # Catalog.logger.success(f"SQL UPDATE Image {image.image_name}: Success")
@@ -3125,7 +3123,7 @@ class Catalog:
                     SET IS_ADM_TKT = 'N', LST_MAINT_DT = GETDATE()
                     WHERE {creds.cp_field_binding_id} = '{self.binding_id}'
                     """
-            self.db.query(query, commit=True)
+            self.db.query(query)
             print('Parent status removed from all children.')
 
         def is_last_variant(self, binding_id):
@@ -3520,7 +3518,7 @@ class Catalog:
                     f"{f"'{custom_field_string}'" if custom_field_string else "NULL"})"
                 )
 
-                insert_product_response = self.db.query(insert_query, commit=True)
+                insert_product_response = self.db.query(insert_query)
                 if insert_product_response['code'] == 200:
                     # Catalog.logger.success(
                     #     f"SKU: {variant.sku}, Binding ID: {variant.binding_id} - INSERT Variant {self.sku}: Success"
@@ -3611,10 +3609,10 @@ class Catalog:
                     delete_product_query = f"DELETE FROM {creds.bc_product_table} WHERE ITEM_NO = '{self.sku}'"
 
                     print('Deleting Product from SQL')
-                    self.db.query(delete_product_query, commit=True)
+                    self.db.query(delete_product_query)
                     print('Deleting Product Images from SQL')
                     delete_images_query = f"DELETE FROM {creds.bc_image_table} WHERE ITEM_NO = '{self.sku}'"
-                    self.db.query(delete_images_query, commit=True)
+                    self.db.query(delete_images_query)
 
                 self.variant_id = None
                 self.product_id = None
@@ -3909,7 +3907,7 @@ class Catalog:
 
             def sql_delete_photo(self):
                 query = f"DELETE FROM {creds.bc_image_table} WHERE IMAGE_NAME = '{self.image_name}'"
-                db.query(query, commit=True)
+                db.query(query)
                 print(f'Photo {self.image_name} deleted from database.')
 
 
