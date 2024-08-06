@@ -7,7 +7,7 @@ import flask
 import pandas
 import pika
 import requests
-from flask import request, jsonify, abort, send_from_directory, redirect
+from flask import request, jsonify, abort, send_from_directory
 from werkzeug.exceptions import NotFound, BadRequest
 from flask_cors import CORS
 from flask_limiter import Limiter
@@ -55,6 +55,8 @@ def handle_exception(e):
 @app.route('/design', methods=['POST'])
 @limiter.limit('20/minute')  # 10 requests per minute
 def get_service_information():
+    """Route for information request about company service. Sends JSON to RabbitMQ for asynchronous processing."""
+    LeadFormErrorHandler.logger.log_file = f'design_leads_{datetime.now().strftime("%m_%d_%y")}.log'
     token = request.headers.get('Authorization').split(' ')[1]
     url = 'https://www.google.com/recaptcha/api/siteverify'
     payload = {'secret': creds.recaptcha_secret, 'response': token}
@@ -62,13 +64,13 @@ def get_service_information():
     if not response.json()['success']:
         return 'Could not verify captcha.', 400
 
-    """Route for information request about company service. Sends JSON to RabbitMQ for asynchronous processing."""
     data = request.json
-    # # Validate the input data
+    # Validate the input data
     try:
         validate(instance=data, schema=creds.design_schema)
     except ValidationError as e:
-        abort(400, description=e.message)
+        LeadFormErrorHandler.error_handler.add_error_v(error=f'Invalid input data: {e}', origin='design_info')
+        abort(400, description='Invalid input data')
     else:
         payload = json.dumps(data)
 
@@ -101,6 +103,8 @@ def get_service_information():
 def stock_notification():
     """Get contact and product information from user who wants notification of when
     a product comes back into stock."""
+    ProcessInErrorHandler.logger.log_file = f'log_{datetime.now():%m_%d_%y}.log'
+
     data = request.json
     # Sanitize the input data
     sanitized_data = {k: bleach.clean(v) for k, v in data.items()}
@@ -109,7 +113,8 @@ def stock_notification():
     try:
         validate(instance=sanitized_data, schema=creds.stock_notification_schema)
     except ValidationError as e:
-        abort(400, description=e.message)
+        ProcessInErrorHandler.error_handler.add_error_v(error=f'Invalid input data: {e}', origin='stock_notify')
+        abort(400, description='Invalid input data')
     else:
         email = sanitized_data.get('email')
         item_no = sanitized_data.get('sku')
@@ -157,6 +162,9 @@ def gift_card_recipient():
                 """
             )
         except:
+            ProcessInErrorHandler.error_handler.add_error_v(
+                error='Error creating recipient', origin='gift_card_recipient'
+            )
             return jsonify({'error': 'Error creating recipient'}), 400
 
         return jsonify({'uuid': new_uuid, 'message': 'Recipient updated.'}), 200
@@ -175,14 +183,17 @@ def gift_card_recipient():
                 WHERE UUID = '{uuid}'
                 """
             )
-        except:
+        except Exception as e:
+            ProcessInErrorHandler.error_handler.add_error_v(
+                error=f'Error updating recipient: {e}', origin='gift_card_recipient'
+            )
             return jsonify({'error': 'Error updating recipient'}), 400
 
         return jsonify({'message': 'Recipient updated.'}), 200
 
 
 @app.route('/update-uuid-email', methods=['POST'])
-@limiter.limt('20 per minute')
+@limiter.limit('20 per minute')
 def update_uuid_email():
     data = request.json
     email = data['email']
@@ -204,14 +215,15 @@ def update_uuid_email():
             WHERE UUID = '{uuid}'
             """
         )
-    except:
+    except Exception as e:
+        ProcessInErrorHandler.error_handler.add_error_v(error=f'Error updating: {e}', origin='update-uuid-email')
         return jsonify({'error': 'Error updating'}), 400
 
     return jsonify({'message': 'Email updated.'}), 200
 
 
 @app.route('/update-uuid-name', methods=['POST'])
-@limiter.limt('20 per minute')
+@limiter.limit('20 per minute')
 def update_uuid_name():
     data = request.json
     name = data['name']
@@ -233,7 +245,8 @@ def update_uuid_name():
             WHERE UUID = '{uuid}'
             """
         )
-    except:
+    except Exception as e:
+        ProcessInErrorHandler.error_handler.add_error_v(error=f'Error updating: {e}', origin='update-uuid-name')
         return jsonify({'error': 'Error updating'}), 400
 
     return jsonify({'message': 'Name updated.'}), 200
@@ -242,6 +255,7 @@ def update_uuid_name():
 @app.route('/newsletter', methods=['POST'])
 @limiter.limit('20 per minute')  # 20 requests per minute
 def newsletter_signup():
+    """Route for website pop-up. Offers user a coupon and adds their information to a csv."""
     token = request.headers.get('Authorization').split(' ')[1]
 
     url = 'https://www.google.com/recaptcha/api/siteverify'
@@ -252,11 +266,9 @@ def newsletter_signup():
 
     """Route for website pop-up. Offers user a coupon and adds their information to a csv."""
     data = request.json
-    print(data)
 
     # Sanitize the input data
     sanitized_data = {k: bleach.clean(v) for k, v in data.items()}
-    print(sanitized_data)
     # Validate the input data
     try:
         validate(instance=sanitized_data, schema=creds.newsletter_schema)
@@ -267,7 +279,7 @@ def newsletter_signup():
         try:
             df = pandas.read_csv(creds.newsletter_log)
         except FileNotFoundError:
-            print('Coupon File Not Found')
+            ProcessInErrorHandler.error_handler.add_error_v(error='File not found', origin='newsletter')
         else:
             entries = df.to_dict('records')
             for x in entries:
@@ -309,7 +321,7 @@ def newsletter_signup():
                 logo=True,
             )
         except Exception as e:
-            LeadFormErrorHandler.error_handler.add_error_v(
+            ProcessInErrorHandler.error_handler.add_error_v(
                 error=f'Error sending welcome email: {e}', origin='newsletter'
             )
             return 'Error sending welcome email.', 500
@@ -326,7 +338,6 @@ def incoming_sms():
     """Webhook route for incoming SMS/MMS messages to be used with client messenger application.
     Saves all incoming SMS/MMS messages to share drive csv file."""
     raw_data = request.get_data()
-    print(raw_data)
     # Decode
     string_code = raw_data.decode('utf-8')
     # Parse to dictionary
@@ -418,7 +429,7 @@ def shopify():
     # response_data = request.get_json()
     # order_id = response_data['data']['id']
 
-    # ProcessInErrorHandler.logger.info(f'Received order {order_id}')
+    ProcessInErrorHandler.logger.info(f'Received order {request.get_json()}')
 
     # # Send order to RabbitMQ for asynchronous processing
     # try:
@@ -452,6 +463,7 @@ def get_token():
         authorization.SESSIONS.append(session)
         return jsonify({'token': session.token, 'expires': session.expires}), 200
 
+    ProcessInErrorHandler.error_handler.add_error_v(error=f'Invalid password: {password} ', origin='get_token')
     return jsonify({'error': 'Invalid username or password'}), 401
 
 
@@ -470,6 +482,9 @@ def get_commercial_availability():
     if response.status_code == 200:
         return jsonify({'data': response.text}), 200
     else:
+        ProcessInErrorHandler.error_handler.add_error_v(
+            error='Error fetching data', origin='commercialAvailability'
+        )
         return jsonify({'error': 'Error fetching data'}), 500
 
 
@@ -480,12 +495,14 @@ def get_availability():
     if response.status_code == 200:
         return jsonify({'data': response.text}), 200
     else:
+        ProcessInErrorHandler.error_handler.add_error_v(error='Error fetching data', origin='availability')
         return jsonify({'error': 'Error fetching data'}), 500
 
 
 @app.route('/health', methods=['GET'])
 @limiter.limit('10/minute')  # 10 requests per minute
 def health_check():
+    ProcessInErrorHandler.logger.success('Server is running')
     return jsonify({'status': 'Server is running'}), 200
 
 
@@ -512,5 +529,17 @@ if __name__ == '__main__':
     if dev:
         app.run(debug=True, port=creds.flask_port)
     else:
-        print('Flask Server Running')
-        serve(app, host='localhost', port=creds.flask_port)
+        running = True
+        while running:
+            try:
+                print('Flask Server Running')
+                serve(app, host='localhost', port=creds.flask_port)
+            except Exception as e:
+                print('Error serving Flask app: ', e)
+                ProcessInErrorHandler.error_handler.add_error_v(
+                    error=f'Error serving Flask app: {e}', origin='server'
+                )
+                time.sleep(5)
+            # Stop the server if Keyboard Interrupt
+            running = False
+            print('Flask Server Stopped')

@@ -1,4 +1,4 @@
-import datetime
+from datetime import datetime
 from setup import creds
 
 
@@ -9,8 +9,14 @@ class Logger:
         if not self.log_file.endswith('.log'):
             self.log_file += '.log'
 
+    def update_log_file(self):
+        # Replace the last part of old log file with the new log file
+        new_ending = f'{datetime.now():%m_%d_%y}.log'
+        self.log_file = f'{'_'.join(self.log_file.split('_')[0:-3])}_{new_ending}'
+
     def header(self, message: str):
-        timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        self.update_log_file()
+        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         template = f'[{timestamp}] {message}'
         self.log('------------------')
         self.log(template)
@@ -18,25 +24,29 @@ class Logger:
         print(template)
 
     def log(self, message: str):
+        self.update_log_file()
         with open(self.log_file, 'a') as file:
             file.write(f'{message}\n')
 
     def success(self, message: str):
-        timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        self.update_log_file()
+        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         template = f'[SUCCESS] [{timestamp}] {message}'
 
         self.log(template)
         print(template)
 
     def info(self, message: str):
-        timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        self.update_log_file()
+        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         template = f'[INFO] [{timestamp}] {message}'
 
         self.log(template)
         print(template)
 
     def warn(self, message: str):
-        timestamp = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        self.update_log_file()
+        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         template = f'[WARNING] [{timestamp}] {message}'
 
         self.log(template)
@@ -80,7 +90,7 @@ class ErrorHandler:
         def __init__(self, message: str, origin: str = None, type: str = 'ERROR'):
             self.message = message
             self.origin = origin
-            self.timestamp = datetime.datetime.now()
+            self.timestamp = datetime.now()
             self.type = type
 
         def __str__(self):
@@ -95,49 +105,49 @@ class ErrorHandler:
 class GlobalErrorHandler:
     """General Logging for the entire application"""
 
-    logger = Logger(f"{creds.global_log}/log_{datetime.datetime.now().strftime("%m_%d_%y")}.log")
+    logger = Logger(f"{creds.global_log}/log_{datetime.now().strftime("%m_%d_%y")}.log")
     error_handler = ErrorHandler(logger)
 
 
 class ScheduledTasksErrorHandler:
     """General Logging for the entire application"""
 
-    logger = Logger(f"{creds.log_main}/scheduled_tasks/log_{datetime.datetime.now().strftime("%m_%d_%y")}.log")
+    logger = Logger(creds.scheduled_tasks_log)
     error_handler = ErrorHandler(logger)
 
 
 class SMSErrorHandler:
     """Logging for sms texts"""
 
-    logger = Logger(f"{creds.log_main}/sms/log_{datetime.datetime.now().strftime("%m_%d_%y")}.log")
+    logger = Logger(creds.sms_log)
     error_handler = ErrorHandler(logger)
 
 
 class SMSEventHandler:
     """Logging for SMS Unsubscribes, Landline Handling, and other SMS Events"""
 
-    logger = Logger(f'{creds.log_main}/sms/events.log')
+    logger = Logger(creds.sms_event_log)
     error_handler = ErrorHandler(logger)
 
 
 class ProcessInErrorHandler:
     """Logging for the Process In Integration"""
 
-    logger = Logger(f"{creds.log_main}/integration/process_in/log_{datetime.datetime.now().strftime("%m_%d_%y")}.log")
+    logger = Logger(creds.process_in_log)
     error_handler = ErrorHandler(logger)
 
 
 class ProcessOutErrorHandler:
     """Logging for the Process Out Integration"""
 
-    logger = Logger(f"{creds.log_main}/integration/process_out/log_{datetime.datetime.now().strftime("%m_%d_%y")}.log")
+    logger = Logger(creds.process_out_log)
     error_handler = ErrorHandler(logger)
 
 
 class LeadFormErrorHandler:
     """Logging for the Design Lead Form"""
 
-    logger = Logger(rf"{creds.log_main}/design_leads/log_{datetime.datetime.now().strftime("%m_%d_%y")}.log")
+    logger = Logger(creds.design_lead_log)
     error_handler = ErrorHandler(logger)
 
 
