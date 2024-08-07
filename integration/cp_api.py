@@ -1777,19 +1777,33 @@ class OrderAPI(DocumentAPI):
                 return None
 
         if not self.is_refund(bc_order):
+            # query = f"""
+            # UPDATE PS_DOC_HDR_MISC_CHRG
+            # SET DOC_ID = '{doc_id}',
+            # TOT_TYP = 'S'
+            # WHERE DOC_ID = '{get_orig_doc_id()}'
+            # """
+
             query = f"""
-            UPDATE PS_DOC_HDR_MISC_CHRG
-            SET DOC_ID = '{doc_id}',
-            TOT_TYP = 'S'
-            WHERE DOC_ID = '{get_orig_doc_id()}'
+            INSERT INTO PS_DOC_HDR_MISC_CHRG
+            (DOC_ID, TOT_TYP, MISC_CHRG_NO, MISC_TYP, MISC_AMT, MISC_PCT, MISC_TAX_AMT_ALLOC, MISC_NORM_TAX_AMT_ALLOC)
+            VALUES
+            ('{doc_id}', 'S', '1', 'A', {(float(bc_order["base_shipping_cost"] or 0))}, 0, 0, 0)
             """
         else:
+            # query = f"""
+            # UPDATE PS_DOC_HDR_MISC_CHRG
+            # SET DOC_ID = '{doc_id}',
+            # TOT_TYP = 'S',
+            # MISC_AMT = {-(float(bc_order["base_shipping_cost"] or 0))}
+            # WHERE DOC_ID = '{get_orig_doc_id()}'
+            # """
+
             query = f"""
-            UPDATE PS_DOC_HDR_MISC_CHRG
-            SET DOC_ID = '{doc_id}',
-            TOT_TYP = 'S',
-            MISC_AMT = {-(float(bc_order["base_shipping_cost"] or 0))}
-            WHERE DOC_ID = '{get_orig_doc_id()}'
+            INSERT INTO PS_DOC_HDR_MISC_CHRG
+            (DOC_ID, TOT_TYP, MISC_CHRG_NO, MISC_TYP, MISC_AMT, MISC_PCT, MISC_TAX_AMT_ALLOC, MISC_NORM_TAX_AMT_ALLOC)
+            VALUES
+            ('{doc_id}', 'S', '1', 'A', {-(float(bc_order["base_shipping_cost"] or 0))}, 0, 0, 0)
             """
 
         response = Database.db.query(query)
@@ -1798,7 +1812,7 @@ class OrderAPI(DocumentAPI):
             self.logger.success('Updated shipping charge')
         else:
             self.error_handler.add_error_v('Shipping charge could not be updated')
-            self.error_handler.add_error_v(response['message'])
+            self.error_handler.add_error_v(response)
 
         if not self.is_refund(bc_order):
 
