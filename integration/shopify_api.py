@@ -5,6 +5,7 @@ from setup.error_handler import ProcessOutErrorHandler
 from pathlib import Path
 from integration.database import Database
 from shortuuid import ShortUUID
+from setup.email_engine import Email
 
 verbose_print = True
 
@@ -149,52 +150,17 @@ class Shopify:
                     'applied_discounts': [],
                 }
 
-                is_refunded = False
-                quantity_refunded = 0
-
-                for refund in snode['refunds'][0]['refundLineItems']['edges']:
-                    if refund['node']['lineItem']['id'] == item['id']:
-                        is_refunded = True
-                        quantity_refunded = int(refund['node']['quantity'])
-                        break
-
-                pl['is_refunded'] = is_refunded
-                pl['quantity_refunded'] = quantity_refunded
-
                 def send_gift_card():
                     email = snode['email']
                     name = snode['billingAddress']['firstName'] + ' ' + snode['billingAddress']['lastName']
-                    amount = price
-                    gift_card_code = pl['gift_certificate_id']['code']
-                    # Send gift card to customer
+                    code = pl['gift_certificate_id']['code']
+                    Email.GiftCard.send(email, name, code, price)
 
                 if item['isGiftCard']:
-
-                    def has_code(code):
-                        query = f"""
-                        SELECT GFC_NO FROM SY_GFC
-                        WHERE GFC_NO = '{code}'
-                        """
-
-                        response = Database.db.query(query)
-                        try:
-                            return response[0][0] is not None
-                        except:
-                            return False
-
-                    # Make sure code is unique
-                    def gen_code():
-                        code_gen = ShortUUID()
-                        code_gen.set_alphabet('ABCDEFG123456789')  # 16
-                        code = code_gen.random(12)
-                        code = f'{code[0:4]}-{code[4:8]}-{code[8:12]}'
-
-                        if has_code(code):
-                            return gen_code()
-                        else:
-                            return code
-
-                    code = gen_code()
+                    code_gen = ShortUUID()
+                    code_gen.set_alphabet('ABCDEFG123456789')
+                    code = code_gen.random(12)
+                    code = f'{code[0:4]}-{code[4:8]}-{code[8:12]}'
 
                     pl['gift_certificate_id'] = {'code': code}
                     send_gift_card()

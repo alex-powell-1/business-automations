@@ -1138,7 +1138,7 @@ def administrative_report(recipients):
         content=html_contents,
         logo=True,
         mode='related',
-        product_photo=None,
+        image=None,
         staff=True,
     )
 
@@ -1159,7 +1159,7 @@ def revenue_report(recipients, log_file):
             subject=subject,
             content=html_contents,
             mode='related',
-            product_photo=None,
+            image=None,
             logo=True,
         )
     except Exception as err:

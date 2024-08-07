@@ -36,7 +36,7 @@ def item_report(recipients):
         recipients_list=recipients,
         subject=f"Item Report for " f"{(datetime.now().strftime("%B %d, %Y"))}",
         content=email_content,
-        product_photo=None,
+        image=None,
         mode='related',
         logo=True,
         staff=True,

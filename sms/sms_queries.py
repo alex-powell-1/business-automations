@@ -1,10 +1,11 @@
 from setup.date_presets import *
+from setup import creds
 
-query_start = """
+query_start = f"""
     SELECT CUST_NO 
     FROM AR_CUST
     WHERE FST_NAM != 'Change' AND FST_NAM IS NOT NULL AND 
-    PHONE_1 IS NOT NULL AND INCLUDE_IN_MARKETING_MAILOUTS = 'Y' AND 
+    PHONE_1 IS NOT NULL AND {creds.sms_subscribe_status} = 'Y' AND 
     """
 
 # Retail First Time Customers (ftc)
