@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en" style="background-color: white">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{{ title }}</title>
+    <style>
+      tr td {
+        padding-left: 20px;
+        padding-right: 20px;
+      }
+    </style>
+  </head>
+
+  <body>
+    <div
+      style="
+        background-color: white;
+        width: 600px;
+        margin-left: auto;
+        margin-right: auto;
+        border-width: px;
+        border-style: solid;
+        border-color: darkgreen;
+        border-radius: 15px;
+        box-shadow: 5px 5px 5px darkgrey;
+      "
+    >
+      <table role="presentation" cellspacing="0" width="100%">
+        <tr>
+          <td>
+            <div class="header" style="text-align: center">
+              <a href="{{ company_url }}"
+                ><img src="cid:image1" style="width: 50%; margin-bottom: 15px"
+              /></a>
+            </div>
+          </td>
+        </tr>
+      </table>
+
+      <table role="presentation" cellspacing="0" width="100%">
+        <tr>
+          <td>
+            <div class="body">
+              <div style="text-align: center">
+                <a href="{{ company_url }}"
+                  ><img
+                    id="gift-card"
+                    src="cid:image2"
+                    style="
+                      width: 55%;
+                      display: block;
+                      margin: auto;
+                      margin-bottom: 15px;
+                    "
+                /></a>
+
+                {% if gc_code != "" %}
+                <h1>Amount: ${{ amount }}</h1>
+                <img
+                  id="barcode"
+                  style="
+                    display: block;
+                    margin: 0 auto;
+                    max-width: 80%;
+                    padding-bottom: 1rem;
+                  "
+                  src="cid:image3"
+                  alt="Barcode"
+                />
+                <h2><strong>{{ gc_code }}</strong></h2>
+                {% endif %}
+              </div>
+
+              <div style="padding-left: 20px; padding-right: 20px">
+                <section>
+                  <p>Sent to: {{ name }} from <br>
+                  <a href="{{ company_url }}">{{ company }}</a><br>
+                  {{ company_phone }}</p>
+                </section>
+              </div>
+            </div>
+          </td>
+        </tr>
+      </table>
+    </div>
+  </body>
+</html>

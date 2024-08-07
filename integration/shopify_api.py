@@ -5,6 +5,7 @@ from setup.error_handler import ProcessOutErrorHandler
 from pathlib import Path
 from integration.database import Database
 from shortuuid import ShortUUID
+from setup.email_engine import Email
 
 verbose_print = True
 
@@ -148,22 +149,17 @@ class Shopify:
                     'applied_discounts': [],
                 }
 
-                def send_gift_card():
+                if item['isGiftCard']:
                     snode = shopify_order['node']
                     email = snode['email']
-                    name = snode['billingAddress']['firstName'] + ' ' + snode['billingAddress']['lastName']
-                    amount = price
-                    gift_card_code = pl['gift_certificate_id']['code']
-                    # Send gift card to customer
-
-                if item['isGiftCard']:
                     code_gen = ShortUUID()
                     code_gen.set_alphabet('ABCDEFG123456789')
                     code = code_gen.random(12)
                     code = f'{code[0:4]}-{code[4:8]}-{code[8:12]}'
-
                     pl['gift_certificate_id'] = {'code': code}
-                    send_gift_card()
+                    name = snode['billingAddress']['firstName'] + ' ' + snode['billingAddress']['lastName']
+
+                    Email.GiftCard.send(email, name, code, price)
 
                 shopify_products.append(pl)
 

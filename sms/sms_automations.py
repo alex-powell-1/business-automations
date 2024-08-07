@@ -72,7 +72,7 @@ def create_customer_text(
             origin=origin,
             campaign=campaign,
             category=cust.category,
-            username='Scheduled Tasks',
+            username='Automation',
             cust_no=cust_no,
             name=cust.name,
             to_phone=to_phone,

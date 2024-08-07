@@ -1091,7 +1091,7 @@ def administrative_report(recipients, log_file):
         content=html_contents,
         logo=True,
         mode='related',
-        product_photo=None,
+        image=None,
     )
     print(f'Administrative Report: Completed at {datetime.now():%H:%M:%S}', file=log_file)
     print('-----------------------', file=log_file)
@@ -1110,7 +1110,7 @@ def revenue_report(recipients, log_file):
         subject=subject,
         content=html_contents,
         mode='related',
-        product_photo=None,
+        image=None,
         logo=True,
     )
     print(f'Revenue Report: Completed at {datetime.now():%H:%M:%S}', file=log_file)
