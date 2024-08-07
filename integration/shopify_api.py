@@ -172,7 +172,7 @@ class Shopify:
 
                     def gen_code():
                         code_gen = ShortUUID()
-                        code_gen.set_alphabet('ABCDEFG123456789')
+                        code_gen.set_alphabet('ABCDEFG123456789')  # 16
                         code = code_gen.random(12)
                         code = f'{code[0:4]}-{code[4:8]}-{code[8:12]}'
 
