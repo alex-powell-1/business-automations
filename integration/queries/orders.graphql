@@ -102,7 +102,6 @@ query order($id: ID!) {
 
                         quantity
                         sku
-                        isGiftCard
                     }
                 }
             }

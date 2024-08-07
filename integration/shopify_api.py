@@ -4,7 +4,7 @@ import json
 from setup.error_handler import ProcessOutErrorHandler
 from pathlib import Path
 from integration.database import Database
-from uuid_utils import uuid4
+from shortuuid import uuid
 
 verbose_print = True
 
@@ -123,7 +123,7 @@ class Shopify:
 
                 price = float(get_money(item['originalTotalSet']))
 
-                item['isGiftCard'] = item['sku'] == 'GFC'
+                item['isGiftCard'] = 'GFC' in item['sku']
 
                 pl = {
                     'id': item['id'],
@@ -157,7 +157,7 @@ class Shopify:
                     # Send gift card to customer
 
                 if item['isGiftCard']:
-                    pl['gift_certificate_id'] = {'code': str(uuid4())}
+                    pl['gift_certificate_id'] = {'code': uuid()}
                     send_gift_card()
 
                 shopify_products.append(pl)
