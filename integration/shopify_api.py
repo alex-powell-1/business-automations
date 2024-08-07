@@ -153,9 +153,11 @@ class Shopify:
                     snode = shopify_order['node']
                     email = snode['email']
                     code_gen = ShortUUID()
+
                     code_gen.set_alphabet('ABCDEFG123456789')
                     code = code_gen.random(12)
                     code = f'{code[0:4]}-{code[4:8]}-{code[8:12]}'
+
                     pl['gift_certificate_id'] = {'code': code}
                     name = snode['billingAddress']['firstName'] + ' ' + snode['billingAddress']['lastName']
 

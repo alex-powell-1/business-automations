@@ -8,7 +8,8 @@ import pika
 import requests
 from docxtpl import DocxTemplate
 
-from setup import creds, email_engine
+from setup import creds
+from setup.email_engine import Email
 from setup.utilities import format_phone
 from setup.sms_engine import SMSEngine
 from integration.database import Database
@@ -116,7 +117,7 @@ class RabbitMQConsumer:
         # Send email to client
         LeadFormErrorHandler.logger.info('Sending Email to Lead')
         try:
-            email_engine.design_email(first_name, email)
+            Email.DesignLead.send(first_name, email)
         except Exception as err:
             LeadFormErrorHandler.error_handler.add_error_v(error=f'Error (email): {err}', origin='design_lead')
         else:
