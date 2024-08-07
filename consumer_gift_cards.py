@@ -13,9 +13,8 @@ from setup.utilities import format_phone
 from setup.sms_engine import SMSEngine
 from integration.database import Database
 from setup.error_handler import LeadFormErrorHandler
-from customer_tools.customers import lookup_customer, add_new_customer
 
-test_mode = True
+test_mode = False
 
 
 class RabbitMQConsumer:
@@ -60,35 +59,12 @@ class RabbitMQConsumer:
                 interests = interests[:-2]
 
         LeadFormErrorHandler.logger.info(f'Received message from {first_name} {last_name}. Beginning Processing...')
-        # Check if this is a current customer
-        cust_no = lookup_customer(phone_number=phone, email_address=email)
-
-        if not cust_no:
-            # Add new customer if not found
-            try:
-                cust_no = add_new_customer(
-                    first_name=first_name,
-                    last_name=last_name,
-                    phone_number=phone,
-                    email_address=email,
-                    street_address=street,
-                    city=city,
-                    state=state,
-                    zip_code=zip_code,
-                )
-            except Exception as err:
-                LeadFormErrorHandler.error_handler.add_error_v(
-                    f'Error - Add New Customer: {err}', origin='design_lead'
-                )
-                cust_no = 'Unknown'
-
         # establish start time for consistent logging
         now = datetime.now()
         now_log_format = f'{now:%Y-%m-%d %H:%M:%S}'
 
         Database.DesignLead.insert(
             date=now_log_format,
-            cust_no=cust_no,
             first_name=first_name,
             last_name=last_name,
             email=email,
@@ -146,9 +122,7 @@ class RabbitMQConsumer:
             doc.save(f'./{ticket_name}')
             # Print the file to default printer
             LeadFormErrorHandler.logger.info('Printing Word Document')
-            if test_mode:
-                LeadFormErrorHandler.logger.info('Test Mode: Skipping Print')
-            else:
+            if not test_mode:
                 os.startfile(ticket_name, 'print')
             # Delay while print job executes
             time.sleep(4)

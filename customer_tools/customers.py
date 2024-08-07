@@ -318,6 +318,8 @@ def add_all_customers_to_mailerlite(category):
 
 
 def lookup_customer_by_email(email_address):
+    if email_address is None:
+        return
     email_address = email_address.replace("'", "''")
     query = f"""
     SELECT TOP 1 CUST_NO
@@ -326,7 +328,6 @@ def lookup_customer_by_email(email_address):
     """
     response = db.query(query)
     if response is not None:
-        print(response)
         return response[0][0]
 
 
@@ -341,6 +342,8 @@ def format_phone_number(phone_number: str):
 
 
 def lookup_customer_by_phone(phone_number):
+    if phone_number is None:
+        return
     phone_number = format_phone_number(phone_number)
     query = f"""
     SELECT TOP 1 CUST_NO
@@ -352,7 +355,7 @@ def lookup_customer_by_phone(phone_number):
         return response[0][0]
 
 
-def lookup_customer(email_address, phone_number):
+def lookup_customer(email_address=None, phone_number=None):
     return lookup_customer_by_email(email_address) or lookup_customer_by_phone(phone_number)
 
 
@@ -425,6 +428,11 @@ def add_new_customer(first_name, last_name, phone_number, email_address, street_
             'Content-Type': 'application/json',
             'Accept': 'application/json',
         }
+        try:
+            state = states[state]
+        except KeyError:
+            state = state[0:10]
+
         payload = {
             'Workgroup': '1',
             'AR_CUST': {
@@ -435,7 +443,7 @@ def add_new_customer(first_name, last_name, phone_number, email_address, street_
                 'PHONE_1': phone_number,
                 'ADRS_1': street_address,
                 'CITY': city,
-                'STATE': states[state],
+                'STATE': state,
                 'ZIP_COD': zip_code,
             },
         }
@@ -766,4 +774,4 @@ def set_contact_1():
 
 
 if __name__ == '__main__':
-    print(lookup_customer_by_phone('8282341265'))
+    print(lookup_customer(phone_number='828-234-2265', email_address='alexpoddw@gmail.com'))

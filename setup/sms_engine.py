@@ -6,7 +6,7 @@ from twilio.rest import Client
 
 from setup import creds
 from integration.database import Database
-from setup.query_engine import QueryEngine
+from setup.query_engine import QueryEngine as db
 from setup.utilities import format_phone
 from setup.error_handler import SMSErrorHandler, SMSEventHandler
 from setup.utilities import convert_timezone
@@ -27,10 +27,24 @@ class SMSEngine:
 
     @staticmethod
     def send_text(
-        origin, campaign, to_phone, message, category, username, name=None, cust_no=None, url=None, test_mode=False
+        origin,
+        campaign,
+        to_phone,
+        message,
+        category=None,
+        username=None,
+        name=None,
+        cust_no=None,
+        url=None,
+        test_mode=False,
     ):
         # Format phone for Twilio API
         formatted_phone = format_phone(to_phone, mode='twilio')
+
+        if category is None:
+            if origin != 'SERVER':
+                category = (SMSEngine.lookup_customer_data(to_phone))[2]
+
         error_code = None
         error_message = None
 
@@ -54,7 +68,14 @@ class SMSEngine:
                     SMSEngine.error_handler.add_error_v(
                         f'Code: {err.code} - Error sending SMS to {name}: {err.msg}'
                     )
-                    SMSEngine.move_phone_1_to_landline(cust_no, to_phone)
+                    SMSEngine.move_phone_1_to_landline(
+                        origin=origin,
+                        campaign=campaign,
+                        cust_no=cust_no,
+                        name=name,
+                        category=category,
+                        phone=to_phone,
+                    )
                 error_code = err.code
                 error_message = err.msg
             except Exception as e:
@@ -81,34 +102,77 @@ class SMSEngine:
             )
 
     @staticmethod
-    def move_phone_1_to_landline(cust_no, phone_number):
-        cp_phone = format_phone(phone_number, mode='counterpoint')
+    def move_phone_1_to_landline(origin, campaign, cust_no, name, category, phone):
+        cp_phone = format_phone(phone, mode='counterpoint')
         move_landline_query = f"""
             UPDATE AR_CUST
             SET MBL_PHONE_1 = '{cp_phone}', SET PHONE_1 = NULL
             WHERE PHONE_1 = '{cp_phone}'
         """
-        response = QueryEngine.query(move_landline_query)
+        response = db.query(move_landline_query)
 
         if response['code'] == 200:
-            SMSEngine.logger.success(f'Moved {phone_number} to landline for customer {cust_no}')
-            SMSEventHandler.logger.log(f'Moved {phone_number} to landline for customer {cust_no}')
+            query = f"""
+            INSERT INTO {creds.sms_event_log} (ORIGIN, CAMPAIGN, PHONE, CUST_NO, NAME, CATEGORY, EVENT_TYPE, MESSAGE)
+            VALUES ('{origin}', '{campaign}', '{phone}', '{cust_no}', '{name}', '{category}', 
+            'Landline', 'SET MBL_PHONE_1 = {cp_phone}, SET PHONE_1 = NULL')"""
+
+            response = db.query(query)
+            if response['code'] != 200:
+                SMSEventHandler.error_handler.add_error_v(f'Error moving {phone} to landline')
+
         else:
-            SMSEngine.error_handler.add_error_v(f'Error moving {phone_number} to landline')
-            SMSEventHandler.error_handler.add_error_v(f'Error moving {phone_number} to landline')
+            SMSEventHandler.error_handler.add_error_v(f'Error moving {phone} to landline')
 
     @staticmethod
-    def unsubscribe_from_sms(phone_number):
+    def subscribe(origin, campaign, cust_no, name, category, phone):
+        phone = format_phone(phone, mode='counterpoint')
+        query = f"""
+        UPDATE AR_CUST
+        SET INCLUDE_IN_MARKETING_MAILOUTS = 'Y'
+        WHERE PHONE_1 = '{phone}' OR PHONE_2 = '{phone}'
+        """
+        print(query)
+        response = db.query(query=query)
+        print(response)
+        if response['code'] == 200:
+            query = f"""
+            INSERT INTO {creds.sms_event_log} (ORIGIN, CAMPAIGN, PHONE, CUST_NO, NAME, CATEGORY, EVENT_TYPE, MESSAGE)
+            VALUES ('{origin}', '{campaign}', '{phone}', '{cust_no}', '{name}', '{category}',
+            'Subscribe', 'SET INCLUDE_IN_MARKETING_MAILOUTS = Y')"""
+            print(query)
+            response = db.query(query)
+            print(response)
+            if response['code'] != 200:
+                SMSEventHandler.error_handler.add_error_v(f'Error subscribing {phone} to SMS')
+
+        else:
+            SMSEventHandler.error_handler.add_error_v(f'Error subscribing {phone} to SMS')
+
+    @staticmethod
+    def unsubscribe(origin, campaign, cust_no, name, category, phone):
+        phone = format_phone(phone, mode='counterpoint')
         query = f"""
         UPDATE AR_CUST
         SET INCLUDE_IN_MARKETING_MAILOUTS = 'N'
-        WHERE PHONE_1 = '{phone_number}' OR PHONE_2 = '{phone_number}'
+        WHERE PHONE_1 = '{phone}' OR PHONE_2 = '{phone}'
         """
-        response = QueryEngine.query(query=query)
+        print(query)
+        response = db.query(query=query)
+        print(response)
         if response['code'] == 200:
-            SMSEventHandler.logger.success(f'Unsubscribed {phone_number} from SMS')
+            query = f"""
+            INSERT INTO {creds.sms_event_log} (ORIGIN, CAMPAIGN, PHONE, CUST_NO, NAME, CATEGORY, EVENT_TYPE, MESSAGE)
+            VALUES ('{origin}', '{campaign}', '{phone}', '{cust_no}', '{name}', '{category}',
+            'Unsubscribe', 'SET INCLUDE_IN_MARKETING_MAILOUTS = N')"""
+            print(query)
+            response = db.query(query)
+            print(response)
+            if response['code'] != 200:
+                SMSEventHandler.error_handler.add_error_v(f'Error unsubscribing {phone} from SMS')
+
         else:
-            SMSEventHandler.error_handler.add_error_v(f'Error unsubscribing {phone_number} from SMS')
+            SMSEventHandler.error_handler.add_error_v(f'Error unsubscribing {phone} from SMS')
 
     @staticmethod
     def lookup_customer_data(phone):
@@ -119,7 +183,7 @@ class SMSEngine:
 			FROM AR_CUST
 			WHERE PHONE_1 = '{cp_phone_input}'
 			"""
-        response = QueryEngine.query(query)
+        response = db.query(query)
 
         if response is not None:
             customer_no = response[0][0]
@@ -150,13 +214,13 @@ class SMSEngine:
             f'Address: {address} \n'
             f'Comments: {comments}'
         )
-        sms = SMSEngine()
         if test_mode:
-            for k, v in creds.test_recipient.items():
-                sms.send_text(name=name, to_phone=v, message=message)
+            recipient = creds.test_recipient
         else:
-            for k, v in creds.lead_recipient.items():
-                sms.send_text(name=name, to_phone=v, message=message)
+            recipient = creds.lead_recipient
+
+        for k, v in recipient.items():
+            SMSEngine.send_text(origin='SERVER', campaign='DESIGN FORM', name=name, to_phone=v, message=message)
 
     @staticmethod
     def write_all_twilio_messages_to_share():

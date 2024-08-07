@@ -150,18 +150,10 @@ class Shopify:
                 def send_gift_card():
                     snode = shopify_order['node']
                     email = snode['email']
+                    name = snode['billingAddress']['firstName'] + ' ' + snode['billingAddress']['lastName']
+                    amount = price
                     gift_card_code = pl['gift_certificate_id']['code']
-
-                    response = Database.db.query(
-                        f"""
-                        SELECT RECPT_EMAIL, RECPT_NAME from SN_GFC_RECPS
-                        WHERE EMAIL like '{email}'
-                        """
-                    )
-
-                    if response is not None:
-                        print(gift_card_code, response[0][0], response[0][1])
-                        # Send gift card email to recipient
+                    # Send gift card to customer
 
                 if item['isGiftCard']:
                     pl['gift_certificate_id'] = {'code': uuid(length=30)}
