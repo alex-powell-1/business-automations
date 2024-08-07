@@ -51,7 +51,6 @@ def create_customer_text(
         error_handler.logger.info(f'Sending Message to {cust.name} at {to_phone}')
         first_name = cust.first_name
         reward_points = cust.rewards_points_balance
-        print(f'{first_name} has {reward_points} reward points.')
 
         # Check if they have rewards points.
 
@@ -69,8 +68,7 @@ def create_customer_text(
         )
 
         # Send Text
-        engine = SMSEngine()
-        engine.send_text(
+        SMSEngine.send_text(
             origin=origin,
             campaign=campaign,
             category=cust.category,
