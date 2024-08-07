@@ -129,7 +129,7 @@ class SMSEngine:
         phone = format_phone(phone, mode='counterpoint')
         query = f"""
         UPDATE AR_CUST
-        SET INCLUDE_IN_MARKETING_MAILOUTS = 'Y'
+        SET {creds.sms_subscribe_status} = 'Y'
         WHERE PHONE_1 = '{phone}' OR PHONE_2 = '{phone}'
         """
         print(query)
@@ -139,7 +139,7 @@ class SMSEngine:
             query = f"""
             INSERT INTO {creds.sms_event_table} (ORIGIN, CAMPAIGN, PHONE, CUST_NO, NAME, CATEGORY, EVENT_TYPE, MESSAGE)
             VALUES ('{origin}', '{campaign}', '{phone}', '{cust_no}', '{name}', '{category}',
-            'Subscribe', 'SET INCLUDE_IN_MARKETING_MAILOUTS = Y')"""
+            'Subscribe', 'SET {creds.sms_subscribe_status} = Y')"""
             print(query)
             response = db.query(query)
             print(response)
@@ -154,7 +154,7 @@ class SMSEngine:
         phone = format_phone(phone, mode='counterpoint')
         query = f"""
         UPDATE AR_CUST
-        SET INCLUDE_IN_MARKETING_MAILOUTS = 'N'
+        SET {creds.sms_subscribe_status} = 'N'
         WHERE PHONE_1 = '{phone}' OR PHONE_2 = '{phone}'
         """
         print(query)
@@ -164,7 +164,7 @@ class SMSEngine:
             query = f"""
             INSERT INTO {creds.sms_event_table} (ORIGIN, CAMPAIGN, PHONE, CUST_NO, NAME, CATEGORY, EVENT_TYPE, MESSAGE)
             VALUES ('{origin}', '{campaign}', '{phone}', '{cust_no}', '{name}', '{category}',
-            'Unsubscribe', 'SET INCLUDE_IN_MARKETING_MAILOUTS = N')"""
+            'Unsubscribe', 'SET {creds.sms_subscribe_status} = N')"""
             print(query)
             response = db.query(query)
             print(response)
