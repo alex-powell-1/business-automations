@@ -166,7 +166,7 @@ class Shopify:
                     email = snode['email']
                     name = snode['billingAddress']['firstName'] + ' ' + snode['billingAddress']['lastName']
                     code = pl['gift_certificate_id']['code']
-                    Email.GiftCard.send(email, name, code, price)
+                    Email.Customer.GiftCard.send(email, name, code, price)
 
                 if item['isGiftCard']:
 

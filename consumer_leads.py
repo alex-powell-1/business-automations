@@ -117,7 +117,7 @@ class RabbitMQConsumer:
         # Send email to client
         LeadFormErrorHandler.logger.info('Sending Email to Lead')
         try:
-            Email.DesignLead.send(first_name, email)
+            Email.Customer.DesignLead.send(first_name, email)
         except Exception as err:
             LeadFormErrorHandler.error_handler.add_error_v(error=f'Error (email): {err}', origin='design_lead')
         else:

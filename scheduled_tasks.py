@@ -13,7 +13,7 @@ from product_tools import set_inactive_status
 from product_tools import stock_buffer
 from reporting import lead_generator_notification
 from reporting import product_reports
-from reporting import report_builder
+from setup.email_engine import Email
 from setup import creds
 from setup import date_presets
 from setup import network
@@ -51,7 +51,7 @@ try:
     # ITEMS REPORT EMAIL - for product management team
     if creds.item_report['enabled'] and creds.item_report['hour'] == hour:
         try:
-            report_builder.item_report(recipients=creds.item_report['recipients'])
+            Email.ItemReport.send(recipients=creds.item_report['recipients'])
         except Exception as err:
             error_handler.add_error_v(error=err, origin='Item Report')
 
@@ -68,12 +68,6 @@ try:
             network.health_check()
         except Exception as err:
             error_handler.add_error_v(error=err, origin='Health Check')
-
-        # # Create new Counterpoint customer_tools from today's marketing leads
-        # try:
-        #     lead_generator_notification.create_new_customers()
-        # except Exception as err:
-        #     error_handler.add_error_v(error=err, origin='Create New Customers')
 
         # SET CONTACT 1
         # Concatenate First and Last name of non-business customer_tools and
@@ -100,25 +94,6 @@ try:
         # NETWORK CONNECTIVITY
         # Check server for internet connection. Restart is there is no connection to internet.
         network.restart_server_if_disconnected()
-
-        # UPLOAD CURRENT INVENTORY STOCK LEVELS TO WEBDAV SERVER
-        try:
-            inventory_upload.upload_inventory()
-        except Exception as err:
-            error_handler.add_error_v(error=err, origin='Inventory Upload')
-
-        # TIERED PRICING
-        # Move wholesale customer_tools into pricing tiers based on
-        # total sales over the last 6 months
-        # tiered_pricing.update_tiered_pricing(date_presets.six_months_ago, date_presets.today)
-
-        # PHOTO RESIZE/FORMATTING
-        # Resizes large photos in the item images folder to a max resolution of 1280 by 1280 pixels
-        # Re-formats .png to .jpg and .jpeg to .jpg while preserving aspect ratio and rotation data
-        try:
-            resize_photos.resize_photos(creds.photo_path, mode='big')
-        except Exception as err:
-            error_handler.add_error_v(error=err, origin='Resize Photos')
 
         # ----------------------
         # EVERY OTHER HOUR TASKS
@@ -158,68 +133,16 @@ try:
         # ONE PER DAY TASKS
         # -----------------
 
-        # 2 AM TASKS
-        if hour == 2:
-            if datetime.today().weekday() == 6:
-                # Only on Sundays
-                # TOTAL SOLD
-                # Update Big Commerce with "total_sold" for all ecommerce items. This lets customer_tools
-                # Sort search results by "Best Sellers" with accurate information
-                # Runs at 2AM and takes approx. 15 minutes
-                try:
-                    related_items.update_total_sold()
-                except Exception as err:
-                    error_handler.add_error_v(error=err, origin='Total Sold')
-
-                # RELATED ITEMS
-                # Update Big Commerce with related items for each product.
-                # Gives products popular amendments and products per category during
-                # Same time last year
-                try:
-                    related_items.set_related_items_by_category()
-                except Exception as err:
-                    error_handler.add_error_v(error=err, origin='Related Items')
-
-        # 4 AM TASKS
-        if hour == 4:
-            # ALWAYS ONLINE
-            # Set Always Online status for top performing items
-            try:
-                always_online.set_always_online(
-                    item_list=always_online.get_top_items(
-                        start_date=date_presets.last_year_start, end_date=date_presets.today, number_of_items=200
-                    )
-                )
-            except Exception as err:
-                error_handler.add_error_v(error=err, origin='Always Online')
-
-            if datetime.today().weekday() == 6:
-                # # Only on Sundays
-                # # SORT ORDER BY PREDICTED REVENUE, RELEASE DATE, AND STOCK LEVEL
-                # # Update Sort Order for all product_tools at 4AM.
-                # # Uses revenue data from same period last year as a predictive method of rank importance.
-                # try:
-                #     sort_order.sort_order_engine()
-                # except Exception as err:
-                #     error_handler.add_error_v(error=err, origin='Sort Order')
-
-                # FEATURED PRODUCTSs
-                # Update Featured Products at 4 AMs
-                try:
-                    featured.update_featured_items()
-                except Exception as err:
-                    error_handler.add_error_v(error=err, origin='Featured Products')
-
-        # 11:30 AM TASKS
-    if hour == 11 and minute == 30:
-        # STOCK NOTIFICATION EMAIL WITH COUPON GENERATION
-        # Read CSV file, check all items for stock, send auto generated emails to customer_tools
-        # with product photo, product description (if exists), coupon (if applicable), and
-        # direct purchase links. Generate coupon and send to big for e-comm use.
-        try:
-            stock_notification.send_stock_notification_emails()
-        except Exception as err:
-            error_handler.add_error_v(error=err, origin='Stock Notification Email')
+    #     # 11:30 AM TASKS
+    # if hour == 11 and minute == 30:
+    #     # STOCK NOTIFICATION EMAIL WITH COUPON GENERATION
+    #     # Read CSV file, check all items for stock, send auto generated emails to customer_tools
+    #     # with product photo, product description (if exists), coupon (if applicable), and
+    #     # direct purchase links. Generate coupon and send to big for e-comm use.
+    #     try:
+    #         stock_notification.send_stock_notification_emails()
+    #     except Exception as err:
+    #         error_handler.add_error_v(error=err, origin='Stock Notification Email')
 
     if hour == 22 and minute == 30:
         # Nightly Off-Site Backups
@@ -228,14 +151,6 @@ try:
             backups.offsite_backups()
         except Exception as err:
             error_handler.add_error_v(error=err, origin='Offsite Backups')
-
-    if hour == 23 and minute == 55:
-        # STOP SMS
-        # Stop all SMS messages to customers
-        try:
-            coupons.delete_expired_coupons()
-        except Exception as err:
-            error_handler.add_error_v(error=err, origin='Delete Expired Coupons')
 
     #    __          __     _         _____  ___          _   __________  ___    __  __
     #   / _\  /\/\  / _\   /_\  /\ /\/__   \/___\/\/\    /_\ /__   \_   \/___\/\ \ \/ _\

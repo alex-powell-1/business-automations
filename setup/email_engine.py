@@ -4,8 +4,15 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.image import MIMEImage
 from email.mime.application import MIMEApplication
-from barcode_engine import generate_barcode
+from setup.barcode_engine import generate_barcode
+from datetime import datetime
+from reporting import product_reports
 
+from setup.admin_report_html import boiler_plate, css, body_start, body_end
+from setup.date_presets import today
+
+from product_tools import products
+from setup.error_handler import ScheduledTasksErrorHandler as error_handler
 from email.utils import formataddr
 from jinja2 import Template
 import os
@@ -16,178 +23,333 @@ class Email:
     address = creds.sales_email
     pw = creds.sales_password
 
-    def __init__(
-        self,
-        recipients_list,
+    def render(
+        to_name,
+        to_address,
         subject,
         content,
-        mode,
+        mode='mixed',
+        logo=False,
         image=None,
         image_name=None,
         barcode=None,
-        logo=True,
-        attachment=None,
-        staff=False,
+        attachment=False,
     ):
-        self.recipients_list = recipients_list
-        self.subject = subject
-        self.content = content
-        self.mode = mode
-        self.image = image
-        self.image_name = image_name
-        self.barcode = barcode
-        self.logo = logo
-        self.attachment = attachment
-        self.staff = staff
-        self.send()
+        msg = MIMEMultipart(mode)
+        msg['From'] = formataddr((Email.name, Email.address))
+        msg['To'] = formataddr((to_name, to_address))
+        msg['Subject'] = subject
 
-    def render(self):
-        self.msg = MIMEMultipart(self.mode)
-        self.msg['From'] = formataddr((Email.name, Email.address))
-        self.msg['To'] = formataddr((self.to_name, self.to_address))
-        self.msg['Subject'] = self.subject
+        msg_html = MIMEText(content, 'html')
+        msg.attach(msg_html)
 
-        self.msg_html = MIMEText(self.content, 'html')
-        self.msg.attach(self.msg_html)
-
-        if self.logo:
+        if logo:
             with open(creds.logo, 'rb') as logo_file:
                 logo = logo_file.read()
                 msg_logo = MIMEImage(logo, 'jpg')
                 msg_logo.add_header('Content-ID', '<image1>')
                 msg_logo.add_header('Content-Disposition', 'inline', filename='Logo.jpg')
-                self.msg.attach(msg_logo)
+                msg.attach(msg_logo)
 
-        if self.image is not None:
-            if self.image_name is not None:
-                image_name = self.image_name
+        if image is not None:
+            if image_name is not None:
+                image_name = image_name
             else:
                 image_name = 'product.jpg'
 
-            with open(self.image, 'rb') as item_photo:
+            with open(image, 'rb') as item_photo:
                 product = item_photo.read()
                 msg_product_photo = MIMEImage(product, 'jpg')
                 msg_product_photo.add_header('Content-ID', '<image2>')
                 msg_product_photo.add_header('Content-Disposition', 'inline', filename=image_name)
-                self.msg.attach(msg_product_photo)
+                msg.attach(msg_product_photo)
 
-        if self.barcode is not None:
-            with open(self.barcode, 'rb') as item_photo:
+        if barcode is not None:
+            with open(barcode, 'rb') as item_photo:
                 product = item_photo.read()
                 msg_barcode = MIMEImage(product, 'png')
                 msg_barcode.add_header('Content-ID', '<image3>')
                 msg_barcode.add_header('Content-Disposition', 'inline', filename='barcode.png')
-                self.msg.attach(msg_barcode)
+                msg.attach(msg_barcode)
 
-        if self.attachment:
+        if attachment:
             with open(creds.design_pdf_attachment, 'rb') as file:
                 pdf = file.read()
                 attached_file = MIMEApplication(_data=pdf, _subtype='pdf')
                 attached_file.add_header(
                     _name='content-disposition', _value='attachment', filename=f'{creds.design_pdf_name}'
                 )
-                self.msg.attach(attached_file)
+                msg.attach(attached_file)
 
-    def send(self):
-        def send_mail():
+        return msg
+
+    def send(
+        recipients_list,
+        subject,
+        content,
+        mode='mixed',
+        logo=False,
+        image=None,
+        image_name=None,
+        barcode=None,
+        attachment=False,
+        staff=False,
+    ):
+        def send_mail(to_address, message):
             with smtplib.SMTP('smtp.gmail.com', port=587) as connection:
                 connection.ehlo()
                 connection.starttls()
                 connection.ehlo()
                 connection.login(user=Email.address, password=Email.pw)
-                connection.sendmail(Email.address, self.to_address, self.msg.as_string().encode('utf-8'))
+                connection.sendmail(Email.address, to_address, message.as_string().encode('utf-8'))
                 connection.quit()
 
-        if self.staff:
+        if staff:
             # Dictionary of recipients in creds config
-            for person in self.recipients_list:
-                self.to_name = creds.staff[person]['full_name']
-                self.to_address = creds.staff[person]['email']
-                self.render()
-                send_mail()
+            for person in recipients_list:
+                to_name = creds.staff[person]['full_name']
+                to_address = creds.staff[person]['email']
+                msg = Email.render(
+                    to_name=to_name,
+                    to_address=to_address,
+                    subject=subject,
+                    content=content,
+                    mode=mode,
+                    logo=logo,
+                    image=image,
+                    image_name=image_name,
+                    barcode=barcode,
+                    attachment=attachment,
+                )
+                send_mail(to_address=to_address, message=msg)
         else:
             # General Use
-            for k, v in self.recipients_list.items():
-                self.to_name = k
-                self.to_address = v
-                self.render()
-                send_mail()
+            for k, v in recipients_list.items():
+                to_name = k
+                to_address = v
+                msg = Email.render(
+                    to_name=to_name,
+                    to_address=to_address,
+                    subject=subject,
+                    content=content,
+                    mode=mode,
+                    logo=logo,
+                    image=image,
+                    image_name=image_name,
+                    barcode=barcode,
+                    attachment=attachment,
+                )
+                send_mail(to_address=to_address, message=msg)
 
-    class GiftCard:
-        def send(name, email, gc_code, amount):
-            """Sends gift card to customer"""
-            recipient = {name: email}
+    class Customer:
+        class GiftCard:
+            def send(name, email, gc_code, amount):
+                """Sends gift card to customer"""
+                recipient = {name: email}
 
-            with open('./templates/gift_card.html', 'r') as file:
-                template_str = file.read()
+                with open('./templates/gift_card.html', 'r') as file:
+                    template_str = file.read()
 
-            jinja_template = Template(template_str)
+                jinja_template = Template(template_str)
 
-            generate_barcode(data=gc_code, filename=gc_code)
+                generate_barcode(data=gc_code, filename=gc_code)
 
-            subject = "You've received a gift card!"
+                subject = "You've received a gift card!"
 
-            email_data = {
-                'title': subject,
-                'name': name,
-                'gc_code': gc_code,
-                'amount': amount,
-                'company': creds.company_name,
-                'company_url': creds.company_url,
-                'company_phone': creds.company_phone,
-                'company_address_line_1': creds.company_address_html_1,
-                'company_address_line_2': creds.company_address_html_2,
-            }
+                email_data = {
+                    'title': subject,
+                    'name': name,
+                    'gc_code': gc_code,
+                    'amount': amount,
+                    'company': creds.company_name,
+                    'company_url': creds.company_url,
+                    'company_phone': creds.company_phone,
+                    'company_address_line_1': creds.company_address_html_1,
+                    'company_address_line_2': creds.company_address_html_2,
+                }
 
-            email_content = jinja_template.render(email_data)
+                email_content = jinja_template.render(email_data)
 
-            Email(
-                recipients_list=recipient,
-                subject=subject,
-                content=email_content,
-                image='./setup/images/gift_card.jpg',
-                image_name='gift_card.jpg',
-                mode='related',
-                logo=True,
-                barcode=f'./{gc_code}.png',
-            )
+                Email.send(
+                    recipients_list=recipient,
+                    subject=subject,
+                    content=email_content,
+                    image='./setup/images/gift_card.jpg',
+                    image_name='gift_card.jpg',
+                    mode='related',
+                    logo=True,
+                    barcode=f'./{gc_code}.png',
+                )
 
-            os.remove(f'./{gc_code}.png')
+                os.remove(f'./{gc_code}.png')
 
-    class DesignLead:
-        def send(first_name, email):
-            """Send email and PDF to customer in response to request for design information."""
-            recipient = {first_name: email}
+        class DesignLead:
+            def send(first_name, email):
+                """Send email and PDF to customer in response to request for design information."""
+                recipient = {first_name: email}
 
-            with open('./templates/design_lead/customer_email.html', 'r') as file:
-                template_str = file.read()
+                with open('./templates/design_lead/customer_email.html', 'r') as file:
+                    template_str = file.read()
 
-            jinja_template = Template(template_str)
+                jinja_template = Template(template_str)
 
-            email_data = {
-                'title': creds.email_subject,
-                'greeting': f'Hi {first_name},',
-                'service': creds.service,
-                'company': creds.company_name,
-                'list_items': creds.list_items,
-                'signature_name': creds.signature_name,
-                'signature_title': creds.signature_title,
-                'company_phone': creds.company_phone,
-                'company_url': creds.company_url,
-                'company_reviews': creds.company_reviews,
-            }
+                email_data = {
+                    'title': creds.email_subject,
+                    'greeting': f'Hi {first_name},',
+                    'service': creds.service,
+                    'company': creds.company_name,
+                    'list_items': creds.list_items,
+                    'signature_name': creds.signature_name,
+                    'signature_title': creds.signature_title,
+                    'company_phone': creds.company_phone,
+                    'company_url': creds.company_url,
+                    'company_reviews': creds.company_reviews,
+                }
 
-            email_content = jinja_template.render(email_data)
+                email_content = jinja_template.render(email_data)
 
-            Email(
-                recipients_list=recipient,
-                subject=creds.email_subject,
-                content=email_content,
-                mode='mixed',
-                logo=False,
-                attachment=creds.design_pdf_attachment,
-            )
+                Email.send(
+                    recipients_list=recipient,
+                    subject=creds.email_subject,
+                    content=email_content,
+                    mode='mixed',
+                    logo=False,
+                    attachment=creds.design_pdf_attachment,
+                )
+
+    class Staff:
+        class AdminReport:
+            def send(recipients):
+                error_handler.logger.info(f'Generating Admin Report Data - Starting at {datetime.now():%H:%M:%S}')
+
+                subject = f'Administrative Report - {today:%x}'
+
+                report_data = product_reports.report_generator(
+                    title='Administrative Report',
+                    revenue=True,
+                    cogs_report=True,
+                    last_week_report=True,
+                    mtd_month_report=True,
+                    last_year_mtd_report=True,
+                    forecasting_report=True,
+                    top_items_by_category=True,
+                    missing_images_report=True,
+                    negatives_report=True,
+                    ecomm_category_report=True,
+                    non_web_enabled_report=True,
+                    low_stock_items_report=True,
+                    sales_rep_report=True,
+                    wholesale_report=True,
+                    inactive_items_report=True,
+                    missing_descriptions_report=True,
+                )
+                html_contents = boiler_plate + css + body_start + report_data + body_end
+
+                Email.send(
+                    recipients_list=recipients,
+                    subject=subject,
+                    content=html_contents,
+                    logo=True,
+                    mode='related',
+                    image=None,
+                    staff=True,
+                )
+
+                error_handler.logger.info(f'Administrative Report: Completed at {datetime.now():%H:%M:%S}')
+
+        class ItemReport:
+            def send(recipients):
+                error_handler.logger.info(f'Items Report: Starting at {datetime.now():%H:%M:%S}')
+
+                with open('./templates/reporting/item_report.html', 'r') as file:
+                    template_str = file.read()
+
+                jinja_template = Template(template_str)
+
+                data = {
+                    'invisible_items': product_reports.get_invisible_items(),
+                    'missing_photo_data': product_reports.get_missing_image_list(),
+                    'items_with_negative_qty': product_reports.get_negative_items(),
+                    'non_web_enabled_items': product_reports.get_non_ecomm_enabled_items(),
+                    'missing_ecomm_category_data': product_reports.get_items_with_no_ecomm_category(),
+                    'binding_key_issues': products.get_binding_id_issues(),
+                    'inactive_items_with_stock': product_reports.get_inactive_items_with_stock(),
+                    'missing_item_descriptions': product_reports.get_missing_item_descriptions(min_length=10),
+                }
+
+                email_content = jinja_template.render(data)
+
+                Email.send(
+                    recipients_list=recipients,
+                    subject=f"Item Report for " f"{(datetime.now().strftime("%B %d, %Y"))}",
+                    content=email_content,
+                    image=None,
+                    mode='related',
+                    logo=True,
+                    staff=True,
+                )
+
+                error_handler.logger.info(f'Items Report: Completed at {datetime.now():%H:%M:%S}')
+
+        class DesignLeadNotification:
+            def send(recipients):
+                """Renders Jinja2 template and sends HTML email to sales team with leads from yesterday
+                for follow-up"""
+                error_handler.logger.info(f'Lead Notification Email: Starting at {datetime.now():%H:%M:%S}')
+                with open(creds.design_lead_log, encoding='utf-8') as lead_file:
+                    # Dataframe for Log
+                    df = pandas.read_csv(lead_file)
+                    df = df.replace({np.nan: None})
+                    entries = df.to_dict('records')
+                    # Get yesterday submissions
+                    yesterday_entries = []
+                    for x in entries:
+                        # 4/25/24 note: yesterday is a dt object whereas today is a string
+                        if x['date'][:10] == f'{yesterday:%Y-%m-%d}' or x['date'][:10] == today:
+                            yesterday_entries.append(x)
+
+                    if len(yesterday_entries) < 1:
+                        error_handler.logger.info('No entries to send.')
+                    else:
+                        error_handler.logger.info(
+                            f'{len(yesterday_entries)} leads from yesterday. Constructing Email'
+                        )
+                        with open('./templates/design_lead/follow_up.html', 'r') as template_file:
+                            template_str = template_file.read()
+
+                        jinja_template = Template(template_str)
+
+                        email_data = {
+                            'title': 'Design Lead Followup Email',
+                            'company': creds.company_name,
+                            'leads': yesterday_entries,
+                            'format': create_log,
+                            'date_format': datetime,
+                        }
+
+                        email_content = jinja_template.render(email_data)
+
+                        try:
+                            Email(
+                                from_name=creds.company_name,
+                                from_address=creds.sales_email,
+                                from_pw=creds.sales_password,
+                                recipients_list=recipients,
+                                subject='Landscape Design Leads',
+                                content=email_content,
+                                mode='related',
+                                logo=True,
+                                staff=True,
+                            )
+
+                        except Exception as err:
+                            error_handler.error_handler.add_error_v(error=err, origin='lead_notification_email')
+
+                        else:
+                            error_handler.logger.success('Email Sent.')
+
+                error_handler.logger.info(f'Lead Notification Email: Finished at {datetime.now():%H:%M:%S}')
 
 
 if __name__ == '__main__':
-    pass
+    Email.GiftCard.send('John Doe', 'alexpow@gmail.com', '1234-5678-9654', 100)

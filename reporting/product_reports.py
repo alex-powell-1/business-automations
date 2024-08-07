@@ -3,7 +3,6 @@ import os
 
 from product_tools.products import get_ecomm_items_with_stock
 from setup import creds
-from setup import email_engine
 from setup.admin_report_html import boiler_plate, css, body_start, body_end
 from setup.date_presets import *
 from setup.query_engine import QueryEngine as db
@@ -1129,10 +1128,7 @@ def administrative_report(recipients):
     )
     html_contents = boiler_plate + css + body_start + report_data + body_end
 
-    email_engine.Email(
-        from_name=creds.company_name,
-        from_address=creds.sales_email,
-        from_pw=creds.sales_password,
+    Email.send(
         recipients_list=recipients,
         subject=subject,
         content=html_contents,
@@ -1151,10 +1147,7 @@ def revenue_report(recipients, log_file):
     report_data = report_generator(revenue=True, cogs_report=True, title='Revenue Report')
     html_contents = boiler_plate + css + body_start + report_data + body_end
     try:
-        email_engine.Email(
-            from_name=creds.company_name,
-            from_address=creds.sales_email,
-            from_pw=creds.sales_password,
+        Email.send(
             recipients_list=recipients,
             subject=subject,
             content=html_contents,
