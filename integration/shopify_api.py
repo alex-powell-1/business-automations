@@ -110,6 +110,7 @@ class Shopify:
 
         @staticmethod
         def as_bc_order(order_id: int):
+            """Convert Shopify order to BigCommerce order format"""
             shopify_order = Shopify.Order.get(order_id)
 
             shopify_products = []
