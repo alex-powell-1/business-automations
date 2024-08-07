@@ -110,7 +110,7 @@ class Shopify:
             return response.data
 
         @staticmethod
-        def as_bc_order(order_id: int):
+        def as_bc_order(order_id: int, send=False):
             """Convert Shopify order to BigCommerce order format"""
             shopify_order = Shopify.Order.get(order_id)
             snode = shopify_order['node']
@@ -153,11 +153,12 @@ class Shopify:
                 is_refunded = False
                 quantity_refunded = 0
 
-                for refund in snode['refunds'][0]['refundLineItems']['edges']:
-                    if refund['node']['lineItem']['id'] == item['id']:
-                        is_refunded = True
-                        quantity_refunded = int(refund['node']['quantity'])
-                        break
+                if len(snode['refunds']) > 0:
+                    for refund in snode['refunds'][0]['refundLineItems']['edges']:
+                        if refund['node']['lineItem']['id'] == item['id']:
+                            is_refunded = True
+                            quantity_refunded = int(refund['node']['quantity'])
+                            break
 
                 pl['is_refunded'] = is_refunded
                 pl['quantity_refunded'] = quantity_refunded
@@ -197,7 +198,8 @@ class Shopify:
                     code = gen_code()
 
                     pl['gift_certificate_id'] = {'code': code}
-                    send_gift_card()
+                    if send:
+                        send_gift_card()
 
                 shopify_products.append(pl)
 

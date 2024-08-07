@@ -214,6 +214,8 @@ query orders {
         edges {
             node {
                 id
+
+                displayFulfillmentStatus
             }
         }
     }

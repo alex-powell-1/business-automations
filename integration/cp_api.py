@@ -684,7 +684,7 @@ class OrderAPI(DocumentAPI):
     @staticmethod
     def post_shopify_order(shopify_order_id: str | int, cust_no_override: str = None):
         """Convert Shopify order format to BigCommerce order format"""
-        bc_order = Shopify.Order.as_bc_order(shopify_order_id)
+        bc_order = Shopify.Order.as_bc_order(order_id=shopify_order_id, send=True)
 
         OrderAPI.post_order(
             order_id=shopify_order_id, bc_order_override=bc_order, cust_no_override=cust_no_override
@@ -1777,28 +1777,42 @@ class OrderAPI(DocumentAPI):
                 return None
 
         if not self.is_refund(bc_order):
+            # query = f"""
+            # UPDATE PS_DOC_HDR_MISC_CHRG
+            # SET DOC_ID = '{doc_id}',
+            # TOT_TYP = 'S'
+            # WHERE DOC_ID = '{get_orig_doc_id()}'
+            # """
+
             query = f"""
-            UPDATE PS_DOC_HDR_MISC_CHRG
-            SET DOC_ID = '{doc_id}',
-            TOT_TYP = 'S'
-            WHERE DOC_ID = '{get_orig_doc_id()}'
+            INSERT INTO PS_DOC_HDR_MISC_CHRG
+            (DOC_ID, TOT_TYP, MISC_CHRG_NO, MISC_TYP, MISC_AMT, MISC_PCT, MISC_TAX_AMT_ALLOC, MISC_NORM_TAX_AMT_ALLOC)
+            VALUES
+            ('{doc_id}', 'S', '1', 'A', {(float(bc_order["base_shipping_cost"] or 0))}, 0, 0, 0)
             """
         else:
+            # query = f"""
+            # UPDATE PS_DOC_HDR_MISC_CHRG
+            # SET DOC_ID = '{doc_id}',
+            # TOT_TYP = 'S',
+            # MISC_AMT = {-(float(bc_order["base_shipping_cost"] or 0))}
+            # WHERE DOC_ID = '{get_orig_doc_id()}'
+            # """
+
             query = f"""
-            UPDATE PS_DOC_HDR_MISC_CHRG
-            SET DOC_ID = '{doc_id}',
-            TOT_TYP = 'S',
-            MISC_AMT = {-(float(bc_order["base_shipping_cost"] or 0))}
-            WHERE DOC_ID = '{get_orig_doc_id()}'
+            INSERT INTO PS_DOC_HDR_MISC_CHRG
+            (DOC_ID, TOT_TYP, MISC_CHRG_NO, MISC_TYP, MISC_AMT, MISC_PCT, MISC_TAX_AMT_ALLOC, MISC_NORM_TAX_AMT_ALLOC)
+            VALUES
+            ('{doc_id}', 'S', '1', 'A', {-(float(bc_order["base_shipping_cost"] or 0))}, 0, 0, 0)
             """
 
         response = Database.db.query(query)
 
         if response['code'] == 200:
-            self.logger.success('Updated shipping charge')
+            self.logger.success('Applied shipping charge')
         else:
-            self.error_handler.add_error_v('Shipping charge could not be updated')
-            self.error_handler.add_error_v(response['message'])
+            self.error_handler.add_error_v('Shipping charge could not be applied')
+            self.error_handler.add_error_v(response)
 
         if not self.is_refund(bc_order):
 
