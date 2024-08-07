@@ -197,7 +197,7 @@ class Shopify:
 
             hdsc = float(get_money(snode['totalDiscountsSet']))
 
-            subtotal = float(get_money(snode['currentSubtotalPriceSet'])) + hdsc
+            subtotal = float(get_money(snode['currentSubtotalPriceSet'])) + hdsc - shippingCost
             total = float(get_money(snode['currentTotalPriceSet']))
 
             bc_order = {
