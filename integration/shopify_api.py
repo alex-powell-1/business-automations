@@ -156,7 +156,7 @@ class Shopify:
                     # Send gift card to customer
 
                 if item['isGiftCard']:
-                    pl['gift_certificate_id'] = {'code': uuid(length=30)}
+                    pl['gift_certificate_id'] = {'code': uuid()}
                     send_gift_card()
 
                 shopify_products.append(pl)
