@@ -137,7 +137,7 @@ class SMSEngine:
         print(response)
         if response['code'] == 200:
             query = f"""
-            INSERT INTO {creds.sms_event_log} (ORIGIN, CAMPAIGN, PHONE, CUST_NO, NAME, CATEGORY, EVENT_TYPE, MESSAGE)
+            INSERT INTO {creds.sms_event_table} (ORIGIN, CAMPAIGN, PHONE, CUST_NO, NAME, CATEGORY, EVENT_TYPE, MESSAGE)
             VALUES ('{origin}', '{campaign}', '{phone}', '{cust_no}', '{name}', '{category}',
             'Subscribe', 'SET INCLUDE_IN_MARKETING_MAILOUTS = Y')"""
             print(query)
@@ -162,7 +162,7 @@ class SMSEngine:
         print(response)
         if response['code'] == 200:
             query = f"""
-            INSERT INTO {creds.sms_event_log} (ORIGIN, CAMPAIGN, PHONE, CUST_NO, NAME, CATEGORY, EVENT_TYPE, MESSAGE)
+            INSERT INTO {creds.sms_event_table} (ORIGIN, CAMPAIGN, PHONE, CUST_NO, NAME, CATEGORY, EVENT_TYPE, MESSAGE)
             VALUES ('{origin}', '{campaign}', '{phone}', '{cust_no}', '{name}', '{category}',
             'Unsubscribe', 'SET INCLUDE_IN_MARKETING_MAILOUTS = N')"""
             print(query)
