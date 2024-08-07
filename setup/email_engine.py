@@ -4,7 +4,7 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.image import MIMEImage
 from email.mime.application import MIMEApplication
-from barcode_engine import generate_barcode
+from setup.barcode_engine import generate_barcode
 
 from email.utils import formataddr
 from jinja2 import Template
