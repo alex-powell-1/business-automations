@@ -69,11 +69,11 @@ try:
         except Exception as err:
             error_handler.add_error_v(error=err, origin='Health Check')
 
-        # Create new Counterpoint customer_tools from today's marketing leads
-        try:
-            lead_generator_notification.create_new_customers()
-        except Exception as err:
-            error_handler.add_error_v(error=err, origin='Create New Customers')
+        # # Create new Counterpoint customer_tools from today's marketing leads
+        # try:
+        #     lead_generator_notification.create_new_customers()
+        # except Exception as err:
+        #     error_handler.add_error_v(error=err, origin='Create New Customers')
 
         # SET CONTACT 1
         # Concatenate First and Last name of non-business customer_tools and

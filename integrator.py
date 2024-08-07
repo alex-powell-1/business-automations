@@ -1,7 +1,4 @@
-from integration.catalog import Catalog
-from integration.customers import Customers
-from integration.gift_certificates import GiftCertificates
-from integration.promotions import Promotions
+from integration.shopify_catalog import Catalog
 from integration.database import Database
 from integration import interface
 
@@ -20,11 +17,8 @@ class Integrator:
     logger = ProcessOutErrorHandler.logger
 
     def __init__(self):
-        self.last_sync = get_last_sync()
+        self.last_sync = get_last_sync(file_name='last_sync_integrator.txt')
         self.catalog = Catalog(last_sync=self.last_sync)
-        self.customers = Customers(last_sync=self.last_sync)
-        self.gift_certificates = GiftCertificates(last_sync=self.last_sync)
-        self.promotions = Promotions(last_sync=self.last_sync)
 
     def __str__(self):
         return f'Integrator\n' f'Last Sync: {self.last_sync}\n'
@@ -46,11 +40,8 @@ class Integrator:
     def sync(self, initial=False):
         start_sync_time = datetime.now()
         self.logger.header('Sync Starting')
-        self.customers.sync()
-        self.gift_certificates.sync()
-        self.promotions.sync()
         self.catalog.sync(initial=initial)
-        set_last_sync(start_sync_time)
+        set_last_sync(file_name='last_sync_integrator.txt', start_time=start_sync_time)
         completion_time = (datetime.now() - start_sync_time).seconds
         Integrator.logger.info(f'Sync completion time: {completion_time} seconds')
         if Integrator.error_handler.errors:
@@ -84,7 +75,7 @@ def main_menu():
                 sku = input('Enter product sku: ')
                 payload = Catalog.get_product(item_no=sku)
                 product = integrator.catalog.Product(product_data=payload, last_sync=integrator.last_sync)
-                product.get_product_details(last_sync=integrator.last_sync)
+                product.get()
                 print(product)
 
             elif command == 'brands':
@@ -95,16 +86,16 @@ def main_menu():
                 tree = Catalog.CategoryTree(last_sync=integrator.last_sync)
                 print(tree)
 
-            elif command == 'customer':
-                customer_id = input('Enter customer id: ')
-                integrator.customers.get_customer(customer_id=customer_id)
+            # elif command == 'customer':
+            #     customer_id = input('Enter customer id: ')
+            #     integrator.customers.get_customer(customer_id=customer_id)
 
             user_menu_choices()
 
         # Update timestamp for a product
         elif input_command == 'tc':
             sku = input('Enter product sku: ')
-            integrator.catalog.update_timestamp(sku=sku)
+            integrator.catalog.Product.update_timestamp(sku=sku)
             main_menu()
 
         elif input_command == 'sync':
@@ -123,7 +114,7 @@ def main_menu():
                 print(f'Are you sure you want to delete product {sku}? (y/n)')
                 choice = input('Enter choice: ')
                 if choice.lower() == 'y':
-                    integrator.catalog.delete_product(sku=sku, update_timestamp=True)
+                    integrator.catalog.Product.delete(sku=sku, update_timestamp=True)
                     main_menu()
                 else:
                     print('Aborted.')
@@ -136,18 +127,7 @@ def main_menu():
                 )
                 choice = input('Enter choice: ')
                 if choice.lower() == 'y':
-                    integrator.catalog.delete_catalog()
-                    main_menu()
-                else:
-                    print('Aborted.')
-                    time.sleep(2)
-                    main_menu()
-
-            elif command == 'brands':
-                print('Are you sure you want to delete all brands? (y/n)')
-                choice = input('Enter choice: ')
-                if choice.lower() == 'y':
-                    integrator.catalog.delete_brands()
+                    integrator.catalog.delete()
                     main_menu()
                 else:
                     print('Aborted.')
@@ -158,7 +138,7 @@ def main_menu():
                 print('Are you sure you want to delete all categories? (y/n)')
                 choice = input('Enter choice: ')
                 if choice.lower() == 'y':
-                    integrator.catalog.delete_categories()
+                    integrator.catalog.delete(categories=True)
                     main_menu()
                 else:
                     print('Aborted.')
@@ -169,7 +149,7 @@ def main_menu():
                 print('Are you sure you want to delete all products? (y/n)')
                 choice = input('Enter choice: ')
                 if choice.lower() == 'y':
-                    integrator.catalog.delete_products()
+                    integrator.catalog.delete(products=True)
                     main_menu()
                 else:
                     print('Aborted.')

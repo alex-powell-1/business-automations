@@ -16,6 +16,7 @@ class Database:
                                         CREATE TABLE {creds.design_leads_table} (
                                         ID int IDENTITY(1,1) PRIMARY KEY,
                                         DATE datetime NOT NULL DEFAULT(current_timestamp),
+                                        CUST_NO varchar(50),
                                         FST_NAM varchar(50),
                                         LST_NAM varchar(50),
                                         EMAIL varchar(60), 
@@ -71,6 +72,19 @@ class Database:
                                         ERROR_CODE varchar(20),
                                         ERROR_MESSAGE varchar(255)
                                         )""",
+            'sms_event': f"""
+                                        CREATE TABLE {creds.sms_event_table}(
+                                        ID int IDENTITY(1,1) PRIMARY KEY,
+                                        DATE datetime NOT NULL DEFAULT(current_timestamp),
+                                        ORIGIN varchar(30),
+                                        CAMPAIGN varchar(30),
+                                        PHONE varchar(30),
+                                        CUST_NO varchar(50),
+                                        NAME varchar(80),
+                                        CATEGORY varchar(50),
+                                        EVENT_TYPE varchar(20),
+                                        MESSAGE varchar(255)
+                                        )""",
         }
         for table in tables:
             Database.db.query(tables[table])
@@ -84,6 +98,7 @@ class Database:
 
         def insert(
             date,
+            cust_no,
             first_name,
             last_name,
             email,
@@ -113,9 +128,9 @@ class Database:
                         install = 1
 
             query = f"""
-                INSERT INTO {creds.design_leads_table} (DATE, FST_NAM, LST_NAM, EMAIL, PHONE, SKETCH, SCALED, DIGITAL, 
+                INSERT INTO {creds.design_leads_table} (DATE, CUST_NO, FST_NAM, LST_NAM, EMAIL, PHONE, SKETCH, SCALED, DIGITAL, 
                 ON_SITE, DELIVERY, INSTALL, TIMELINE, STREET, CITY, STATE, ZIP, COMMENTS)
-                VALUES ('{date}', '{first_name}', '{last_name}', '{email}', '{phone}', {sketch}, 
+                VALUES ('{date}', {f"'{cust_no}'" if cust_no else 'NULL'}, '{first_name}', '{last_name}', '{email}', '{phone}', {sketch}, 
                 {scaled}, {digital}, {on_site}, {delivery}, {install}, '{timeline}', 
                 '{street}', '{city}', '{state}', '{zip_code}', '{comments}')
                 """
@@ -167,8 +182,8 @@ class Database:
             query = f"""
                 INSERT INTO {creds.sms_table} (ORIGIN, CAMPAIGN, DIRECTION, TO_PHONE, FROM_PHONE, CUST_NO, BODY, USERNAME, NAME, CATEGORY, MEDIA, SID, ERROR_CODE, ERROR_MESSAGE)
                 VALUES ('{origin}', {f"'{campaign}'" if campaign else 'NULL'}, '{direction}', '{to_phone}', '{from_phone}', 
-                '{cust_no}', '{body}', {f"'{username}'" if username else 'NULL'}, '{name}', 
-                '{category}', {f"'{media}'" if media else 'NULL'}, {f"'{sid}'" if sid else 'NULL'}, 
+                {f"'{cust_no}'" if cust_no else 'NULL'}, '{body}', {f"'{username}'" if username else 'NULL'}, '{name}', 
+                {f"'{category}'" if category else 'NULL'}, {f"'{media}'" if media else 'NULL'}, {f"'{sid}'" if sid else 'NULL'}, 
                 {f"'{error_code}'" if error_code else 'NULL'}, {f"'{error_message}'" if error_message else 'NULL'})
                 """
             response = Database.db.query(query)

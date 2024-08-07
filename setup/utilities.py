@@ -1,6 +1,6 @@
 import json
 import os
-from integration.database import query_engine
+from setup.query_engine import QueryEngine as db
 import re
 import time
 from setup import creds
@@ -115,7 +115,7 @@ def pretty_print(response):
 def get_all_binding_ids():
     """Returns a list of unique and validated binding IDs from the IM_ITEM table."""
 
-    response = query_engine.QueryEngine.query(
+    response = db.query(
         'SELECT DISTINCT USR_PROF_ALPHA_16 '
         "FROM IM_ITEM WHERE IS_ECOMM_ITEM = 'Y'"
         'AND USR_PROF_ALPHA_16 IS NOT NULL'

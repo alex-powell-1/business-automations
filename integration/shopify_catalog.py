@@ -1482,23 +1482,24 @@ class Catalog:
                         #     )
                         Shopify.Product.Media.Image.delete(product_id=self.product_id)
                         Database.Shopify.Product.Image.delete(product_id=self.product_id)
-                        for image in self.images:
-                            # Reset Image Properties
-                            image.image_id = None
-                            image.image_url = None
-                            image.db_id = None
-                            # Get Size
-                            image.size = get_filesize(image.file_path)
-                            # Add to file list
-                            file_list.append(image.file_path)
-                            stagedUploadsCreateVariables['input'].append(
-                                {
-                                    'filename': image.name,
-                                    'mimeType': 'image/jpg',
-                                    'httpMethod': 'POST',
-                                    'resource': 'IMAGE',
-                                }
-                            )
+
+                    for image in self.images:
+                        # Reset Image Properties
+                        image.image_id = None
+                        image.image_url = None
+                        image.db_id = None
+                        # Get Size
+                        image.size = get_filesize(image.file_path)
+                        # Add to file list
+                        file_list.append(image.file_path)
+                        stagedUploadsCreateVariables['input'].append(
+                            {
+                                'filename': image.name,
+                                'mimeType': 'image/jpg',
+                                'httpMethod': 'POST',
+                                'resource': 'IMAGE',
+                            }
+                        )
 
                     # Upload new images
                     uploaded_files = Shopify.Product.Files.create(
@@ -1642,6 +1643,7 @@ class Catalog:
                                 variables=stagedUploadsCreateVariables, file_list=file_list
                             )
                             variant_payload['mediaSrc'] = uploaded_file[0]['url']
+                            child.has_variant_image = True
 
                 payload['variants'].append(variant_payload)
 
@@ -3071,5 +3073,5 @@ class Catalog:
 if __name__ == '__main__':
     from datetime import datetime
 
-    cat = Catalog(last_sync=datetime(2024, 8, 5), inventory_only=False)
+    cat = Catalog(last_sync=datetime(2024, 8, 3))
     cat.sync()
