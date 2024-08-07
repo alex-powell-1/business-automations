@@ -684,7 +684,7 @@ class OrderAPI(DocumentAPI):
     @staticmethod
     def post_shopify_order(shopify_order_id: str | int, cust_no_override: str = None):
         """Convert Shopify order format to BigCommerce order format"""
-        bc_order = Shopify.Order.as_bc_order(shopify_order_id)
+        bc_order = Shopify.Order.as_bc_order(order_id=shopify_order_id, send=True)
 
         OrderAPI.post_order(
             order_id=shopify_order_id, bc_order_override=bc_order, cust_no_override=cust_no_override
