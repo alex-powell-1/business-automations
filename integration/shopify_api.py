@@ -174,6 +174,7 @@ class Shopify:
                         code_gen = ShortUUID()
                         code_gen.set_alphabet('ABCDEFG123456789')
                         code = code_gen.random(12)
+                        code = f'{code[0:4]}-{code[4:8]}-{code[8:12]}'
 
                         if has_code(code):
                             return gen_code()
@@ -181,7 +182,6 @@ class Shopify:
                             return code
 
                     code = gen_code()
-                    code = f'{code[0:4]}-{code[4:8]}-{code[8:12]}'
 
                     pl['gift_certificate_id'] = {'code': code}
                     send_gift_card()
