@@ -157,10 +157,30 @@ class Shopify:
                     # Send gift card to customer
 
                 if item['isGiftCard']:
-                    # 281 trillion combinations
-                    code_gen = ShortUUID()
-                    code_gen.set_alphabet('ABCDEFG123456789')
-                    code = code_gen.random(12)
+
+                    def has_code(code):
+                        query = f"""
+                        SELECT GFC_NO FROM SY_GFC
+                        WHERE GFC_NO = '{code}'
+                        """
+
+                        response = Database.db.query(query)
+                        try:
+                            return response[0][0] is not None
+                        except:
+                            return False
+
+                    def gen_code():
+                        code_gen = ShortUUID()
+                        code_gen.set_alphabet('ABCDEFG123456789')
+                        code = code_gen.random(12)
+
+                        if has_code(code):
+                            return gen_code()
+                        else:
+                            return code
+
+                    code = gen_code()
                     code = f'{code[0:4]}-{code[4:8]}-{code[8:12]}'
 
                     pl['gift_certificate_id'] = {'code': code}
