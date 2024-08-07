@@ -170,6 +170,7 @@ class Shopify:
                         except:
                             return False
 
+                    # Make sure code is unique
                     def gen_code():
                         code_gen = ShortUUID()
                         code_gen.set_alphabet('ABCDEFG123456789')  # 16
