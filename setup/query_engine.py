@@ -63,14 +63,23 @@ class QueryEngine:
         connection.setencoding('utf-16-le')
 
         cursor = connection.cursor()
+        query = str(query).strip()
         try:
             response = cursor.execute(query)
             sql_data = response.fetchall()
         except ProgrammingError as e:
             if e.args[0] == 'No results.  Previous SQL was not a query.':
-                sql_data = {'Affected Rows': cursor.rowcount}
+                if cursor.rowcount > 0:
+                    sql_data = {'code': 200, 'Affected Rows': cursor.rowcount}
+                else:
+                    # No rows affected
+                    sql_data = {'code': 201, 'Affected Rows': cursor.rowcount, 'query': query}
             else:
-                sql_data = {'error': e, 'query': query}
+                if len(e.args) > 1:
+                    sql_data = {'code': f'{e.args[0]}', 'message': f'{e.args[1]}', 'query': query}
+                else:
+                    sql_data = {'code': f'{e.args[0]}', 'query': query}
+
         except Error as e:
             if e.args[0] == '40001':
                 print('Deadlock Detected. Retrying Query')

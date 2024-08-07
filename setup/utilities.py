@@ -10,6 +10,31 @@ import base64
 from setup.error_handler import ProcessOutErrorHandler
 
 
+def format_phone(phone_number, mode='clickable'):
+    """Cleanses input data and returns masked phone for either Twilio or Counterpoint configuration"""
+    phone_number_as_string = str(phone_number)
+    # Strip away extra symbols
+    formatted_phone = phone_number_as_string.replace(' ', '')  # Remove Spaces
+    formatted_phone = formatted_phone.replace('-', '')  # Remove Hyphens
+    formatted_phone = formatted_phone.replace('(', '')  # Remove Open Parenthesis
+    formatted_phone = formatted_phone.replace(')', '')  # Remove Close Parenthesis
+    formatted_phone = formatted_phone.replace('+1', '')  # Remove +1
+    formatted_phone = formatted_phone[-10:]  # Get last 10 characters
+    if mode == 'counterpoint':
+        # Masking ###-###-####
+        cp_phone = formatted_phone[0:3] + '-' + formatted_phone[3:6] + '-' + formatted_phone[6:10]
+        return cp_phone
+
+    elif mode == 'clickable':
+        # Masking (###) ###-####
+        clickable_phone = '(' + formatted_phone[0:3] + ') ' + formatted_phone[3:6] + '-' + formatted_phone[6:10]
+        return clickable_phone
+
+    elif mode == 'twilio':
+        formatted_phone = '+1' + formatted_phone
+    return formatted_phone
+
+
 def parse_custom_url(string: str):
     """Uses regular expression to parse a string into a URL-friendly format."""
     return '-'.join(str(re.sub('[^A-Za-z0-9 ]+', '', string)).lower().split(' '))

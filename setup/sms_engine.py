@@ -5,7 +5,9 @@ from twilio.base.exceptions import TwilioRestException
 from twilio.rest import Client
 
 from setup import creds
+from integration.database import Database
 from setup.query_engine import QueryEngine
+from setup.utilities import format_phone
 from setup.error_handler import SMSErrorHandler, SMSEventHandler
 from setup.utilities import convert_timezone
 
@@ -24,9 +26,13 @@ class SMSEngine:
     token = creds.twilio_auth_token
 
     @staticmethod
-    def send_text(to_phone, message, name=None, cust_no=None, url=None, test_mode=False):
+    def send_text(
+        origin, campaign, to_phone, message, category, username, name=None, cust_no=None, url=None, test_mode=False
+    ):
         # Format phone for Twilio API
-        formatted_phone = SMSEngine.format_phone(to_phone, mode='twilio')
+        formatted_phone = format_phone(to_phone, mode='twilio')
+        error_code = None
+        error_message = None
 
         if test_mode:
             SMSEngine.logger.info(f'Sending test sms text to {name}: {message}')
@@ -49,6 +55,8 @@ class SMSEngine:
                         f'Code: {err.code} - Error sending SMS to {name}: {err.msg}'
                     )
                     SMSEngine.move_phone_1_to_landline(cust_no, to_phone)
+                error_code = err.code
+                error_message = err.msg
             except Exception as e:
                 SMSEngine.error_handler.add_error_v(f'Error sending SMS to {name}: {e}')
 
@@ -56,35 +64,25 @@ class SMSEngine:
                 SMSEngine.logger.success(
                     message=f'{twilio_message.to}, {twilio_message.body}, {twilio_message.sid}'
                 )
-
-    @staticmethod
-    def format_phone(phone_number, mode='clickable'):
-        """Cleanses input data and returns masked phone for either Twilio or Counterpoint configuration"""
-        phone_number_as_string = str(phone_number)
-        # Strip away extra symbols
-        formatted_phone = phone_number_as_string.replace(' ', '')  # Remove Spaces
-        formatted_phone = formatted_phone.replace('-', '')  # Remove Hyphens
-        formatted_phone = formatted_phone.replace('(', '')  # Remove Open Parenthesis
-        formatted_phone = formatted_phone.replace(')', '')  # Remove Close Parenthesis
-        formatted_phone = formatted_phone.replace('+1', '')  # Remove +1
-        formatted_phone = formatted_phone[-10:]  # Get last 10 characters
-        if mode == 'counterpoint':
-            # Masking ###-###-####
-            cp_phone = formatted_phone[0:3] + '-' + formatted_phone[3:6] + '-' + formatted_phone[6:10]
-            return cp_phone
-
-        elif mode == 'clickable':
-            # Masking (###) ###-####
-            clickable_phone = '(' + formatted_phone[0:3] + ') ' + formatted_phone[3:6] + '-' + formatted_phone[6:10]
-            return clickable_phone
-
-        elif mode == 'twilio':
-            formatted_phone = '+1' + formatted_phone
-        return formatted_phone
+            Database.SMS.insert(
+                origin=origin,
+                campaign=campaign,
+                to_phone=to_phone,
+                from_phone=creds.twilio_phone_number,
+                cust_no=cust_no,
+                body=message,
+                username=username,
+                name=name,
+                category=category,
+                media=url,
+                sid=twilio_message.sid,
+                error_code=error_code,
+                error_message=error_message,
+            )
 
     @staticmethod
     def move_phone_1_to_landline(cust_no, phone_number):
-        cp_phone = SMSEngine.format_phone(phone_number, mode='counterpoint')
+        cp_phone = format_phone(phone_number, mode='counterpoint')
         move_landline_query = f"""
             UPDATE AR_CUST
             SET MBL_PHONE_1 = '{cp_phone}', SET PHONE_1 = NULL
@@ -115,25 +113,27 @@ class SMSEngine:
     @staticmethod
     def lookup_customer_data(phone):
         # Format phone for Counterpoint masking ###-###-####
-        cp_phone_input = SMSEngine.format_phone(phone, mode='counterpoint')
+        cp_phone_input = format_phone(phone, mode='counterpoint')
         query = f"""
-			SELECT FST_NAM, LST_NAM, CATEG_COD
+			SELECT CUST_NO, FST_NAM, LST_NAM, CATEG_COD
 			FROM AR_CUST
 			WHERE PHONE_1 = '{cp_phone_input}'
 			"""
         response = QueryEngine.query(query)
 
         if response is not None:
-            first_name = response[0][0]
-            last_name = response[0][1]
+            customer_no = response[0][0]
+            first_name = response[0][1]
+            last_name = response[0][2]
             full_name = first_name + ' ' + last_name
-            category = response[0][2]
-            # For people with no phone in our database
+            category = response[0][3]
         else:
+            # For people with no phone in our database
+            customer_no = 'Unknown'
             full_name = 'Unknown'
             category = 'Unknown'
 
-        return full_name, category
+        return customer_no, full_name, category
 
     @staticmethod
     def design_text(
@@ -146,7 +146,7 @@ class SMSEngine:
             f'Interested in: {interested_in}\n'
             f'Timeline: {timeline}\n'
             f'Email: {email} \n'
-            f'Phone: {SMSEngine.format_phone(phone)} \n'
+            f'Phone: {format_phone(phone)} \n'
             f'Address: {address} \n'
             f'Comments: {comments}'
         )
@@ -169,7 +169,7 @@ class SMSEngine:
 
         # Loop through message response in reverse order and format data
         for record in messages[-1::-1]:
-            customer_name, customer_category = SMSEngine.lookup_customer_data(record.from_)
+            customer_number, customer_name, customer_category = SMSEngine.lookup_customer_data(record.from_)
             # [-1::-1] Twilio supplies data newest to oldest. This reverses that.
             if record.date_sent is not None:
                 local_datetime = convert_timezone(timestamp=record.date_sent, from_zone=FROM_ZONE, to_zone=TO_ZONE)

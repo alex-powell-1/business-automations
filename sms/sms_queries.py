@@ -17,6 +17,8 @@ rc_1 = f"CATEG_COD = 'RETAIL' AND FST_SAL_DAT != '{yesterday}' AND LST_SAL_DAT =
 rc_2 = f"CATEG_COD = 'RETAIL' AND FST_SAL_DAT != '{three_day_ago}' AND LST_SAL_DAT = '{three_day_ago}'"
 rc_3 = f"CATEG_COD = 'RETAIL' AND FST_SAL_DAT != '{one_week_ago}' AND LST_SAL_DAT = '{one_week_ago}'"
 
+test = "CUST_NO = '105786'"
+
 # Wholesale
 wholesale_1 = f"CATEG_COD = 'WHOLESALE' AND LST_SAL_DAT = '{yesterday}'"
 

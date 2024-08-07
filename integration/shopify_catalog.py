@@ -246,21 +246,21 @@ class Catalog:
         # # # Sync Category Tree
         # self.category_tree.sync()
 
-        if not initial:
+        if not initial and not self.inventory_only:
             # Process Product Deletions and Images
             self.process_product_deletes()
             self.process_images()
 
         # Sync Products
-        # self.get_products()  # Get all products that have been updated since the last sync
+        self.get_products()  # Get all products that have been updated since the last sync
 
         # test product queue
-        self.sync_queue = [
-            # {'sku': '202836', 'binding_id': 'B0104'}
-            {'sku': '202843', 'binding_id': 'B0133'}
-            # {'sku': '10338', 'binding_id': 'B0006'},
-            # {'sku': '202335', 'binding_id': 'B0151'},
-        ]
+        # self.sync_queue = [
+        #     # {'sku': '202836', 'binding_id': 'B0104'}
+        #     {'sku': '202843', 'binding_id': 'B0133'}
+        #     # {'sku': '10338', 'binding_id': 'B0006'},
+        #     # {'sku': '202335', 'binding_id': 'B0151'},
+        # ]
 
         if not self.sync_queue:
             Catalog.logger.success('No products to sync.')

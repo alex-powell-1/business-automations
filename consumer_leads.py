@@ -4,15 +4,14 @@ import sys
 import time
 from datetime import datetime
 
-import pandas
 import pika
 import requests
 from docxtpl import DocxTemplate
 
 from setup import creds, email_engine
+from setup.utilities import format_phone
 from setup.sms_engine import SMSEngine
-from setup import log_engine
-
+from integration.database import Database
 from setup.error_handler import LeadFormErrorHandler
 
 test_mode = False
@@ -24,8 +23,6 @@ class RabbitMQConsumer:
         self.host = host
         self.connection = None
         self.channel = None
-        self.logger = LeadFormErrorHandler.logger
-        self.error_handler = LeadFormErrorHandler.error_handler
 
     def connect(self):
         parameters = pika.ConnectionParameters(self.host)
@@ -34,19 +31,18 @@ class RabbitMQConsumer:
         self.channel.queue_declare(queue=self.queue_name, durable=True)
 
     def callback(self, ch, method, properties, body):
-        self.logger.log_file = f'leads_{datetime.now().strftime("%m_%d_%y")}.log'
         json_body = json.loads(body.decode())
+        print(json_body)
         first_name = json_body['first_name']
         last_name = json_body['last_name']
         email = json_body['email']
-        phone = SMSEngine.format_phone(json_body['phone'], mode='counterpoint')
+        phone = format_phone(json_body['phone'], mode='counterpoint')
         timeline = json_body['timeline']
         interested_in = json_body['interested_in']
         street = str(json_body['street']).replace(',', '')
         city = str(json_body['city']).replace(',', '')
         state = json_body['state'] if json_body['state'] != 'State' else ''
         zip_code = str(json_body['zip_code']).replace(',', '')
-        # comments = str(json_body['comments']).replace(",", "")
         comments = str(json_body['comments']).replace('"', '""')
         # Concat the address
         address = f'{street}, {city}, {state}, {zip_code}'
@@ -62,69 +58,49 @@ class RabbitMQConsumer:
                 # remove last trailing characters (", ")
                 interests = interests[:-2]
 
-        self.logger.info(f'Received message from {first_name} {last_name}. Beginning Processing...')
+        LeadFormErrorHandler.logger.info(f'Received message from {first_name} {last_name}. Beginning Processing...')
         # establish start time for consistent logging
         now = datetime.now()
         now_log_format = f'{now:%Y-%m-%d %H:%M:%S}'
 
-        design_lead_data = [
-            [
-                now_log_format,
-                first_name,
-                last_name,
-                email,
-                phone,
-                interested_in,
-                timeline,
-                street,
-                city,
-                state,
-                zip_code,
-                comments,
-            ]
-        ]
-        df = pandas.DataFrame(
-            design_lead_data,
-            columns=[
-                'date',
-                'first_name',
-                'last_name',
-                'email',
-                'phone',
-                'interested_in',
-                'timeline',
-                'street',
-                'city',
-                'state',
-                'zip_code',
-                'comments',
-            ],
+        Database.DesignLead.insert(
+            date=now_log_format,
+            first_name=first_name,
+            last_name=last_name,
+            email=email,
+            phone=phone,
+            interested_in=interested_in,
+            timeline=timeline,
+            street=street,
+            city=city,
+            state=state,
+            zip_code=zip_code,
+            comments=comments,
         )
-        log_engine.write_log(df, creds.lead_log)
 
         # Send text notification To sales team manager
-        self.logger.info('Sending SMS Message to Sales Team')
+        LeadFormErrorHandler.logger.info('Sending SMS Message to Sales Team')
         try:
             SMSEngine.design_text(
                 first_name, last_name, email, phone, interests, timeline, address, comments, test_mode=test_mode
             )
         except Exception as err:
-            self.error_handler.add_error_v(f'Error (sms): {err}', origin='design_lead')
+            LeadFormErrorHandler.error_handler.add_error_v(f'Error (sms): {err}', origin='design_lead')
         else:
-            self.logger.success(f'SMS Sent at {datetime.now():%H:%M:%S}')
+            LeadFormErrorHandler.logger.success(f'SMS Sent at {datetime.now():%H:%M:%S}')
 
         # Send email to client
-        self.logger.info('Sending Email to Lead')
+        LeadFormErrorHandler.logger.info('Sending Email to Lead')
         try:
             email_engine.design_email(first_name, email)
         except Exception as err:
-            self.error_handler.add_error_v(error=f'Error (email): {err}', origin='design_lead')
+            LeadFormErrorHandler.error_handler.add_error_v(error=f'Error (email): {err}', origin='design_lead')
         else:
-            self.logger.success(f'Email Sent at {datetime.now():%H:%M:%S}')
+            LeadFormErrorHandler.logger.success(f'Email Sent at {datetime.now():%H:%M:%S}')
         # Print lead details for in-store use
 
         # Create the Word document
-        self.logger.info('Rendering Word Document')
+        LeadFormErrorHandler.logger.info('Rendering Word Document')
         try:
             doc = DocxTemplate('./templates/design_lead/lead_print_template.docx')
 
@@ -145,20 +121,22 @@ class RabbitMQConsumer:
             # Save the rendered file for printing
             doc.save(f'./{ticket_name}')
             # Print the file to default printer
-            self.logger.info('Printing Word Document')
+            LeadFormErrorHandler.logger.info('Printing Word Document')
             if not test_mode:
                 os.startfile(ticket_name, 'print')
             # Delay while print job executes
             time.sleep(4)
-            self.logger.info('Deleting Word Document')
+            LeadFormErrorHandler.logger.info('Deleting Word Document')
             os.remove(ticket_name)
         except Exception as err:
-            self.error_handler.add_error_v(error=f'Error (word): {err}', origin='design_lead')
+            LeadFormErrorHandler.error_handler.add_error_v(error=f'Error (word): {err}', origin='design_lead')
         else:
-            self.logger.success(f'Word Document created, printed, and deleted at {datetime.now():%H:%M:%S}')
+            LeadFormErrorHandler.logger.success(
+                f'Word Document created, printed, and deleted at {datetime.now():%H:%M:%S}'
+            )
 
         # Upload to sheety API for spreadsheet use
-        self.logger.info('Sending Details to Google Sheets')
+        LeadFormErrorHandler.logger.info('Sending Details to Google Sheets')
         sheety_post_body = {
             'sheet1': {
                 'date': now_log_format,
@@ -179,11 +157,11 @@ class RabbitMQConsumer:
             # Try block stands to decouple our implementation from API changes that might impact app.
             requests.post(url=creds.sheety_design_url, headers=creds.sheety_header, json=sheety_post_body)
         except Exception as err:
-            self.error_handler.add_error_v(error=f'Error (sheety): {err}', origin='design_lead')
+            LeadFormErrorHandler.error_handler.add_error_v(error=f'Error (sheety): {err}', origin='design_lead')
         else:
-            self.logger.success(f'Sent to Google Sheets at {datetime.now():%H:%M:%S}')
+            LeadFormErrorHandler.logger.success(f'Sent to Google Sheets at {datetime.now():%H:%M:%S}')
         # Done
-        self.logger.success(f'Processing Completed at {datetime.now():%H:%M:%S}\n')
+        LeadFormErrorHandler.logger.success(f'Processing Completed at {datetime.now():%H:%M:%S}\n')
         # Send acknowledgement for RabbitMQ to delete from Queue
         ch.basic_ack(delivery_tag=method.delivery_tag)
 
@@ -197,10 +175,14 @@ class RabbitMQConsumer:
             except KeyboardInterrupt:
                 sys.exit(0)
             except pika.exceptions.AMQPConnectionError:
-                self.error_handler.add_error_v(error='Connection lost. Reconnecting...', origin='design_lead')
+                LeadFormErrorHandler.error_handler.add_error_v(
+                    error='Connection lost. Reconnecting...', origin='design_lead'
+                )
                 time.sleep(5)  # Wait before attempting reconnection
             except Exception as err:
-                self.error_handler.add_error_v(error=f'Error (General Catch): {err}', origin='design_lead')
+                LeadFormErrorHandler.error_handler.add_error_v(
+                    error=f'Error (General Catch): {err}', origin='design_lead'
+                )
                 time.sleep(5)  # Wait before attempting reconnection
 
 

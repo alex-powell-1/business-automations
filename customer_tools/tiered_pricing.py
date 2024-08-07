@@ -148,6 +148,7 @@ def reassess_tiered_pricing(start_date, end_date, demote=False):
                             # print(f"Demote set to false. Skipping demotion", file=log_file)
                             continue
                         else:
+                            target_pricing_tier = 2  # base target is 2
                             error_handler.logger.info(
                                 f'Demoting {customer.name}(Cust No: {customer_number} from level: '
                                 f'{customer.pricing_tier} to level: {target_pricing_tier}'

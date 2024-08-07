@@ -140,6 +140,45 @@ def stock_notification():
         return 'Your submission was received.'
 
 
+@app.route('/gfc', methods=['POST'])
+@limiter.limit('20 per minute')
+def gift_card():
+    """Route for gift card purchase. Sends JSON to RabbitMQ for asynchronous processing."""
+    data = request.json
+
+    # Validate the input data
+    try:
+        validate(instance=data, schema=creds.gift_card_schema)
+    except ValidationError as e:
+        ProcessInErrorHandler.error_handler.add_error_v(error=f'Invalid input data: {e}', origin='gift_card')
+        abort(400, description='Invalid input data')
+    else:
+        payload = json.dumps(data)
+
+    try:
+        connection = pika.BlockingConnection(pika.ConnectionParameters('localhost'))
+
+        channel = connection.channel()
+
+        channel.queue_declare(queue='gift_card', durable=True)
+
+        channel.basic_publish(
+            exchange='',
+            routing_key='gift_card',
+            body=payload,
+            properties=pika.BasicProperties(delivery_mode=pika.DeliveryMode.Persistent),
+        )
+
+        connection.close()
+    except Exception as e:
+        ProcessInErrorHandler.error_handler.add_error_v(
+            error=f'Error sending gift card request to RabbitMQ: {e}', origin='gift_card'
+        )
+        return jsonify({'error': 'Internal server error'}), 500
+    else:
+        return jsonify({'error': 'Success'}), 200
+
+
 @app.route('/gift-card-recipient', methods=['POST'])
 @limiter.limit('20 per minute')
 def gift_card_recipient():
@@ -380,6 +419,7 @@ def incoming_sms():
         body = msg['Body'][0]
     else:
         body = ''
+    sid = msg['SmsMessageSid'][0]
 
     # Unsubscribe user from SMS marketing
     if body.lower() in ['stop', 'unsubscribe', 'stop please', 'please stop', 'cancel', 'opt out', 'remove me']:
@@ -402,10 +442,10 @@ def incoming_sms():
                 else:
                     media_url += url
         else:
-            media_url = 'No Media'
+            media_url = None
 
         # Get Customer Name and Category from SQL
-        full_name, category = SMSEngine.lookup_customer_data(from_phone)
+        customer_number, full_name, category = SMSEngine.lookup_customer_data(from_phone)
 
         log_data = [[date, to_phone, from_phone, body, full_name, category.title(), media_url]]
 
@@ -414,6 +454,20 @@ def incoming_sms():
             log_data, columns=['date', 'to_phone', 'from_phone', 'body', 'name', 'category', 'media']
         )
         log_engine.write_log(df, creds.incoming_sms_log)
+
+        Database.SMS.insert(
+            origin='Webhook',
+            to_phone=to_phone,
+            from_phone=from_phone,
+            cust_no=customer_number,
+            name=full_name,
+            category=category,
+            body=body,
+            media=media_url,
+            sid=sid,
+            error_code=None,
+            error_message=None,
+        )
 
         # Return Response to Twilio
         resp = MessagingResponse()

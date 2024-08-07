@@ -10,7 +10,6 @@ from product_tools import inventory_upload
 from product_tools import related_items
 from product_tools import resize_photos
 from product_tools import set_inactive_status
-from product_tools import sort_order
 from product_tools import stock_buffer
 from reporting import lead_generator_notification
 from reporting import product_reports
@@ -88,7 +87,7 @@ try:
         # Reassessing tiered pricing for all customers based on current year
         try:
             tiered_pricing.reassess_tiered_pricing(
-                start_date=date_presets.year_start, end_date=date_presets.today, demote=False
+                start_date=date_presets.one_year_ago, end_date=date_presets.today, demote=False
             )
         except Exception as err:
             error_handler.add_error_v(error=err, origin='Tiered Pricing')
@@ -251,6 +250,8 @@ try:
                 logger.info(f'SMS/MMS Automation: {title} - {datetime.now():%H:%M:%S}')
                 try:
                     sms_automations.create_customer_text(
+                        origin='Automations',
+                        campaign=title,
                         query=sms_queries.birthday,
                         msg=birthdays.birthday_coupon_1,
                         image_url=birthdays.BIRTHDAY_COUPON,
@@ -269,6 +270,8 @@ try:
             logger.info(f'SMS/MMS Automation: {title} - {datetime.now():%H:%M:%S}')
             try:
                 sms_automations.create_customer_text(
+                    origin='Automations',
+                    campaign=title,
                     query=sms_queries.wholesale_1,
                     msg=wholesale_sms_messages.message_1,
                     msg_prefix=True,
@@ -286,6 +289,8 @@ try:
             logger.info(f'SMS/MMS Automation: {title} - {datetime.now():%H:%M:%S}')
             try:
                 sms_automations.create_customer_text(
+                    origin='Automations',
+                    campaign=title,
                     query=sms_queries.ftc_text_1,
                     msg=first_time_customers.ftc_1_body,
                     send_rwd_bal=True,
@@ -302,6 +307,8 @@ try:
             logger.info(f'SMS/MMS Automation: {title} - {datetime.now():%H:%M:%S}')
             try:
                 sms_automations.create_customer_text(
+                    origin='Automations',
+                    campaign=title,
                     query=sms_queries.ftc_text_2,
                     msg=first_time_customers.ftc_2_body,
                     image_url=creds.five_off_coupon,
@@ -321,6 +328,8 @@ try:
 
             try:
                 sms_automations.create_customer_text(
+                    origin='Automations',
+                    campaign=title,
                     query=sms_queries.ftc_text_3,
                     msg=first_time_customers.ftc_3_body,
                     send_rwd_bal=True,
@@ -337,6 +346,8 @@ try:
             logger.info(f'SMS/MMS Automation: {title} - {datetime.now():%H:%M:%S}')
             try:
                 sms_automations.create_customer_text(
+                    origin='Automations',
+                    campaign=title,
                     query=sms_queries.rc_1,
                     msg=returning_customers.rc_1_body,
                     send_rwd_bal=True,
@@ -353,6 +364,8 @@ try:
             logger.info(f'SMS/MMS Automation: {title} - {datetime.now():%H:%M:%S}')
             try:
                 sms_automations.create_customer_text(
+                    origin='Automations',
+                    campaign=title,
                     query=sms_queries.rc_2,
                     msg=returning_customers.rc_2_body,
                     image_url=creds.five_off_coupon,
@@ -370,6 +383,8 @@ try:
             logger.info(f'SMS/MMS Automation: {title} - {datetime.now():%H:%M:%S}')
             try:
                 sms_automations.create_customer_text(
+                    origin='Automations',
+                    campaign=title,
                     query=sms_queries.rc_3,
                     msg=returning_customers.rc_3_body,
                     send_rwd_bal=True,

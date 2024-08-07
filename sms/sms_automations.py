@@ -4,6 +4,7 @@ from datetime import datetime
 from customer_tools.customers import Customer
 from setup import creds
 from setup.query_engine import QueryEngine as db
+from integration.database import Database
 from setup.sms_engine import SMSEngine
 from sms import sms_queries
 from sms.sms_messages import salutations
@@ -11,6 +12,8 @@ from setup.error_handler import ScheduledTasksErrorHandler as error_handler
 
 
 def create_customer_text(
+    origin,
+    campaign,
     query,
     msg,
     rewards_msg='',
@@ -48,6 +51,7 @@ def create_customer_text(
         error_handler.logger.info(f'Sending Message to {cust.name} at {to_phone}')
         first_name = cust.first_name
         reward_points = cust.rewards_points_balance
+        print(f'{first_name} has {reward_points} reward points.')
 
         # Check if they have rewards points.
 
@@ -66,7 +70,18 @@ def create_customer_text(
 
         # Send Text
         engine = SMSEngine()
-        engine.send_text(cust_no=cust_no, to_phone=to_phone, message=message, url=image_url, test_mode=test_mode)
+        engine.send_text(
+            origin=origin,
+            campaign=campaign,
+            category=cust.category,
+            username='Scheduled Tasks',
+            cust_no=cust_no,
+            name=cust.name,
+            to_phone=to_phone,
+            message=message,
+            url=image_url,
+            test_mode=test_mode,
+        )
 
 
 def remove_wholesale_from_loyalty(log_file):

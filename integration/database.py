@@ -2,12 +2,184 @@ from setup import creds
 from setup import query_engine
 from setup.error_handler import ProcessOutErrorHandler
 from datetime import datetime
+from setup.utilities import format_phone
 
 
 class Database:
     db = query_engine.QueryEngine
     error_handler = ProcessOutErrorHandler.error_handler
     logger = ProcessOutErrorHandler.logger
+
+    def create_tables():
+        tables = {
+            'design_leads': f"""
+                                        CREATE TABLE {creds.design_leads_table} (
+                                        ID int IDENTITY(1,1) PRIMARY KEY,
+                                        DATE datetime NOT NULL DEFAULT(current_timestamp),
+                                        FST_NAM varchar(50),
+                                        LST_NAM varchar(50),
+                                        EMAIL varchar(60), 
+                                        PHONE varchar(40),
+                                        SKETCH bit DEFAULT(0),
+                                        SCALED bit DEFAULT(0),
+                                        DIGITAL bit DEFAULT(0),
+                                        ON_SITE bit DEFAULT(0), 
+                                        DELIVERY bit DEFAULT(0),
+                                        INSTALL bit DEFAULT(0),
+                                        TIMELINE varchar(50), 
+                                        STREET varchar(75),
+                                        CITY varchar(50),
+                                        STATE varchar(20),
+                                        ZIP varchar(10),
+                                        COMMENTS varchar(500)
+                                        )""",
+            'qr': f"""
+                                        CREATE TABLE {creds.qr_table} (
+                                        QR_CODE varchar(100) NOT NULL PRIMARY KEY,
+                                        URL varchar(100),
+                                        PUBLICATION varchar(50),
+                                        MEDIUM varchar(50),
+                                        OFFER varchar(100),
+                                        DESCR varchar(255),
+                                        COUPON_CODE varchar(20),
+                                        COUPON_USE int DEFAULT(0),
+                                        VISIT_COUNT int DEFAULT(0),
+                                        CREATE_DT datetime NOT NULL DEFAULT(current_timestamp),
+                                        LST_SCAN datetime
+                                        )""",
+            'qr_activ': f"""
+                                        CREATE TABLE {creds.qr_activity_table} (
+                                        SCAN_DT datetime NOT NULL DEFAULT(current_timestamp) PRIMARY KEY,
+                                        CODE varchar(100) NOT NULL FOREIGN KEY REFERENCES SN_QR(QR_CODE),
+                                        );""",
+            'sms': f"""
+                                        CREATE TABLE {creds.sms_table}(
+                                        ID int IDENTITY(1,1) PRIMARY KEY,
+                                        DATE datetime NOT NULL DEFAULT(current_timestamp),
+                                        ORIGIN varchar(30),
+                                        CAMPAIGN varchar(30),
+                                        DIRECTION varchar(15),
+                                        TO_PHONE varchar(30),
+                                        FROM_PHONE varchar(30),
+                                        BODY varchar(500), 
+                                        USERNAME varchar(50),
+                                        CUST_NO varchar(50),
+                                        NAME varchar(80),
+                                        CATEGORY varchar(50),
+                                        MEDIA varchar(500), 
+                                        SID varchar(100),
+                                        ERROR_CODE varchar(20),
+                                        ERROR_MESSAGE varchar(255)
+                                        )""",
+        }
+        for table in tables:
+            Database.db.query(tables[table])
+
+    class DesignLead:
+        def get():
+            query = f"""
+                SELECT * FROM {creds.design_leads_table}
+                """
+            return Database.db.query(query)
+
+        def insert(
+            date,
+            first_name,
+            last_name,
+            email,
+            phone,
+            interested_in,
+            timeline,
+            street,
+            city,
+            state,
+            zip_code,
+            comments,
+        ):
+            sketch, scaled, digital, on_site, delivery, install = 0, 0, 0, 0, 0, 0
+            if interested_in is not None:
+                for x in interested_in:
+                    if x == 'FREE Sketch-N-Go Service':
+                        sketch = 1
+                    if x == 'Scaled Drawing':
+                        scaled = 1
+                    if x == 'Digital Renderings':
+                        digital = 1
+                    if x == 'On-Site Consultation':
+                        on_site = 1
+                    if x == 'Delivery & Placement Service':
+                        delivery = 1
+                    if x == 'Professional Installation':
+                        install = 1
+
+            query = f"""
+                INSERT INTO {creds.design_leads_table} (DATE, FST_NAM, LST_NAM, EMAIL, PHONE, SKETCH, SCALED, DIGITAL, 
+                ON_SITE, DELIVERY, INSTALL, TIMELINE, STREET, CITY, STATE, ZIP, COMMENTS)
+                VALUES ('{date}', '{first_name}', '{last_name}', '{email}', '{phone}', {sketch}, 
+                {scaled}, {digital}, {on_site}, {delivery}, {install}, '{timeline}', 
+                '{street}', '{city}', '{state}', '{zip_code}', '{comments}')
+                """
+            response = Database.db.query(query)
+            if response['code'] == 200:
+                Database.logger.success(f'Design Lead {first_name} {last_name} added to Middleware.')
+            else:
+                error = f'Error adding design lead {first_name} {last_name} to Middleware. \nQuery: {query}\nResponse: {response}'
+                Database.error_handler.add_error_v(error=error, origin='insert_design_lead')
+
+    class SMS:
+        def get(cust_no=None):
+            if cust_no:
+                query = f"""
+                SELECT * FROM {creds.sms_table}
+                WHERE CUST_NO = '{cust_no}'
+                """
+            else:
+                query = f"""
+                SELECT * FROM {creds.sms_table}
+                """
+            return Database.db.query(query)
+
+        def insert(
+            origin,
+            to_phone,
+            from_phone,
+            cust_no,
+            name,
+            category,
+            body,
+            media,
+            sid,
+            error_code,
+            error_message,
+            campaign=None,
+            username=None,
+        ):
+            body = body.replace("'", "''")
+            name = name.replace("'", "''")
+            to_phone = format_phone(to_phone, mode='counterpoint')
+            from_phone = format_phone(from_phone, mode='counterpoint')
+
+            if from_phone == format_phone(creds.twilio_phone_number, mode='counterpoint'):
+                direction = 'OUTBOUND'
+            else:
+                direction = 'INBOUND'
+
+            query = f"""
+                INSERT INTO {creds.sms_table} (ORIGIN, CAMPAIGN, DIRECTION, TO_PHONE, FROM_PHONE, CUST_NO, BODY, USERNAME, NAME, CATEGORY, MEDIA, SID, ERROR_CODE, ERROR_MESSAGE)
+                VALUES ('{origin}', {f"'{campaign}'" if campaign else 'NULL'}, '{direction}', '{to_phone}', '{from_phone}', 
+                '{cust_no}', '{body}', {f"'{username}'" if username else 'NULL'}, '{name}', 
+                '{category}', {f"'{media}'" if media else 'NULL'}, {f"'{sid}'" if sid else 'NULL'}, 
+                {f"'{error_code}'" if error_code else 'NULL'}, {f"'{error_message}'" if error_message else 'NULL'})
+                """
+            response = Database.db.query(query)
+            if response['code'] == 200:
+                if direction == 'OUTBOUND':
+                    Database.logger.success(f'SMS sent to {to_phone} added to Database.')
+                else:
+                    Database.logger.success(f'SMS received from {from_phone} added to Database.')
+            else:
+                error = f'Error adding SMS sent to {to_phone} to Middleware. \nQuery: {query}\nResponse: {response}'
+                Database.error_handler.add_error_v(error=error, origin='insert_sms')
 
     class Counterpoint:
         class Customer:
@@ -163,25 +335,6 @@ class Database:
                                             VALID_NAME varchar(50),
                                             VALID_VALUE varchar(255),
                                             LST_MAINT_DT DATETIME DEFAULT(current_timestamp))""",
-                    'qr': f"""
-                                            CREATE TABLE {creds.qr_table} (
-                                            QR_CODE varchar(100) NOT NULL PRIMARY KEY,
-                                            URL varchar(100),
-                                            PUBLICATION varchar(50),
-                                            MEDIUM varchar(50),
-                                            OFFER varchar(100),
-                                            DESCR varchar(255),
-                                            COUPON_CODE varchar(20),
-                                            COUPON_USE int DEFAULT(0),
-                                            VISIT_COUNT int DEFAULT(0),
-                                            CREATE_DT datetime NOT NULL DEFAULT(current_timestamp),
-                                            LST_SCAN datetime
-                                            )""",
-                    'qr_activ': f"""
-                                            CREATE TABLE {creds.qr_activity_table} (
-                                            SCAN_DT datetime NOT NULL DEFAULT(current_timestamp) PRIMARY KEY,
-                                            CODE varchar(100) NOT NULL FOREIGN KEY REFERENCES SN_QR(QR_CODE),
-                                            );""",
                 }
 
                 for table in tables:
@@ -796,4 +949,4 @@ class Database:
 
 
 if __name__ == '__main__':
-    Database.Shopify.Product.Metafield.delete(8308207550631)
+    print(Database.DesignLead.get())
