@@ -149,6 +149,18 @@ class Shopify:
                     'applied_discounts': [],
                 }
 
+                is_refunded = False
+                quantity_refunded = 0
+
+                for refund in snode['refunds'][0]['refundLineItems']['edges']:
+                    if refund['node']['lineItem']['id'] == item['id']:
+                        is_refunded = True
+                        quantity_refunded = int(refund['node']['quantity'])
+                        break
+
+                pl['is_refunded'] = is_refunded
+                pl['quantity_refunded'] = quantity_refunded
+
                 def send_gift_card():
                     email = snode['email']
                     name = snode['billingAddress']['firstName'] + ' ' + snode['billingAddress']['lastName']
@@ -199,13 +211,17 @@ class Shopify:
             subtotal = float(get_money(snode['currentSubtotalPriceSet'])) + hdsc - shippingCost
             total = float(get_money(snode['currentTotalPriceSet']))
 
+            status = snode['displayFulfillmentStatus']
+
+            if snode['displayFinancialStatus'] == 'REFUNDED':
+                status = 'Partially Refunded'
+
             bc_order = {
                 'id': snode['name'],
                 'customer_id': snode['customer']['id'],
                 'date_created': snode['createdAt'],
                 'date_modified': snode['updatedAt'],
-                'status_id': 11,  # TODO: Add status id
-                'status': snode['displayFulfillmentStatus'],
+                'status': status,
                 'subtotal_ex_tax': subtotal,
                 'subtotal_inc_tax': subtotal,
                 'base_shipping_cost': shippingCost,
