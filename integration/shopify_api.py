@@ -168,7 +168,7 @@ class Shopify:
                     code = pl['gift_certificate_id']['code']
                     Email.Customer.GiftCard.send(email, name, code, price)
 
-                if item['isGiftCard']:
+                if item['isGiftCard'] and snode['displayFulfillmentStatus'] == 'UNFULFILLED':
 
                     def has_code(code):
                         query = f"""
