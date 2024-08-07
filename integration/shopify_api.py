@@ -4,7 +4,7 @@ import json
 from setup.error_handler import ProcessOutErrorHandler
 from pathlib import Path
 from integration.database import Database
-from shortuuid import uuid
+from shortuuid import ShortUUID
 
 verbose_print = True
 
@@ -157,7 +157,12 @@ class Shopify:
                     # Send gift card to customer
 
                 if item['isGiftCard']:
-                    pl['gift_certificate_id'] = {'code': uuid()}
+                    code_gen = ShortUUID()
+                    code_gen.set_alphabet('ABCDEFG123456789')
+                    code = code_gen.random(12)
+                    code = f'{code[0:4]}-{code[4:8]}-{code[8:12]}'
+
+                    pl['gift_certificate_id'] = {'code': code}
                     send_gift_card()
 
                 shopify_products.append(pl)
