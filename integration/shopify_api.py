@@ -153,11 +153,12 @@ class Shopify:
                 is_refunded = False
                 quantity_refunded = 0
 
-                for refund in snode['refunds'][0]['refundLineItems']['edges']:
-                    if refund['node']['lineItem']['id'] == item['id']:
-                        is_refunded = True
-                        quantity_refunded = int(refund['node']['quantity'])
-                        break
+                if len(snode['refunds']) > 0:
+                    for refund in snode['refunds'][0]['refundLineItems']['edges']:
+                        if refund['node']['lineItem']['id'] == item['id']:
+                            is_refunded = True
+                            quantity_refunded = int(refund['node']['quantity'])
+                            break
 
                 pl['is_refunded'] = is_refunded
                 pl['quantity_refunded'] = quantity_refunded
