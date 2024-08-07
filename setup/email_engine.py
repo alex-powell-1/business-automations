@@ -190,5 +190,4 @@ class Email:
 
 
 if __name__ == '__main__':
-    print(Email.name, Email.address, Email.pw)
-    Email.GiftCard.send(name='Alex Powell', email='alexpow@gmail.com', gc_code='1EA4-56AE-FD2A', amount=50)
+    pass
