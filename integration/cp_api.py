@@ -1809,9 +1809,9 @@ class OrderAPI(DocumentAPI):
         response = Database.db.query(query)
 
         if response['code'] == 200:
-            self.logger.success('Updated shipping charge')
+            self.logger.success('Applied shipping charge')
         else:
-            self.error_handler.add_error_v('Shipping charge could not be updated')
+            self.error_handler.add_error_v('Shipping charge could not be applied')
             self.error_handler.add_error_v(response)
 
         if not self.is_refund(bc_order):
