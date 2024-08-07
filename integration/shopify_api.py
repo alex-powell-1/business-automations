@@ -157,6 +157,7 @@ class Shopify:
                     # Send gift card to customer
 
                 if item['isGiftCard']:
+                    # 281 trillion combinations
                     code_gen = ShortUUID()
                     code_gen.set_alphabet('ABCDEFG123456789')
                     code = code_gen.random(12)
