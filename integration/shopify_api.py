@@ -112,6 +112,7 @@ class Shopify:
         def as_bc_order(order_id: int):
             """Convert Shopify order to BigCommerce order format"""
             shopify_order = Shopify.Order.get(order_id)
+            snode = shopify_order['node']
 
             shopify_products = []
 
@@ -149,7 +150,6 @@ class Shopify:
                 }
 
                 def send_gift_card():
-                    snode = shopify_order['node']
                     email = snode['email']
                     name = snode['billingAddress']['firstName'] + ' ' + snode['billingAddress']['lastName']
                     amount = price
@@ -192,7 +192,6 @@ class Shopify:
             def get_money(money: dict):
                 return money['presentmentMoney']['amount']
 
-            snode = shopify_order['node']
             shippingCost = float(get_money(snode['shippingLine']['discountedPriceSet']))
 
             hdsc = float(get_money(snode['totalDiscountsSet']))
