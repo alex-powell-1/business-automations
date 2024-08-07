@@ -17,7 +17,8 @@ from jsonschema import validate, ValidationError
 from twilio.twiml.messaging_response import MessagingResponse
 from waitress import serve
 
-from setup import creds, email_engine, authorization
+from setup import creds, authorization
+from setup.email_engine import Email
 from setup.sms_engine import SMSEngine
 from setup.error_handler import ProcessInErrorHandler, ProcessOutErrorHandler, LeadFormErrorHandler
 from setup import log_engine
@@ -339,10 +340,7 @@ def newsletter_signup():
         email_content = jinja_template.render(email_data)
 
         try:
-            email_engine.Email(
-                from_name=creds.company_name,
-                from_address=creds.gmail_user,
-                from_pw=creds.gmail_pw,
+            Email.send(
                 recipients_list=recipient,
                 subject='Coupon Code: NEW10',
                 content=email_content,
