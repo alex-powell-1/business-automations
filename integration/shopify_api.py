@@ -113,6 +113,7 @@ class Shopify:
         def as_bc_order(order_id: int):
             """Convert Shopify order to BigCommerce order format"""
             shopify_order = Shopify.Order.get(order_id)
+            snode = shopify_order['node']
 
             shopify_products = []
 
@@ -149,40 +150,78 @@ class Shopify:
                     'applied_discounts': [],
                 }
 
-                if item['isGiftCard']:
-                    snode = shopify_order['node']
-                    email = snode['email']
-                    code_gen = ShortUUID()
+                is_refunded = False
+                quantity_refunded = 0
 
-                    code_gen.set_alphabet('ABCDEFG123456789')
-                    code = code_gen.random(12)
-                    code = f'{code[0:4]}-{code[4:8]}-{code[8:12]}'
+                for refund in snode['refunds'][0]['refundLineItems']['edges']:
+                    if refund['node']['lineItem']['id'] == item['id']:
+                        is_refunded = True
+                        quantity_refunded = int(refund['node']['quantity'])
+                        break
+
+                pl['is_refunded'] = is_refunded
+                pl['quantity_refunded'] = quantity_refunded
+
+                def send_gift_card():
+                    email = snode['email']
+                    name = snode['billingAddress']['firstName'] + ' ' + snode['billingAddress']['lastName']
+                    code = pl['gift_certificate_id']['code']
+                    Email.GiftCard.send(email, name, code, price)
+
+                if item['isGiftCard']:
+
+                    def has_code(code):
+                        query = f"""
+                        SELECT GFC_NO FROM SY_GFC
+                        WHERE GFC_NO = '{code}'
+                        """
+
+                        response = Database.db.query(query)
+                        try:
+                            return response[0][0] is not None
+                        except:
+                            return False
+
+                    # Make sure code is unique
+                    def gen_code():
+                        code_gen = ShortUUID()
+                        code_gen.set_alphabet('ABCDEFG123456789')  # 16
+                        code = code_gen.random(12)
+                        code = f'{code[0:4]}-{code[4:8]}-{code[8:12]}'
+
+                        if has_code(code):
+                            return gen_code()
+                        else:
+                            return code
+
+                    code = gen_code()
 
                     pl['gift_certificate_id'] = {'code': code}
-                    name = snode['billingAddress']['firstName'] + ' ' + snode['billingAddress']['lastName']
-
-                    Email.GiftCard.send(email, name, code, price)
+                    send_gift_card()
 
                 shopify_products.append(pl)
 
             def get_money(money: dict):
                 return money['presentmentMoney']['amount']
 
-            snode = shopify_order['node']
             shippingCost = float(get_money(snode['shippingLine']['discountedPriceSet']))
 
             hdsc = float(get_money(snode['totalDiscountsSet']))
 
-            subtotal = float(get_money(snode['currentSubtotalPriceSet'])) + hdsc
+            subtotal = float(get_money(snode['currentSubtotalPriceSet'])) + hdsc - shippingCost
             total = float(get_money(snode['currentTotalPriceSet']))
+
+            status = snode['displayFulfillmentStatus']
+
+            if snode['displayFinancialStatus'] == 'REFUNDED':
+                status = 'Partially Refunded'
 
             bc_order = {
                 'id': snode['name'],
                 'customer_id': snode['customer']['id'],
                 'date_created': snode['createdAt'],
                 'date_modified': snode['updatedAt'],
-                'status_id': 11,  # TODO: Add status id
-                'status': snode['displayFulfillmentStatus'],
+                'status': status,
                 'subtotal_ex_tax': subtotal,
                 'subtotal_inc_tax': subtotal,
                 'base_shipping_cost': shippingCost,

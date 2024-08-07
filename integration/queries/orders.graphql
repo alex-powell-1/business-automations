@@ -187,6 +187,24 @@ query order($id: ID!) {
             discountCode
 
             discountCodes
+
+            refunds(first: 10) {
+                refundLineItems(first: 250) {
+                    edges {
+                        node {
+                            lineItem {
+                                id
+                            }
+                            quantity
+                            subtotalSet {
+                                presentmentMoney {
+                                    amount
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }
