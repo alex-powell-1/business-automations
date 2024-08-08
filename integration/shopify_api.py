@@ -125,7 +125,10 @@ class Shopify:
 
                 price = float(get_money(item['originalTotalSet']))
 
-                item['isGiftCard'] = 'GFC' in item['sku']
+                item['isGiftCard'] = False
+
+                if item['sku'] is not None:
+                    item['isGiftCard'] = 'GFC' in item['sku']
 
                 pl = {
                     'id': item['id'],
@@ -299,6 +302,30 @@ class Shopify:
             # bc_order['transactions']['data'] = transactions
 
             return bc_order
+
+        def get_orders_not_in_cp():
+            query = """
+            SELECT TKT_NO FROM PS_DOC_HDR WHERE STR_ID = 'WEB'
+            """
+
+            response = Database.db.query(query)
+            try:
+                tkt_nos = [x[0].replace('S', '') for x in response]
+
+                print(tkt_nos)
+
+                orders = []
+
+                for _order in Shopify.Order.get_all()['orders']['edges']:
+                    order = _order['node']
+
+                    if order['name'] not in tkt_nos:
+                        orders.append(order)
+
+                return orders
+
+            except:
+                return []
 
         @staticmethod
         def create_gift_card(balance: float):

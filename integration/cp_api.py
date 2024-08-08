@@ -463,13 +463,9 @@ class OrderAPI(DocumentAPI):
         shipping_cost = self.get_shipping_cost(bc_order)
         notes = self.get_notes(bc_order)
 
-        print('here 1')
-
         # print(self.get_line_items_from_bc_products(bc_products))
         # print(self.get_gift_cards_from_bc_products(bc_products))
         # print(self.get_payment_from_bc_order(bc_order))
-
-        print('here 3')
         payload = {
             'PS_DOC_HDR': {
                 'STR_ID': 'WEB',
@@ -501,9 +497,6 @@ class OrderAPI(DocumentAPI):
                 ],
             }
         }
-
-        print('here 2')
-        print(payload)
 
         if is_shipping:
             payload['PS_DOC_HDR']['PS_DOC_HDR_MISC_CHRG'] = [

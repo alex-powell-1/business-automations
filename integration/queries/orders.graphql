@@ -210,11 +210,15 @@ query order($id: ID!) {
 }
 
 query orders {
-    orders(first: 10) {
+    orders(first: 250) {
         edges {
             node {
                 id
-
+                name
+                customer {
+                    firstName
+                    lastName
+                }
                 displayFulfillmentStatus
             }
         }
