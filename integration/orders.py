@@ -38,6 +38,7 @@ class Order:
     def get_shopify_cust_no(self):
         if self.cust_no is None:
             self.cust_no = OrderAPI.get_cust_no(self.get_shopify_order())
+        return self.cust_no
 
     def get_payload(self):
         if self.payload is None:
