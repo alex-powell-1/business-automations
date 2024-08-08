@@ -211,7 +211,10 @@ class Shopify:
             def get_money(money: dict):
                 return money['presentmentMoney']['amount']
 
-            shippingCost = float(get_money(snode['shippingLine']['discountedPriceSet']))
+            try:
+                shippingCost = float(get_money(snode['shippingLine']['discountedPriceSet']))
+            except:
+                shippingCost = 0
 
             hdsc = float(get_money(snode['totalDiscountsSet']))
 
