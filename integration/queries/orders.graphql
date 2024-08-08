@@ -210,7 +210,7 @@ query order($id: ID!) {
 }
 
 query orders {
-    orders(first: 250) {
+    orders(first: 20, reverse: true) {
         edges {
             node {
                 id
