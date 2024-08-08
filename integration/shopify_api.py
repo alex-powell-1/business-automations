@@ -132,7 +132,7 @@ class Shopify:
 
                 pl = {
                     'id': item['id'],
-                    'sku': item['sku'],
+                    'sku': 'SERVICE' if item['name'].lower() == 'service' else item['sku'],
                     'type': 'giftcertificate' if item['isGiftCard'] else 'physical',
                     'base_price': price,
                     'price_ex_tax': price,
