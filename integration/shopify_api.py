@@ -171,8 +171,6 @@ class Shopify:
 
                 def send_gift_card():
                     email = snode['email']
-                    print('Email: ', email)
-
                     name = snode['billingAddress']['firstName'] + ' ' + snode['billingAddress']['lastName']
                     code = pl['gift_certificate_id']['code']
                     Email.Customer.GiftCard.send(name=name, email=email, gc_code=code, amount=price)
