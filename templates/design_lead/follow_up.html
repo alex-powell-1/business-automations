@@ -45,7 +45,7 @@
                                 {% for item in leads: %}
                                     <li><h2>{{ item['first_name'] }} {{ item['last_name'] }}</h2></li>
                                         <ul>
-                                            <li><p>Date: {{ date_format.strptime(item['date'], "%Y-%m-%d %H:%M:%S").strftime("%m/%d/%Y %I:%M:%S %p") }}</p></li>
+                                            <li><p>Date: {{ item['date'] }}</p></li>
 
                                             <li><p>Email: {{ item['email'] }}</p></li>
 
@@ -62,7 +62,7 @@
 
                                             <li><p>Interested in:</p></li>
                                                 <ul>
-                                                    {% for item in item['interested_in'].replace("['", "").replace("']", "").replace("'", "").split(", ") %}
+                                                    {% for item in item['interested_in'] %}
                                                         <li><p>{{ item }}</p></li>
                                                     {% endfor %}
                                                 </ul>

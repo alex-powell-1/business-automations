@@ -1,7 +1,7 @@
 from setup import creds
 from setup import query_engine
 from setup.error_handler import ProcessOutErrorHandler
-from datetime import datetime
+from datetime import datetime, timedelta
 from setup.utilities import format_phone
 
 
@@ -90,10 +90,16 @@ class Database:
             Database.db.query(tables[table])
 
     class DesignLead:
-        def get():
-            query = f"""
+        def get(yesterday=True):
+            if yesterday:
+                query = f"""
                 SELECT * FROM {creds.design_leads_table}
+                WHERE DATE > '{datetime.now().date() - timedelta(days=1)}' AND DATE < '{datetime.now().date()}'
                 """
+            else:
+                query = f"""
+                    SELECT * FROM {creds.design_leads_table}
+                    """
             return Database.db.query(query)
 
         def insert(
@@ -563,10 +569,14 @@ class Database:
 
                 if response['code'] == 200:
                     Database.logger.success(f'Product {product_id} deleted from Middleware.')
+                elif response['code'] == 201:
+                    Database.logger.warn(f'Product {product_id} not found in Middleware.')
                 else:
                     error = f'Error deleting product {product_id} from Middleware. \n Query: {query}\nResponse: {response}'
                     Database.error_handler.add_error_v(error=error)
                     raise Exception(error)
+
+                Database.Shopify.Product.Image.delete(product_id=product_id)
 
             class Variant:
                 def get_variant_id(sku):
@@ -783,10 +793,20 @@ class Database:
                         Database.logger.warn('No image or image_id provided for deletion.')
                         return
                     res = Database.db.query(q)
+                    print(res['code'])
                     if res['code'] == 200:
                         Database.logger.success(f'Query: {q}\nSQL DELETE Image')
+                    elif res['code'] == 201:
+                        Database.logger.warn(f'Query: {q}\nSQL DELETE Image: No Rows Affected')
                     else:
-                        error = f'Error deleting image {image.name} in Middleware. \nQuery: {q}\nResponse: {res}'
+                        if image:
+                            error = (
+                                f'Error deleting image {image.name} in Middleware. \nQuery: {q}\nResponse: {res}'
+                            )
+                        elif image_id:
+                            error = f'Error deleting image with ID {image_id} in Middleware. \nQuery: {q}\nResponse: {res}'
+                        elif product_id:
+                            error = f'Error deleting images for product {product_id} in Middleware. \nQuery: {q}\nResponse: {res}'
                         Database.error_handler.add_error_v(
                             error=error, origin=f'Database.Shopify.Product.Image.delete(query:\n{q})'
                         )

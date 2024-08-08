@@ -10,11 +10,12 @@ from setup.error_handler import ProcessOutErrorHandler
 
 
 class Customers:
+    logger = ProcessOutErrorHandler.logger
+    error_handler = ProcessOutErrorHandler.error_handler
+
     def __init__(self, last_sync=datetime(1970, 1, 1)):
         self.last_sync = last_sync
         self.db = Database.db
-        self.logger = ProcessOutErrorHandler.logger
-        self.error_handler = ProcessOutErrorHandler.error_handler
         self.update_customer_timestamps()
         self.customers = self.get_cp_customers()
         self.processor = object_processor.ObjectProcessor(objects=self.customers)
@@ -22,6 +23,7 @@ class Customers:
     def update_customer_timestamps(self):
         """Update the last maintenance date for all customers in the Middleware who have been updated in
         the AR_LOY_PT_ADJ_HIST table since the last sync."""
+
         query = f"""SELECT CUST_NO FROM AR_LOY_PT_ADJ_HIST WHERE LST_MAINT_DT > '{self.last_sync}'"""
         response = self.db.query(query)
         customer_list = [x[0] for x in response] if response is not None else []
@@ -30,7 +32,7 @@ class Customers:
 
     def get_cp_customers(self):
         response = Database.Counterpoint.Customer.get()
-        return [self.Customer(x, self.error_handler) for x in response] if response is not None else []
+        return [self.Customer(x) for x in response] if response is not None else []
 
     def get_mw_customer(self):
         query = f"""
@@ -46,8 +48,10 @@ class Customers:
 
     def sync(self):
         if self.customers:
-            self.processor.process()
-            self.error_handler.print_errors()
+            for customer in self.customers:
+                customer.process()
+            # self.processor.process()
+            Customers.error_handler.print_errors()
 
     class Customer:
         def __init__(self, cust_result):
@@ -65,9 +69,6 @@ class Customers:
             self.country = cust_result[10]
             self.shopify_cust_no = cust_result[11]
 
-            self.error_handler = Customers.error_handler
-            self.logger = Customers.logger
-
             if self.loyalty_points < 0:
                 self.set_loyalty_points_to_zero()
                 self.loyalty_points = 0
@@ -78,7 +79,7 @@ class Customers:
         def has_address(self):
             if self.address is not None and self.state is not None and self.zip is not None:
                 if self.address.replace(' ', '').isalpha() or self.address.replace(' ', '').isnumeric():
-                    self.error_handler.add_error_v(
+                    Customers.error_handler.add_error_v(
                         f'Customer {self.cp_cust_no} has malformed address: {self.address}.'
                     )
                     return False
@@ -93,7 +94,8 @@ class Customers:
             else:
                 return False
 
-        def process(self, session: requests.Session):
+        # def process(self, session: requests.Session):
+        def process(self):
             def write_customer_payload():
                 variables = {
                     'input': {
@@ -196,17 +198,20 @@ class Customers:
                 return variables
 
             def create():
-                self.logger.info(f'Creating customer {self.cp_cust_no}')
+                Customers.logger.info(f'Creating customer {self.cp_cust_no}')
                 self.shopify_cust_no = Shopify.Customer.create(write_customer_payload())
                 Database.Shopify.Customer.insert(self)
+                raise Exception('Customer created')
 
             def update():
-                self.logger.info(f'Updating customer {self.cp_cust_no}')
+                Customers.logger.info(f'Updating customer {self.cp_cust_no}')
+                raise Exception('Customer updated')
                 Shopify.Customer.update(write_customer_payload())
                 Database.Shopify.Customer.update(self)
 
             def delete():
-                self.logger.info(f'Deleting customer {self.cp_cust_no}')
+                Customers.logger.info(f'Deleting customer {self.cp_cust_no}')
+                raise Exception('Customer deleted')
                 Shopify.Customer.delete(self.shopify_cust_no)
                 Database.Shopify.Customer.delete(self)
 
@@ -232,9 +237,9 @@ class Customers:
             """
             response = self.db.query(query)
             if response['code'] == 200:
-                self.logger.success(f'Customer {self.cp_cust_no} loyalty points set to 0.')
+                Customers.logger.success(f'Customer {self.cp_cust_no} loyalty points set to 0.')
             else:
-                self.error_handler.add_error_v(
+                Customers.error_handler.add_error_v(
                     error=f'Error setting customer {self.cp_cust_no} loyalty points to 0.'
                 )
 
@@ -243,6 +248,6 @@ class Customers:
 
 
 if __name__ == '__main__':
-    customers = Customers(last_sync=date_presets.business_start_date)
+    customers = Customers()
     # customers.backfill_middleware()
     customers.sync()

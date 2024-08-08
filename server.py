@@ -488,6 +488,7 @@ def shopify():
     """Webhook route for incoming orders. Sends to RabbitMQ queue for asynchronous processing"""
     # response_data = request.get_json()
     # order_id = response_data['data']['id']
+    print(request.json)
 
     ProcessInErrorHandler.logger.info(f'Received order {request.get_json()}')
 

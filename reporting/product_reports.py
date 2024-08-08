@@ -3,10 +3,8 @@ import os
 
 from product_tools.products import get_ecomm_items_with_stock
 from setup import creds
-from setup.admin_report_html import boiler_plate, css, body_start, body_end
 from setup.date_presets import *
 from setup.query_engine import QueryEngine as db
-from setup.error_handler import ScheduledTasksErrorHandler
 
 
 def get_quantity_available(item):
@@ -1101,63 +1099,3 @@ def report_generator(
             report += f'<p>Error! Message: {err}</p>'
 
     return report
-
-
-def administrative_report(recipients):
-    ScheduledTasksErrorHandler.logger.info(f'Generating Admin Report Data - Starting at {datetime.now():%H:%M:%S}')
-    subject = f'Administrative Report - {today:%x}'
-
-    report_data = report_generator(
-        title='Administrative Report',
-        revenue=True,
-        cogs_report=True,
-        last_week_report=True,
-        mtd_month_report=True,
-        last_year_mtd_report=True,
-        forecasting_report=True,
-        top_items_by_category=True,
-        missing_images_report=True,
-        negatives_report=True,
-        ecomm_category_report=True,
-        non_web_enabled_report=True,
-        low_stock_items_report=True,
-        sales_rep_report=True,
-        wholesale_report=True,
-        inactive_items_report=True,
-        missing_descriptions_report=True,
-    )
-    html_contents = boiler_plate + css + body_start + report_data + body_end
-
-    Email.send(
-        recipients_list=recipients,
-        subject=subject,
-        content=html_contents,
-        logo=True,
-        mode='related',
-        image=None,
-        staff=True,
-    )
-
-    ScheduledTasksErrorHandler.logger.info(f'Administrative Report: Completed at {datetime.now():%H:%M:%S}')
-
-
-def revenue_report(recipients, log_file):
-    print(f'Generating Revenue Report Data - Starting at {datetime.now():%H:%M:%S}', file=log_file)
-    subject = f'Revenue Report - {today:%x}'
-    report_data = report_generator(revenue=True, cogs_report=True, title='Revenue Report')
-    html_contents = boiler_plate + css + body_start + report_data + body_end
-    try:
-        Email.send(
-            recipients_list=recipients,
-            subject=subject,
-            content=html_contents,
-            mode='related',
-            image=None,
-            logo=True,
-        )
-    except Exception as err:
-        error_type = 'Sending Email'
-        print(f'Error({error_type}): {err})', file=log_file)
-
-    print(f'Revenue Report: Completed at {today:%H:%M:%S}', file=log_file)
-    print('-----------------------', file=log_file)
