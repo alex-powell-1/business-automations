@@ -130,6 +130,9 @@ class Shopify:
                 if item['sku'] is not None:
                     item['isGiftCard'] = 'GFC' in item['sku']
 
+                if item['name'] is None:
+                    item['name'] = ''
+
                 pl = {
                     'id': item['id'],
                     'sku': 'SERVICE' if item['name'].lower() == 'service' else item['sku'],
