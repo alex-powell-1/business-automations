@@ -452,8 +452,6 @@ class OrderAPI(DocumentAPI):
         self.total_gfc_amount = 0
         self.total_hdr_disc = 0
         self.total_lin_disc = 0
-        self.refund = None
-        self.pr = None
         self.refund_index = None
         self.total_lin_items = 0
         self.line_item_length = 0

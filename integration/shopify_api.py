@@ -157,11 +157,11 @@ class Shopify:
                 quantity_refunded = 0
 
                 if len(snode['refunds']) > 0:
-                    for refund in snode['refunds'][0]['refundLineItems']['edges']:
-                        if refund['node']['lineItem']['id'] == item['id']:
-                            is_refunded = True
-                            quantity_refunded = int(refund['node']['quantity'])
-                            break
+                    for refunds in snode['refunds']:
+                        for refund in refunds['refundLineItems']['edges']:
+                            if refund['node']['lineItem']['id'] == item['id']:
+                                is_refunded = True
+                                quantity_refunded = int(refund['node']['quantity'])
 
                 pl['is_refunded'] = is_refunded
                 pl['quantity_refunded'] = quantity_refunded
@@ -223,7 +223,7 @@ class Shopify:
 
             status = snode['displayFulfillmentStatus']
 
-            if snode['displayFinancialStatus'] == 'REFUNDED':
+            if len(snode['refunds']) > 0:
                 status = 'Partially Refunded'
 
             bc_order = {
