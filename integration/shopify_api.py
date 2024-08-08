@@ -125,7 +125,10 @@ class Shopify:
 
                 price = float(get_money(item['originalTotalSet']))
 
-                item['isGiftCard'] = 'GFC' in item['sku']
+                item['isGiftCard'] = False
+
+                if item['sku'] is not None:
+                    item['isGiftCard'] = 'GFC' in item['sku']
 
                 pl = {
                     'id': item['id'],
@@ -206,7 +209,10 @@ class Shopify:
             def get_money(money: dict):
                 return money['presentmentMoney']['amount']
 
-            shippingCost = float(get_money(snode['shippingLine']['discountedPriceSet']))
+            try:
+                shippingCost = float(get_money(snode['shippingLine']['discountedPriceSet']))
+            except:
+                shippingCost = 0
 
             hdsc = float(get_money(snode['totalDiscountsSet']))
 

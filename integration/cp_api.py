@@ -567,6 +567,9 @@ class OrderAPI(DocumentAPI):
         state = b('state')
         zip_code = b('zip')
 
+        if phone_number is None:
+            return
+
         cust_no = customers.add_new_customer(
             first_name=first_name,
             last_name=last_name,
@@ -587,6 +590,18 @@ class OrderAPI(DocumentAPI):
             city = s('city')
             state = s('state')
             zip_code = s('zip')
+
+            if (
+                first_name is None
+                or last_name is None
+                or phone_number is None
+                or email_address is None
+                or street_address is None
+                or city is None
+                or state is None
+                or zip_code is None
+            ):
+                return
 
             response = customers.update_customer_shipping(
                 cust_no=cust_no,
@@ -631,6 +646,9 @@ class OrderAPI(DocumentAPI):
             state = b('state')
             zip_code = b('zip')
 
+            if phone_number is None:
+                return
+
             response = customers.update_customer(
                 cust_no=cust_no,
                 first_name=first_name,
@@ -658,6 +676,18 @@ class OrderAPI(DocumentAPI):
             city = s('city')
             state = s('state')
             zip_code = s('zip')
+
+            if (
+                first_name is None
+                or last_name is None
+                or phone_number is None
+                or email_address is None
+                or street_address is None
+                or city is None
+                or state is None
+                or zip_code is None
+            ):
+                return
 
             response = customers.update_customer_shipping(
                 cust_no=cust_no,
