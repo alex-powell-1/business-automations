@@ -162,6 +162,7 @@ class OrderAPI(DocumentAPI):
                     'EXT_PRC': -ext_prc if self.is_refund() else ext_prc,
                     'EXT_COST': (-ext_cost * qty if self.is_refund() else ext_cost * qty),
                     'DSC_AMT': total_discount,
+                    'sku': product['sku'],
                 }
 
                 line_items.append(line_item)
@@ -335,6 +336,9 @@ class OrderAPI(DocumentAPI):
     # Write loyalty line
     def write_one_lin_loy(self, doc_id, line_item: dict, lin_seq_no: int):
         points_earned = (float(line_item['EXT_PRC'] or 0) / 20) or 0
+
+        if line_item['sku'] == 'SERVICE':
+            return 0
 
         query = f"""
         INSERT INTO PS_DOC_LIN_LOY 
