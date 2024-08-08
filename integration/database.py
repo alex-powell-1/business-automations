@@ -215,8 +215,8 @@ class Database:
                     customer_filter = ''
 
                 query = f"""
-                SELECT cp.CUST_NO, FST_NAM, LST_NAM, EMAIL_ADRS_1, PHONE_1, LOY_PTS_BAL, ADRS_1, CITY, STATE, ZIP_COD, CNTRY,
-                MW.SHOP_CUST_ID
+                SELECT cp.CUST_NO, FST_NAM, LST_NAM, EMAIL_ADRS_1, PHONE_1, LOY_PTS_BAL, ADRS_1, ADRS_2, CITY, STATE, ZIP_COD, CNTRY,
+                MW.SHOP_CUST_ID, {creds.sms_subscribe_status}
                 FROM {Database.Counterpoint.Customer.table} CP
                 FULL OUTER JOIN {creds.shopify_customer_table} MW on CP.CUST_NO = MW.cust_no
                 WHERE CP.LST_MAINT_DT > '{last_sync}' and CUST_NAM_TYP = 'P' {customer_filter}
@@ -243,6 +243,14 @@ class Database:
                         origin='update_customer_timestamps',
                     )
                     raise Exception(response['message'])
+
+            class Address:
+                def get(cust_no):
+                    query = f"""
+                    SELECT FST_NAM, LST_NAM, ADRS_1, ADRS_2, CITY, STATE, ZIP_COD, CNTRY, PHONE_1
+                    FROM AR_SHIP_ADRS
+                    WHERE CUST_NO = '{cust_no}'"""
+                    return Database.db.query(query)
 
     class Shopify:
         def rebuild_tables(self):

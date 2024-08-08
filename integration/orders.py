@@ -63,7 +63,6 @@ class Order:
         try:
             OrderAPI.post_shopify_order(self.order_id, cust_no_override=cust_no_override)
         except Exception as e:
-            traceback.print_exc()
             ProcessInErrorHandler.error_handler.add_error_v(
                 error=f'Error processing order {self.order_id}',
                 origin='integration.orders',
