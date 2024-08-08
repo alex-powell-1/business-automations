@@ -200,7 +200,7 @@ class Shopify:
                     code = gen_code()
 
                     pl['gift_certificate_id'] = {'code': code}
-                    if send:
+                    if send and not is_refunded:
                         send_gift_card()
 
                 shopify_products.append(pl)
