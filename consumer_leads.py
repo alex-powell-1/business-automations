@@ -16,7 +16,7 @@ from integration.database import Database
 from setup.error_handler import LeadFormErrorHandler
 from customer_tools.customers import lookup_customer, add_new_customer
 
-test_mode = True
+test_mode = False
 
 
 class RabbitMQConsumer:

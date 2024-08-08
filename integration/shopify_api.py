@@ -168,9 +168,11 @@ class Shopify:
 
                 def send_gift_card():
                     email = snode['email']
+                    print('Email: ', email)
+
                     name = snode['billingAddress']['firstName'] + ' ' + snode['billingAddress']['lastName']
                     code = pl['gift_certificate_id']['code']
-                    Email.Customer.GiftCard.send(email, name, code, price)
+                    Email.Customer.GiftCard.send(name=name, email=email, gc_code=code, amount=price)
 
                 if item['isGiftCard'] and snode['displayFulfillmentStatus'] == 'UNFULFILLED':
 
@@ -394,27 +396,27 @@ class Shopify:
         queries = './integration/queries/products.graphql'
         prefix = 'gid://shopify/Product/'
 
-        def get(product_id: int = None, all=False):
+        def get(product_id: int = None):
             if product_id:
                 variables = {'id': f'{Shopify.Product.prefix}{product_id}'}
                 response = Shopify.Query(
                     document=Shopify.Product.queries, variables=variables, operation_name='product'
                 )
                 return response.data
-            elif all:
-                id_list = []
-                variables = {'first': 250, 'after': None}
+
+            id_list = []
+            variables = {'first': 250, 'after': None}
+            response = Shopify.Query(
+                document=Shopify.Product.queries, variables=variables, operation_name='products'
+            )
+            id_list += [x['node']['id'].split('/')[-1] for x in response.data['products']['edges']]
+            while response.data['products']['pageInfo']['hasNextPage']:
+                variables['after'] = response.data['products']['pageInfo']['endCursor']
                 response = Shopify.Query(
                     document=Shopify.Product.queries, variables=variables, operation_name='products'
                 )
                 id_list += [x['node']['id'].split('/')[-1] for x in response.data['products']['edges']]
-                while response.data['products']['pageInfo']['hasNextPage']:
-                    variables['after'] = response.data['products']['pageInfo']['endCursor']
-                    response = Shopify.Query(
-                        document=Shopify.Product.queries, variables=variables, operation_name='products'
-                    )
-                    id_list += [x['node']['id'].split('/')[-1] for x in response.data['products']['edges']]
-                return id_list
+            return id_list
 
         def create(product_payload) -> tuple:
             """Create product on shopify and return tuple of product ID, media IDs, and variant IDs"""
@@ -505,15 +507,47 @@ class Shopify:
                     )
                     print(response.data)
 
-        def publish(product_id: int):
-            variables = {
-                'id': f'{Shopify.Product.prefix}{product_id}',
-                'input': {'publicationId': creds.shopify_online_store_channel_id},
-            }
-            response = Shopify.Query(
-                document=Shopify.Product.queries, variables=variables, operation_name='publishablePublish'
-            )
-            return response.data
+        def publish(product_id: int, online_store=True, POS=True, shop=True, inbox=True, google=True):
+            if online_store:
+                variables = {
+                    'id': f'{Shopify.Product.prefix}{product_id}',
+                    'input': {'publicationId': creds.shopify_channel_online_store},
+                }
+                Shopify.Query(
+                    document=Shopify.Product.queries, variables=variables, operation_name='publishablePublish'
+                )
+            if POS:
+                variables = {
+                    'id': f'{Shopify.Product.prefix}{product_id}',
+                    'input': {'publicationId': creds.shopify_channel_pos},
+                }
+                Shopify.Query(
+                    document=Shopify.Product.queries, variables=variables, operation_name='publishablePublish'
+                )
+            if shop:
+                variables = {
+                    'id': f'{Shopify.Product.prefix}{product_id}',
+                    'input': {'publicationId': creds.shopify_channel_shop},
+                }
+                Shopify.Query(
+                    document=Shopify.Product.queries, variables=variables, operation_name='publishablePublish'
+                )
+            if inbox:
+                variables = {
+                    'id': f'{Shopify.Product.prefix}{product_id}',
+                    'input': {'publicationId': creds.shopify_channel_inbox},
+                }
+                Shopify.Query(
+                    document=Shopify.Product.queries, variables=variables, operation_name='publishablePublish'
+                )
+            if google:
+                variables = {
+                    'id': f'{Shopify.Product.prefix}{product_id}',
+                    'input': {'publicationId': creds.shopify_channel_google},
+                }
+                Shopify.Query(
+                    document=Shopify.Product.queries, variables=variables, operation_name='publishablePublish'
+                )
 
         class Variant:
             queries = './integration/queries/productVariant.graphql'
@@ -1313,4 +1347,8 @@ class Shopify:
 
 
 if __name__ == '__main__':
-    Shopify.Product.Variant.get(product_id=8308343963815)
+    # all_ids = Shopify.Product.get()
+    # for product in all_ids:
+    #     Shopify.Product.publish(product)
+
+    Shopify.Order.get(5570286354599)

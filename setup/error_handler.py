@@ -58,13 +58,13 @@ class ErrorHandler:
         self.errors = []
         self.logger = logger
 
-    def add_error(self, error: str, origin: str = None, type: str = 'ERROR'):
-        err = self.Error(message=error, origin=origin, type=type)
+    def add_error(self, error: str, origin: str = None, type: str = 'ERROR', traceback=None):
+        err = self.Error(message=error, origin=origin, type=type, traceback=traceback)
         self.errors.append(err)
         return err
 
-    def add_error_v(self, error: str, origin: str = None, type: str = 'ERROR'):
-        err = self.add_error(error, origin=origin, type=type)
+    def add_error_v(self, error: str, origin: str = None, type: str = 'ERROR', traceback=None):
+        err = self.add_error(error, origin=origin, type=type, traceback=traceback)
         self.logger.log(
             str(err)
         )  # Added for verbose logging in server applications where print_errors is not called
@@ -90,11 +90,12 @@ class ErrorHandler:
             self.logger.log('')
 
     class Error:
-        def __init__(self, message: str, origin: str = None, type: str = 'ERROR'):
+        def __init__(self, message: str, origin: str = None, type: str = 'ERROR', traceback=None):
             self.message = message
             self.origin = origin
             self.timestamp = datetime.now()
             self.type = type
+            self.traceback = traceback
 
         def __str__(self):
             timestamp_str = self.timestamp.strftime('%Y-%m-%d %H:%M:%S')
@@ -102,7 +103,7 @@ class ErrorHandler:
 
             prefix = f'[{self.type}]{origin_str}[{timestamp_str}]'
 
-            return f'{prefix} {self.message}'
+            return f'{prefix} {self.message} {self.traceback if self.traceback else ""}'
 
 
 class GlobalErrorHandler:

@@ -1,18 +1,11 @@
 from datetime import datetime
-from big_commerce import coupons
-from customer_tools import stock_notification
+
 from customer_tools import tiered_pricing
 from customer_tools import customers
-from product_tools import always_online
 from product_tools import brands
-from product_tools import featured
-from product_tools import inventory_upload
-from product_tools import related_items
-from product_tools import resize_photos
 from product_tools import set_inactive_status
 from product_tools import stock_buffer
 from reporting import lead_generator_notification
-from reporting import product_reports
 from setup.email_engine import Email
 from setup import creds
 from setup import date_presets
@@ -44,21 +37,21 @@ try:
     # ADMINISTRATIVE REPORT - Generate report/email to administrative team list
     if creds.administrative_report['enabled'] and creds.administrative_report['hour'] == hour:
         try:
-            product_reports.administrative_report(recipients=creds.administrative_report['recipients'])
+            Email.Staff.AdminReport.send(recipients=creds.administrative_report['recipients'])
         except Exception as err:
             error_handler.add_error_v(error=err, origin='Administrative Report')
 
     # ITEMS REPORT EMAIL - for product management team
     if creds.item_report['enabled'] and creds.item_report['hour'] == hour:
         try:
-            Email.ItemReport.send(recipients=creds.item_report['recipients'])
+            Email.Staff.ItemReport.send(recipients=creds.item_report['recipients'])
         except Exception as err:
             error_handler.add_error_v(error=err, origin='Item Report')
 
     # LANDSCAPE DESIGN LEAD NOTIFICATION EMAIL - Customer Followup Email to Sales Team
     if creds.lead_email['enabled'] and creds.lead_email['hour'] == hour:
         try:
-            lead_generator_notification.lead_notification_email(recipients=creds.lead_email['recipients'])
+            Email.Staff.DesignLeadNotification.send(recipients=creds.lead_email['recipients'])
         except Exception as err:
             error_handler.add_error_v(error=err, origin='Lead Notification Email')
 

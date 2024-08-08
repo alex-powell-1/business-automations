@@ -33,14 +33,13 @@ class Catalog:
         self.cp_items = []
         self.mw_items = []
         self.sync_queue = []
-        self.binding_ids = set()
-        if self.sync_queue:
-            self.binding_ids = set(x['binding_id'] for x in self.sync_queue if 'binding_id' in x)
+        self.queue_binding_ids = set()
+        self.get_products()
 
     def __str__(self):
         return f'Items to Process: {len(self.sync_queue)}\n'
 
-    def get_products(self, test_mode=False):
+    def get_products(self):
         # Get data for self.cp_items and self.mw_items
         counterpoint_items = db.query("SELECT ITEM_NO FROM IM_ITEM WHERE IS_ECOMM_ITEM = 'Y'")
         self.cp_items = [x[0] for x in counterpoint_items] if counterpoint_items else []
@@ -48,6 +47,7 @@ class Catalog:
         middleware_items = db.query(f'SELECT ITEM_NO FROM {creds.shopify_product_table}')
         self.mw_items = [x[0] for x in middleware_items] if middleware_items else []
 
+    def get_sync_queue(self, test_mode=False):
         # Create the Sync Queue
         # ---------------------
         # Get all products that have been updated since the last sync
@@ -97,9 +97,11 @@ class Catalog:
                                 # Single Parent Found.
                                 parent_sku = parent_list[0]
                         else:
-                            # Missing Parent! Will choose the lowest price web enabled variant as the parent.
+                            # Missing Parent!
+                            # Will choose the lowest price web enabled variant as the parent.
                             Catalog.logger.warn(f'Parent SKU not found for {binding_id}.')
-                            parent_sku = Catalog.Product.set_parent(binding_id=binding_id)
+                            continue
+                            # parent_sku = Catalog.Product.set_parent(binding_id=binding_id)
 
                         queue_payload = {'sku': parent_sku, 'binding_id': binding_id}
                 else:
@@ -113,6 +115,8 @@ class Catalog:
             self.sync_queue = res
             if test_mode:
                 self.sync_queue = {'sku': '10338', 'binding_id': 'B0001'}
+            if self.sync_queue:
+                self.queue_binding_ids = set(x['binding_id'] for x in self.sync_queue if 'binding_id' in x)
 
             Catalog.logger.info(f'Sync Queue: {self.sync_queue}')
 
@@ -160,6 +164,7 @@ class Catalog:
         if delete_targets:
             Catalog.logger.info(f'Product Delete Targets: {delete_targets}')
             for x in delete_targets:
+                print(f'Deleting Product {x}.\n')
                 Catalog.Product.delete(sku=x)
         else:
             Catalog.logger.info('No products to delete.')
@@ -167,18 +172,18 @@ class Catalog:
         Catalog.logger.info('Processing Product Additions.')
         if add_targets:
             Catalog.logger.info(f'Product Add Targets: {add_targets}')
-            for x in add_targets:
-                parent_sku = x['parent']
-                variant_sku = x['variant']
+        #     for x in add_targets:
+        #         parent_sku = x['parent']
+        #         variant_sku = x['variant']
 
-                # Get Product ID associated with item.
-                product_id = Catalog.Product.get_product_id(parent_sku)
+        #         # Get Product ID associated with item.
+        #         product_id = Catalog.Product.get_product_id(parent_sku)
 
-                if product_id is not None:
-                    variant = Catalog.Product.Variant(sku=variant_sku, last_run_date=self.last_sync)
-                    # Shopify post variant. Needs testing..
-        else:
-            Catalog.logger.info('No products to add.')
+        #         if product_id is not None:
+        #             variant = Catalog.Product.Variant(sku=variant_sku, last_run_date=self.last_sync)
+        #             # Shopify post variant. Needs testing..
+        # else:
+        #     Catalog.logger.info('No products to add.')
 
     def process_images(self):
         """Assesses Image folder. Deletes images from MW and Shopify.
@@ -243,7 +248,7 @@ class Catalog:
         Catalog.logger.info(f'Image Add/Delete Processing Complete. Time: {time.time() - start_time}')
 
     def sync(self, initial=False):
-        # # # Sync Category Tree
+        # # Sync Category Tree
         # self.category_tree.sync()
 
         if not initial and not self.inventory_only:
@@ -252,15 +257,7 @@ class Catalog:
             self.process_images()
 
         # Sync Products
-        self.get_products()  # Get all products that have been updated since the last sync
-
-        # test product queue
-        # self.sync_queue = [
-        #     # {'sku': '202836', 'binding_id': 'B0104'}
-        #     {'sku': '202843', 'binding_id': 'B0133'}
-        #     # {'sku': '10338', 'binding_id': 'B0006'},
-        #     # {'sku': '202335', 'binding_id': 'B0151'},
-        # ]
+        self.get_sync_queue()  # Get all products that have been updated since the last sync
 
         if not self.sync_queue:
             Catalog.logger.success('No products to sync.')
@@ -314,7 +311,7 @@ class Catalog:
                 try:
                     Shopify.Product.delete(product_id=target)
                 except Exception as e:
-                    Logger.error_handler.add_error_v(
+                    Catalog.error_handler.add_error_v(
                         error=f'Error deleting product {target}. {e}', origin='delete_products()'
                     )
                 Database.Shopify.Product.delete(product_id=target)
@@ -458,7 +455,7 @@ class Catalog:
 
         def process_menus(self):
             """Recursively updates menus in Shopify."""
-            main_menu = {'id': creds.shopify_main_menu_id, 'title': 'Menu menu', 'handle': 'main-menu', 'items': []}
+            main_menu = {'id': creds.shopify_menu_main, 'title': 'Menu menu', 'handle': 'main-menu', 'items': []}
 
             def menu_helper(category):
                 # Sort category children by sort order
@@ -646,7 +643,7 @@ class Catalog:
                 payload = {'input': {'title': self.name, 'handle': self.handle, 'sortOrder': 'BEST_SELLING'}}
                 # New items - Add store channel
                 if not self.collection_id:
-                    payload['input']['publications'] = {'publicationId': creds.shopify_online_store_channel_id}
+                    payload['input']['publications'] = {'publicationId': creds.shopify_channel_online_store}
                 # Updates - Add Collection ID
                 if self.collection_id:
                     payload['input']['id'] = f'gid://shopify/Collection/{self.collection_id}'
@@ -1455,12 +1452,12 @@ class Catalog:
                 return result
 
             def create_image_payload():
-                # sort_order = 0
-                # for x in self.images:
-                #     if sort_order == 0:
-                #         x.is_thumbnail = True
-                #     x.sort_order = sort_order
-                #     sort_order += 1
+                sort_order = 0
+                for x in self.images:
+                    if sort_order == 0:
+                        x.is_thumbnail = True
+                    x.sort_order = sort_order
+                    sort_order += 1
 
                 result = []
 
@@ -1475,11 +1472,6 @@ class Catalog:
                 if updated:
                     # Delete all current images for the product
                     if self.product_id:
-                        # if self.is_bound:
-                        # for x in self.variants:
-                        #     Shopify.Product.Variant.Image.delete(
-                        #         product_id=self.product_id, variant_id=x.variant_id
-                        #     )
                         Shopify.Product.Media.Image.delete(product_id=self.product_id)
                         Database.Shopify.Product.Image.delete(product_id=self.product_id)
 
@@ -1601,7 +1593,7 @@ class Catalog:
                     if not self.is_preorder:
                         variant_payload['inventoryQuantities'] = {
                             'availableQuantity': child.buffered_quantity,
-                            'locationId': creds.shopify_location_id,
+                            'locationId': creds.shopify_location_1387,
                         }
 
                 if child.price_2:
@@ -1670,7 +1662,7 @@ class Catalog:
             if not self.is_preorder:
                 payload['input']['inventoryQuantities'] = {}
                 payload['input']['inventoryQuantities']['availableQuantity'] = self.buffered_quantity
-                payload['input']['inventoryQuantities']['locationId'] = creds.shopify_location_id
+                payload['input']['inventoryQuantities']['locationId'] = creds.shopify_location_1387
 
             if self.weight:
                 payload['input']['inventoryItem']['measurement'] = {
@@ -1691,7 +1683,7 @@ class Catalog:
                     payload['input']['quantities'].append(
                         {
                             'inventoryItemId': f'gid://shopify/InventoryItem/{child.inventory_id}',
-                            'locationId': creds.shopify_location_id,
+                            'locationId': creds.shopify_location_1387,
                             'quantity': child.buffered_quantity,
                         }
                     )
@@ -2067,7 +2059,7 @@ class Catalog:
             # Choose the lowest price family member as the parent.
             parent_sku = min(family_members, key=lambda x: x['price_1'])['sku']
 
-            Logger.info(f'Family Members: {family_members}, Target new parent item: {parent_sku}')
+            Catalog.logger.info(f'Family Members: {family_members}, Target new parent item: {parent_sku}')
 
             if remove_current:
                 # Remove Parent Status from all children.
@@ -2786,18 +2778,6 @@ class Catalog:
                         img = Catalog.Product.Image(image_name=image, product_id=self.product_id)
                         if img.validate():
                             self.images.append(img)
-
-            def construct_image_payload(self):
-                result = []
-                for image in self.images:
-                    image_payload = {
-                        'src': f'{creds.public_web_dav_photos}/{image.name}',
-                        'position': image.image_number,
-                        'alt': image.alt_text_1,
-                    }
-                    result.append(image_payload)
-
-                return result
 
             @staticmethod
             def get_lst_maint_dt(file_path):

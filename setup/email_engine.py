@@ -5,8 +5,10 @@ from email.mime.text import MIMEText
 from email.mime.image import MIMEImage
 from email.mime.application import MIMEApplication
 from setup.barcode_engine import generate_barcode
+from setup import utilities
 from datetime import datetime
 from reporting import product_reports
+from integration.database import Database
 
 from setup.admin_report_html import boiler_plate, css, body_start, body_end
 from setup.date_presets import today
@@ -146,6 +148,12 @@ class Email:
             def send(name, email, gc_code, amount):
                 """Sends gift card to customer"""
                 recipient = {name: email}
+                try:
+                    amount = int(amount)
+                except ValueError:
+                    error_handler.logger.error(f'Error converting {amount} to int.')
+
+                print(f'Sending Gift Card to {name} at {email}')
 
                 with open('./templates/gift_card.html', 'r') as file:
                     template_str = file.read()
@@ -296,60 +304,77 @@ class Email:
                 """Renders Jinja2 template and sends HTML email to sales team with leads from yesterday
                 for follow-up"""
                 error_handler.logger.info(f'Lead Notification Email: Starting at {datetime.now():%H:%M:%S}')
-                with open(creds.design_lead_log, encoding='utf-8') as lead_file:
-                    # Dataframe for Log
-                    df = pandas.read_csv(lead_file)
-                    df = df.replace({np.nan: None})
-                    entries = df.to_dict('records')
-                    # Get yesterday submissions
-                    yesterday_entries = []
-                    for x in entries:
-                        # 4/25/24 note: yesterday is a dt object whereas today is a string
-                        if x['date'][:10] == f'{yesterday:%Y-%m-%d}' or x['date'][:10] == today:
-                            yesterday_entries.append(x)
-
-                    if len(yesterday_entries) < 1:
-                        error_handler.logger.info('No entries to send.')
-                    else:
-                        error_handler.logger.info(
-                            f'{len(yesterday_entries)} leads from yesterday. Constructing Email'
-                        )
-                        with open('./templates/design_lead/follow_up.html', 'r') as template_file:
-                            template_str = template_file.read()
-
-                        jinja_template = Template(template_str)
-
-                        email_data = {
-                            'title': 'Design Lead Followup Email',
-                            'company': creds.company_name,
-                            'leads': yesterday_entries,
-                            'format': create_log,
-                            'date_format': datetime,
+                yesterday_entries = []
+                db_data = Database.DesignLead.get()
+                if db_data:
+                    for x in db_data:
+                        result = {
+                            'date': f'{x[1]:%m/%d/%Y %I:%M:%S %p}',
+                            'customer_number': x[2],
+                            'first_name': x[3],
+                            'last_name': x[4],
+                            'email': x[5],
+                            'phone': x[6],
+                            'interested_in': [],
+                            'timeline': x[13],
+                            'street': x[14],
+                            'city': x[15],
+                            'state': x[16],
+                            'zip_code': x[17],
+                            'comments': x[18],
                         }
+                        if x[7] == 1:
+                            result['interested_in'].append('Sketch and Go')
+                        if x[8] == 1:
+                            result['interested_in'].append('Scaled Drawing')
+                        if x[9] == 1:
+                            result['interested_in'].append('Digital Rendering')
+                        if x[10] == 1:
+                            result['interested_in'].append('On-Site Consultation')
+                        if x[11] == 1:
+                            result['interested_in'].append('Delivery and Placement')
+                        if x[12] == 1:
+                            result['interested_in'].append('Installation')
 
-                        email_content = jinja_template.render(email_data)
+                        yesterday_entries.append(result)
 
-                        try:
-                            Email(
-                                from_name=creds.company_name,
-                                from_address=creds.sales_email,
-                                from_pw=creds.sales_password,
-                                recipients_list=recipients,
-                                subject='Landscape Design Leads',
-                                content=email_content,
-                                mode='related',
-                                logo=True,
-                                staff=True,
-                            )
+                if len(yesterday_entries) < 1:
+                    error_handler.logger.info('No entries to send.')
+                else:
+                    error_handler.logger.info(f'{len(yesterday_entries)} leads from yesterday. Constructing Email')
+                    with open('./templates/design_lead/follow_up.html', 'r') as template_file:
+                        template_str = template_file.read()
 
-                        except Exception as err:
-                            error_handler.error_handler.add_error_v(error=err, origin='lead_notification_email')
+                    jinja_template = Template(template_str)
 
-                        else:
-                            error_handler.logger.success('Email Sent.')
+                    email_data = {
+                        'title': 'Design Lead Followup Email',
+                        'company': creds.company_name,
+                        'leads': yesterday_entries,
+                        'date_format': datetime,
+                        'format': utilities,
+                    }
+
+                    email_content = jinja_template.render(email_data)
+
+                    try:
+                        Email.send(
+                            recipients_list=recipients,
+                            subject='Landscape Design Leads',
+                            content=email_content,
+                            mode='related',
+                            logo=True,
+                            staff=True,
+                        )
+
+                    except Exception as err:
+                        error_handler.error_handler.add_error_v(error=err, origin='lead_notification_email')
+
+                    else:
+                        error_handler.logger.success('Email Sent.')
 
                 error_handler.logger.info(f'Lead Notification Email: Finished at {datetime.now():%H:%M:%S}')
 
 
 if __name__ == '__main__':
-    Email.GiftCard.send('John Doe', 'alexpow@gmail.com', '1234-5678-9654', 100)
+    Email.Staff.DesignLeadNotification.send(recipients=creds.lead_email['recipients'])
