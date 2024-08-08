@@ -31,7 +31,7 @@ class Customers:
             Database.Counterpoint.Customer.update_timestamps(customer_list)
 
     def get_cp_customers(self):
-        response = Database.Counterpoint.Customer.get()
+        response = Database.Counterpoint.Customer.get(customer_no='105786')
         return [self.Customer(x) for x in response] if response is not None else []
 
     def get_mw_customer(self):
@@ -62,22 +62,23 @@ class Customers:
             self.email = cust_result[3] if cust_result[3] else f'{self.cp_cust_no}@store.com'
             self.phone = cust_result[4]
             self.loyalty_points = cust_result[5]
-            self.address: str = cust_result[6]
-            self.city = cust_result[7]
-            self.state = cust_result[8]
-            self.zip = cust_result[9]
-            self.country = cust_result[10]
-            self.shopify_cust_no = cust_result[11]
+            self.address_line_1: str = cust_result[6]
+            self.address_line_2: str = cust_result[7]
+            self.city = cust_result[8]
+            self.state = cust_result[9]
+            self.zip = cust_result[10]
+            self.country = cust_result[11]
+            self.shopify_cust_no = cust_result[12]
+            self.sms_subscribe = True if cust_result[13] == 'Y' else False
+            self.addresses = []
+            self.get_addresses()
 
             if self.loyalty_points < 0:
                 self.set_loyalty_points_to_zero()
                 self.loyalty_points = 0
 
-        def has_phone(self):
-            return self.phone is not None or self.phone != ''
-
         def has_address(self):
-            if self.address is not None and self.state is not None and self.zip is not None:
+            if self.address_line_1 is not None and self.state is not None and self.zip is not None:
                 if self.address.replace(' ', '').isalpha() or self.address.replace(' ', '').isnumeric():
                     Customers.error_handler.add_error_v(
                         f'Customer {self.cp_cust_no} has malformed address: {self.address}.'
@@ -93,6 +94,40 @@ class Customers:
                 return True
             else:
                 return False
+
+        def get_addresses(self):
+            # Add the primary address
+            address_main = {
+                'first_name': self.fst_nam,
+                'last_name': self.lst_nam,
+                'address1': self.address_line_1,
+                'address2': self.address_line_2,
+                'city': self.city,
+                'state': self.state,
+                'zip': self.zip,
+                'country': self.country,
+                'phone': self.phone,
+            }
+            self.addresses.append(address_main)
+
+            # Get additional addresses
+            address_res = Database.Counterpoint.Customer.Address.get(cust_no=self.cp_cust_no)
+            print(address_res)
+            if address_res is not None:
+                for x in address_res:
+                    print(x)
+                    address = {
+                        'first_name': x[0],
+                        'last_name': x[1],
+                        'address1': x[2],
+                        'address2': x[3],
+                        'city': x[4],
+                        'state': x[5],
+                        'zip': x[6],
+                        'country': x[7],
+                        'phone': x[8],
+                    }
+                    self.addresses.append(address)
 
         # def process(self, session: requests.Session):
         def process(self):
@@ -123,6 +158,11 @@ class Customers:
 
                 if self.phone:
                     variables['input']['phone'] = self.phone
+                    variables['input']['smsMarketingConsent'] = (
+                        {'marketingState': 'SUBSCRIBED'}
+                        if self.sms_subscribe
+                        else {'marketingState': 'NOT_SUBSCRIBED'}
+                    )
 
                 def state_code_to_full_name(state_code):
                     states = {
@@ -180,20 +220,29 @@ class Customers:
 
                     return states[state_code] if state_code in states else state_code
 
-                if self.addr_lst:
-                    for i in self.addr_lst:
-                        variables['input']['addresses'].append(
-                            {
-                                'address1': i['address'],
-                                'city': i['city'],
-                                'phone': i['phone'],
-                                'provinceCode': state_code_to_full_name(i['state']),
-                                'zip': i['zip'],
-                                'lastName': i['last_name'],
-                                'firstName': i['first_name'],
-                                'country': i['country'],
-                            }
-                        )
+                if self.addresses:
+                    for i in self.addresses:
+                        address = {}
+                        if i['first_name']:
+                            address['firstName'] = i['first_name']
+                        if i['last_name']:
+                            address['lastName'] = i['last_name']
+                        if i['phone']:
+                            address['phone'] = i['phone']
+                        if i['address1']:
+                            address['address1'] = i['address1']
+                        if i['address2']:
+                            address['address2'] = i['address2']
+                        if i['city']:
+                            address['city'] = i['city']
+                        if i['state']:
+                            address['provinceCode'] = state_code_to_full_name(i['state'])
+                        if i['zip']:
+                            address['zip'] = i['zip']
+                        if i['country']:
+                            address['country'] = i['country']
+
+                        variables['input']['addresses'].append(address)
 
                 return variables
 

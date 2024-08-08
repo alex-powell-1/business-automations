@@ -125,10 +125,7 @@ class Shopify:
 
                 price = float(get_money(item['originalTotalSet']))
 
-                item['isGiftCard'] = False
-
-                if item['sku'] is not None:
-                    item['isGiftCard'] = 'GFC' in item['sku']
+                item['isGiftCard'] = 'GFC' in item['sku']
 
                 pl = {
                     'id': item['id'],
@@ -211,10 +208,7 @@ class Shopify:
             def get_money(money: dict):
                 return money['presentmentMoney']['amount']
 
-            try:
-                shippingCost = float(get_money(snode['shippingLine']['discountedPriceSet']))
-            except:
-                shippingCost = 0
+            shippingCost = float(get_money(snode['shippingLine']['discountedPriceSet']))
 
             hdsc = float(get_money(snode['totalDiscountsSet']))
 
@@ -286,7 +280,38 @@ class Shopify:
             if hdsc > 0:
                 bc_order['coupons']['url'] = [{'amount': hdsc}]
 
+            # transactions = []
+
+            # for transaction in snode['transactions']:
+            #     amount = float(get_money(transaction['amountSet']))
+
+            #     if transaction['gateway'] == 'gift_card':
+            #         transaction['gateway'] = 'gift_certificate'
+
+            #     transactions.append(
+            #         {
+            #             'method': transaction['gateway'],
+            #             'amount': amount,
+            #             'gift_certificate': {'code': 'ABC123', 'remaining_balance': 0},
+            #         }
+            #     )
+
+            # bc_order['transactions']['data'] = transactions
+
             return bc_order
+
+        @staticmethod
+        def create_gift_card(balance: float):
+            input = {'initialValue': balance}
+
+            response = Shopify.Query(
+                document=Shopify.Order.queries, operation_name='giftCardCreate', variables={'input': input}
+            )
+
+            if response.errors or response.user_errors:
+                raise Exception(f'Error creating gift card: {response.errors}\nUser Errors: {response.user_errors}')
+
+            return response.data
 
     class Customer:
         queries = './integration/queries/customers.graphql'
@@ -1351,4 +1376,4 @@ if __name__ == '__main__':
     # for product in all_ids:
     #     Shopify.Product.publish(product)
 
-    Shopify.Order.get(5570286354599)
+    Shopify.Order.get(5588776222887)

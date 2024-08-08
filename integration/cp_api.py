@@ -1720,7 +1720,6 @@ class OrderAPI(DocumentAPI):
             self.logger.success('Updated line types')
         else:
             self.error_handler.add_error_v('Line types could not be updated')
-            self.error_handler.add_error_v(response['message'])
 
         query = f"""
         UPDATE PS_DOC_PMT_APPLY
