@@ -6,7 +6,14 @@ class PhoneNumber:
         self.subscriber_number = self.get_subscriber_number()
 
     def strip_number(self, phone_number):
-        return phone_number.replace('+1', '').replace('-', '').replace('(', '').replace(')', '').replace(' ', '')
+        return (
+            phone_number.replace('+1', '')
+            .replace('-', '')
+            .replace('(', '')
+            .replace(')', '')
+            .replace(' ', '')
+            .replace('_', '')
+        )
 
     def get_area_code(self):
         return self.raw[0:3]
