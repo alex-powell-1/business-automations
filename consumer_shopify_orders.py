@@ -47,7 +47,7 @@ class RabbitMQConsumer:
             ShopifyOrder(order_id).post_shopify_order()
 
             # order = Order(order_id)
-            # test
+
             # Filter out DECLINED payments
             if order.status == 'UNFULFILLED' or order.status == 'FULFILLED':
                 # Add order to SQL Database. Datestamp and status are added by default.
