@@ -11,7 +11,7 @@ from setup.error_handler import ProcessOutErrorHandler
 
 
 class PhoneNumber:
-    def __init__(self, phone_number):
+    def __init__(self, phone_number: str):
         self.raw = self.strip_number(phone_number)
         self.area_code = self.get_area_code()
         self.exchange = self.get_exchange()
