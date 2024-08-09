@@ -432,7 +432,10 @@ def add_new_customer(first_name, last_name, phone_number, email_address, street_
         try:
             state = states[state]
         except KeyError:
-            state = state[0:10]
+            try:
+                state = state[0:10]
+            except:
+                state = None
 
         payload = {
             'Workgroup': '1',
