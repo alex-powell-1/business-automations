@@ -408,6 +408,13 @@ class Database:
                             """
                 return Database.db.query(query)
 
+            def exists(shopify_cust_no):
+                query = f"""
+                        SELECT * FROM {Database.Shopify.Customer.table}
+                        WHERE SHOP_CUST_ID = {shopify_cust_no}
+                        """
+                return Database.db.query(query)
+
             def insert(
                 cp_cust_no,
                 shopify_cust_no,
@@ -429,7 +436,6 @@ class Database:
                         {meta_spouse_birth_month_id if meta_spouse_birth_month_id else "NULL"}, 
                         {meta_wholesale_price_tier_id if meta_wholesale_price_tier_id else "NULL"})
                         """
-                print(query)
                 response = Database.db.query(query)
                 if response['code'] == 200:
                     Database.logger.success(f'Customer {cp_cust_no} added to Middleware.')
@@ -477,28 +483,29 @@ class Database:
                 if not customer.cp_cust_no:
                     if customer.mw_id:
                         Database.Shopify.Customer.delete(customer)
-                if customer.mw_id:
-                    Database.Shopify.Customer.update(
-                        cp_cust_no=customer.cp_cust_no,
-                        shopify_cust_no=customer.shopify_cust_no,
-                        loyalty_point_id=customer.loyalty_point_id,
-                        meta_cust_no_id=customer.meta_cust_no_id,
-                        meta_category_id=customer.meta_category_id,
-                        meta_birth_month_id=customer.meta_birth_month_id,
-                        meta_spouse_birth_month_id=customer.meta_spouse_birth_month_id,
-                        meta_wholesale_price_tier_id=customer.meta_wholesale_price_tier_id,
-                    )
                 else:
-                    Database.Shopify.Customer.insert(
-                        cp_cust_no=customer.cp_cust_no,
-                        shopify_cust_no=customer.shopify_cust_no,
-                        loyalty_point_id=customer.loyalty_point_id,
-                        meta_cust_no_id=customer.meta_cust_no_id,
-                        meta_category_id=customer.meta_category_id,
-                        meta_birth_month_id=customer.meta_birth_month_id,
-                        meta_spouse_birth_month_id=customer.meta_spouse_birth_month_id,
-                        meta_wholesale_price_tier_id=customer.meta_wholesale_price_tier_id,
-                    )
+                    if customer.mw_id:
+                        Database.Shopify.Customer.update(
+                            cp_cust_no=customer.cp_cust_no,
+                            shopify_cust_no=customer.shopify_cust_no,
+                            loyalty_point_id=customer.loyalty_point_id,
+                            meta_cust_no_id=customer.meta_cust_no_id,
+                            meta_category_id=customer.meta_category_id,
+                            meta_birth_month_id=customer.meta_birth_month_id,
+                            meta_spouse_birth_month_id=customer.meta_spouse_birth_month_id,
+                            meta_wholesale_price_tier_id=customer.meta_wholesale_price_tier_id,
+                        )
+                    else:
+                        Database.Shopify.Customer.insert(
+                            cp_cust_no=customer.cp_cust_no,
+                            shopify_cust_no=customer.shopify_cust_no,
+                            loyalty_point_id=customer.loyalty_point_id,
+                            meta_cust_no_id=customer.meta_cust_no_id,
+                            meta_category_id=customer.meta_category_id,
+                            meta_birth_month_id=customer.meta_birth_month_id,
+                            meta_spouse_birth_month_id=customer.meta_spouse_birth_month_id,
+                            meta_wholesale_price_tier_id=customer.meta_wholesale_price_tier_id,
+                        )
 
             def delete(shopify_cust_no):
                 query = f'DELETE FROM {Database.Shopify.Customer.table} WHERE SHOP_CUST_ID = {shopify_cust_no}'

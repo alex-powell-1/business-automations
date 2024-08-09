@@ -25,6 +25,7 @@ query order($id: ID!) {
             }
 
             email
+            discountCodes
             note
             requiresShipping
 

@@ -6,6 +6,7 @@ from pathlib import Path
 from integration.database import Database
 from shortuuid import ShortUUID
 from setup.email_engine import Email
+from customer_tools.customers import lookup_customer
 
 verbose_print = True
 
@@ -426,6 +427,65 @@ class Shopify:
                         variables={'id': f'gid://shopify/Customer/{i}'},
                         operation_name='customerDelete',
                     )
+
+        def backfill():
+            cust_ids = Shopify.Customer.get()
+
+            for shop_cust_id in cust_ids:
+                response = Shopify.Customer.get(shop_cust_id)
+                email = response['customer']['email']
+                phone = response['customer']['phone']
+                metafields = response['customer']['metafields']['edges']
+                meta_cust_id = None
+                meta_category = None
+                meta_birth_month = None
+                meta_birth_month_spouse = None
+                meta_wholesale_tier = None
+                for meta in metafields:
+                    if meta['node']['namespace'] == 'customer' and meta['node']['key'] == 'number':
+                        meta_cust_id = meta['node']['id'].split('/')[-1]
+                        print(f'Meta Cust ID: {meta_cust_id}')
+                    elif meta['node']['namespace'] == 'customer' and meta['node']['key'] == 'category':
+                        meta_category = meta['node']['id'].split('/')[-1]
+                        print(f'Meta Category: {meta_category}')
+                    elif meta['node']['namespace'] == 'customer' and meta['node']['key'] == 'birth_month':
+                        meta_birth_month = meta['node']['id'].split('/')[-1]
+                        print(f'Meta Birth Month: {meta_birth_month}')
+                    elif meta['node']['namespace'] == 'customer' and meta['node']['key'] == 'birth_month_spouse':
+                        meta_birth_month_spouse = meta['node']['id'].split('/')[-1]
+                        print(f'Meta Birth Month Spouse: {meta_birth_month_spouse}')
+                    elif meta['node']['namespace'] == 'customer' and meta['node']['key'] == 'wholesale_price_tier':
+                        meta_wholesale_tier = meta['node']['id'].split('/')[-1]
+                        print(f'Meta Wholesale Tier: {meta_wholesale_tier}')
+
+                loyalty_id = Shopify.Customer.StoreCredit.add_store_credit(shop_cust_id, 1)
+                Shopify.Customer.StoreCredit.remove_store_credit(shop_cust_id, 1)
+                print(f'Loyalty ID: {loyalty_id}')
+
+                cust_number = lookup_customer(email, phone)
+                if cust_number:
+                    if not Database.Shopify.Customer.exists(shopify_cust_no=shop_cust_id):
+                        Database.Shopify.Customer.insert(
+                            cp_cust_no=cust_number,
+                            shopify_cust_no=shop_cust_id,
+                            loyalty_point_id=loyalty_id,
+                            meta_cust_no_id=meta_cust_id,
+                            meta_category_id=meta_category,
+                            meta_birth_month_id=meta_birth_month,
+                            meta_spouse_birth_month_id=meta_birth_month_spouse,
+                            meta_wholesale_price_tier_id=meta_wholesale_tier,
+                        )
+                    else:
+                        Database.Shopify.Customer.update(
+                            cp_cust_no=cust_number,
+                            shopify_cust_no=shop_cust_id,
+                            loyalty_point_id=loyalty_id,
+                            meta_cust_no_id=meta_cust_id,
+                            meta_category_id=meta_category,
+                            meta_birth_month_id=meta_birth_month,
+                            meta_spouse_birth_month_id=meta_birth_month_spouse,
+                            meta_wholesale_price_tier_id=meta_wholesale_tier,
+                        )
 
         class StoreCredit:
             queries = './integration/queries/storeCredit.graphql'
@@ -1429,43 +1489,4 @@ class Shopify:
 
 
 if __name__ == '__main__':
-    # # # all_ids = Shopify.Product.get()
-    # # # for product in all_ids:
-    # # #     Shopify.Product.publish(product)
-
-    # from customer_tools.customers import lookup_customer
-
-    # cust_ids = Shopify.Customer.get()
-
-    # for shop_cust_id in cust_ids:
-    #     response = Shopify.Customer.get(shop_cust_id)
-    #     email = response['customer']['email']
-    #     phone = response['customer']['phone']
-    #     metafields = response['customer']['metafields']['edges']
-    #     for meta in metafields:
-    #         if meta['node']['namespace'] == 'customer' and meta['node']['key'] == 'number':
-    #             meta_cust_id = meta['node']['id'].split('/')[-1]
-    #         elif meta['node']['namespace'] == 'customer' and meta['node']['key'] == 'category':
-    #             meta_category = meta['node']['id'].split('/')[-1]
-    #         elif meta['node']['namespace'] == 'customer' and meta['node']['key'] == 'birth_month':
-    #             meta_birth_month = meta['node']['id'].split('/')[-1]
-    #         elif meta['node']['namespace'] == 'customer' and meta['node']['key'] == 'birth_month_spouse':
-    #             meta_birth_month_spouse = meta['node']['id'].split('/')[-1]
-    #         elif meta['node']['namespace'] == 'customer' and meta['node']['key'] == 'wholesale_price_tier':
-    #             meta_wholesale_tier = meta['node']['id'].split('/')[-1]
-
-    #     cust_number = lookup_customer(email, phone)
-
-    #     if cust_number:
-    #         Database.Shopify.Customer.insert(
-    #             cp_cust_no=cust_number,
-    #             shopify_cust_no=shop_cust_id,
-    #             loyalty_point_id=None,
-    #             meta_cust_no_id=meta_cust_id,
-    #             meta_category_id=meta_category,
-    #             meta_birth_month_id=meta_birth_month,
-    #             meta_spouse_birth_month_id=meta_birth_month_spouse,
-    #             meta_wholesale_price_tier_id=meta_wholesale_tier,
-    #         )
-
-    Shopify.Customer.get(7613258563751)
+    Shopify.Customer.backfill()
