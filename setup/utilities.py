@@ -59,6 +59,7 @@ def format_phone(phone_number, mode='clickable'):
         return str(phone)
 
     elif mode == 'twilio':
+        # Masking +###########
         return phone.to_twilio()
 
 
