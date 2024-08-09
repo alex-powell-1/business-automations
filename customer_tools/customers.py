@@ -435,18 +435,23 @@ def add_new_customer(first_name, last_name, phone_number, email_address, street_
 
         payload = {
             'Workgroup': '1',
-            'AR_CUST': {
-                'FST_NAM': first_name,
-                'LST_NAM': last_name,
-                'STR_ID': '1',
-                'EMAIL_ADRS_1': email_address,
-                'PHONE_1': phone_number,
-                'ADRS_1': street_address,
-                'CITY': city,
-                'STATE': state,
-                'ZIP_COD': zip_code,
-            },
+            'AR_CUST': {'FST_NAM': first_name, 'LST_NAM': last_name, 'STR_ID': '1', 'EMAIL_ADRS_1': email_address},
         }
+
+        if phone_number is not None:
+            payload['AR_CUST']['PHONE_1'] = phone_number
+
+        if street_address is not None:
+            payload['AR_CUST']['ADRS_1'] = street_address
+
+        if city is not None:
+            payload['AR_CUST']['CITY'] = city
+
+        if state is not None:
+            payload['AR_CUST']['STATE'] = state
+
+        if zip_code is not None:
+            payload['AR_CUST']['ZIP_COD'] = zip_code
 
         response = requests.post(url, headers=headers, verify=False, json=payload)
 
@@ -543,15 +548,35 @@ def update_customer(
     NAM_UPR = '{NAM_UPR}',
     FST_NAM_UPR = '{FST_NAM_UPR}',
     LST_NAM_UPR = '{LST_NAM_UPR}',
-    PHONE_1 = '{phone_number}',
-    EMAIL_ADRS_1 = '{email_address}',
-    ADRS_1 = '{street_address}',
-    CITY = '{city}',
-    STATE = '{state}',
-    ZIP_COD = '{zip_code}',
     CONTCT_1 = '{NAM}'
-    WHERE CUST_NO = '{cust_no}'
     """
+
+    # PHONE_1 = '{phone_number}',
+    # EMAIL_ADRS_1 = '{email_address}',
+    # ADRS_1 = '{street_address}',
+    # CITY = '{city}',
+    # STATE = '{state}',
+    # ZIP_COD = '{zip_code}',
+
+    if phone_number is not None:
+        query += f", PHONE_1 = '{phone_number}'"
+
+    if email_address is not None:
+        query += f", EMAIL_ADRS_1 = '{email_address}'"
+
+    if street_address is not None:
+        query += f", ADRS_1 = '{street_address}'"
+
+    if city is not None:
+        query += f", CITY = '{city}'"
+
+    if state is not None:
+        query += f", STATE = '{state}'"
+
+    if zip_code is not None:
+        query += f", ZIP_COD = '{zip_code}'"
+
+    query += f"WHERE CUST_NO = '{cust_no}'"
 
     response = db.query(query)
 

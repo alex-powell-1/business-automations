@@ -114,7 +114,19 @@ class Shopify:
             """Convert Shopify order to BigCommerce order format"""
             shopify_order = Shopify.Order.get(order_id)
             snode = shopify_order['node']
-            billing = snode['billingAddress']
+            billing = snode['billingAddress'] or {
+                'firstName': None,
+                'lastName': None,
+                'company': None,
+                'address1': None,
+                'address2': None,
+                'city': None,
+                'province': None,
+                'zip': None,
+                'country': None,
+                'phone': None,
+                'email': None,
+            }
             status = snode['displayFulfillmentStatus']
 
             shopify_products = []

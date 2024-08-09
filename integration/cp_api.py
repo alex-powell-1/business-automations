@@ -559,9 +559,6 @@ class OrderAPI(DocumentAPI):
         state = b('state')
         zip_code = b('zip')
 
-        if phone_number is None:
-            return
-
         cust_no = customers.add_new_customer(
             first_name=first_name,
             last_name=last_name,
@@ -637,9 +634,6 @@ class OrderAPI(DocumentAPI):
             city = b('city')
             state = b('state')
             zip_code = b('zip')
-
-            if phone_number is None:
-                return
 
             response = customers.update_customer(
                 cust_no=cust_no,
