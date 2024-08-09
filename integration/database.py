@@ -215,8 +215,9 @@ class Database:
                     customer_filter = ''
 
                 query = f"""
-                SELECT cp.CUST_NO, FST_NAM, LST_NAM, EMAIL_ADRS_1, PHONE_1, LOY_PTS_BAL, ADRS_1, ADRS_2, CITY, STATE, ZIP_COD, CNTRY,
-                MW.SHOP_CUST_ID, {creds.sms_subscribe_status}
+                SELECT CP.CUST_NO, FST_NAM, LST_NAM, EMAIL_ADRS_1, PHONE_1, LOY_PTS_BAL, MW.LOY_ACCOUNT, ADRS_1, ADRS_2, CITY, STATE, ZIP_COD, CNTRY,
+                MW.SHOP_CUST_ID, MW.META_CUST_NO, CATEG_COD, MW.META_CATEG, PROF_COD_2, MW.META_BIR_MTH, PROF_COD_3, MW.META_SPS_BIR_MTH, 
+                PROF_ALPHA_1, MW.WH_PRC_TIER, {creds.sms_subscribe_status}, MW.ID 
                 FROM {Database.Counterpoint.Customer.table} CP
                 FULL OUTER JOIN {creds.shopify_customer_table} MW on CP.CUST_NO = MW.cust_no
                 WHERE CP.LST_MAINT_DT > '{last_sync}' and CUST_NAM_TYP = 'P' {customer_filter}
@@ -325,7 +326,8 @@ class Database:
                                             CREATE TABLE {Database.Shopify.customer_table} (
                                             ID int IDENTITY(1,1) PRIMARY KEY,
                                             CUST_NO varchar(50) NOT NULL,
-                                            SHOP_CUST_ID int,
+                                            SHOP_CUST_ID bigint,
+                                            META_CUST_NO bigint,
                                             LST_MAINT_DT datetime NOT NULL DEFAULT(current_timestamp)
                                             );
                                             """,
@@ -406,41 +408,107 @@ class Database:
                             """
                 return Database.db.query(query)
 
-            def insert(customer):
+            def insert(
+                cp_cust_no,
+                shopify_cust_no,
+                loyalty_point_id=None,
+                meta_cust_no_id=None,
+                meta_category_id=None,
+                meta_birth_month_id=None,
+                meta_spouse_birth_month_id=None,
+                meta_wholesale_price_tier_id=None,
+            ):
                 query = f"""
-                        INSERT INTO {Database.Shopify.Customer.table} (CUST_NO, SHOP_CUST_ID)
-                        VALUES ('{customer.cp_cust_no}', {customer.shopify_cust_no})
+                        INSERT INTO {Database.Shopify.Customer.table} (CUST_NO, SHOP_CUST_ID, 
+                        LOY_ACCOUNT, META_CUST_NO, META_CATEG, META_BIR_MTH, META_SPS_BIR_MTH, WH_PRC_TIER)
+                        VALUES ('{cp_cust_no}', '{shopify_cust_no}', 
+                        {loyalty_point_id if loyalty_point_id else "NULL"}, 
+                        {meta_cust_no_id if meta_cust_no_id else "NULL"}, 
+                        {meta_category_id if meta_category_id else "NULL"}, 
+                        {meta_birth_month_id if meta_birth_month_id else "NULL"}, 
+                        {meta_spouse_birth_month_id if meta_spouse_birth_month_id else "NULL"}, 
+                        {meta_wholesale_price_tier_id if meta_wholesale_price_tier_id else "NULL"})
                         """
+                print(query)
                 response = Database.db.query(query)
                 if response['code'] == 200:
-                    Database.logger.success(f'Customer {customer.cust_no} added to Middleware.')
+                    Database.logger.success(f'Customer {cp_cust_no} added to Middleware.')
                 else:
-                    error = f'Error adding customer {customer.cust_no} to Middleware. \nQuery: {query}\nResponse: {response}'
+                    error = (
+                        f'Error adding customer {cp_cust_no} to Middleware. \nQuery: {query}\nResponse: {response}'
+                    )
                     Database.error_handler.add_error_v(error=error)
                     raise Exception(error)
 
-            def update(customer):
+            def update(
+                cp_cust_no,
+                shopify_cust_no,
+                loyalty_point_id=None,
+                meta_cust_no_id=None,
+                meta_category_id=None,
+                meta_birth_month_id=None,
+                meta_spouse_birth_month_id=None,
+                meta_wholesale_price_tier_id=None,
+            ):
                 query = f"""
                         UPDATE {Database.Shopify.Customer.table}
-                        SET SHOP_CUST_ID = {customer.shopify_cust_no}, LST_MAINT_DT = GETDATE()
-                        WHERE CUST_NO = '{customer.cp_cust_no}'
+                        SET SHOP_CUST_ID = {shopify_cust_no}, 
+                        LOY_ACCOUNT = {loyalty_point_id if loyalty_point_id else "NULL"},
+                        META_CUST_NO = {meta_cust_no_id if meta_cust_no_id else "NULL"},
+                        META_CATEG = {meta_category_id if meta_category_id else "NULL"},
+                        META_BIR_MTH = {meta_birth_month_id if meta_birth_month_id else "NULL"},
+                        META_SPS_BIR_MTH = {meta_spouse_birth_month_id if meta_spouse_birth_month_id else "NULL"},
+                        WH_PRC_TIER = {meta_wholesale_price_tier_id if meta_wholesale_price_tier_id else "NULL"},
+                        LST_MAINT_DT = GETDATE()
+                        WHERE CUST_NO = '{cp_cust_no}'
                         """
 
                 response = Database.db.query(query)
                 if response['code'] == 200:
-                    Database.logger.success(f'Customer {customer.cust_no} updated in Middleware.')
+                    Database.logger.success(f'Customer {cp_cust_no} updated in Middleware.')
+                elif response['code'] == 201:
+                    Database.logger.warn(f'Customer {cp_cust_no} not found in Middleware.')
                 else:
-                    error = f'Error updating customer {customer.cust_no} in Middleware. \nQuery: {query}\nResponse: {response}'
+                    error = f'Error updating customer {cp_cust_no} in Middleware. \nQuery: {query}\nResponse: {response}'
                     Database.error_handler.add_error_v(error=error)
                     raise Exception(error)
 
-            def delete(customer):
-                query = f'DELETE FROM {Database.Shopify.Customer.table} WHERE CUST_NO = {customer.cp_cust_no}'
+            def sync(customer):
+                if not customer.cp_cust_no:
+                    if customer.mw_id:
+                        Database.Shopify.Customer.delete(customer)
+                if customer.mw_id:
+                    Database.Shopify.Customer.update(
+                        cp_cust_no=customer.cp_cust_no,
+                        shopify_cust_no=customer.shopify_cust_no,
+                        loyalty_point_id=customer.loyalty_point_id,
+                        meta_cust_no_id=customer.meta_cust_no_id,
+                        meta_category_id=customer.meta_category_id,
+                        meta_birth_month_id=customer.meta_birth_month_id,
+                        meta_spouse_birth_month_id=customer.meta_spouse_birth_month_id,
+                        meta_wholesale_price_tier_id=customer.meta_wholesale_price_tier_id,
+                    )
+                else:
+                    Database.Shopify.Customer.insert(
+                        cp_cust_no=customer.cp_cust_no,
+                        shopify_cust_no=customer.shopify_cust_no,
+                        loyalty_point_id=customer.loyalty_point_id,
+                        meta_cust_no_id=customer.meta_cust_no_id,
+                        meta_category_id=customer.meta_category_id,
+                        meta_birth_month_id=customer.meta_birth_month_id,
+                        meta_spouse_birth_month_id=customer.meta_spouse_birth_month_id,
+                        meta_wholesale_price_tier_id=customer.meta_wholesale_price_tier_id,
+                    )
+
+            def delete(shopify_cust_no):
+                query = f'DELETE FROM {Database.Shopify.Customer.table} WHERE SHOP_CUST_ID = {shopify_cust_no}'
                 response = Database.db.query(query)
                 if response['code'] == 200:
-                    Database.logger.success(f'Customer {customer.cp_cust_no} deleted from Middleware.')
+                    Database.logger.success(f'Customer {shopify_cust_no} deleted from Middleware.')
+                elif response['code'] == 201:
+                    Database.logger.warn(f'Customer {shopify_cust_no} not found in Middleware.')
                 else:
-                    error = f'Error deleting customer {customer.cp_cust_no} from Middleware. \n Query: {query}\nResponse: {response}'
+                    error = f'Error deleting customer {shopify_cust_no} from Middleware. \n Query: {query}\nResponse: {response}'
                     Database.error_handler.add_error_v(error=error)
                     raise Exception(error)
 
@@ -710,6 +778,10 @@ class Database:
                         Database.logger.success(
                             f'SKU: {variant.sku}, Binding ID: {variant.binding_id} - UPDATE Variant'
                         )
+                    elif response['code'] == 201:
+                        Database.logger.warn(
+                            f'SKU: {variant.sku}, Binding ID: {variant.binding_id} - UPDATE Variant: No Rows Affected'
+                        )
                     else:
                         error = f'Query: {update_query}\n\nResponse: {response}'
                         Database.error_handler.add_error_v(
@@ -778,6 +850,8 @@ class Database:
                     res = Database.db.query(q)
                     if res['code'] == 200:
                         Database.logger.success(f'SQL UPDATE Image {image.name}: Success')
+                    elif res['code'] == 201:
+                        Database.logger.warn(f'SQL UPDATE Image {image.name}: Not found')
                     else:
                         error = f'Error updating image {image.name} in Middleware. \nQuery: {q}\nResponse: {res}'
                         Database.error_handler.add_error_v(
@@ -805,7 +879,7 @@ class Database:
                     if res['code'] == 200:
                         Database.logger.success(f'Query: {q}\nSQL DELETE Image')
                     elif res['code'] == 201:
-                        Database.logger.warn(f'Query: {q}\nSQL DELETE Image: No Rows Affected')
+                        Database.logger.warn(f'Query: {q}\nSQL DELETE Image: Not found')
                     else:
                         if image:
                             error = (
@@ -829,7 +903,11 @@ class Database:
                         WHERE PRODUCT_ID = {product_id}
                         """
                         response = Database.db.query(query)
-                        if response['code'] != 200:
+                        if response['code'] == 200:
+                            Database.logger.success(f'Metafield {column} deleted from product {product_id}.')
+                        elif response['code'] == 201:
+                            Database.logger.warn(f'No rows affected for product {product_id} in Middleware.')
+                        else:
                             raise Exception(response['message'])
 
         class Metafield_Definition:
@@ -867,6 +945,7 @@ class Database:
                     return result
 
             def insert(values):
+                print(values)
                 number_of_validations = len(values['VALIDATIONS'])
                 if number_of_validations > 0:
                     validation_columns = ', ' + ', '.join(
@@ -926,7 +1005,7 @@ class Database:
                     where_filter = ''
                 query = f'DELETE FROM {creds.shopify_metafield_table} {where_filter}'
                 response = Database.db.query(query)
-                if response['code'] != 200:
+                if response['code'] not in [200, 201]:
                     raise Exception(response['message'])
 
         class Webhook:

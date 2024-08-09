@@ -1168,9 +1168,7 @@ class Catalog:
                     print(self.meta_botanical_name)
                     botantical_name_data = {'value': self.meta_botanical_name['value']}
                     if self.meta_botanical_name['id']:
-                        botantical_name_data['id'] = (
-                            f'{Shopify.Product.Metafield.prefix}{self.meta_botanical_name['id']}'
-                        )
+                        botantical_name_data['id'] = f'{Shopify.Metafield.prefix}{self.meta_botanical_name['id']}'
                     else:
                         botantical_name_data['namespace'] = Catalog.metafields['Botanical Name']['NAME_SPACE']
                         botantical_name_data['key'] = Catalog.metafields['Botanical Name']['META_KEY']
@@ -1179,16 +1177,14 @@ class Catalog:
                     result.append(botantical_name_data)
 
                 elif self.meta_botanical_name['id']:
-                    Shopify.Product.Metafield.delete(metafield_id=self.meta_botanical_name['id'])
+                    Shopify.Metafield.delete(metafield_id=self.meta_botanical_name['id'])
                     self.meta_botanical_name['id'] = None
 
                 # Climate Zone
                 if self.meta_climate_zone['value']:
                     climate_zone_data = {'value': self.meta_climate_zone['value']}
                     if self.meta_climate_zone['id']:
-                        climate_zone_data['id'] = (
-                            f'{Shopify.Product.Metafield.prefix}{self.meta_climate_zone['id']}'
-                        )
+                        climate_zone_data['id'] = f'{Shopify.Metafield.prefix}{self.meta_climate_zone['id']}'
                     else:
                         climate_zone_data['namespace'] = Catalog.metafields['Growing Zone']['NAME_SPACE']
                         climate_zone_data['key'] = Catalog.metafields['Growing Zone']['META_KEY']
@@ -1197,7 +1193,7 @@ class Catalog:
                     result.append(climate_zone_data)
 
                 elif self.meta_climate_zone['id']:
-                    Shopify.Product.Metafield.delete(metafield_id=self.meta_climate_zone['id'])
+                    Shopify.Metafield.delete(metafield_id=self.meta_climate_zone['id'])
                     self.meta_climate_zone['id'] = None
 
                 # Climate Zone List
@@ -1205,7 +1201,7 @@ class Catalog:
                     climate_zone_list_data = {'value': json.dumps(self.meta_climate_zone_list['value'])}
                     if self.meta_climate_zone_list['id']:
                         climate_zone_list_data['id'] = (
-                            f'{Shopify.Product.Metafield.prefix}{self.meta_climate_zone_list["id"]}'
+                            f'{Shopify.Metafield.prefix}{self.meta_climate_zone_list["id"]}'
                         )
                     else:
                         climate_zone_list_data['namespace'] = Catalog.metafields['Growing Zone List']['NAME_SPACE']
@@ -1214,13 +1210,13 @@ class Catalog:
 
                     result.append(climate_zone_list_data)
                 elif self.meta_climate_zone_list['id']:
-                    Shopify.Product.Metafield.delete(metafield_id=self.meta_climate_zone_list['id'])
+                    Shopify.Metafield.delete(metafield_id=self.meta_climate_zone_list['id'])
                     self.meta_climate_zone_list['id'] = None
 
                 if self.meta_plant_type['value']:
                     plant_type_data = {'value': self.meta_plant_type['value']}
                     if self.meta_plant_type['id']:
-                        plant_type_data['id'] = f'{Shopify.Product.Metafield.prefix}{self.meta_plant_type["id"]}'
+                        plant_type_data['id'] = f'{Shopify.Metafield.prefix}{self.meta_plant_type["id"]}'
                     else:
                         plant_type_data['namespace'] = Catalog.metafields['Plant Type']['NAME_SPACE']
                         plant_type_data['key'] = Catalog.metafields['Plant Type']['META_KEY']
@@ -1229,14 +1225,14 @@ class Catalog:
                     result.append(plant_type_data)
 
                 elif self.meta_plant_type['id']:
-                    Shopify.Product.Metafield.delete(metafield_id=self.meta_plant_type['id'])
+                    Shopify.Metafield.delete(metafield_id=self.meta_plant_type['id'])
                     self.meta_plant_type['id'] = None
 
                 # Mature Height and Width
                 if self.meta_height['value']:
                     height_data = {'value': json.dumps(self.meta_height['value'])}
                     if self.meta_height['id']:
-                        height_data['id'] = f'{Shopify.Product.Metafield.prefix}{self.meta_height["id"]}'
+                        height_data['id'] = f'{Shopify.Metafield.prefix}{self.meta_height["id"]}'
                     else:
                         height_data['namespace'] = Catalog.metafields['Mature Height']['NAME_SPACE']
                         height_data['key'] = Catalog.metafields['Mature Height']['META_KEY']
@@ -1245,13 +1241,13 @@ class Catalog:
                     result.append(height_data)
 
                 elif self.meta_height['id']:
-                    Shopify.Product.Metafield.delete(metafield_id=self.meta_height['id'])
+                    Shopify.Metafield.delete(metafield_id=self.meta_height['id'])
                     self.meta_height['id'] = None
 
                 if self.meta_width['value']:
                     width_data = {'value': json.dumps(self.meta_width['value'])}
                     if self.meta_width['id']:
-                        width_data['id'] = f'{Shopify.Product.Metafield.prefix}{self.meta_width["id"]}'
+                        width_data['id'] = f'{Shopify.Metafield.prefix}{self.meta_width["id"]}'
                     else:
                         width_data['namespace'] = Catalog.metafields['Mature Width']['NAME_SPACE']
                         width_data['key'] = Catalog.metafields['Mature Width']['META_KEY']
@@ -1259,7 +1255,7 @@ class Catalog:
 
                     result.append(width_data)
                 elif self.meta_width['id']:
-                    Shopify.Product.Metafield.delete(metafield_id=self.meta_width['id'])
+                    Shopify.Metafield.delete(metafield_id=self.meta_width['id'])
                     self.meta_width['id'] = None
 
                 # Light Requirements
@@ -1267,7 +1263,7 @@ class Catalog:
                     light_requirements_data = {'value': json.dumps(self.meta_light_requirements['value'])}
                     if self.meta_light_requirements['id']:
                         light_requirements_data['id'] = (
-                            f'{Shopify.Product.Metafield.prefix}{self.meta_light_requirements["id"]}'
+                            f'{Shopify.Metafield.prefix}{self.meta_light_requirements["id"]}'
                         )
                     else:
                         light_requirements_data['namespace'] = Catalog.metafields['Light Requirements'][
@@ -1279,7 +1275,7 @@ class Catalog:
                     result.append(light_requirements_data)
 
                 elif self.meta_light_requirements['id']:
-                    Shopify.Product.Metafield.delete(metafield_id=self.meta_light_requirements['id'])
+                    Shopify.Metafield.delete(metafield_id=self.meta_light_requirements['id'])
                     self.meta_light_requirements['id'] = None
 
                 # Size
@@ -1289,7 +1285,7 @@ class Catalog:
                         print(f'Meta Size: {self.meta_size}, type: {type(self.meta_size['value'])}')
                         size_data = {'value': self.meta_size['value']}
                         if self.meta_size['id']:
-                            size_data['id'] = f'{Shopify.Product.Metafield.prefix}{self.meta_size["id"]}'
+                            size_data['id'] = f'{Shopify.Metafield.prefix}{self.meta_size["id"]}'
                         else:
                             size_data['namespace'] = Catalog.metafields['Size']['NAME_SPACE']
                             size_data['key'] = Catalog.metafields['Size']['META_KEY']
@@ -1297,15 +1293,13 @@ class Catalog:
 
                         result.append(size_data)
                     elif self.meta_size['id']:
-                        Shopify.Product.Metafield.delete(metafield_id=self.meta_size['id'])
+                        Shopify.Metafield.delete(metafield_id=self.meta_size['id'])
                         self.meta_size['id'] = None
 
                 if self.meta_bloom_season['value']:
                     bloom_season_data = {'value': json.dumps(self.meta_bloom_season['value'])}
                     if self.meta_bloom_season['id']:
-                        bloom_season_data['id'] = (
-                            f'{Shopify.Product.Metafield.prefix}{self.meta_bloom_season["id"]}'
-                        )
+                        bloom_season_data['id'] = f'{Shopify.Metafield.prefix}{self.meta_bloom_season["id"]}'
                     else:
                         bloom_season_data['namespace'] = Catalog.metafields['Bloom Season']['NAME_SPACE']
                         bloom_season_data['key'] = Catalog.metafields['Bloom Season']['META_KEY']
@@ -1314,13 +1308,13 @@ class Catalog:
                     result.append(bloom_season_data)
 
                 elif self.meta_bloom_season['id']:
-                    Shopify.Product.Metafield.delete(metafield_id=self.meta_bloom_season['id'])
+                    Shopify.Metafield.delete(metafield_id=self.meta_bloom_season['id'])
                     self.meta_bloom_season['id'] = None
 
                 if self.meta_features['value']:
                     features_data = {'value': json.dumps(self.meta_features['value'])}
                     if self.meta_features['id']:
-                        features_data['id'] = f'{Shopify.Product.Metafield.prefix}{self.meta_features["id"]}'
+                        features_data['id'] = f'{Shopify.Metafield.prefix}{self.meta_features["id"]}'
                     else:
                         features_data['namespace'] = Catalog.metafields['Features']['NAME_SPACE']
                         features_data['key'] = Catalog.metafields['Features']['META_KEY']
@@ -1328,14 +1322,14 @@ class Catalog:
 
                     result.append(features_data)
                 elif self.meta_features['id']:
-                    Shopify.Product.Metafield.delete(metafield_id=self.meta_features['id'])
+                    Shopify.Metafield.delete(metafield_id=self.meta_features['id'])
                     self.meta_features['id'] = None
 
                 # Colors
                 if self.meta_colors['value']:
                     colors_data = {'value': json.dumps(self.meta_colors['value'])}
                     if self.meta_colors['id']:
-                        colors_data['id'] = f'{Shopify.Product.Metafield.prefix}{self.meta_colors["id"]}'
+                        colors_data['id'] = f'{Shopify.Metafield.prefix}{self.meta_colors["id"]}'
                     else:
                         colors_data['namespace'] = Catalog.metafields['Color']['NAME_SPACE']
                         colors_data['key'] = Catalog.metafields['Color']['META_KEY']
@@ -1343,7 +1337,7 @@ class Catalog:
                     result.append(colors_data)
                 elif self.meta_colors['id']:
                     try:
-                        Shopify.Product.Metafield.delete(metafield_id=self.meta_colors['id'])
+                        Shopify.Metafield.delete(metafield_id=self.meta_colors['id'])
                     except Exception as e:
                         print(f'Error deleting metafield: {e}')
                         query = f"""
@@ -1358,7 +1352,7 @@ class Catalog:
                 if self.meta_bloom_color['value']:
                     bloom_color_data = {'value': json.dumps(self.meta_bloom_color['value'])}
                     if self.meta_bloom_color['id']:
-                        bloom_color_data['id'] = f'{Shopify.Product.Metafield.prefix}{self.meta_bloom_color["id"]}'
+                        bloom_color_data['id'] = f'{Shopify.Metafield.prefix}{self.meta_bloom_color["id"]}'
                     else:
                         bloom_color_data['namespace'] = Catalog.metafields['Bloom Color']['NAME_SPACE']
                         bloom_color_data['key'] = Catalog.metafields['Bloom Color']['META_KEY']
@@ -1368,7 +1362,7 @@ class Catalog:
 
                 elif self.meta_bloom_color['id']:
                     try:
-                        Shopify.Product.Metafield.delete(metafield_id=self.meta_bloom_color['id'])
+                        Shopify.Metafield.delete(metafield_id=self.meta_bloom_color['id'])
                     except Exception as e:
                         print(f'Error deleting metafield: {e}')
                         query = f"""
@@ -1382,7 +1376,7 @@ class Catalog:
                 # Preorder Status - All products are either preorder or not
                 preorder_data = {'value': 'true' if self.is_preorder else 'false'}
                 if self.meta_is_preorder['id']:
-                    preorder_data['id'] = f'{Shopify.Product.Metafield.prefix}{self.meta_is_preorder["id"]}'
+                    preorder_data['id'] = f'{Shopify.Metafield.prefix}{self.meta_is_preorder["id"]}'
                 else:
                     preorder_data['namespace'] = Catalog.metafields['Preorder Item']['NAME_SPACE']
                     preorder_data['key'] = Catalog.metafields['Preorder Item']['META_KEY']
@@ -1395,7 +1389,7 @@ class Catalog:
                 if self.meta_preorder_release_date['value']:
                     if self.meta_preorder_release_date['id']:
                         preorder_release_date['id'] = (
-                            f'{Shopify.Product.Metafield.prefix}{self.meta_preorder_release_date["id"]}'
+                            f'{Shopify.Metafield.prefix}{self.meta_preorder_release_date["id"]}'
                         )
                     else:
                         preorder_release_date['namespace'] = Catalog.metafields['Preorder Release Date'][
@@ -1407,16 +1401,14 @@ class Catalog:
                     result.append(preorder_release_date)
 
                 elif self.meta_preorder_release_date['id']:
-                    Shopify.Product.Metafield.delete(metafield_id=self.meta_preorder_release_date['id'])
+                    Shopify.Metafield.delete(metafield_id=self.meta_preorder_release_date['id'])
                     self.meta_preorder_release_date['id'] = None
 
                 # Preorder Message
                 preorder_message = {'value': self.preorder_message}
                 if self.meta_preorder_message['value']:
                     if self.meta_preorder_message['id']:
-                        preorder_message['id'] = (
-                            f'{Shopify.Product.Metafield.prefix}{self.meta_preorder_message["id"]}'
-                        )
+                        preorder_message['id'] = f'{Shopify.Metafield.prefix}{self.meta_preorder_message["id"]}'
                     else:
                         preorder_message['namespace'] = Catalog.metafields['Preorder Message']['NAME_SPACE']
                         preorder_message['key'] = Catalog.metafields['Preorder Message']['META_KEY']
@@ -1424,13 +1416,13 @@ class Catalog:
 
                     result.append(preorder_message)
                 elif self.meta_preorder_message['id']:
-                    Shopify.Product.Metafield.delete(metafield_id=self.meta_preorder_message['id'])
+                    Shopify.Metafield.delete(metafield_id=self.meta_preorder_message['id'])
                     self.meta_preorder_message['id'] = None
 
                 # Featured Product Status - All products are either featured or not
                 featured_data = {'value': 'true' if self.featured else 'false'}
                 if self.meta_is_featured['id']:
-                    featured_data['id'] = f'{Shopify.Product.Metafield.prefix}{self.meta_is_featured["id"]}'
+                    featured_data['id'] = f'{Shopify.Metafield.prefix}{self.meta_is_featured["id"]}'
                 else:
                     featured_data['namespace'] = Catalog.metafields['Featured']['NAME_SPACE']
                     featured_data['key'] = Catalog.metafields['Featured']['META_KEY']
@@ -1441,7 +1433,7 @@ class Catalog:
                 # In Store Only Status - All products are either in store only or not
                 in_store_only_data = {'value': 'true' if self.in_store_only else 'false'}
                 if self.meta_in_store_only['id']:
-                    in_store_only_data['id'] = f'{Shopify.Product.Metafield.prefix}{self.meta_in_store_only["id"]}'
+                    in_store_only_data['id'] = f'{Shopify.Metafield.prefix}{self.meta_in_store_only["id"]}'
                 else:
                     in_store_only_data['namespace'] = Catalog.metafields['In Store Only']['NAME_SPACE']
                     in_store_only_data['key'] = Catalog.metafields['In Store Only']['META_KEY']

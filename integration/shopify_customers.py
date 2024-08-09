@@ -1,10 +1,10 @@
-import requests
 from integration.database import Database
 from integration.shopify_api import Shopify
 from setup import creds
 import setup.date_presets as date_presets
 from datetime import datetime
 import integration.object_processor as object_processor
+import json
 
 from setup.error_handler import ProcessOutErrorHandler
 
@@ -55,21 +55,45 @@ class Customers:
 
     class Customer:
         def __init__(self, cust_result):
-            self.cp_cust_no = cust_result[0]
             self.db = Database.db
+            self.cp_cust_no = cust_result[0]
             self.fst_nam = cust_result[1]
             self.lst_nam = cust_result[2]
             self.email = cust_result[3] if cust_result[3] else f'{self.cp_cust_no}@store.com'
             self.phone = cust_result[4]
-            self.loyalty_points = cust_result[5]
-            self.address_line_1: str = cust_result[6]
-            self.address_line_2: str = cust_result[7]
-            self.city = cust_result[8]
-            self.state = cust_result[9]
-            self.zip = cust_result[10]
-            self.country = cust_result[11]
-            self.shopify_cust_no = cust_result[12]
-            self.sms_subscribe = True if cust_result[13] == 'Y' else False
+            self.loyalty_points = float(cust_result[5])
+            self.loyalty_point_id = cust_result[6]
+            self.address_line_1: str = cust_result[7]
+            self.address_line_2: str = cust_result[8]
+            self.city = cust_result[9]
+            self.state = cust_result[10]
+            self.zip = cust_result[11]
+            self.country = cust_result[12]
+            self.shopify_cust_no = cust_result[13]
+            self.meta_cust_no_id = cust_result[14]
+            self.category = cust_result[15]
+            self.meta_category_id = cust_result[16]
+
+            try:
+                self.meta_birth_month = int(cust_result[17])
+            except:
+                self.meta_birth_month = None
+            self.meta_birth_month_id = cust_result[18]
+
+            try:
+                self.meta_spouse_birth_month = int(cust_result[19])
+            except:
+                self.meta_spouse_birth_month = None
+
+            self.meta_spouse_birth_month_id = cust_result[20]
+
+            self.meta_wholesale_price_tier = self.validate_price_tier(cust_result[21])
+
+            self.meta_wholesale_price_tier_id = cust_result[22]
+
+            self.sms_subscribe = True if cust_result[23] == 'Y' else False
+            self.mw_id = cust_result[24]
+
             self.addresses = []
             self.get_addresses()
 
@@ -77,23 +101,15 @@ class Customers:
                 self.set_loyalty_points_to_zero()
                 self.loyalty_points = 0
 
-        def has_address(self):
-            if self.address_line_1 is not None and self.state is not None and self.zip is not None:
-                if self.address.replace(' ', '').isalpha() or self.address.replace(' ', '').isnumeric():
-                    Customers.error_handler.add_error_v(
-                        f'Customer {self.cp_cust_no} has malformed address: {self.address}.'
-                    )
-                    return False
-
-                if self.city is None or self.city == '':
-                    self.city = 'CITY'
-
-                if self.country is None or self.country == '':
-                    self.country = 'US'
-
-                return True
-            else:
-                return False
+        def validate_price_tier(self, price_tier):
+            # Check if price tier is an integer between 0-5
+            try:
+                price_tier = int(price_tier)
+                if price_tier < 0 or price_tier > 5:
+                    return None
+                return price_tier
+            except:
+                return None
 
         def get_addresses(self):
             # Add the primary address
@@ -112,10 +128,8 @@ class Customers:
 
             # Get additional addresses
             address_res = Database.Counterpoint.Customer.Address.get(cust_no=self.cp_cust_no)
-            print(address_res)
             if address_res is not None:
                 for x in address_res:
-                    print(x)
                     address = {
                         'first_name': x[0],
                         'last_name': x[1],
@@ -127,6 +141,7 @@ class Customers:
                         'country': x[7],
                         'phone': x[8],
                     }
+
                     self.addresses.append(address)
 
         # def process(self, session: requests.Session):
@@ -137,32 +152,126 @@ class Customers:
                         'firstName': self.fst_nam,
                         'lastName': self.lst_nam,
                         'addresses': [],
-                        'metafields': [
-                            {
-                                'namespace': 'counterpoint',
-                                'key': 'customer_number',
-                                'type': 'single_line_text_field',
-                                'value': self.cp_cust_no,
-                            }
-                        ],
+                        'metafields': [],
                     }
                 }
 
                 # Add optional fields if they are provided
-                if self.shopify_cust_no is not None:
+                if self.shopify_cust_no:
                     variables['input']['id'] = f'{Shopify.Customer.prefix}{self.shopify_cust_no}'
 
                 if self.email:
                     variables['input']['email'] = self.email
-                    variables['input']['emailMarketingConsent'] = {'marketingState': 'SUBSCRIBED'}
+                    if not self.shopify_cust_no:
+                        variables['input']['emailMarketingConsent'] = {'marketingState': 'SUBSCRIBED'}
 
                 if self.phone:
                     variables['input']['phone'] = self.phone
-                    variables['input']['smsMarketingConsent'] = (
-                        {'marketingState': 'SUBSCRIBED'}
-                        if self.sms_subscribe
-                        else {'marketingState': 'NOT_SUBSCRIBED'}
+                    if not self.shopify_cust_no:
+                        variables['input']['smsMarketingConsent'] = (
+                            {'marketingState': 'SUBSCRIBED', 'marketingOptInLevel': 'UNKNOWN'}
+                            if self.sms_subscribe
+                            else {'marketingState': 'NOT_SUBSCRIBED'}
+                        )
+                # Add Customer Number
+                if not self.meta_cust_no_id:
+                    variables['input']['metafields'].append(
+                        {
+                            'namespace': creds.meta_namespace_customer,
+                            'key': 'number',
+                            'type': 'single_line_text_field',
+                            'value': self.cp_cust_no,
+                        }
                     )
+                else:
+                    variables['input']['metafields'].append(
+                        {'id': f'gid://shopify/Metafield/{self.meta_cust_no_id}', 'value': self.cp_cust_no}
+                    )
+
+                # Add Category
+                if self.category:
+                    if not self.meta_category_id:
+                        variables['input']['metafields'].append(
+                            {
+                                'namespace': creds.meta_namespace_customer,
+                                'key': 'category',
+                                'type': 'single_line_text_field',
+                                'value': self.category,
+                            }
+                        )
+                    else:
+                        variables['input']['metafields'].append(
+                            {'id': f'gid://shopify/Metafield/{self.meta_category_id}', 'value': self.category}
+                        )
+                elif self.meta_category_id:
+                    Shopify.Metafield.delete(metafield_id=self.meta_category_id)
+                    self.meta_category_id = None
+
+                # Add Birth Month
+                if self.meta_birth_month:
+                    if not self.meta_birth_month_id:
+                        variables['input']['metafields'].append(
+                            {
+                                'namespace': creds.meta_namespace_customer,
+                                'key': 'birth_month',
+                                'type': 'number_integer',
+                                'value': json.dumps(self.meta_birth_month),
+                            }
+                        )
+                    else:
+                        variables['input']['metafields'].append(
+                            {
+                                'id': f'gid://shopify/Metafield/{self.meta_birth_month_id}',
+                                'value': json.dumps(self.meta_birth_month),
+                            }
+                        )
+                elif self.meta_birth_month_id:
+                    Shopify.Metafield.delete(metafield_id=self.meta_birth_month_id)
+                    self.meta_birth_month_id = None
+
+                # Add Spouse Birth Month
+                if self.meta_spouse_birth_month:
+                    if not self.meta_spouse_birth_month_id:
+                        variables['input']['metafields'].append(
+                            {
+                                'namespace': creds.meta_namespace_customer,
+                                'key': 'birth_month_spouse',
+                                'type': 'number_integer',
+                                'value': json.dumps(self.meta_spouse_birth_month),
+                            }
+                        )
+                    else:
+                        variables['input']['metafields'].append(
+                            {
+                                'id': f'gid://shopify/Metafield/{self.meta_spouse_birth_month_id}',
+                                'value': json.dumps(self.meta_spouse_birth_month),
+                            }
+                        )
+                elif self.meta_spouse_birth_month_id:
+                    Shopify.Metafield.delete(metafield_id=self.meta_spouse_birth_month_id)
+                    self.meta_spouse_birth_month_id = None
+
+                # Add Wholesale Price Tier
+                if self.meta_wholesale_price_tier:
+                    if not self.meta_wholesale_price_tier_id:
+                        variables['input']['metafields'].append(
+                            {
+                                'namespace': creds.meta_namespace_customer,
+                                'key': 'wholesale_price_tier',
+                                'type': 'number_integer',
+                                'value': json.dumps(self.meta_wholesale_price_tier),
+                            }
+                        )
+                    else:
+                        variables['input']['metafields'].append(
+                            {
+                                'id': f'gid://shopify/Metafield/{self.meta_wholesale_price_tier_id}',
+                                'value': json.dumps(self.meta_wholesale_price_tier),
+                            }
+                        )
+                elif self.meta_wholesale_price_tier_id:
+                    Shopify.Metafield.delete(metafield_id=self.meta_wholesale_price_tier_id)
+                    self.meta_wholesale_price_tier_id = None
 
                 def state_code_to_full_name(state_code):
                     states = {
@@ -231,10 +340,16 @@ class Customers:
                             address['phone'] = i['phone']
                         if i['address1']:
                             address['address1'] = i['address1']
+                        else:
+                            Customers.logger.warning(f'Customer {self.cp_cust_no} has no address1.')
+                            continue
                         if i['address2']:
                             address['address2'] = i['address2']
                         if i['city']:
                             address['city'] = i['city']
+                        else:
+                            Customers.logger.warning(f'Customer {self.cp_cust_no} has no city.')
+                            continue
                         if i['state']:
                             address['provinceCode'] = state_code_to_full_name(i['state'])
                         if i['zip']:
@@ -248,35 +363,73 @@ class Customers:
 
             def create():
                 Customers.logger.info(f'Creating customer {self.cp_cust_no}')
-                self.shopify_cust_no = Shopify.Customer.create(write_customer_payload())
-                Database.Shopify.Customer.insert(self)
-                raise Exception('Customer created')
+                return Shopify.Customer.create(write_customer_payload())
 
             def update():
                 Customers.logger.info(f'Updating customer {self.cp_cust_no}')
-                raise Exception('Customer updated')
-                Shopify.Customer.update(write_customer_payload())
-                Database.Shopify.Customer.update(self)
+                return Shopify.Customer.update(write_customer_payload())
 
             def delete():
                 Customers.logger.info(f'Deleting customer {self.cp_cust_no}')
-                raise Exception('Customer deleted')
                 Shopify.Customer.delete(self.shopify_cust_no)
-                Database.Shopify.Customer.delete(self)
 
-            del_query = f"""
-            SELECT CUST_NO FROM {creds.ar_cust_table}
-            WHERE CUST_NO = '{self.cp_cust_no}'
-            """
-
-            response = self.db.query(del_query)
-            if response is None or len(response) == 0:
-                return delete()
-
-            if self.shopify_cust_no is not None:
-                update()
+            if not self.cp_cust_no:
+                delete()
             else:
-                create()
+                if self.shopify_cust_no:
+                    response = update()
+                else:
+                    response = create()
+
+                self.get_ids(response)
+                self.update_loyalty_points()
+
+            Database.Shopify.Customer.sync(self)
+
+        def get_ids(self, response):
+            self.shopify_cust_no = response['id']
+
+            self.meta_cust_no_id = (
+                response['metafields']['cust_no_id'] if 'cust_no_id' in response['metafields'] else None
+            )
+
+            self.meta_category_id = (
+                response['metafields']['category_id'] if 'category_id' in response['metafields'] else None
+            )
+
+            self.meta_birth_month_id = (
+                response['metafields']['birth_month_id'] if 'birth_month_id' in response['metafields'] else None
+            )
+
+            self.meta_spouse_birth_month_id = (
+                response['metafields']['birth_month_spouse_id']
+                if 'birth_month_spouse_id' in response['metafields']
+                else None
+            )
+
+            self.meta_wholesale_price_tier_id = (
+                response['metafields']['wholesale_price_tier_id']
+                if 'wholesale_price_tier_id' in response['metafields']
+                else None
+            )
+
+        def update_loyalty_points(self):
+            if self.loyalty_point_id is None and self.loyalty_points > 0:
+                self.loyalty_point_id = Shopify.Customer.StoreCredit.add_store_credit(
+                    self.shopify_cust_no, self.loyalty_points
+                )
+                return
+
+            shopify_loy_bal = Shopify.Customer.StoreCredit.get(self.loyalty_point_id)
+            if shopify_loy_bal != self.loyalty_points:
+                if shopify_loy_bal < self.loyalty_points:
+                    Shopify.Customer.StoreCredit.add_store_credit(
+                        self.shopify_cust_no, self.loyalty_points - shopify_loy_bal
+                    )
+                else:
+                    Shopify.Customer.StoreCredit.remove_store_credit(
+                        self.shopify_cust_no, shopify_loy_bal - self.loyalty_points
+                    )
 
         def set_loyalty_points_to_zero(self):
             query = f"""
@@ -291,9 +444,6 @@ class Customers:
                 Customers.error_handler.add_error_v(
                     error=f'Error setting customer {self.cp_cust_no} loyalty points to 0.'
                 )
-
-        def update_loyalty_points(self):
-            Shopify.Customer.StoreCredit.update(self.shopify_cust_no, self.loyalty_points)
 
 
 if __name__ == '__main__':

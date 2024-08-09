@@ -22,6 +22,15 @@ mutation customerCreate($input: CustomerInput!) {
         phone
         zip
       }
+      metafields(first: 50) {
+        edges {
+          node {
+            namespace
+            key
+            id
+          }
+        }
+      }
     }
   }
 }
@@ -36,6 +45,15 @@ mutation customerUpdate($input: CustomerInput!) {
       id
       firstName
       lastName
+      metafields(first: 50) {
+        edges {
+          node {
+            namespace
+            key
+            id
+          }
+        }
+      }
     }
   }
 }
@@ -67,3 +85,67 @@ query customers($first: Int) {
   }
 }
 
+query customer($id: ID!) {
+  customer(id: $id) {
+    addresses(first: 5) {
+      address1
+    }
+    canDelete
+    createdAt
+    defaultAddress {
+      address1
+    }
+    displayName
+    email
+    events(first: 50) {
+      edges {
+        node {
+          message
+        }
+      }
+    }
+    firstName
+    id
+    image {
+      id
+    }
+    lastName
+    legacyResourceId
+    lifetimeDuration
+    mergeable {
+      isMergeable
+      reason
+    }
+    metafield(key: "app_key", namespace: "affiliates") {
+      description
+    }
+    metafields(first: 5) {
+      edges {
+        node {
+          namespace
+          key
+          id
+        }
+      }
+    }
+    note
+    orders(first: 5) {
+      edges {
+        node {
+          id
+        }
+      }
+    }
+    numberOfOrders
+    phone
+    state
+    tags
+    taxExempt
+    amountSpent {
+      amount
+    }
+    updatedAt
+    validEmailAddress
+    verifiedEmail
+  }
+}
