@@ -1,7 +1,7 @@
 from setup import creds
 import requests
 import json
-from setup.error_handler import ProcessOutErrorHandler
+from setup.error_handler import ProcessOutErrorHandler, ProcessInErrorHandler
 from pathlib import Path
 from integration.database import Database
 from shortuuid import ShortUUID

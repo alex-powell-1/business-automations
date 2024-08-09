@@ -1,15 +1,28 @@
 from setup.query_engine import QueryEngine as db
-from docxtpl import DocxTemplate
+from docxtpl import DocxTemplate, InlineImage
 from datetime import datetime as dt
-from setup.error_handler import LeadFormErrorHandler
+from setup.error_handler import LeadFormErrorHandler, ProcessInErrorHandler
+from docx.shared import Mm
+from integration.shopify_api import Shopify
 import os
 import time
+from setup import creds
+from setup.barcode_engine import generate_barcode
+from datetime import datetime
+from product_tools.products import Product
+from traceback import format_exc as tb
+from setup.order_engine import utc_to_local
+from email import utils
+from integration.cp_api import OrderAPI
 
 
 test_mode = False
 
 
 class Printer:
+    logger = ProcessInErrorHandler.logger
+    error_handler = ProcessInErrorHandler.error_handler
+
     class DesignLead:
         def print(first_name, year, month, day, delete=True):
             query = f"""
@@ -74,9 +87,127 @@ class Printer:
                         LeadFormErrorHandler.logger.info('Deleting Word Document')
                         os.remove(ticket_name)
 
-    class ShopifyOrder:
-        def print():
-            pass
+    class Order:
+        def print(order_id):
+            order = Shopify.Order.as_bc_order(order_id)
+            cust_no = OrderAPI.get_cust_no(order)
+            ProcessInErrorHandler.logger.info(f'Customer Number: {cust_no}')
+            # Get Product List
+            products = order['products']['url']
+            product_list = []
+            gift_card_only = True
+            for x in products:
+                if x['type'] == 'physical':
+                    gift_card_only = False
+
+                item = Product(x['sku'])
+
+                product_details = {
+                    'sku': item.item_no,
+                    'name': item.descr,
+                    'qty': x['quantity'],
+                    'base_price': x['base_price'],
+                    'base_total': x['base_total'],
+                }
+
+                product_list.append(product_details)
+            if not gift_card_only:
+                # Create Barcode
+                barcode_filename = 'barcode'
+                Printer.logger.info('Creating barcode')
+                try:
+                    generate_barcode(data=order['id'], filename=barcode_filename)
+                except Exception as err:
+                    error_type = 'barcode'
+                    Printer.error_handler.add_error_v(
+                        error=f'Error ({error_type}): {err}', origin='Design - Barcode'
+                    )
+                else:
+                    Printer.logger.success(f'Creating barcode - Success at {datetime.now():%H:%M:%S}')
+
+                try:
+                    bc_date = order['date_created']
+                    bc_date = datetime.strptime(bc_date, '%Y-%m-%dT%H:%M:%SZ')
+                    # convert to local time
+                    bc_date = utc_to_local(bc_date)
+                    # Format Date and Time
+                    # dt_date = utils.parsedate_to_datetime(bc_date)
+                    date = f'{bc_date:%m/%d/%Y}'  # ex. 04/24/2024
+                    time = f'{bc_date:%I:%M:%S %p}'  # ex. 02:34:24 PM
+
+                    doc = DocxTemplate('./templates/order_print_template.docx')
+                    barcode = InlineImage(doc, f'./{barcode_filename}.png', height=Mm(15))  # width in mm
+                    context = {
+                        # Company Details
+                        'company_name': creds.company_name,
+                        'co_address': creds.company_address,
+                        'co_phone': creds.company_phone,
+                        # Order Details
+                        'order_number': order['id'],
+                        'order_date': date,
+                        'order_time': time,
+                        'order_subtotal': float(order['subtotal_inc_tax']),
+                        'order_shipping': float(order['base_shipping_cost']),
+                        'order_total': float(order['total_inc_tax']),
+                        'cust_no': str(cust_no),
+                        # Customer Billing
+                        'cb_name': order['billing_address']['first_name']
+                        + ' '
+                        + order['billing_address']['last_name'],
+                        'cb_phone': order['billing_address']['phone'],
+                        'cb_email': order['billing_address']['email'],
+                        'cb_street': order['billing_address']['street_1'],
+                        'cb_city': order['billing_address']['city'],
+                        'cb_state': order['billing_address']['state'],
+                        'cb_zip': order['billing_address']['zip'],
+                        # Customer Shipping
+                        'shipping_method': 'Delivery' if float(order['base_shipping_cost']) > 0 else 'Pickup',
+                        'cs_name': (order['shipping_addresses']['url'][0]['first_name'] or '')
+                        + ' '
+                        + (order['shipping_addresses']['url'][0]['last_name'] or ''),
+                        'cs_phone': order['shipping_addresses']['url'][0]['phone'] or '',
+                        'cs_email': order['shipping_addresses']['url'][0]['email'] or '',
+                        'cs_street': order['shipping_addresses']['url'][0]['street_1'] or '',
+                        'cs_city': order['shipping_addresses']['url'][0]['city'] or '',
+                        'cs_state': order['shipping_addresses']['url'][0]['state'] or '',
+                        'cs_zip': order['shipping_addresses']['url'][0]['zip'] or '',
+                        # Product Details
+                        'number_of_items': order['items_total'],
+                        'ticket_notes': order['customer_message'],
+                        'products': product_list,
+                        'coupon_code': ', '.join(order['order_coupons']),
+                        'coupon_discount': float(order['coupons']['url'][0]['amount'])
+                        if len(order['coupons']['url']) > 0
+                        else 0,
+                        'loyalty': float(order['store_credit_amount']),
+                        'gc_amount': float(order['gift_certificate_amount']),
+                        'barcode': barcode,
+                    }
+
+                    doc.render(context)
+                    ticket_name = f"ticket_{order['id']}_{datetime.now().strftime("%m_%d_%y_%H_%M_%S")}.docx"
+                    file_path = creds.ticket_location + ticket_name
+                    doc.save(file_path)
+
+                except Exception as err:
+                    error_type = 'Word Document'
+                    Printer.error_handler.add_error_v(
+                        error=f'Error ({error_type}): {err}', origin='Design - Word Document', traceback=tb()
+                    )
+
+                else:
+                    Printer.logger.success(f'Creating Word Document - Success at {datetime.now():%H:%M:%S}')
+                    try:
+                        # Print the file to default printer
+                        os.startfile(file_path, 'print')
+                    except Exception as err:
+                        error_type = 'Printing'
+                        Printer.error_handler.add_error_v(
+                            f'Error ({error_type}): {err}', origin='Design - Printing'
+                        )
+                    else:
+                        Printer.logger.success(f'Printing - Success at {datetime.now():%H:%M:%S}')
 
 
-Printer.DesignLead.print('Debora', 2024, 8, 8)
+if __name__ == '__main__':
+    Printer.Order.print(5590886711463)
