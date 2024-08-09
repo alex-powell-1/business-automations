@@ -1,10 +1,14 @@
 from integration.database import Database
+import requests
+import concurrent.futures
 from integration.shopify_api import Shopify
 from setup import creds
 import setup.date_presets as date_presets
 from datetime import datetime
 import integration.object_processor as object_processor
 import json
+from traceback import format_exc as t
+
 
 from setup.error_handler import ProcessOutErrorHandler
 
@@ -31,7 +35,7 @@ class Customers:
             Database.Counterpoint.Customer.update_timestamps(customer_list)
 
     def get_cp_customers(self):
-        response = Database.Counterpoint.Customer.get(customer_no='105786')
+        response = Database.Counterpoint.Customer.get()
         return [self.Customer(x) for x in response] if response is not None else []
 
     def get_mw_customer(self):
@@ -48,17 +52,35 @@ class Customers:
 
     def sync(self):
         if self.customers:
+            # with concurrent.futures.ThreadPoolExecutor(max_workers=50) as executor:
+            #     for customer in self.customers:
+            #         executor.submit(customer.process)
             for customer in self.customers:
-                customer.process()
-            # self.processor.process()
-            Customers.error_handler.print_errors()
+                with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
+                    for customer in self.customers:
+                        try:
+                            executor.submit(customer.process())
+                        except Exception as e:
+                            self.error_handler.add_error_v(
+                                error=f'Error processing customer {customer.cp_cust_no}: {e}',
+                                origin='Customers.sync',
+                                traceback=t(),
+                            )
+                # try:
+                #     customer.process()
+                # except Exception as e:
+                #     self.error_handler.add_error_v(
+                #         error=f'Error processing customer {customer.cp_cust_no}: {e}',
+                #         origin='Customers.sync',
+                #         traceback=t(),
+                #     )
 
     class Customer:
         def __init__(self, cust_result):
             self.db = Database.db
             self.cp_cust_no = cust_result[0]
-            self.fst_nam = cust_result[1]
-            self.lst_nam = cust_result[2]
+            self.fst_nam = str(cust_result[1]).title()
+            self.lst_nam = str(cust_result[2]).title()
             self.email = cust_result[3] if cust_result[3] else f'{self.cp_cust_no}@store.com'
             self.phone = cust_result[4]
             self.loyalty_points = float(cust_result[5])
@@ -144,8 +166,8 @@ class Customers:
 
                     self.addresses.append(address)
 
-        # def process(self, session: requests.Session):
         def process(self):
+            # def process(self):
             def write_customer_payload():
                 variables = {
                     'input': {
@@ -341,21 +363,25 @@ class Customers:
                         if i['address1']:
                             address['address1'] = i['address1']
                         else:
-                            Customers.logger.warning(f'Customer {self.cp_cust_no} has no address1.')
+                            Customers.logger.warn(f'Customer {self.cp_cust_no} has no address1.')
                             continue
                         if i['address2']:
                             address['address2'] = i['address2']
                         if i['city']:
                             address['city'] = i['city']
                         else:
-                            Customers.logger.warning(f'Customer {self.cp_cust_no} has no city.')
+                            Customers.logger.warn(f'Customer {self.cp_cust_no} has no city.')
                             continue
                         if i['state']:
                             address['provinceCode'] = state_code_to_full_name(i['state'])
+
                         if i['zip']:
                             address['zip'] = i['zip']
+
                         if i['country']:
                             address['country'] = i['country']
+                        else:
+                            address['country'] = 'United States'
 
                         variables['input']['addresses'].append(address)
 
@@ -414,11 +440,14 @@ class Customers:
             )
 
         def update_loyalty_points(self):
-            if self.loyalty_point_id is None and self.loyalty_points > 0:
-                self.loyalty_point_id = Shopify.Customer.StoreCredit.add_store_credit(
-                    self.shopify_cust_no, self.loyalty_points
-                )
-                return
+            if self.loyalty_point_id is None:
+                if self.loyalty_points > 0:
+                    self.loyalty_point_id = Shopify.Customer.StoreCredit.add_store_credit(
+                        self.shopify_cust_no, self.loyalty_points
+                    )
+                    return
+                else:
+                    return
 
             shopify_loy_bal = Shopify.Customer.StoreCredit.get(self.loyalty_point_id)
             if shopify_loy_bal != self.loyalty_points:
