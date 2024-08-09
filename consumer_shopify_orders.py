@@ -130,8 +130,8 @@ class RabbitMQConsumer:
                             'number_of_items': order.items_total,
                             'ticket_notes': order.customer_message,
                             'products': product_list,
-                            'coupon_code': order.order_coupons['code'],
-                            'coupon_discount': float(order.coupon_discount),
+                            'coupon_code': order.order_coupons.join(', '),
+                            'coupon_discount': float(order.coupons.url[0].amount),
                             'loyalty': float(order.store_credit_amount),
                             'gc_amount': float(order.gift_certificate_amount),
                             'barcode': barcode,
@@ -176,16 +176,18 @@ class RabbitMQConsumer:
                 else:
                     self.logger.info(f'Skipping Order #{order_id}: Gift Card Only')
             # Declined Payments
-            elif order.status_id == 4:
+            elif order.status == 'Partially Refunded':
                 self.logger.info(
                     f'Skipping Order #{order_id}: Order Refunded. Payment Status: {order.payment_status}'
                 )
-            elif order.status_id == 6:
-                self.logger.info(
-                    f'Skipping Order #{order_id}: Payment Declined. Pyament Status: {order.payment_status}'
-                )
+            # elif order.status_id == 6:
+            #     self.logger.info(
+            #         f'Skipping Order #{order_id}: Payment Declined. Pyament Status: {order.payment_status}'
+            #     )
             else:
-                self.logger.info(f'Skipping Order #{order_id}: Payment Status: {order.payment_status}')
+                self.logger.info(
+                    f'Skipping Order #{order_id}:\n\tPayment Status: {order.payment_status}\n\tFulfillment Status: {order.status}'
+                )
 
         except Exception as err:
             error_type = 'General Catch'
