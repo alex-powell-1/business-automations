@@ -162,6 +162,7 @@ class OrderAPI(DocumentAPI):
                     'EXT_PRC': -ext_prc if self.is_refund() else ext_prc,
                     'EXT_COST': (-ext_cost * qty if self.is_refund() else ext_cost * qty),
                     'DSC_AMT': total_discount,
+                    'sku': product['sku'],
                 }
 
                 line_items.append(line_item)
@@ -334,6 +335,9 @@ class OrderAPI(DocumentAPI):
 
     # Write loyalty line
     def write_one_lin_loy(self, doc_id, line_item: dict, lin_seq_no: int):
+        if line_item['sku'] == 'SERVICE':
+            return 0
+
         points_earned = (float(line_item['EXT_PRC'] or 0) / 20) or 0
 
         query = f"""
@@ -448,8 +452,6 @@ class OrderAPI(DocumentAPI):
         self.total_gfc_amount = 0
         self.total_hdr_disc = 0
         self.total_lin_disc = 0
-        self.refund = None
-        self.pr = None
         self.refund_index = None
         self.total_lin_items = 0
         self.line_item_length = 0
@@ -461,13 +463,6 @@ class OrderAPI(DocumentAPI):
         shipping_cost = self.get_shipping_cost(bc_order)
         notes = self.get_notes(bc_order)
 
-        print('here 1')
-
-        # print(self.get_line_items_from_bc_products(bc_products))
-        # print(self.get_gift_cards_from_bc_products(bc_products))
-        # print(self.get_payment_from_bc_order(bc_order))
-
-        print('here 3')
         payload = {
             'PS_DOC_HDR': {
                 'STR_ID': 'WEB',
@@ -499,9 +494,6 @@ class OrderAPI(DocumentAPI):
                 ],
             }
         }
-
-        print('here 2')
-        print(payload)
 
         if is_shipping:
             payload['PS_DOC_HDR']['PS_DOC_HDR_MISC_CHRG'] = [
@@ -566,9 +558,6 @@ class OrderAPI(DocumentAPI):
         city = b('city')
         state = b('state')
         zip_code = b('zip')
-
-        if phone_number is None:
-            return
 
         cust_no = customers.add_new_customer(
             first_name=first_name,
@@ -645,9 +634,6 @@ class OrderAPI(DocumentAPI):
             city = b('city')
             state = b('state')
             zip_code = b('zip')
-
-            if phone_number is None:
-                return
 
             response = customers.update_customer(
                 cust_no=cust_no,

@@ -129,6 +129,20 @@ class Shopify:
             """Convert Shopify order to BigCommerce order format"""
             shopify_order = Shopify.Order.get(order_id)
             snode = shopify_order['node']
+            billing = snode['billingAddress'] or {
+                'firstName': None,
+                'lastName': None,
+                'company': None,
+                'address1': None,
+                'address2': None,
+                'city': None,
+                'province': None,
+                'zip': None,
+                'country': None,
+                'phone': None,
+                'email': None,
+            }
+            status = snode['displayFulfillmentStatus']
 
             shopify_products = []
 
@@ -140,11 +154,17 @@ class Shopify:
 
                 price = float(get_money(item['originalTotalSet']))
 
-                item['isGiftCard'] = 'GFC' in item['sku']
+                item['isGiftCard'] = False
+
+                if item['sku'] is not None:
+                    item['isGiftCard'] = 'GFC' in item['sku']
+
+                if item['name'] is None:
+                    item['name'] = ''
 
                 pl = {
                     'id': item['id'],
-                    'sku': item['sku'],
+                    'sku': 'SERVICE' if item['name'].lower() == 'service' else item['sku'],
                     'type': 'giftcertificate' if item['isGiftCard'] else 'physical',
                     'base_price': price,
                     'price_ex_tax': price,
@@ -169,24 +189,16 @@ class Shopify:
                 quantity_refunded = 0
 
                 if len(snode['refunds']) > 0:
-                    for refund in snode['refunds'][0]['refundLineItems']['edges']:
-                        if refund['node']['lineItem']['id'] == item['id']:
-                            is_refunded = True
-                            quantity_refunded = int(refund['node']['quantity'])
-                            break
+                    for refunds in snode['refunds']:
+                        for refund in refunds['refundLineItems']['edges']:
+                            if refund['node']['lineItem']['id'] == item['id']:
+                                is_refunded = True
+                                quantity_refunded = int(refund['node']['quantity'])
 
                 pl['is_refunded'] = is_refunded
                 pl['quantity_refunded'] = quantity_refunded
 
-                def send_gift_card():
-                    email = snode['email']
-                    print('Email: ', email)
-
-                    name = snode['billingAddress']['firstName'] + ' ' + snode['billingAddress']['lastName']
-                    code = pl['gift_certificate_id']['code']
-                    Email.Customer.GiftCard.send(name=name, email=email, gc_code=code, amount=price)
-
-                if item['isGiftCard'] and snode['displayFulfillmentStatus'] == 'UNFULFILLED':
+                if item['isGiftCard'] and status == 'UNFULFILLED' and send and not is_refunded:
 
                     def has_code(code):
                         query = f"""
@@ -215,24 +227,30 @@ class Shopify:
                     code = gen_code()
 
                     pl['gift_certificate_id'] = {'code': code}
-                    if send:
-                        send_gift_card()
+
+                    Email.Customer.GiftCard.send(
+                        name=f'{billing['firstName']} {billing["lastName"]}',
+                        email=snode['email'],
+                        gc_code=code,
+                        amount=price,
+                    )
 
                 shopify_products.append(pl)
 
             def get_money(money: dict):
                 return money['presentmentMoney']['amount']
 
-            shippingCost = float(get_money(snode['shippingLine']['discountedPriceSet']))
+            try:
+                shippingCost = float(get_money(snode['shippingLine']['discountedPriceSet']))
+            except:
+                shippingCost = 0
 
             hdsc = float(get_money(snode['totalDiscountsSet']))
 
             subtotal = float(get_money(snode['currentSubtotalPriceSet'])) + hdsc - shippingCost
             total = float(get_money(snode['currentTotalPriceSet']))
 
-            status = snode['displayFulfillmentStatus']
-
-            if snode['displayFinancialStatus'] == 'REFUNDED':
+            if len(snode['refunds']) > 0:
                 status = 'Partially Refunded'
 
             bc_order = {
@@ -258,16 +276,16 @@ class Shopify:
                 'coupon_discount': '0.0000',  # TODO: Add coupon discount
                 'shipping_address_count': 1,  # TODO: Add shipping address count
                 'billing_address': {
-                    'first_name': snode['billingAddress']['firstName'],
-                    'last_name': snode['billingAddress']['lastName'],
-                    'company': snode['billingAddress']['company'],
-                    'street_1': snode['billingAddress']['address1'],
-                    'street_2': snode['billingAddress']['address2'],
-                    'city': snode['billingAddress']['city'],
-                    'state': snode['billingAddress']['province'],
-                    'zip': snode['billingAddress']['zip'],
-                    'country': snode['billingAddress']['country'],
-                    'phone': snode['billingAddress']['phone'],
+                    'first_name': billing['firstName'],
+                    'last_name': billing['lastName'],
+                    'company': billing['company'],
+                    'street_1': billing['address1'],
+                    'street_2': billing['address2'],
+                    'city': billing['city'],
+                    'state': billing['province'],
+                    'zip': billing['zip'],
+                    'country': billing['country'],
+                    'phone': billing['phone'],
                     'email': snode['email'],
                 },
                 'products': {'url': shopify_products},
@@ -295,38 +313,39 @@ class Shopify:
             if hdsc > 0:
                 bc_order['coupons']['url'] = [{'amount': hdsc}]
 
-            # transactions = []
-
-            # for transaction in snode['transactions']:
-            #     amount = float(get_money(transaction['amountSet']))
-
-            #     if transaction['gateway'] == 'gift_card':
-            #         transaction['gateway'] = 'gift_certificate'
-
-            #     transactions.append(
-            #         {
-            #             'method': transaction['gateway'],
-            #             'amount': amount,
-            #             'gift_certificate': {'code': 'ABC123', 'remaining_balance': 0},
-            #         }
-            #     )
-
-            # bc_order['transactions']['data'] = transactions
-
             return bc_order
 
-        @staticmethod
-        def create_gift_card(balance: float):
-            input = {'initialValue': balance}
+        def get_orders_not_in_cp():
+            query = """
+            SELECT TKT_NO, TKT_DT FROM PS_DOC_HDR
+            WHERE STR_ID = 'WEB'
+            UNION
+            SELECT TKT_NO, TKT_DT FROM PS_TKT_HIST
+            WHERE STR_ID = 'WEB'
+            ORDER BY TKT_DT DESC
+            OFFSET 0 ROWS
+            FETCH NEXT 30 ROWS ONLY
+            """
 
-            response = Shopify.Query(
-                document=Shopify.Order.queries, operation_name='giftCardCreate', variables={'input': input}
-            )
+            response = Database.db.query(query)
 
-            if response.errors or response.user_errors:
-                raise Exception(f'Error creating gift card: {response.errors}\nUser Errors: {response.user_errors}')
+            try:
+                tkt_nos = [x[0].replace('S', '') for x in response]
 
-            return response.data
+                print(tkt_nos)
+
+                orders = []
+
+                for _order in Shopify.Order.get_all()['orders']['edges']:
+                    order = _order['node']
+
+                    if order['name'] not in tkt_nos:
+                        orders.append(order)
+
+                return orders
+
+            except:
+                return []
 
     class Customer:
         queries = './integration/queries/customers.graphql'
