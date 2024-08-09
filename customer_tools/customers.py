@@ -418,7 +418,8 @@ def add_new_customer(first_name, last_name, phone_number, email_address, street_
         'Wyoming': 'WY',
     }
 
-    phone_number = format_phone_number(phone_number)
+    if phone_number is not None:
+        phone_number = format_phone_number(phone_number)
 
     if not is_customer(email_address=email_address, phone_number=phone_number):
         url = f'{creds.cp_api_server}/CUSTOMER/'
@@ -529,9 +530,11 @@ def update_customer(
         'Wyoming': 'WY',
     }
 
-    state = states[state]
+    if state is not None:
+        state = states[state]
 
-    phone_number = format_phone_number(phone_number)
+    if phone_number is not None:
+        phone_number = format_phone_number(phone_number)
 
     FST_NAM = first_name.title().strip()
     LST_NAM = last_name.title().strip()

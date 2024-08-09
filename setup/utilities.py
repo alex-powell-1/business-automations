@@ -10,29 +10,57 @@ import base64
 from setup.error_handler import ProcessOutErrorHandler
 
 
+class PhoneNumber:
+    def __init__(self, phone_number: str):
+        self.raw = self.strip_number(phone_number)
+        self.area_code = self.get_area_code()
+        self.exchange = self.get_exchange()
+        self.subscriber_number = self.get_subscriber_number()
+
+    def strip_number(self, phone_number):
+        return (
+            phone_number.replace('+1', '')
+            .replace('-', '')
+            .replace('(', '')
+            .replace(')', '')
+            .replace(' ', '')
+            .replace('_', '')
+        )
+
+    def get_area_code(self):
+        return self.raw[0:3]
+
+    def get_exchange(self):
+        return self.raw[3:6]
+
+    def get_subscriber_number(self):
+        return self.raw[6:]
+
+    def to_cp(self):
+        return f'{self.area_code}-{self.exchange}-{self.subscriber_number}'
+
+    def to_twilio(self):
+        return f'+1{self.area_code}{self.exchange}{self.subscriber_number}'
+
+    def __str__(self):
+        return f'({self.area_code}) {self.exchange}-{self.subscriber_number}'
+
+
 def format_phone(phone_number, mode='clickable'):
     """Cleanses input data and returns masked phone for either Twilio or Counterpoint configuration"""
-    phone_number_as_string = str(phone_number)
-    # Strip away extra symbols
-    formatted_phone = phone_number_as_string.replace(' ', '')  # Remove Spaces
-    formatted_phone = formatted_phone.replace('-', '')  # Remove Hyphens
-    formatted_phone = formatted_phone.replace('(', '')  # Remove Open Parenthesis
-    formatted_phone = formatted_phone.replace(')', '')  # Remove Close Parenthesis
-    formatted_phone = formatted_phone.replace('+1', '')  # Remove +1
-    formatted_phone = formatted_phone[-10:]  # Get last 10 characters
+    phone = PhoneNumber(phone_number)
+
     if mode == 'counterpoint':
         # Masking ###-###-####
-        cp_phone = formatted_phone[0:3] + '-' + formatted_phone[3:6] + '-' + formatted_phone[6:10]
-        return cp_phone
+        return phone.to_cp()
 
     elif mode == 'clickable':
         # Masking (###) ###-####
-        clickable_phone = '(' + formatted_phone[0:3] + ') ' + formatted_phone[3:6] + '-' + formatted_phone[6:10]
-        return clickable_phone
+        return str(phone)
 
     elif mode == 'twilio':
-        formatted_phone = '+1' + formatted_phone
-    return formatted_phone
+        # Masking +###########
+        return phone.to_twilio()
 
 
 def parse_custom_url(string: str):

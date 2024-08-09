@@ -309,6 +309,7 @@ class Shopify:
                 },
                 'coupons': {'url': []},
                 'transactions': {'data': []},
+                'order_coupons': snode['discountCodes'],
             }
 
             if hdsc > 0:
