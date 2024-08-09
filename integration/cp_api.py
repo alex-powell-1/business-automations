@@ -335,10 +335,10 @@ class OrderAPI(DocumentAPI):
 
     # Write loyalty line
     def write_one_lin_loy(self, doc_id, line_item: dict, lin_seq_no: int):
-        points_earned = (float(line_item['EXT_PRC'] or 0) / 20) or 0
-
         if line_item['sku'] == 'SERVICE':
             return 0
+
+        points_earned = (float(line_item['EXT_PRC'] or 0) / 20) or 0
 
         query = f"""
         INSERT INTO PS_DOC_LIN_LOY 
@@ -463,9 +463,6 @@ class OrderAPI(DocumentAPI):
         shipping_cost = self.get_shipping_cost(bc_order)
         notes = self.get_notes(bc_order)
 
-        # print(self.get_line_items_from_bc_products(bc_products))
-        # print(self.get_gift_cards_from_bc_products(bc_products))
-        # print(self.get_payment_from_bc_order(bc_order))
         payload = {
             'PS_DOC_HDR': {
                 'STR_ID': 'WEB',
