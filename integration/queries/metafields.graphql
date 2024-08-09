@@ -162,8 +162,8 @@ query metafieldDefinition($id: ID!) {
   }
 }
 
-query metafieldDefinitions {
-  metafieldDefinitions(first: 250, ownerType: PRODUCT) {
+query metafieldDefinitions ($ownerType: MetafieldOwnerType!) {
+  metafieldDefinitions(first: 250, ownerType: $ownerType) {
     edges {
       node {
         id

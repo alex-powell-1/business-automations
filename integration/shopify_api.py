@@ -55,7 +55,7 @@ class Shopify:
                     for i in self.user_errors:
                         if i == 'Key must be unique within this namespace on this resource':
                             product_id = variables['input']['id'].split('/')[-1]
-                            Shopify.Product.Metafield.delete(product_id=product_id)
+                            Shopify.Metafield.delete(product_id=product_id)
                             Database.Shopify.Product.Metafield.delete(product_id=product_id)
                             for error in self.user_errors:
                                 if error == 'Key must be unique within this namespace on this resource':
@@ -63,8 +63,23 @@ class Shopify:
                                     self.user_errors.remove(error)
                             # Re-run query
                             self.__init__(document, variables, operation_name)
-                        if i == 'Metafield does not exist':
-                            pass
+                        elif i == 'Customer does not exist':
+                            Database.Shopify.Customer.delete(
+                                shopify_cust_no=variables['input']['id'].split('/')[-1]
+                            )
+                            # remove id from variables
+                            variables['id'] = None
+                            for error in self.user_errors:
+                                if error == 'Customer does not exist':
+                                    # Remove from user errors
+                                    self.user_errors.remove(error)
+                            # Re-run query
+                            self.__init__(document, variables, operation_name)
+
+                        elif i == 'Metafield does not exist':
+                            self.user_errors.remove(i)
+                            continue
+
                         else:
                             # Uncaught user error
                             raise Exception(
@@ -336,50 +351,64 @@ class Shopify:
         queries = './integration/queries/customers.graphql'
         prefix = 'gid://shopify/Customer/'
 
-        def get(customer_id: int = None, all=False):
+        def get(customer_id: int = None):
             if customer_id:
                 variables = {'id': f'gid://shopify/Customer/{customer_id}'}
                 response = Shopify.Query(
                     document=Shopify.Customer.queries, variables=variables, operation_name='customer'
                 )
                 return response.data
-            elif all:
-                id_list = []
-                variables = {'first': 250}
+
+            id_list = []
+            variables = {'first': 250}
+            response = Shopify.Query(
+                document=Shopify.Customer.queries, variables=variables, operation_name='customers'
+            )
+            id_list += [x['node']['id'].split('/')[-1] for x in response.data['customers']['edges']]
+
+            while response.data['customers']['pageInfo']['hasNextPage']:
+                variables['after'] = response.data['customers']['pageInfo']['endCursor']
                 response = Shopify.Query(
                     document=Shopify.Customer.queries, variables=variables, operation_name='customers'
                 )
                 id_list += [x['node']['id'].split('/')[-1] for x in response.data['customers']['edges']]
 
-                while response.data['customers']['pageInfo']['hasNextPage']:
-                    variables['after'] = response.data['customers']['pageInfo']['endCursor']
-                    response = Shopify.Query(
-                        document=Shopify.Customer.queries, variables=variables, operation_name='customers'
-                    )
-                    id_list += [x['node']['id'].split('/')[-1] for x in response.data['customers']['edges']]
+            return id_list
 
-                return id_list
+        def get_customer_metafields(metafields: list):
+            result = {}
+            for x in metafields:
+                if x['node']['namespace'] == creds.meta_namespace_customer:
+                    if x['node']['key'] == 'number':
+                        result['cust_no_id'] = x['node']['id'].split('/')[-1]
+                    elif x['node']['key'] == 'category':
+                        result['category_id'] = x['node']['id'].split('/')[-1]
+                    elif x['node']['key'] == 'wholesale_price_tier':
+                        result['wholesale_price_tier_id'] = x['node']['id'].split('/')[-1]
+                    elif x['node']['key'] == 'birth_month':
+                        result['birth_month_id'] = x['node']['id'].split('/')[-1]
+                    elif x['node']['key'] == 'birth_month_spouse':
+                        result['birth_month_spouse_id'] = x['node']['id'].split('/')[-1]
+
+            return result
 
         def create(payload):
+            operation_name = 'customerCreate'
             response = Shopify.Query(
-                document=Shopify.Customer.queries, variables=payload, operation_name='customerCreate'
+                document=Shopify.Customer.queries, variables=payload, operation_name=operation_name
             )
-            return response.data['customerCreate']['customer']['id'].split('/')[-1]
+            customer_id = response.data[operation_name]['customer']['id'].split('/')[-1]
+            metafields = response.data[operation_name]['customer']['metafields']['edges']
+            return {'id': customer_id, 'metafields': Shopify.Customer.get_customer_metafields(metafields)}
 
-        def update(customer_id: int, fst_name, lst_name, addresses=None, phone=None, email=None):
-            variables = Shopify.Customer.get_customer_payload(
-                cp_cust_no=None,
-                f_nam=fst_name,
-                l_nam=lst_name,
-                sh_cust_no=customer_id,
-                addr_lst=addresses,
-                phone=phone,
-                email=email,
-            )
+        def update(payload):
+            operation_name = 'customerUpdate'
             response = Shopify.Query(
-                document=Shopify.Customer.queries, variables=variables, operation_name='customerUpdate'
+                document=Shopify.Customer.queries, variables=payload, operation_name=operation_name
             )
-            return response.data
+            customer_id = response.data[operation_name]['customer']['id'].split('/')[-1]
+            metafields = response.data[operation_name]['customer']['metafields']['edges']
+            return {'id': customer_id, 'metafields': Shopify.Customer.get_customer_metafields(metafields)}
 
         def delete(customer_id: int = None, all=False):
             if customer_id:
@@ -401,14 +430,15 @@ class Shopify:
         class StoreCredit:
             queries = './integration/queries/storeCredit.graphql'
 
-            def get(customer_id: int):
-                variables = {'id': f'gid://shopify/Customer/{customer_id}'}
+            def get(store_credit_account_id: int):
+                variables = {'accountId': f'gid://shopify/StoreCreditAccount/{store_credit_account_id}'}
                 response = Shopify.Query(
                     document=Shopify.Customer.StoreCredit.queries,
                     variables=variables,
                     operation_name='storeCreditAccount',
                 )
-                return response.data
+                amount = float(response.data['storeCreditAccount']['balance']['amount'])
+                return amount
 
             def add_store_credit(customer_id: int, amount: float):
                 variables = {
@@ -421,7 +451,12 @@ class Shopify:
                     variables=variables,
                     operation_name='storeCreditAccountCredit',
                 )
-                return response.data
+
+                account_id = response.data['storeCreditAccountCredit']['storeCreditAccountTransaction']['account'][
+                    'id'
+                ].split('/')[-1]
+
+                return account_id
 
             def remove_store_credit(customer_id: int, amount: float):
                 variables = {
@@ -434,7 +469,11 @@ class Shopify:
                     variables=variables,
                     operation_name='storeCreditAccountDebit',
                 )
-                return response.data
+                account_id = response.data['storeCreditAccountDebit']['storeCreditAccountTransaction']['account'][
+                    'id'
+                ].split('/')[-1]
+
+                return account_id
 
     class Product:
         queries = './integration/queries/products.graphql'
@@ -880,78 +919,6 @@ class Shopify:
                 )
                 return response.data
 
-        class Metafield:
-            queries = './integration/queries/metafields.graphql'
-            prefix = 'gid://shopify/Metafield/'
-
-            def backfill_metafields_to_counterpoint():
-                all_products = Shopify.Product.get_all()
-                for product_id in all_products:
-                    response = Shopify.Product.get(product_id)
-                    try:
-                        metafield_list = [
-                            {'id': x['node']['id'].split('/')[-1], 'key': x['node']['key']}
-                            for x in response['product']['metafields']['edges']
-                        ]
-                    except:
-                        metafield_list = None
-
-                    if not metafield_list:
-                        continue
-                    # need implementation here
-                    pass
-
-            def get(owner_id):
-                variables = {'id': owner_id}
-                response = Shopify.Query(
-                    document=Shopify.Product.Metafield.queries, variables=variables, operation_name='getMetafield'
-                )
-                return response.data
-
-            def set(owner_id: int, namespace: str, key: str, value: str, type: str):
-                variables = {
-                    'metafields': [
-                        {'ownerId': owner_id, 'namespace': namespace, 'key': key, 'value': value, 'type': type}
-                    ]
-                }
-                response = Shopify.Query(
-                    document=Shopify.Product.Metafield.queries, variables=variables, operation_name='MetafieldsSet'
-                )
-                return response.data
-
-            def delete(metafield_id: int = None, product_id: int = None):
-                if metafield_id:
-                    variables = {'input': {'id': f'{Shopify.Product.Metafield.prefix}{metafield_id}'}}
-
-                    response = Shopify.Query(
-                        document=Shopify.Product.Metafield.queries,
-                        variables=variables,
-                        operation_name='metafieldDelete',
-                    )
-                    return response.data
-                elif product_id:
-                    response = Shopify.Product.get(product_id)
-                    variables = {
-                        'metafields': [
-                            # {
-                            #     'ownerId': x['node']['id'],
-                            #     'namespace': x['node']['namespace'],
-                            #     'key': x['node']['key'],
-                            # }
-                            x['node']['id']
-                            for x in response['product']['metafields']['edges']
-                        ]
-                    }
-                    # # remove variables with global namespace
-                    # variables['metafields'] = [x for x in variables['metafields'] if x['namespace'] != 'global']
-                    # response = Shopify.Query(
-                    #     document=Shopify.Product.Metafield.queries,
-                    #     variables=variables,
-                    #     operation_name='metafieldsDelete',
-                    # )
-                    for i in variables['metafields']:
-                        Shopify.Product.Metafield.delete(metafield_id=i.split('/')[-1])
-
         class Files:
             queries = './integration/queries/files.graphql'
 
@@ -1150,6 +1117,69 @@ class Shopify:
             response = Shopify.Query(document=Shopify.Channel.queries, operation_name='publications')
             return response.data
 
+    class Metafield:
+        queries = './integration/queries/metafields.graphql'
+        prefix = 'gid://shopify/Metafield/'
+
+        def backfill_metafields_to_counterpoint():
+            all_products = Shopify.Product.get_all()
+            for product_id in all_products:
+                response = Shopify.Product.get(product_id)
+                try:
+                    metafield_list = [
+                        {'id': x['node']['id'].split('/')[-1], 'key': x['node']['key']}
+                        for x in response['product']['metafields']['edges']
+                    ]
+                except:
+                    metafield_list = None
+
+                if not metafield_list:
+                    continue
+                # need implementation here
+                pass
+
+        def get(owner_id):
+            variables = {'id': owner_id}
+            response = Shopify.Query(
+                document=Shopify.Metafield.queries, variables=variables, operation_name='getMetafield'
+            )
+            return response.data
+
+        def set(owner_id: int, namespace: str, key: str, value: str, type: str):
+            variables = {
+                'metafields': [
+                    {'ownerId': owner_id, 'namespace': namespace, 'key': key, 'value': value, 'type': type}
+                ]
+            }
+            response = Shopify.Query(
+                document=Shopify.Metafield.queries, variables=variables, operation_name='MetafieldsSet'
+            )
+            return response.data
+
+        def delete(metafield_id: int = None, product_id: int = None):
+            if metafield_id:
+                variables = {'input': {'id': f'{Shopify.Metafield.prefix}{metafield_id}'}}
+
+                response = Shopify.Query(
+                    document=Shopify.Metafield.queries, variables=variables, operation_name='metafieldDelete'
+                )
+                return response.data
+            elif product_id:
+                response = Shopify.Product.get(product_id)
+                variables = {
+                    'metafields': [
+                        # {
+                        #     'ownerId': x['node']['id'],
+                        #     'namespace': x['node']['namespace'],
+                        #     'key': x['node']['key'],
+                        # }
+                        x['node']['id']
+                        for x in response['product']['metafields']['edges']
+                    ]
+                }
+                for i in variables['metafields']:
+                    Shopify.Metafield.delete(metafield_id=i.split('/')[-1])
+
     class MetafieldDefinition:
         queries = './integration/queries/metafields.graphql'
         prefix = 'gid://shopify/MetafieldDefinition/'
@@ -1182,27 +1212,34 @@ class Shopify:
 
                 return result
 
-            response = Shopify.Query(
-                document=Shopify.MetafieldDefinition.queries, operation_name='metafieldDefinitions'
-            )
-            return [
-                {
-                    'META_ID': x['node']['id'].split('/')[-1],
-                    'NAME': x['node']['name'],
-                    'DESCR': x['node']['description'],
-                    'NAME_SPACE': x['node']['namespace'],
-                    'META_KEY': x['node']['key'],
-                    'TYPE': x['node']['type']['name'],
-                    'PIN': 1 if x['node']['pinnedPosition'] else 0,
-                    'PINNED_POS': x['node']['pinnedPosition'] if x['node']['pinnedPosition'] else 0,
-                    'OWNER_TYPE': x['node']['ownerType'],
-                    'VALIDATIONS': [
-                        {'NAME': y['name'], 'TYPE': y['type'], 'VALUE': y['value']}
-                        for y in x['node']['validations']
-                    ],
-                }
-                for x in response.data['metafieldDefinitions']['edges']
-            ]
+            result = []
+            owner_types = ['PRODUCT', 'CUSTOMER']
+            for owner in owner_types:
+                response = Shopify.Query(
+                    document=Shopify.MetafieldDefinition.queries,
+                    operation_name='metafieldDefinitions',
+                    variables={'ownerType': owner},
+                )
+                owner_data = response.data['metafieldDefinitions']['edges']
+                for x in owner_data:
+                    result.append(
+                        {
+                            'META_ID': x['node']['id'].split('/')[-1],
+                            'NAME': x['node']['name'],
+                            'DESCR': x['node']['description'],
+                            'NAME_SPACE': x['node']['namespace'],
+                            'META_KEY': x['node']['key'],
+                            'TYPE': x['node']['type']['name'],
+                            'PIN': 1 if x['node']['pinnedPosition'] else 0,
+                            'PINNED_POS': x['node']['pinnedPosition'] if x['node']['pinnedPosition'] else 0,
+                            'OWNER_TYPE': x['node']['ownerType'],
+                            'VALIDATIONS': [
+                                {'NAME': y['name'], 'TYPE': y['type'], 'VALUE': y['value']}
+                                for y in x['node']['validations']
+                            ],
+                        }
+                    )
+            return result
 
         def create(payload=None):
             if not payload:
@@ -1302,8 +1339,9 @@ class Shopify:
             Database.Shopify.Metafield_Definition.delete()
             # Get all metafields from Shopify and insert into Database
             response = Shopify.MetafieldDefinition.get()
-            for res in response:
-                Database.Shopify.Metafield_Definition.insert(res)
+            if response:
+                for res in response:
+                    Database.Shopify.Metafield_Definition.insert(res)
 
     class Webhook:
         queries = './integration/queries/webhooks.graphql'
@@ -1391,8 +1429,43 @@ class Shopify:
 
 
 if __name__ == '__main__':
-    # all_ids = Shopify.Product.get()
-    # for product in all_ids:
-    #     Shopify.Product.publish(product)
+    # # # all_ids = Shopify.Product.get()
+    # # # for product in all_ids:
+    # # #     Shopify.Product.publish(product)
 
-    Shopify.Order.get(5588776222887)
+    # from customer_tools.customers import lookup_customer
+
+    # cust_ids = Shopify.Customer.get()
+
+    # for shop_cust_id in cust_ids:
+    #     response = Shopify.Customer.get(shop_cust_id)
+    #     email = response['customer']['email']
+    #     phone = response['customer']['phone']
+    #     metafields = response['customer']['metafields']['edges']
+    #     for meta in metafields:
+    #         if meta['node']['namespace'] == 'customer' and meta['node']['key'] == 'number':
+    #             meta_cust_id = meta['node']['id'].split('/')[-1]
+    #         elif meta['node']['namespace'] == 'customer' and meta['node']['key'] == 'category':
+    #             meta_category = meta['node']['id'].split('/')[-1]
+    #         elif meta['node']['namespace'] == 'customer' and meta['node']['key'] == 'birth_month':
+    #             meta_birth_month = meta['node']['id'].split('/')[-1]
+    #         elif meta['node']['namespace'] == 'customer' and meta['node']['key'] == 'birth_month_spouse':
+    #             meta_birth_month_spouse = meta['node']['id'].split('/')[-1]
+    #         elif meta['node']['namespace'] == 'customer' and meta['node']['key'] == 'wholesale_price_tier':
+    #             meta_wholesale_tier = meta['node']['id'].split('/')[-1]
+
+    #     cust_number = lookup_customer(email, phone)
+
+    #     if cust_number:
+    #         Database.Shopify.Customer.insert(
+    #             cp_cust_no=cust_number,
+    #             shopify_cust_no=shop_cust_id,
+    #             loyalty_point_id=None,
+    #             meta_cust_no_id=meta_cust_id,
+    #             meta_category_id=meta_category,
+    #             meta_birth_month_id=meta_birth_month,
+    #             meta_spouse_birth_month_id=meta_birth_month_spouse,
+    #             meta_wholesale_price_tier_id=meta_wholesale_tier,
+    #         )
+
+    Shopify.Customer.get(7613258563751)
