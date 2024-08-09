@@ -115,6 +115,7 @@ class Shopify:
             shopify_order = Shopify.Order.get(order_id)
             snode = shopify_order['node']
             billing = snode['billingAddress']
+            status = snode['displayFulfillmentStatus']
 
             shopify_products = []
 
@@ -170,12 +171,7 @@ class Shopify:
                 pl['is_refunded'] = is_refunded
                 pl['quantity_refunded'] = quantity_refunded
 
-                if (
-                    item['isGiftCard']
-                    and snode['displayFulfillmentStatus'] == 'UNFULFILLED'
-                    and send
-                    and not is_refunded
-                ):
+                if item['isGiftCard'] and status == 'UNFULFILLED' and send and not is_refunded:
 
                     def has_code(code):
                         query = f"""
@@ -208,7 +204,7 @@ class Shopify:
                     Email.Customer.GiftCard.send(
                         name=f'{billing['firstName']} {billing["lastName"]}',
                         email=snode['email'],
-                        gc_code=pl['gift_certificate_id']['code'],
+                        gc_code=code,
                         amount=price,
                     )
 
@@ -226,8 +222,6 @@ class Shopify:
 
             subtotal = float(get_money(snode['currentSubtotalPriceSet'])) + hdsc - shippingCost
             total = float(get_money(snode['currentTotalPriceSet']))
-
-            status = snode['displayFulfillmentStatus']
 
             if len(snode['refunds']) > 0:
                 status = 'Partially Refunded'
@@ -296,10 +290,18 @@ class Shopify:
 
         def get_orders_not_in_cp():
             query = """
-            SELECT TKT_NO FROM PS_DOC_HDR WHERE STR_ID = 'WEB'
+            SELECT TKT_NO, TKT_DT FROM PS_DOC_HDR
+            WHERE STR_ID = 'WEB'
+            UNION
+            SELECT TKT_NO, TKT_DT FROM PS_TKT_HIST
+            WHERE STR_ID = 'WEB'
+            ORDER BY TKT_DT DESC
+            OFFSET 0 ROWS
+            FETCH NEXT 30 ROWS ONLY
             """
 
             response = Database.db.query(query)
+
             try:
                 tkt_nos = [x[0].replace('S', '') for x in response]
 
