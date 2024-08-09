@@ -49,7 +49,7 @@ class RabbitMQConsumer:
             # order = Order(order_id)
             # test
             # Filter out DECLINED payments
-            if order.status == 'UNFULFILLED':
+            if order.status == 'UNFULFILLED' or order.status == 'FULFILLED':
                 # Add order to SQL Database. Datestamp and status are added by default.
                 bc_date = order.date_created
                 # Format Date and Time
