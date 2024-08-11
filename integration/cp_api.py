@@ -338,7 +338,7 @@ class OrderAPI(DocumentAPI):
         if line_item['sku'] == 'SERVICE':
             return 0
 
-        points_earned = (float(line_item['PRC'] or 0) / 20) or 0  # Changed from EXT_PRC to PRC
+        points_earned = (float(line_item['EXT_PRC'] or 0) / 20) or 0
 
         query = f"""
         INSERT INTO PS_DOC_LIN_LOY 
