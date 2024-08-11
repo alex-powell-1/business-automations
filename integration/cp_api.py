@@ -338,7 +338,7 @@ class OrderAPI(DocumentAPI):
         if line_item['sku'] == 'SERVICE':
             return 0
 
-        points_earned = (float(line_item['EXT_PRC'] or 0) / 20) or 0
+        points_earned = (float(line_item['PRC'] or 0) / 20) or 0  # Changed from EXT_PRC to PRC
 
         query = f"""
         INSERT INTO PS_DOC_LIN_LOY 
@@ -430,6 +430,14 @@ class OrderAPI(DocumentAPI):
     # Write loyalty points.
     def write_loyalty(self, doc_id, cust_no, line_items: list[dict]):
         self.logger.info('Writing loyalty')
+
+        # count = 1
+        # for item in line_items:
+        #     self.logger.info(f'Line item: {count}')
+        #     for k, v in item.items():
+        #         self.logger.info(f'{k}: {v}')
+        #     count += 1
+
         points_earned = math.floor(self.write_lin_loy(doc_id, line_items))
         points_redeemed = self.get_loyalty_points_used(doc_id)
 

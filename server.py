@@ -581,6 +581,18 @@ def qr_tracker(qr_id):
     return jsonify({'success': True}), 200
 
 
+@app.route('/robots.txt', methods=['GET'])
+def robots():
+    # disallow all robots
+    return (
+        """
+    User-agent: *
+    Disallow: /
+    """,
+        200,
+    )
+
+
 if __name__ == '__main__':
     if dev:
         app.run(debug=True, port=creds.flask_port)

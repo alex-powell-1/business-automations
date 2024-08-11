@@ -16,18 +16,18 @@ class Inventory:
 
     def __init__(self):
         self.last_sync = get_last_sync(file_name='last_sync_inventory.txt')
-        self.catalog = Catalog(last_sync=self.last_sync, inventory_only=True)
+        self.verbose = False
+        self.catalog = Catalog(last_sync=self.last_sync, inventory_only=True, verbose=self.verbose)
 
     def __str__(self):
         return f'Integrator\n' f'Last Sync: {self.last_sync}\n'
 
     def sync(self, initial=False):
         start_sync_time = datetime.now()
-        self.logger.header('Inventory Sync Starting')
         self.catalog.sync()
         set_last_sync(file_name='last_sync_inventory.txt', start_time=start_sync_time)
-        completion_time = (datetime.now() - start_sync_time).seconds
-        Inventory.logger.info(f'Inventory Sync completion time: {completion_time} seconds')
+        # completion_time = (datetime.now() - start_sync_time).seconds
+        # Inventory.logger.info(f'Inventory Sync completion time: {completion_time} seconds')
         if Inventory.error_handler.errors:
             Inventory.error_handler.print_errors()
 

@@ -23,9 +23,10 @@ class Catalog:
     logger = Logger(f"{creds.log_main}/integration/process_out/log_{datetime.now().strftime("%m_%d_%y")}.log")
     error_handler = ErrorHandler(logger)
 
-    def __init__(self, last_sync=datetime(1970, 1, 1), inventory_only=False):
+    def __init__(self, last_sync=datetime(1970, 1, 1), inventory_only=False, verbose=True):
         self.last_sync = last_sync
         self.inventory_only = inventory_only
+        self.verbose = verbose
         if not self.inventory_only:
             self.category_tree = self.CategoryTree(last_sync=last_sync)
             # Used to process preliminary deletions of products and images
@@ -248,7 +249,7 @@ class Catalog:
         Catalog.logger.info(f'Image Add/Delete Processing Complete. Time: {time.time() - start_time}')
 
     def sync(self, initial=False):
-        # # Sync Category Tree
+        # Sync Category Tree
         # self.category_tree.sync()
 
         if not initial and not self.inventory_only:
@@ -260,21 +261,23 @@ class Catalog:
         self.get_sync_queue()  # Get all products that have been updated since the last sync
 
         if not self.sync_queue:
-            Catalog.logger.success('No products to sync.')
+            if not self.inventory_only or self.verbose:  # don't log this for inventory sync.
+                Catalog.logger.success('No products to sync.')
         else:
             queue_length = len(self.sync_queue)
             success_count = 0
             fail_count = 0
-
-            Catalog.logger.info(f'Syncing {queue_length} products.')
+            if not self.inventory_only or self.verbose:
+                Catalog.logger.info(f'Syncing {queue_length} products.')
             while len(self.sync_queue) > 0:
                 start_time = time.time()
                 target = self.sync_queue.pop()
                 prod = self.Product(target, last_sync=self.last_sync, inventory_only=self.inventory_only)
                 prod.get(last_sync=self.last_sync)
-                Catalog.logger.info(
-                    f'Processing Product: {prod.sku}, Binding: {prod.binding_id}, Title: {prod.web_title}'
-                )
+                if not self.inventory_only or self.verbose:
+                    Catalog.logger.info(
+                        f'Processing Product: {prod.sku}, Binding: {prod.binding_id}, Title: {prod.web_title}'
+                    )
                 if prod.validate():
                     prod.process()
                     success_count += 1
@@ -282,16 +285,17 @@ class Catalog:
                     fail_count += 1
 
                 queue_length -= 1
+                if not self.inventory_only or self.verbose:
+                    Catalog.logger.info(
+                        f'Product {prod.sku} processed in {time.time() - start_time} seconds. Products Remaining: {queue_length}\n\n'
+                    )
+            if not self.inventory_only or self.verbose:
                 Catalog.logger.info(
-                    f'Product {prod.sku} processed in {time.time() - start_time} seconds. Products Remaining: {queue_length}\n\n'
+                    '-----------------------\n'
+                    'Sync Complete.\n'
+                    f'Success Count: {success_count}\n'
+                    f'Fail Count: {fail_count}\n'
                 )
-
-            Catalog.logger.info(
-                '-----------------------\n'
-                'Sync Complete.\n'
-                f'Success Count: {success_count}\n'
-                f'Fail Count: {fail_count}\n'
-            )
 
     @staticmethod
     def get_deletion_target(primary_source, secondary_source):
