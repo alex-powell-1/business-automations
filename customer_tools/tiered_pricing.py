@@ -111,16 +111,15 @@ def reassess_tiered_pricing(start_date, end_date, demote=False):
                     continue
 
                 # Check if this is a pricing tier 0 customer. If so, skip. Level 0 doesn't promote or demote.
-                if customer.pricing_tier == 0:
+                if customer.pricing_tier == 1:
                     # print(f"{customer.name}({customer_number}) is at level 0. Skipping...", file=log_file)
                     continue
-
                 # All other customers are valid for tiered pricing
                 else:
                     # Get customer sales data
                     total_sales = float(i[2])
                     # base case
-                    target_pricing_tier = 1
+                    target_pricing_tier = 2
                     # If there is no previous pricing tier, set to target tier to 1
                     if customer.pricing_tier is None:
                         customer.set_pricing_tier(target_tier=target_pricing_tier)
@@ -131,8 +130,6 @@ def reassess_tiered_pricing(start_date, end_date, demote=False):
                         target_pricing_tier = 4
                     elif total_sales >= 5000:
                         target_pricing_tier = 3
-                    elif total_sales >= 1000:
-                        target_pricing_tier = 2
                     # print(customer_number, business_name, current_pricing_tier, target_pricing_tier)
                     # If there hasn't been a change, then continue to next iteration
                     if customer.pricing_tier == target_pricing_tier:
@@ -170,5 +167,4 @@ def reassess_tiered_pricing(start_date, end_date, demote=False):
 
 if __name__ == '__main__':
     # reassess_tiered_pricing(datetime(2023, 7, 30), datetime(2024, 7, 30), demote=True)
-
     print(get_government_customers())

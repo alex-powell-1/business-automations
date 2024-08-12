@@ -7,7 +7,7 @@ import setup.date_presets as date_presets
 from datetime import datetime
 import integration.object_processor as object_processor
 import json
-from traceback import format_exc as t
+from traceback import format_exc as tb
 
 
 from setup.error_handler import ProcessOutErrorHandler
@@ -35,7 +35,7 @@ class Customers:
             Database.Counterpoint.Customer.update_timestamps(customer_list)
 
     def get_cp_customers(self):
-        response = Database.Counterpoint.Customer.get()
+        response = Database.Counterpoint.Customer.get(last_sync=self.last_sync)
         return [self.Customer(x) for x in response] if response is not None else []
 
     def get_mw_customer(self):
@@ -52,28 +52,19 @@ class Customers:
 
     def sync(self):
         if self.customers:
-            # with concurrent.futures.ThreadPoolExecutor(max_workers=50) as executor:
-            #     for customer in self.customers:
-            #         executor.submit(customer.process)
+            Customers.logger.header(f'Syncing Customers: {len(self.customers)}')
             for customer in self.customers:
-                with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
-                    for customer in self.customers:
-                        try:
-                            executor.submit(customer.process())
-                        except Exception as e:
-                            self.error_handler.add_error_v(
-                                error=f'Error processing customer {customer.cp_cust_no}: {e}',
-                                origin='Customers.sync',
-                                traceback=t(),
-                            )
-                # try:
-                #     customer.process()
-                # except Exception as e:
-                #     self.error_handler.add_error_v(
-                #         error=f'Error processing customer {customer.cp_cust_no}: {e}',
-                #         origin='Customers.sync',
-                #         traceback=t(),
-                #     )
+                try:
+                    with concurrent.futures.ThreadPoolExecutor(max_workers=40) as executor:
+                        executor.submit(customer.process())
+                except Exception as e:
+                    self.error_handler.add_error_v(
+                        error=f'Error processing customer {customer.cp_cust_no}: {e}',
+                        origin='Customers.sync',
+                        traceback=tb(),
+                    )
+        else:
+            Customers.logger.warn('No customers to sync.')
 
     class Customer:
         def __init__(self, cust_result):
@@ -363,14 +354,14 @@ class Customers:
                         if i['address1']:
                             address['address1'] = i['address1']
                         else:
-                            Customers.logger.warn(f'Customer {self.cp_cust_no} has no address1.')
+                            # Customers.logger.warn(f'Customer {self.cp_cust_no} has no address1.')
                             continue
                         if i['address2']:
                             address['address2'] = i['address2']
                         if i['city']:
                             address['city'] = i['city']
                         else:
-                            Customers.logger.warn(f'Customer {self.cp_cust_no} has no city.')
+                            # Customers.logger.warn(f'Customer {self.cp_cust_no} has no city.')
                             continue
                         if i['state']:
                             address['provinceCode'] = state_code_to_full_name(i['state'])

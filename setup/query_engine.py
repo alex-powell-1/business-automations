@@ -89,7 +89,7 @@ class QueryEngine:
             if e.args[0] == '40001':
                 print('Deadlock Detected. Retrying Query')
                 time.sleep(1)
-                cursor.execute(query)
+                QueryEngine.query(query)
             else:
                 sql_data = {'code': f'{e.args[0]}', 'message': f'{e.args[1]}', 'query': query}
 

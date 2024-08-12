@@ -70,11 +70,17 @@ class Shopify:
                             )
                             # remove id from variables
                             variables['id'] = None
-                            for error in self.user_errors:
-                                if error == 'Customer does not exist':
-                                    # Remove from user errors
-                                    self.user_errors.remove(error)
+                            self.user_errors.remove(i)
                             # Re-run query
+                            self.__init__(document, variables, operation_name)
+
+                        elif i == 'Email has already been taken':
+                            with open('./duplicate_emails.txt', 'a') as f:
+                                print(f"Duplicate email: {variables['input']['email']}", file=f)
+                            # Remove email from variables
+                            variables['input']['email'] = None
+                            variables['input']['emailMarketingConsent'] = None
+                            self.user_errors.remove(i)
                             self.__init__(document, variables, operation_name)
 
                         elif i == 'Metafield does not exist':
@@ -153,7 +159,7 @@ class Shopify:
                 def get_money(money: dict):
                     return money['presentmentMoney']['amount']
 
-                price = float(get_money(item['originalTotalSet']))
+                price = float(get_money(item['originalUnitPriceSet']))  # Fixed
 
                 item['isGiftCard'] = False
 
