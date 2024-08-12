@@ -197,6 +197,7 @@ query product($id: ID!) {
       count
     }
     vendor
+
     media(first: 75) {
       nodes {
         id
@@ -207,16 +208,14 @@ query product($id: ID!) {
           image {
             id
             url
-            metafield(namespace: "product-image", key: "name") {
+            metafield(namespace: "image", key: "name") {
               id
               value
             }
           }
         }
       }
-
     }
-
 
     images(first: 5) {
       edges {

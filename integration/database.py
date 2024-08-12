@@ -322,6 +322,22 @@ class Database:
                                             LST_MAINT_DT datetime NOT NULL DEFAULT(current_timestamp)
                                             );
                                             """,
+                    'videos': f"""
+                                            CREATE TABLE {Database.Shopify.video_table} (
+                                            ID int IDENTITY(1,1) PRIMARY KEY,
+                                            VIDEO_NAME nvarchar(255),
+                                            ITEM_NO varchar(50),
+                                            FILE_PATH nvarchar(255),
+                                            PRODUCT_ID bigint,
+                                            VIDEO_ID bigint,
+                                            VIDEO_NUMBER int DEFAULT(1),
+                                            SORT_ORDER int,
+                                            BINDING_ID varchar(50),
+                                            DESCR nvarchar(255),
+                                            SIZE int,
+                                            LST_MAINT_DT datetime NOT NULL DEFAULT(current_timestamp)
+                                            );
+                                            """,
                     'customers': f"""
                                             CREATE TABLE {Database.Shopify.customer_table} (
                                             ID int IDENTITY(1,1) PRIMARY KEY,
@@ -899,6 +915,100 @@ class Database:
                         Database.error_handler.add_error_v(
                             error=error, origin=f'Database.Shopify.Product.Image.delete(query:\n{q})'
                         )
+                        raise Exception(error)
+
+            class Video:
+                table = creds.shopify_video_table
+
+                def get(product_id):
+                    query = f"""
+                    SELECT * FROM {Database.Shopify.Product.Video.table}
+                    WHERE PRODUCT_ID = {product_id}
+                    """
+                    return Database.db.query(query)
+
+                def insert(
+                    item_no,
+                    product_id,
+                    video_id,
+                    video_number,
+                    sort_order,
+                    descr=None,
+                    name=None,
+                    binding_id=None,
+                    size=None,
+                    file_path=None,
+                ):
+                    query = f"""
+                    INSERT INTO {Database.Shopify.Product.Video.table} (VIDEO_NAME, ITEM_NO, FILE_PATH, PRODUCT_ID, 
+                    VIDEO_ID, VIDEO_NUMBER, SORT_ORDER, BINDING_ID, DESCR, SIZE)
+                    VALUES ({f"'{name}'" if name else 'NULL'}, 
+                    '{item_no}', 
+                    {f"'{file_path}'" if file_path else 'NULL'}, 
+                    {product_id}, 
+                    {video_id}, 
+                    {video_number}, 
+                    {sort_order}, {f"'{binding_id}'" if binding_id else 'NULL'}, 
+                    {f"'{descr}'" if descr else 'NULL'}, {size if size else 'NULL'})
+                    """
+                    response = Database.db.query(query)
+                    if response['code'] == 200:
+                        Database.logger.success(f'Video {name} added to Middleware.')
+                    else:
+                        error = f'Error adding video {name} to Middleware. \nQuery: {query}\nResponse: {response}'
+                        Database.error_handler.add_error_v(error=error)
+                        raise Exception(error)
+
+                def update(
+                    item_no,
+                    product_id,
+                    video_id,
+                    video_number,
+                    sort_order,
+                    descr=None,
+                    name=None,
+                    binding_id=None,
+                    size=None,
+                    file_path=None,
+                ):
+                    query = f"""
+                    UPDATE {Database.Shopify.Product.Video.table}
+                    SET VIDEO_NAME = {f"'{name}'" if name else 'NULL'}, 
+                    ITEM_NO = '{item_no}', 
+                    FILE_PATH = {f"'{file_path}'" if file_path else 'NULL'}, 
+                    PRODUCT_ID = {product_id}, 
+                    VIDEO_ID = {video_id}, 
+                    VIDEO_NUMBER = {video_number}, 
+                    SORT_ORDER = {sort_order}, 
+                    BINDING_ID = {f"'{binding_id}'" if binding_id else 'NULL'}, 
+                    DESCR = {f"'{descr}'" if descr else 'NULL'}, 
+                    SIZE = {size if size else 'NULL'}
+                    WHERE PRODUCT_ID = {product_id}
+                    """
+                    response = Database.db.query(query)
+                    if response['code'] == 200:
+                        Database.logger.success(f'Video {name} updated in Middleware.')
+                    elif response['code'] == 201:
+                        Database.logger.warn(f'Video {name} not found in Middleware.')
+                    else:
+                        error = f'Error updating video {name} in Middleware. \nQuery: {query}\nResponse: {response}'
+                        Database.error_handler.add_error_v(error=error)
+                        raise Exception(error)
+
+                def delete(video_id=None):
+                    if video_id:
+                        where_filter = f'WHERE VIDEO_ID = {video_id}'
+                    else:
+                        where_filter = ''
+                    query = f'DELETE FROM {Database.Shopify.Product.Video.table} {where_filter}'
+                    response = Database.db.query(query)
+                    if response['code'] == 200:
+                        Database.logger.success(f'Video {video_id} deleted from Middleware.')
+                    elif response['code'] == 201:
+                        Database.logger.warn(f'Video {video_id} not found in Middleware.')
+                    else:
+                        error = f'Error deleting video {video_id} from Middleware. \n Query: {query}\nResponse: {response}'
+                        Database.error_handler.add_error_v(error=error)
                         raise Exception(error)
 
             class Metafield:

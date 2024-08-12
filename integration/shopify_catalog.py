@@ -260,6 +260,8 @@ class Catalog:
         # Sync Products
         self.get_sync_queue()  # Get all products that have been updated since the last sync
 
+        # self.sync_queue = [{'sku': '200793'}]
+
         if not self.sync_queue:
             if not self.inventory_only or self.verbose:  # don't log this for inventory sync.
                 Catalog.logger.success('No products to sync.')
@@ -680,6 +682,7 @@ class Catalog:
 
             # A list of image objects
             self.images: list = []
+            self.videos: list = []
             self.has_variant_image = False  # used during image processing
 
             # Product Information
@@ -818,6 +821,9 @@ class Catalog:
                         self.preorder_release_date = bound.preorder_release_date
                         self.preorder_message = bound.preorder_message
 
+                        # Media
+                        self.videos = bound.videos
+
                         # Product Description
                         self.product_id = bound.product_id
                         self.web_title = bound.web_title
@@ -944,6 +950,7 @@ class Catalog:
                 self.cp_ecommerce_categories = single.cp_ecommerce_categories
                 # Media
                 self.images = single.images
+                self.videos = single.videos
                 # Statuses
                 self.in_store_only = single.in_store_only
                 self.visible = single.visible
@@ -1447,7 +1454,17 @@ class Catalog:
 
                 return result
 
-            def create_image_payload():
+            def get_media_payload():
+                result = []
+                images = get_image_payload()
+                videos = get_video_payload()
+                for image in images:
+                    result.append(image)
+                # for video in videos:
+                #     result.append(video)
+                return result
+
+            def get_image_payload():
                 sort_order = 0
                 for x in self.images:
                     if sort_order == 0:
@@ -1506,6 +1523,26 @@ class Catalog:
 
                 return result
 
+            def get_video_payload():
+                result = []
+                for video in self.videos:
+                    video_payload = {}
+
+                    if video.shopify_id:
+                        video_payload['id'] = video.shopify_id
+                    else:
+                        if video.url and not video.file_path:
+                            # External Video
+                            video_payload['originalSource'] = video.url
+                            video_payload['mediaContentType'] = 'EXTERNAL_VIDEO'
+
+                    if video.description:
+                        video_payload['alt'] = video.description
+
+                    result.append(video_payload)
+
+                return result
+
             def get_brand_name(brand):
                 """Takes the brand profile code and returns the brand name"""
                 query = f"""
@@ -1525,7 +1562,7 @@ class Catalog:
                     'seo': {},
                     'metafields': get_custom_fields(),
                 },
-                'media': create_image_payload(),
+                'media': get_media_payload(),
             }
             if self.product_id:
                 product_payload['input']['id'] = f'gid://shopify/Product/{self.product_id}'
@@ -2367,7 +2404,8 @@ class Catalog:
                 if product_data['custom_color_white']:
                     color_list.append('White')
                 if product_data['custom_color_custom']:
-                    color_list.append(product_data['custom_color_custom'])
+                    for color in product_data['custom_color_custom']:
+                        color_list.append(color)
 
                 if color_list:
                     if 'Flowering' in self.meta_features['value']:
@@ -2434,7 +2472,7 @@ class Catalog:
                 else:
                     self.variant_image_url = ''
 
-                self.videos = product_data['videos']
+                self.videos = [Catalog.Product.Video(video) for video in product_data['videos']]
 
             def __str__(self):
                 result = ''
@@ -2575,9 +2613,10 @@ class Catalog:
                 MW.CF_IS_PREORDER as 'CUSTOM_IS_PREORDER_ID(102)',
                 MW.CF_PREORDER_DT as 'CUSTOM_PREORDER_DATE_ID(103)',
                 MW.CF_PREORDER_MSG as 'CUSTOM_PREORDER_MESSAGE_ID(104)',
-                MW.CF_IS_FEATURED as 'CUSTOM_IS_FEATURED_ID(104)',
-                MW.CF_IN_STORE_ONLY as 'CUSTOM_IN_STORE_ONLY_ID(105)',
-                ITEM.PROF_COD_2 as 'Size Unit(106)'
+                MW.CF_IS_FEATURED as 'CUSTOM_IS_FEATURED_ID(105)',
+                MW.CF_IN_STORE_ONLY as 'CUSTOM_IN_STORE_ONLY_ID(106)',
+                ITEM.PROF_COD_2 as 'Size Unit(107)', 
+                ITEM.USR_VIDEO as 'VIDEOS(108)'
 
                 FROM IM_ITEM ITEM
                 LEFT OUTER JOIN IM_PRC PRC ON ITEM.ITEM_NO=PRC.ITEM_NO
@@ -2665,7 +2704,7 @@ class Catalog:
                         'custom_color_blue': True if item[0][58] == 'Y' else False,
                         'custom_color_purple': True if item[0][59] == 'Y' else False,
                         'custom_color_white': True if item[0][60] == 'Y' else False,
-                        'custom_color_custom': item[0][61],
+                        'custom_color_custom': item[0][61].split(',') if item[0][61] else [],
                         # Features
                         'custom_low_maintenance': True if item[0][62] == 'Y' else False,
                         'custom_evergreen': True if item[0][63] == 'Y' else False,
@@ -2714,6 +2753,7 @@ class Catalog:
                         'custom_is_featured_id': item[0][105],
                         'custom_in_store_only_id': item[0][106],
                         'custom_size_unit': item[0][107],
+                        'videos': item[0][108].split(',') if item[0][108] else [],
                     }
 
                     # for k, v in details.items():
@@ -2786,9 +2826,17 @@ class Catalog:
                 )
 
         class Video:
-            """Placeholder for video class"""
-
-            pass
+            def __init__(self, url, item_no, binding_id=None, name=None, description=None):
+                self.db_id = None
+                self.shopify_id = None
+                self.item_no = item_no
+                self.binding_id = binding_id
+                self.name = name
+                self.number = None
+                self.sort_order = None
+                self.size = None
+                self.url = url
+                self.description = description
 
         class Modifier:
             """Placeholder for modifier class"""

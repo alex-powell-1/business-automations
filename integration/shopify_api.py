@@ -623,10 +623,6 @@ class Shopify:
                 raise Exception(
                     f'Error: {response.errors}\nUser Error: {response.user_errors}\nPayload: {product_payload}'
                 )
-            # result = {}
-            # for i in product_payload['media']:
-            #     # Get the image name from the payload and then match it with the parsed response URL
-            #     pass
 
             media_ids = [
                 x['id'].split('/')[-1] for x in response.data['productUpdate']['product']['media']['nodes']
@@ -1280,7 +1276,7 @@ class Shopify:
                 return result
 
             result = []
-            owner_types = ['PRODUCT', 'CUSTOMER']
+            owner_types = ['PRODUCT', 'CUSTOMER', 'PRODUCTIMAGE', 'MEDIA_IMAGE']
             for owner in owner_types:
                 response = Shopify.Query(
                     document=Shopify.MetafieldDefinition.queries,
@@ -1372,16 +1368,17 @@ class Shopify:
 
                 insert_values = {
                     'META_ID': metafield_id,
-                    'NAME': i['name'],
+                    'NAME': payload['name'],
+                    'DESCR': payload['description'],
                     'NAME_SPACE': 'test_data',
-                    'META_KEY': i['name'].replace(' ', '_').lower(),
-                    'TYPE': i['type'],
+                    'META_KEY': payload['name'].replace(' ', '_').lower(),
+                    'TYPE': payload['type'],
                     'PIN': 1,
                     'PINNED_POS': 0,
                     'OWNER_TYPE': 'PRODUCT',
                 }
 
-                Database.Metafield_Definition.insert(insert_values)
+                Database.Shopify.Metafield_Definition.insert(insert_values)
 
         def delete(metafield_def_id: int = None):
             if metafield_def_id:
@@ -1414,7 +1411,12 @@ class Shopify:
         queries = './integration/queries/webhooks.graphql'
         prefix = 'gid://shopify/WebhookSubscription'
         format = 'JSON'
-        topics = ['ORDERS_CREATE', 'REFUNDS_CREATE']
+        # topics = ['ORDERS_CREATE', 'REFUNDS_CREATE', 'DRAFT_ORDERS_CREATE', 'DRAFT_ORDERS_UPDATE']
+
+        topics = [
+            {'topic': 'DRAFT_ORDERS_CREATE', 'url': f'{creds.ngrok_domain}/shopify_draft_create'},
+            {'topic': 'DRAFT_ORDERS_UPDATE', 'url': f'{creds.ngrok_domain}/shopify_draft_update'},
+        ]
         address = f'{creds.ngrok_domain}/shopify'
 
         def get(id='', ids_only=False):
@@ -1439,21 +1441,18 @@ class Shopify:
                     response = Shopify.Query(
                         document=Shopify.Webhook.queries,
                         variables={
-                            'topic': topic,
-                            'webhookSubscription': {
-                                'callbackUrl': Shopify.Webhook.address,
-                                'format': Shopify.Webhook.format,
-                            },
+                            'topic': topic['topic'],
+                            'webhookSubscription': {'callbackUrl': topic['url'], 'format': Shopify.Webhook.format},
                         },
                         operation_name='webhookSubscriptionCreate',
                     )
                     result.append(
                         {
-                            'TOPIC': topic,
+                            'TOPIC': topic['topic'],
                             'HOOK_ID': response.data['webhookSubscriptionCreate']['webhookSubscription'][
                                 'id'
                             ].split('/')[-1],
-                            'DESTINATION': Shopify.Webhook.address,
+                            'DESTINATION': topic['url'],
                             'FORMAT': Shopify.Webhook.format,
                             'DOMAIN': 'Shopify',
                         }
@@ -1496,4 +1495,27 @@ class Shopify:
 
 
 if __name__ == '__main__':
-    Shopify.Customer.backfill()
+    payload = {
+        'id': 'gid://shopify/StandardMetafieldDefinitionTemplate/2',
+        'ownerType': 'PRODUCT',
+        'pin': False,
+        'visibleToStorefrontApi': True,
+    }
+
+    # # Shopify.MetafieldDefinition.create(payload)
+
+    # # Shopify.Metafield.get('gid://shopify/Metafield/33063278018727')
+
+    # # Shopify.MetafieldDefinition.get()
+
+    # Shopify.Metafield.set(
+    #     owner_id='gid://shopify/MediaImage/29689618727079',
+    #     namespace='image',
+    #     key='name',
+    #     value='test',
+    #     type='single_line_text_field',
+    # )
+
+    # Shopify.Product.get(8308188610727)
+
+    Shopify.Webhook.create(default=True)
