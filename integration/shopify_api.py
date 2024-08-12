@@ -159,7 +159,7 @@ class Shopify:
                 def get_money(money: dict):
                     return money['presentmentMoney']['amount']
 
-                price = float(get_money(item['originalUnitPriceSet']))
+                price = float(get_money(item['originalUnitPriceSet']))  # Fixed
 
                 item['isGiftCard'] = False
 

@@ -5,7 +5,6 @@ from customer_tools import customers
 from product_tools import brands
 from product_tools import set_inactive_status
 from product_tools import stock_buffer
-from reporting import lead_generator_notification
 from setup.email_engine import Email
 from setup import creds
 from setup import date_presets

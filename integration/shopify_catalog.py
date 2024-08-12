@@ -1530,9 +1530,6 @@ class Catalog:
             if self.product_id:
                 product_payload['input']['id'] = f'gid://shopify/Product/{self.product_id}'
 
-            if self.html_description:
-                product_payload['input']['descriptionHtml'] = self.html_description
-
             if self.brand:
                 product_payload['input']['vendor'] = get_brand_name(self.brand)
 
@@ -1547,11 +1544,14 @@ class Catalog:
                     f'gid://shopify/Collection/{x}' for x in self.shopify_collections
                 ]
 
-            if self.meta_title:
-                product_payload['input']['seo']['title'] = self.meta_title
+            # if self.meta_title:
+            #     product_payload['input']['seo']['title'] = self.meta_title
 
-            if self.meta_description:
-                product_payload['input']['seo']['description'] = self.meta_description
+            # if self.html_description:
+            #     product_payload['input']['descriptionHtml'] = self.html_description
+
+            # if self.meta_description:
+            #     product_payload['input']['seo']['description'] = self.meta_description
 
             if not self.product_id:  # new product
                 # If Add Standalone Variant Option - will be deleted later

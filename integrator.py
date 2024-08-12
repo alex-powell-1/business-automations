@@ -20,7 +20,7 @@ class Integrator:
     def __init__(self):
         self.last_sync = get_last_sync(file_name='last_sync_integrator.txt')
         self.catalog = Catalog(last_sync=self.last_sync)
-        self.customers = Customers(last_sync=self.last_sync)
+        # self.customers = Customers(last_sync=self.last_sync)
 
     def __str__(self):
         return f'Integrator\n' f'Last Sync: {self.last_sync}\n'
@@ -42,7 +42,7 @@ class Integrator:
     def sync(self, initial=False):
         start_sync_time = datetime.now()
         self.logger.header('Sync Starting')
-        self.customers.sync()  # Throwing error for email already taken. Need to fix.
+        # self.customers.sync()  # Throwing error for email already taken. Need to fix.
         self.catalog.category_tree.sync()
         self.catalog.sync(initial=initial)
         set_last_sync(file_name='last_sync_integrator.txt', start_time=start_sync_time)
