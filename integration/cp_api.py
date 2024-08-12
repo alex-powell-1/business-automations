@@ -452,6 +452,12 @@ class OrderAPI(DocumentAPI):
 
         return total
 
+    def get_store_id(self, bc_order: dict):
+        return 1 if bc_order['channel'].lower() == 'pos' else 'WEB'
+
+    def get_station_id(self, bc_order: dict):
+        return 'POS' if bc_order['channel'].lower() == 'pos' else 'WEB'
+
     # Get the NCR Counterpoint API POST payload for a BigCommerce order.
     # Assigns order to cust_no
     def get_post_order_payload(self, cust_no: str, bc_order: dict = {}):
@@ -473,8 +479,8 @@ class OrderAPI(DocumentAPI):
 
         payload = {
             'PS_DOC_HDR': {
-                'STR_ID': 'WEB',
-                'STA_ID': 'WEB',
+                'STR_ID': self.get_store_id(bc_order),
+                'STA_ID': self.get_station_id(bc_order),
                 'DRW_ID': '1',
                 'TKT_NUM': f"{ORDER_PREFIX}{bc_order["id"]}",
                 'CUST_NO': cust_no,

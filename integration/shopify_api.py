@@ -316,6 +316,7 @@ class Shopify:
                 'coupons': {'url': []},
                 'transactions': {'data': []},
                 'order_coupons': snode['discountCodes'],
+                'channel': snode['channelInformation']['channelDefinition']['handle'],
             }
 
             if hdsc > 0:
@@ -380,6 +381,15 @@ class Shopify:
                 cust_no = lookup_customer(email_address=email, phone_number=phone)
 
                 return cust_no
+
+            @staticmethod
+            def delete(order_id: int):
+                response = Shopify.Query(
+                    document=Shopify.Order.Draft.queries,
+                    variables={'id': f'gid://shopify/DraftOrder/{order_id}'},
+                    operation_name='draftOrderDelete',
+                )
+                return response.data
 
     class Customer:
         queries = './integration/queries/customers.graphql'

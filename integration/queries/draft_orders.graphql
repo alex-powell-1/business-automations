@@ -41,3 +41,9 @@ query draftOrder($id: ID!) {
         }
     }
 }
+
+mutation draftOrderDelete($input: DraftOrderDeleteInput!) {
+    draftOrderDelete(input: $input) {
+        deletedId
+    }
+}
