@@ -137,8 +137,8 @@ class Shopify:
             shopify_order = Shopify.Order.get(order_id)
             snode = shopify_order['node']
             billing = snode['billingAddress'] or {
-                'firstName': None,
-                'lastName': None,
+                'firstName': snode['customer']['firstName'],
+                'lastName': snode['customer']['lastName'],
                 'company': None,
                 'address1': None,
                 'address2': None,
@@ -146,8 +146,8 @@ class Shopify:
                 'province': None,
                 'zip': None,
                 'country': None,
-                'phone': None,
-                'email': None,
+                'phone': snode['customer']['phone'],
+                'email': snode['customer']['email'],
             }
             status = snode['displayFulfillmentStatus']
 

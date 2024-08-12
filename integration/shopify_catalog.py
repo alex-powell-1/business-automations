@@ -2434,6 +2434,8 @@ class Catalog:
                 else:
                     self.variant_image_url = ''
 
+                self.videos = product_data['videos']
+
             def __str__(self):
                 result = ''
                 for k, v in self.__dict__.items():

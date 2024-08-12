@@ -22,6 +22,10 @@ query order($id: ID!) {
 
       customer {
         id
+        firstName
+        lastName
+        email
+        phone
       }
 
       email
