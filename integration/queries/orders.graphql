@@ -5,6 +5,16 @@ query order($id: ID!) {
             id
             name
 
+            channelInformation {
+                id
+                channelId
+                channelDefinition {
+                    channelName
+                    handle
+                    subChannelName
+                }
+            }
+
             billingAddress {
                 address1
                 address2
