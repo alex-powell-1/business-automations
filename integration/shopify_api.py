@@ -349,6 +349,18 @@ class Shopify:
             except:
                 return []
 
+        class Draft:
+            queries = './integration/queries/draft_orders.graphql'
+
+            @staticmethod
+            def get(order_id: int):
+                response = Shopify.Query(
+                    document=Shopify.Order.Draft.queries,
+                    variables={'id': f'gid://shopify/DraftOrder/{order_id}'},
+                    operation_name='draftOrder',
+                )
+                return response.data
+
     class Customer:
         queries = './integration/queries/customers.graphql'
         prefix = 'gid://shopify/Customer/'

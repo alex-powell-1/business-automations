@@ -2051,3 +2051,72 @@ class JsonTools:
                     pass
 
         return obj
+
+
+class HoldOrderAPI(DocumentAPI):
+    def __init__(self, session: requests.Session = requests.Session()):
+        super().__init__(session=session)
+
+    class ItemPayload:
+        def __init__(self, item_no, qty, price):
+            self.item_no = item_no
+            self.qty = qty
+            self.price = price
+
+        def get(self):
+            return {
+                'LIN_TYP': 'O',
+                'ITEM_NO': self.item_no,
+                'QTY_SOLD': float(self.qty),
+                'PRC': float(self.price),
+                'EXT_PRC': float(self.price) * float(self.qty),
+            }
+
+    class LinesPayload:
+        def __init__(self):
+            self.line_items = []
+
+        def get(self):
+            self.line_items
+
+        def add(self, item: dict):
+            itemPayload = HoldOrderAPI.ItemPayload(item_no=item['item_no'], qty=item['qty'], price=item['price'])
+            data = itemPayload.get()
+            self.line_items.append(data)
+
+    class DocumentPayload:
+        def __init__(self, cust_no='CASH'):
+            self.storeId = 1
+            self.stationId = 'POS'
+            self.drawerId = 1
+            self.ticketType = 'T'
+            self.docType = 'H'
+            self.userId = 'POS'
+            self.notes = []
+            self.cust_no = cust_no
+            self.line_items = HoldOrderAPI.LinesPayload()
+
+        def get(self):
+            return {
+                'PS_DOC_HDR': {
+                    'STR_ID': self.storeId,
+                    'STA_ID': self.stationId,
+                    'DRW_ID': self.drawerId,
+                    'TKT_TYP': self.ticketType,
+                    'DOC_TYP': self.docType,
+                    'USR_ID': self.userId,
+                    'CUST_NO': self.cust_no,
+                    'PS_DOC_LIN': self.line_items.get(),
+                    'PS_DOC_NOTE': self.notes,
+                }
+            }
+
+        def add_note(self, note):
+            self.notes.append(note)
+
+        def add_item(self, item_no: str, qty: int, price: float):
+            self.line_items.add({'item_no': item_no, 'qty': qty, 'price': price})
+
+        def add_lines(self, lines: list[dict]):
+            for line in lines:
+                self.line_items.add(line)

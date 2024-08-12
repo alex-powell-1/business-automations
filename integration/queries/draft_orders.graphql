@@ -1,0 +1,29 @@
+query draftOrder($id: ID!) {
+    node(id: $id) {
+        ... on DraftOrder {
+            id
+            name
+            status
+
+            order {
+                id
+                name
+            }
+
+            lineItems(first: 250) {
+                edges {
+                    node {
+                        name
+                        sku
+                        quantity
+                        originalUnitPriceSet {
+                            presentmentMoney {
+                                amount
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
