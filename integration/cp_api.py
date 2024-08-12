@@ -2085,7 +2085,7 @@ class HoldOrderAPI(DocumentAPI):
             self.line_items = []
 
         def get(self):
-            self.line_items
+            return self.line_items
 
         def add(self, item: dict):
             itemPayload = HoldOrderAPI.ItemPayload(item_no=item['item_no'], qty=item['qty'], price=item['price'])
@@ -2128,3 +2128,9 @@ class HoldOrderAPI(DocumentAPI):
         def add_lines(self, lines: list[dict]):
             for line in lines:
                 self.line_items.add(line)
+
+    @staticmethod
+    def create(lines: list[dict]):
+        doc = HoldOrderAPI.DocumentPayload()
+        doc.add_lines(lines)
+        return doc.get()
