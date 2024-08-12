@@ -7,7 +7,6 @@ from integration.database import Database
 from shortuuid import ShortUUID
 from setup.email_engine import Email
 from customer_tools.customers import lookup_customer
-from integration.cp_api import OrderAPI
 
 verbose_print = True
 
@@ -373,23 +372,14 @@ class Shopify:
                 """Convert Shopify order to BigCommerce order format"""
                 shopify_order = Shopify.Order.Draft.get(order_id)
                 snode = shopify_order['node']
-                billing = snode['billingAddress'] or {
-                    'firstName': None,  # FIX THIS
-                    'lastName': None,  # FIX THIS
-                    'phone': None,  # FIX THIS
-                    'email': None,  # FIX THIS
-                }
+                customer = snode['customer']
+                billing = snode['billingAddress']
+                email = snode['email'] or customer['email']
+                phone = billing['phone'] if billing is not None else customer['phone']
 
-                bc_order = {
-                    'billing_address': {
-                        'first_name': billing['firstName'],
-                        'last_name': billing['lastName'],
-                        'phone': billing['phone'],
-                        'email': snode['email'],
-                    }
-                }
+                cust_no = lookup_customer(email_address=email, phone_number=phone)
 
-                return OrderAPI.get_cust_no(bc_order=bc_order)
+                return cust_no
 
     class Customer:
         queries = './integration/queries/customers.graphql'

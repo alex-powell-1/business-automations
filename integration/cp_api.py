@@ -74,7 +74,7 @@ class DocumentAPI(CounterPointAPI):
 
         response = self.post(url, payload=payload)
 
-        return response
+        return response.json()
 
 
 # This is the primary class used in this file.
@@ -2132,7 +2132,7 @@ class HoldOrder(DocumentAPI):
     @staticmethod
     def post_pl(payload: dict):
         ho = HoldOrder()
-        ho.post_document(payload=payload)
+        return ho.post_document(payload=payload)
 
     @staticmethod
     def create(lines: list[dict], cust_no: str | int = 'CASH'):

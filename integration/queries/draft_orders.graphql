@@ -10,6 +10,20 @@ query draftOrder($id: ID!) {
                 name
             }
 
+            customer {
+                id
+                firstName
+                lastName
+                email
+                phone
+            }
+
+            billingAddress {
+                phone
+            }
+
+            email
+
             lineItems(first: 250) {
                 edges {
                     node {
