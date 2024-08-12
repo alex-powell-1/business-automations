@@ -2061,7 +2061,7 @@ class JsonTools:
         return obj
 
 
-class HoldOrderAPI(DocumentAPI):
+class HoldOrder(DocumentAPI):
     def __init__(self, session: requests.Session = requests.Session()):
         super().__init__(session=session)
 
@@ -2088,12 +2088,12 @@ class HoldOrderAPI(DocumentAPI):
             return self.line_items
 
         def add(self, item: dict):
-            itemPayload = HoldOrderAPI.ItemPayload(item_no=item['item_no'], qty=item['qty'], price=item['price'])
+            itemPayload = HoldOrder.ItemPayload(item_no=item['item_no'], qty=item['qty'], price=item['price'])
             data = itemPayload.get()
             self.line_items.append(data)
 
     class DocumentPayload:
-        def __init__(self, cust_no='CASH'):
+        def __init__(self, cust_no: str | int):
             self.storeId = 1
             self.stationId = 'POS'
             self.drawerId = 1
@@ -2102,7 +2102,7 @@ class HoldOrderAPI(DocumentAPI):
             self.userId = 'POS'
             self.notes = []
             self.cust_no = cust_no
-            self.line_items = HoldOrderAPI.LinesPayload()
+            self.line_items = HoldOrder.LinesPayload()
 
         def get(self):
             return {
@@ -2130,7 +2130,34 @@ class HoldOrderAPI(DocumentAPI):
                 self.line_items.add(line)
 
     @staticmethod
-    def create(lines: list[dict]):
-        doc = HoldOrderAPI.DocumentPayload()
+    def post_pl(payload: dict):
+        ho = HoldOrder()
+        ho.post_document(payload=payload)
+
+    @staticmethod
+    def create(lines: list[dict], cust_no: str | int = 'CASH'):
+        doc = HoldOrder.DocumentPayload(cust_no=cust_no)
         doc.add_lines(lines)
         return doc.get()
+
+    @staticmethod
+    def get_lines_from_draft_order(draft_order_id: str | int):
+        """Get all lines from a draft order."""
+        shop_order = Shopify.Order.Draft.get(draft_order_id)
+
+        lines = []
+        snode = shop_order['node']
+        line_items = snode['lineItems']['edges']
+
+        for _item in line_items:
+            item = _item['node']
+
+            lines.append(
+                {
+                    'item_no': item['sku'],
+                    'qty': item['quantity'],
+                    'price': float(item['originalUnitPriceSet']['presentmentMoney']['amount']),
+                }
+            )
+
+        return lines
