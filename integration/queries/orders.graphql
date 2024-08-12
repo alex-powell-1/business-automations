@@ -4,6 +4,21 @@ query order($id: ID!) {
     ... on Order {
       id
       name
+    node(id: $id) {
+        id
+        ... on Order {
+            id
+            name
+
+            channelInformation {
+                id
+                channelId
+                channelDefinition {
+                    channelName
+                    handle
+                    subChannelName
+                }
+            }
 
       billingAddress {
         address1

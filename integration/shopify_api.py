@@ -316,6 +316,7 @@ class Shopify:
                 'coupons': {'url': []},
                 'transactions': {'data': []},
                 'order_coupons': snode['discountCodes'],
+                'channel': snode['channelInformation']['channelDefinition']['handle'],
             }
 
             if hdsc > 0:
@@ -354,6 +355,41 @@ class Shopify:
 
             except:
                 return []
+
+        class Draft:
+            queries = './integration/queries/draft_orders.graphql'
+
+            @staticmethod
+            def get(order_id: int):
+                response = Shopify.Query(
+                    document=Shopify.Order.Draft.queries,
+                    variables={'id': f'gid://shopify/DraftOrder/{order_id}'},
+                    operation_name='draftOrder',
+                )
+                return response.data
+
+            @staticmethod
+            def get_cust_no(order_id: int):
+                """Convert Shopify order to BigCommerce order format"""
+                shopify_order = Shopify.Order.Draft.get(order_id)
+                snode = shopify_order['node']
+                customer = snode['customer']
+                billing = snode['billingAddress']
+                email = snode['email'] or customer['email']
+                phone = billing['phone'] if billing is not None else customer['phone']
+
+                cust_no = lookup_customer(email_address=email, phone_number=phone)
+
+                return cust_no
+
+            @staticmethod
+            def delete(order_id: int):
+                response = Shopify.Query(
+                    document=Shopify.Order.Draft.queries,
+                    variables={'id': f'gid://shopify/DraftOrder/{order_id}'},
+                    operation_name='draftOrderDelete',
+                )
+                return response.data
 
     class Customer:
         queries = './integration/queries/customers.graphql'

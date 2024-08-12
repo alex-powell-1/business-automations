@@ -74,7 +74,7 @@ class DocumentAPI(CounterPointAPI):
 
         response = self.post(url, payload=payload)
 
-        return response
+        return response.json()
 
 
 # This is the primary class used in this file.
@@ -452,6 +452,12 @@ class OrderAPI(DocumentAPI):
 
         return total
 
+    def get_store_id(self, bc_order: dict):
+        return 1 if bc_order['channel'].lower() == 'pos' else 'WEB'
+
+    def get_station_id(self, bc_order: dict):
+        return 'POS' if bc_order['channel'].lower() == 'pos' else 'WEB'
+
     # Get the NCR Counterpoint API POST payload for a BigCommerce order.
     # Assigns order to cust_no
     def get_post_order_payload(self, cust_no: str, bc_order: dict = {}):
@@ -473,8 +479,8 @@ class OrderAPI(DocumentAPI):
 
         payload = {
             'PS_DOC_HDR': {
-                'STR_ID': 'WEB',
-                'STA_ID': 'WEB',
+                'STR_ID': self.get_store_id(bc_order),
+                'STA_ID': self.get_station_id(bc_order),
                 'DRW_ID': '1',
                 'TKT_NUM': f"{ORDER_PREFIX}{bc_order["id"]}",
                 'CUST_NO': cust_no,
@@ -2059,3 +2065,105 @@ class JsonTools:
                     pass
 
         return obj
+
+
+class HoldOrder(DocumentAPI):
+    def __init__(self, session: requests.Session = requests.Session()):
+        super().__init__(session=session)
+
+    class ItemPayload:
+        def __init__(self, item_no, qty, price):
+            self.item_no = item_no
+            self.qty = qty
+            self.price = price
+
+        def get(self):
+            return {
+                'LIN_TYP': 'O',
+                'ITEM_NO': self.item_no,
+                'QTY_SOLD': float(self.qty),
+                'PRC': float(self.price),
+                'EXT_PRC': float(self.price) * float(self.qty),
+            }
+
+    class LinesPayload:
+        def __init__(self):
+            self.line_items = []
+
+        def get(self):
+            return self.line_items
+
+        def add(self, item: dict):
+            itemPayload = HoldOrder.ItemPayload(item_no=item['item_no'], qty=item['qty'], price=item['price'])
+            data = itemPayload.get()
+            self.line_items.append(data)
+
+    class DocumentPayload:
+        def __init__(self, cust_no: str | int):
+            self.storeId = 1
+            self.stationId = 'POS'
+            self.drawerId = 1
+            self.ticketType = 'T'
+            self.docType = 'H'
+            self.userId = 'POS'
+            self.notes = []
+            self.cust_no = cust_no
+            self.line_items = HoldOrder.LinesPayload()
+
+        def get(self):
+            return {
+                'PS_DOC_HDR': {
+                    'STR_ID': self.storeId,
+                    'STA_ID': self.stationId,
+                    'DRW_ID': self.drawerId,
+                    'TKT_TYP': self.ticketType,
+                    'DOC_TYP': self.docType,
+                    'USR_ID': self.userId,
+                    'CUST_NO': self.cust_no,
+                    'PS_DOC_LIN': self.line_items.get(),
+                    'PS_DOC_NOTE': self.notes,
+                }
+            }
+
+        def add_note(self, note):
+            self.notes.append(note)
+
+        def add_item(self, item_no: str, qty: int, price: float):
+            self.line_items.add({'item_no': item_no, 'qty': qty, 'price': price})
+
+        def add_lines(self, lines: list[dict]):
+            for line in lines:
+                self.line_items.add(line)
+
+    @staticmethod
+    def post_pl(payload: dict):
+        ho = HoldOrder()
+        return ho.post_document(payload=payload)
+
+    @staticmethod
+    def create(lines: list[dict], cust_no: str | int = 'CASH'):
+        doc = HoldOrder.DocumentPayload(cust_no=cust_no)
+        doc.add_lines(lines)
+        return doc.get()
+
+    @staticmethod
+    def get_lines_from_draft_order(draft_order_id: str | int):
+        """Get all lines from a draft order."""
+        shop_order = Shopify.Order.Draft.get(draft_order_id)
+
+        lines = []
+        snode = shop_order['node']
+        line_items = snode['lineItems']['edges']
+
+        for _item in line_items:
+            item = _item['node']
+
+            lines.append(
+                {
+                    'item_no': item['sku'],
+                    'qty': item['quantity'],
+                    'price': float(item['originalUnitPriceSet']['presentmentMoney']['amount']),
+                }
+            )
+
+        return lines
