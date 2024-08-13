@@ -28,11 +28,11 @@ class RabbitMQConsumer:
         self.channel.queue_declare(queue=self.queue_name, durable=True)
 
     def callback(self, ch, method, properties, body):
-        order_id = body.decode()
-        self.logger.info(f'Beginning processing for Order #{order_id}')
+        draft_id = body.decode()
+        self.logger.info(f'Beginning processing for Draft #{draft_id}')
 
         try:
-            on_draft_created(order_id)
+            on_draft_created(draft_id)
         except Exception as err:
             error_type = 'General Catch'
             self.error_handler.add_error_v(

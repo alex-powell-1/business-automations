@@ -863,14 +863,14 @@ class OrderAPI(DocumentAPI):
 
         response = self.post_document(payload)
 
-        if response.json()['ErrorCode'] == 'SUCCESS':
-            self.logger.success(f"Order {response.json()['Documents'][0]['DOC_ID']} created")
+        if response['ErrorCode'] == 'SUCCESS':
+            self.logger.success(f"Order {response['Documents'][0]['DOC_ID']} created")
         else:
             self.error_handler.add_error_v('Order could not be created')
             self.error_handler.add_error_v(response.content)
 
         try:
-            doc_id = response.json()['Documents'][0]['DOC_ID']
+            doc_id = response['Documents'][0]['DOC_ID']
         except:
             self.error_handler.add_error_v('Document ID could not be retrieved')
             return
