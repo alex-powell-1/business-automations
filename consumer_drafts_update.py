@@ -7,6 +7,8 @@ from setup.error_handler import ProcessInErrorHandler
 from traceback import format_exc as tb
 from datetime import datetime
 
+from integration.draft_orders import on_draft_updated
+
 origin = 'Consumer-Draft Update'
 
 
@@ -31,7 +33,7 @@ class RabbitMQConsumer:
         self.logger.info(f'Beginning processing for Order #{order_id}')
 
         try:
-            pass
+            on_draft_updated(order_id)
 
         except Exception as err:
             error_type = 'General Catch'
