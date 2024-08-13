@@ -6,6 +6,8 @@ from traceback import format_exc as tb
 
 from setup.error_handler import ProcessInErrorHandler
 
+import datetime
+
 logger = ProcessInErrorHandler.logger
 error_handler = ProcessInErrorHandler.error_handler
 
@@ -181,6 +183,34 @@ def check_cp_closed_orders():
         )
 
 
+# [2024-08-13T17:20:24Z] Luke Barrier created this draft order.
+
+
+def format_date(date: str):
+    date: datetime.datetime = datetime.datetime.strptime(date, '%Y-%m-%dT%H:%M:%SZ')
+
+    # convert to local time
+    date = date.replace(tzinfo=datetime.timezone.utc).astimezone(tz=None)
+
+    year = date.year
+    month = date.month
+    day = date.day
+    hour = date.hour
+    minute = date.minute
+    second = date.second
+
+    year -= 2000
+
+    hour = hour - 12 if hour > 12 else hour
+
+    minute = str(minute).zfill(2)
+    second = str(second).zfill(2)
+
+    date = f'{month}-{day}-{year} {hour}:{minute}:{second}'
+
+    return date
+
+
 # This function should be called when a draft order is created.
 def on_draft_created(draft_id):
     """This function should be called when a draft order is created."""
@@ -201,7 +231,7 @@ def on_draft_created(draft_id):
         events = Shopify.Order.Draft.get_events(draft_id)
 
         for event in events:
-            doc.add_note(event['message'], 'TIMELINE')
+            doc.add_note(f"[{format_date(event['createdAt'])}] {event['message']}", 'TIMELINE')
 
         doc.add_note(note)
 
