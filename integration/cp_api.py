@@ -2109,9 +2109,10 @@ class HoldOrder(DocumentAPI):
             self.notes = []
             self.cust_no = cust_no
             self.line_items = HoldOrder.LinesPayload()
+            self.shipping = 0
 
         def get(self):
-            return {
+            pl = {
                 'PS_DOC_HDR': {
                     'STR_ID': self.storeId,
                     'STA_ID': self.stationId,
@@ -2125,8 +2126,15 @@ class HoldOrder(DocumentAPI):
                 }
             }
 
-        def add_note(self, note):
-            self.notes.append(note)
+            if self.shipping > 0:
+                pl['PS_DOC_HDR']['PS_DOC_HDR_MISC_CHRG'] = [
+                    {'TOT_TYP': 'O', 'MISC_CHRG_NO': '1', 'MISC_TYP': 'A', 'MISC_AMT': self.shipping}
+                ]
+
+            return pl
+
+        def add_note(self, note, note_id='ADMIN NOTE'):
+            self.notes.append({'NOTE_ID': note_id, 'NOTE': note})
 
         def add_item(self, item_no: str, qty: int, price: float):
             self.line_items.add({'item_no': item_no, 'qty': qty, 'price': price})
@@ -2136,15 +2144,57 @@ class HoldOrder(DocumentAPI):
                 self.line_items.add(line)
 
     @staticmethod
-    def post_pl(payload: dict):
+    def apply_total(doc_id: str, shipping: float, sub_tot: float, total_discount: float):
+        tot = float(sub_tot) + float(shipping)
+
+        sub_tot = tot + float(total_discount) - float(shipping)
+
+        query = f"""
+        INSERT INTO PS_DOC_HDR_TOT
+        (DOC_ID, TOT_TYP, INITIAL_MIN_DUE, HAS_TAX_OVRD, TAX_AMT_SHIPPED, LINS, TOT_GFC_AMT, TOT_SVC_AMT, SUB_TOT, TAX_OVRD_LINS, TOT_EXT_COST, TOT_MISC, TAX_AMT, NORM_TAX_AMT, TOT_TND, TOT_CHNG, TOT_WEIGHT, TOT_CUBE, TOT, AMT_DUE, TOT_HDR_DISC, TOT_LIN_DISC, TOT_HDR_DISCNTBL_AMT, TOT_TIP_AMT)
+        VALUES
+        ('{doc_id}', 'O', 0, '!', 0, 0, 0, 0, {sub_tot}, 0, 0, {shipping}, 0, 0, 0, 0, 0, 0, {tot}, 0, {total_discount}, 0, {sub_tot}, 0)
+        """
+
+        return Database.db.query(query)
+
+    @staticmethod
+    def apply_discount(doc_id: str, amount: float):
+        query = f"""
+        INSERT INTO PS_DOC_DISC
+        (DOC_ID, DISC_SEQ_NO, DISC_ID, APPLY_TO, DISC_TYP, DISC_AMT, DISC_PCT, DISC_AMT_SHIPPED)
+        VALUES
+        ('{doc_id}', 1, '100000000000330', 'H', 'A', '{amount}', 0, 0)
+        """
+
+        return Database.db.query(query)
+
+    @staticmethod
+    def post_pl(payload: dict, discount: float = 0, shipping: float = 0, sub_tot: float = 0):
         ho = HoldOrder()
-        return ho.post_document(payload=payload)
+        data = ho.post_document(payload=payload)
+
+        if (
+            data is None
+            or data['ErrorCode'] != 'SUCCESS'
+            or data['Documents'] is None
+            or len(data['Documents']) == 0
+        ):
+            return data
+
+        doc_id = data['Documents'][0]['DOC_ID']
+
+        HoldOrder.apply_discount(doc_id=doc_id, amount=discount)
+
+        HoldOrder.apply_total(doc_id=doc_id, shipping=shipping, sub_tot=sub_tot, total_discount=discount)
+
+        return data
 
     @staticmethod
     def create(lines: list[dict], cust_no: str | int = 'CASH'):
         doc = HoldOrder.DocumentPayload(cust_no=cust_no)
         doc.add_lines(lines)
-        return doc.get()
+        return doc
 
     @staticmethod
     def get_lines_from_draft_order(draft_order_id: str | int):

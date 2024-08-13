@@ -359,29 +359,45 @@ class Shopify:
 
         class Draft:
             queries = './integration/queries/draft_orders.graphql'
+            prev_order_id = -1
+            prev_order = None
 
             @staticmethod
             def get(order_id: int):
+                if Shopify.Order.Draft.prev_order_id == order_id:
+                    return Shopify.Order.Draft.prev_order
+
                 response = Shopify.Query(
                     document=Shopify.Order.Draft.queries,
                     variables={'id': f'gid://shopify/DraftOrder/{order_id}'},
                     operation_name='draftOrder',
                 )
+
+                Shopify.Order.Draft.prev_order = response.data
+                Shopify.Order.Draft.prev_order_id = order_id
+
                 return response.data
 
             @staticmethod
             def get_cust_no(order_id: int):
-                """Convert Shopify order to BigCommerce order format"""
-                shopify_order = Shopify.Order.Draft.get(order_id)
-                snode = shopify_order['node']
-                customer = snode['customer']
-                billing = snode['billingAddress']
-                email = snode['email'] or customer['email']
-                phone = billing['phone'] if billing is not None else customer['phone']
+                try:
+                    shopify_order = Shopify.Order.Draft.get(order_id)
+                    snode = shopify_order['node']
+                    customer = snode['customer']
+                    billing = snode['billingAddress']
+                    email = snode['email'] or None
 
-                cust_no = lookup_customer(email_address=email, phone_number=phone)
+                    if customer is not None and email is None:
+                        email = customer['email']
 
-                return cust_no
+                    phone = billing['phone'] if billing is not None else None
+
+                    if customer is not None and phone is None:
+                        phone = customer['phone']
+
+                    return lookup_customer(email_address=email, phone_number=phone)
+                except:
+                    return None
 
             @staticmethod
             def delete(order_id: int):
@@ -391,6 +407,56 @@ class Shopify:
                     operation_name='draftOrderDelete',
                 )
                 return response.data
+
+            @staticmethod
+            def get_note(order_id: int):
+                shopify_order = Shopify.Order.Draft.get(order_id)
+                snode = shopify_order['node']
+                note = snode['note2'] or ''
+                return note
+
+            @staticmethod
+            def get_events(order_id: int):
+                shopify_order = Shopify.Order.Draft.get(order_id)
+                snode = shopify_order['node']
+
+                if snode['events'] is None or len(snode['events']['edges']) == 0:
+                    return []
+
+                events = snode['events']['edges']
+                events = [x['node'] for x in events]
+
+                return events
+
+            @staticmethod
+            def get_discount(order_id: int):
+                try:
+                    shopify_order = Shopify.Order.Draft.get(order_id)
+                    snode = shopify_order['node']
+                    hdsc = float(snode['totalDiscountsSet']['presentmentMoney']['amount'])
+                    return hdsc
+                except:
+                    return 0
+
+            @staticmethod
+            def get_shipping(order_id: int):
+                try:
+                    shopify_order = Shopify.Order.Draft.get(order_id)
+                    snode = shopify_order['node']
+                    shipping = snode['shippingLine']['discountedPriceSet']['presentmentMoney']['amount']
+                    return float(shipping)
+                except:
+                    return 0
+
+            @staticmethod
+            def get_subtotal(order_id: int):
+                try:
+                    shopify_order = Shopify.Order.Draft.get(order_id)
+                    snode = shopify_order['node']
+                    sub_tot = float(snode['subtotalPriceSet']['presentmentMoney']['amount'])
+                    return sub_tot
+                except:
+                    return 0
 
     class Customer:
         queries = './integration/queries/customers.graphql'
