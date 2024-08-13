@@ -34,7 +34,6 @@ class RabbitMQConsumer:
 
         try:
             on_draft_created(order_id)
-
         except Exception as err:
             error_type = 'General Catch'
             self.error_handler.add_error_v(
