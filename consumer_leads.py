@@ -214,5 +214,5 @@ class RabbitMQConsumer:
 
 
 if __name__ == '__main__':
-    consumer = RabbitMQConsumer(queue_name='design_info')
+    consumer = RabbitMQConsumer(queue_name=creds.consumer_design_lead_form)
     consumer.start_consuming()

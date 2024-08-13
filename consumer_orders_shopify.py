@@ -2,7 +2,6 @@ import sys
 from time import sleep
 import pika
 
-from setup.order_engine import utc_to_local
 from setup.error_handler import ProcessInErrorHandler
 from integration.shopify_api import Shopify
 from integration.orders import Order as ShopifyOrder

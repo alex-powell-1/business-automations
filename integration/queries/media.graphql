@@ -78,7 +78,7 @@ mutation productDeleteMedia($mediaIds: [ID!]!, $productId: ID!) {
     product {
       id
       title
-      media(first: 5) {
+      media(first: 50) {
         nodes {
           alt
           mediaContentType
