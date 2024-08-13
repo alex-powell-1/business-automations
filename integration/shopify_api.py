@@ -378,19 +378,17 @@ class Shopify:
                     snode = shopify_order['node']
                     customer = snode['customer']
                     billing = snode['billingAddress']
-                    email = snode['email']
+                    email = snode['email'] or None
 
-                    if customer is not None:
+                    if customer is not None and email is None:
                         email = customer['email']
 
                     phone = billing['phone'] if billing is not None else None
 
-                    if phone is not None:
+                    if customer is not None and phone is None:
                         phone = customer['phone']
 
-                    cust_no = lookup_customer(email_address=email, phone_number=phone)
-
-                    return cust_no
+                    return lookup_customer(email_address=email, phone_number=phone)
                 except:
                     return None
 
