@@ -183,11 +183,12 @@ def check_cp_closed_orders():
 
 # This function should be called when a draft order is created.
 def on_draft_created(draft_id):
+    """This function should be called when a draft order is created."""
+
     check_cp_closed_orders()
 
     logger.info(f'Creating hold order for draft order {draft_id}...')
 
-    """This function should be called when a draft order is created."""
     try:
         logger.info('Getting information from draft order...')
 
@@ -211,7 +212,7 @@ def on_draft_created(draft_id):
 
         doc_id = response['Documents'][0]['DOC_ID']
 
-        logger.success('Posted hold order with doc id: {doc_id}')
+        logger.success(f'Posted hold order with doc id: {doc_id}')
 
         query = f"""
             INSERT INTO SN_DRAFT_ORDERS
