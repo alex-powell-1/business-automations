@@ -7,6 +7,8 @@ from setup.error_handler import ProcessInErrorHandler
 logger = ProcessInErrorHandler.logger
 error_handler = ProcessInErrorHandler.error_handler
 
+from traceback import format_exc as tb
+
 
 ############################################################
 ## TODO: Add error handling and logging to all functions. ##
@@ -29,7 +31,7 @@ def on_draft_created(draft_id):
             or response['Documents'] is None
             or len(response['Documents']) == 0
         ):
-            print('Could not post document')
+            error_handler.add_error_v(error='Could not post document', origin='draft_orders')
             return
 
         doc_id = response['Documents'][0]['DOC_ID']
@@ -43,7 +45,9 @@ def on_draft_created(draft_id):
 
         return Database.db.query(query)
     except Exception as e:
-        print('Something went wrong: ', e)
+        error_handler.add_error_v(
+            error=f'Error creating draft order {draft_id}: {e}', origin='draft_orders', traceback=tb()
+        )
         return
 
 
@@ -57,7 +61,7 @@ def on_draft_updated(draft_id):
     response = Database.db.query(query)
 
     if response is None or len(response) == 0 or len(response[0]) == 0:
-        print("Couldn't find order")
+        error_handler.add_error_v(error=f'Could not find draft order {draft_id}', origin='draft_orders')
         return
 
     doc_id = response[0][0]
