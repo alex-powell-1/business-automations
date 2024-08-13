@@ -121,7 +121,10 @@ def get_doc_id_from_hold_id(hold_id):
 
         logger.success(f'Doc id from hold order {hold_id} retrieved.')
 
-        return response[0][0]
+        try:
+            return response[0][0]
+        except:
+            return None
     except Exception as e:
         error_handler.add_error_v(
             error=f'Error getting hold order id for customer {cust_no} and ticket date {tkt_dt}: {e}',
