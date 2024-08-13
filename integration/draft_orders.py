@@ -198,6 +198,11 @@ def on_draft_created(draft_id):
 
         note = Shopify.Order.Draft.get_note(draft_id)
 
+        events = Shopify.Order.Draft.get_events(draft_id)
+
+        for event in events:
+            doc.add_note(event['message'], 'TIMELINE')
+
         doc.add_note(note)
 
         pl = doc.get()
@@ -214,6 +219,7 @@ def on_draft_created(draft_id):
             or len(response['Documents']) == 0
         ):
             error_handler.add_error_v(error='Could not post document', origin='draft_orders')
+            error_handler.add_error_v(error=str(response), origin='draft_orders')
             return
 
         doc_id = response['Documents'][0]['DOC_ID']

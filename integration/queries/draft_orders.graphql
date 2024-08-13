@@ -12,6 +12,16 @@ query draftOrder($id: ID!) {
 
             note2
 
+            events(first: 250) {
+                edges {
+                    node {
+                        id
+                        message
+                        createdAt
+                    }
+                }
+            }
+
             customer {
                 id
                 firstName

@@ -396,8 +396,21 @@ class Shopify:
             def get_note(order_id: int):
                 shopify_order = Shopify.Order.Draft.get(order_id)
                 snode = shopify_order['node']
-                note = snode['note2']
-                return note or ''
+                note = snode['note2'] or ''
+                return note
+
+            @staticmethod
+            def get_events(order_id: int):
+                shopify_order = Shopify.Order.Draft.get(order_id)
+                snode = shopify_order['node']
+
+                if snode['events'] is None or len(snode['events']['edges']) == 0:
+                    return []
+
+                events = snode['events']['edges']
+                events = [x['node'] for x in events]
+
+                return events
 
     class Customer:
         queries = './integration/queries/customers.graphql'

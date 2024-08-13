@@ -2125,8 +2125,8 @@ class HoldOrder(DocumentAPI):
                 }
             }
 
-        def add_note(self, note):
-            self.notes.append({'NOTE_ID': 'ADMIN NOTE', 'NOTE': note})
+        def add_note(self, note, note_id='ADMIN NOTE'):
+            self.notes.append({'NOTE_ID': note_id, 'NOTE': note})
 
         def add_item(self, item_no: str, qty: int, price: float):
             self.line_items.add({'item_no': item_no, 'qty': qty, 'price': price})
