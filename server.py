@@ -22,6 +22,7 @@ from setup.email_engine import Email
 from setup.sms_engine import SMSEngine
 from setup.error_handler import ProcessInErrorHandler, ProcessOutErrorHandler, LeadFormErrorHandler
 from setup import log_engine
+from integration.shopify_api import Shopify
 from qr.qr_codes import QR
 
 from integration.database import Database
@@ -597,26 +598,28 @@ def shopify_customer_update():
 def shopify_product_update():
     """Webhook route for updated products. Sends to RabbitMQ queue for asynchronous processing"""
     webhook_data = request.json
-    with open('product_update.json', 'a') as f:
-        json.dump(webhook_data, f)
-    # product_id = webhook_data['id']
-    # try:
-    #     connection = pika.BlockingConnection(pika.ConnectionParameters('localhost'))
-    #     channel = connection.channel()
+    # Get product data
+    product_id = webhook_data['id']
+    title = webhook_data['title']
+    description = webhook_data['body_html']
+    # Get SEO data
+    seo_data = Shopify.Product.SEO.get(product_id)
+    meta_title = seo_data['title']
+    meta_description = seo_data['description']
 
-    #     channel.queue_declare(queue='shopify_product_update', durable=True)
+    # Get media data
+    media_payload = []
+    media = webhook_data['media']
+    print(f'Media: {media}')
+    if media:
+        for m in media:
+            id = m['id']
+            position = m['position']
+            alt_text = m['alt']
+            if alt_text and position < 4:  # First 4 images only at this time.
+                media_payload.append({'position': position, 'id': id, 'alt_text': alt_text})
 
-    #     channel.basic_publish(
-    #         exchange='',
-    #         routing_key='shopify_product_update',
-    #         body=str(product_id),
-    #         properties=pika.BasicProperties(delivery_mode=pika.DeliveryMode.Persistent),
-    #     )
-    #     connection.close()
-    # except Exception as e:
-    #     ProcessInErrorHandler.error_handler.add_error_v(
-    #         error=f'Error sending product {product_id} to RabbitMQ: {e}', origin='shopify_product_update'
-    #     )
+    print(f'Media Payload: {media_payload}')
 
     return jsonify({'success': True}), 200
 
