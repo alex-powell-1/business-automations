@@ -326,7 +326,6 @@ class Database:
                                             CREATE TABLE {Database.Shopify.video_table} (
                                             ID int IDENTITY(1,1) PRIMARY KEY,
                                             VIDEO_NAME nvarchar(255),
-                                            ITEM_NO varchar(50),
                                             FILE_PATH nvarchar(255),
                                             PRODUCT_ID bigint,
                                             VIDEO_ID bigint,
@@ -652,11 +651,17 @@ class Database:
                     else:
                         Database.Shopify.Product.Variant.insert(product=product, variant=variant)
 
-                for image in product.images:
-                    if image.db_id is None:
-                        Database.Shopify.Product.Image.insert(image)
+                for m in product.media:
+                    if m.db_id is None:
+                        if m.type == 'IMAGE':
+                            Database.Shopify.Product.Media.Image.insert(m)
+                        elif m.type == 'EXTERNAL_VIDEO':
+                            Database.Shopify.Product.Media.Video.insert(m)
                     else:
-                        Database.Shopify.Product.Image.update(image)
+                        if m.type == 'IMAGE':
+                            Database.Shopify.Product.Media.Image.update(m)
+                        elif m.type == 'EXTERNAL_VIDEO':
+                            Database.Shopify.Product.Media.Video.update(m)
 
             def insert(product):
                 for variant in product.variants:
@@ -675,7 +680,8 @@ class Database:
                     Database.error_handler.add_error_v(error=error)
                     raise Exception(error)
 
-                Database.Shopify.Product.Image.delete(product_id=product_id)
+                Database.Shopify.Product.Media.Image.delete(product_id=product_id)
+                Database.Shopify.Product.Media.Video.delete(product_id=product_id)
 
             class Variant:
                 def get_variant_id(sku):
@@ -823,193 +829,189 @@ class Database:
                         Database.error_handler.add_error_v(error=error)
                         raise Exception(error)
 
-            class Image:
-                table = creds.shopify_image_table
+            class Media:
+                def delete(product_id):
+                    Database.Shopify.Product.Media.Image.delete(product_id=product_id)
+                    Database.Shopify.Product.Media.Video.delete(product_id=product_id)
 
-                def get_image_id(file_name):
-                    img_id_res = Database.db.query(
-                        f"SELECT IMAGE_ID FROM {creds.shopify_image_table} WHERE IMAGE_NAME = '{file_name}'"
-                    )
-                    try:
-                        return img_id_res[0][0]
-                    except:
-                        return None
+                class Image:
+                    table = creds.shopify_image_table
 
-                def insert(image):
-                    img_insert = f"""
-                    INSERT INTO {creds.shopify_image_table} (IMAGE_NAME, ITEM_NO, FILE_PATH,
-                    PRODUCT_ID, IMAGE_ID, THUMBNAIL, IMAGE_NUMBER, SORT_ORDER,
-                    IS_BINDING_IMAGE, BINDING_ID, IS_VARIANT_IMAGE, DESCR, SIZE)
-                    VALUES (
-                    '{image.name}', {f"'{image.sku}'" if image.sku != '' else 'NULL'},
-                    '{image.file_path}', {image.product_id}, {image.image_id}, '{1 if image.is_thumbnail else 0}', 
-                    '{image.image_number}', '{image.sort_order}', '{image.is_binding_image}',
-                    {f"'{image.binding_id}'" if image.binding_id else 'NULL'}, '{image.is_variant_image}',
-                    {f"'{image.description.replace("'", "''")}'" if image.description != '' else 'NULL'},
-                    {image.size})"""
-                    insert_img_response = Database.db.query(img_insert)
-                    if insert_img_response['code'] == 200:
-                        Database.logger.success(f'SQL INSERT Image {image.name}: Success')
-                    else:
-                        error = f'Error inserting image {image.name} into Middleware. \nQuery: {img_insert}\nResponse: {insert_img_response}'
-                        Database.error_handler.add_error_v(
-                            error=error, origin=f'Database.Shopify.Product.Image.insert({image.name})'
+                    def get_image_id(file_name):
+                        img_id_res = Database.db.query(
+                            f"SELECT IMAGE_ID FROM {creds.shopify_image_table} WHERE IMAGE_NAME = '{file_name}'"
                         )
-                        raise Exception(error)
+                        try:
+                            return img_id_res[0][0]
+                        except:
+                            return None
 
-                def update(image):
-                    q = f"""
-                    UPDATE {creds.shopify_image_table}
-                    SET IMAGE_NAME = '{image.name}', ITEM_NO = '{image.sku}', FILE_PATH = '{image.file_path}',
-                    PRODUCT_ID = '{image.product_id}', IMAGE_ID = '{image.image_id}',
-                    THUMBNAIL = '{1 if image.is_thumbnail else 0}', IMAGE_NUMBER = '{image.image_number}',
-                    SORT_ORDER = '{image.sort_order}', IS_BINDING_IMAGE = '{image.is_binding_image}',
-                    BINDING_ID = {f"'{image.binding_id}'" if image.binding_id else 'NULL'},
-                    IS_VARIANT_IMAGE = '{image.is_variant_image}',
-                    DESCR = {f"'{image.description.replace("'", "''")}'" if
-                                image.description != '' else 'NULL'}, SIZE = '{image.size}'
-                    WHERE ID = {image.db_id}"""
-
-                    res = Database.db.query(q)
-                    if res['code'] == 200:
-                        Database.logger.success(f'SQL UPDATE Image {image.name}: Success')
-                    elif res['code'] == 201:
-                        Database.logger.warn(f'SQL UPDATE Image {image.name}: Not found')
-                    else:
-                        error = f'Error updating image {image.name} in Middleware. \nQuery: {q}\nResponse: {res}'
-                        Database.error_handler.add_error_v(
-                            error=error, origin=f'Database.Shopify.Product.Image.update({image.name})'
-                        )
-                        raise Exception(error)
-
-                def delete(image=None, image_id=None, product_id=None):
-                    if image_id:
-                        # Delete Single Image from Image ID
-                        q = f"DELETE FROM {creds.shopify_image_table} WHERE IMAGE_ID = '{image_id}'"
-                    elif image:
-                        # Delete Single Image from Image Object
-                        if image.image_id is None:
-                            image.image_id = Database.Shopify.Product.Image.get_image_id(filename=image.name)
-                        q = f"DELETE FROM {creds.shopify_image_table} WHERE IMAGE_ID = '{image.image_id}'"
-                    elif product_id:
-                        # Delete All Images from Product ID
-                        q = f"DELETE FROM {creds.shopify_image_table} WHERE PRODUCT_ID = '{product_id}'"
-                    else:
-                        Database.logger.warn('No image or image_id provided for deletion.')
-                        return
-                    res = Database.db.query(q)
-                    print(res['code'])
-                    if res['code'] == 200:
-                        Database.logger.success(f'Query: {q}\nSQL DELETE Image')
-                    elif res['code'] == 201:
-                        Database.logger.warn(f'Query: {q}\nSQL DELETE Image: Not found')
-                    else:
-                        if image:
-                            error = (
-                                f'Error deleting image {image.name} in Middleware. \nQuery: {q}\nResponse: {res}'
+                    def insert(image):
+                        img_insert = f"""
+                        INSERT INTO {creds.shopify_image_table} (IMAGE_NAME, ITEM_NO, FILE_PATH,
+                        PRODUCT_ID, IMAGE_ID, THUMBNAIL, IMAGE_NUMBER, SORT_ORDER,
+                        IS_BINDING_IMAGE, BINDING_ID, IS_VARIANT_IMAGE, DESCR, SIZE)
+                        VALUES (
+                        '{image.name}', {f"'{image.sku}'" if image.sku != '' else 'NULL'},
+                        '{image.file_path}', {image.product_id}, {image.shopify_id}, '{1 if image.is_thumbnail else 0}', 
+                        '{image.number}', '{image.sort_order}', '{image.is_binding_image}',
+                        {f"'{image.binding_id}'" if image.binding_id else 'NULL'}, '{image.is_variant_image}',
+                        {f"'{image.description.replace("'", "''")}'" if image.description != '' else 'NULL'},
+                        {image.size})"""
+                        insert_img_response = Database.db.query(img_insert)
+                        if insert_img_response['code'] == 200:
+                            Database.logger.success(f'SQL INSERT Image {image.name}: Success')
+                        else:
+                            error = f'Error inserting image {image.name} into Middleware. \nQuery: {img_insert}\nResponse: {insert_img_response}'
+                            Database.error_handler.add_error_v(
+                                error=error, origin=f'Database.Shopify.Product.Media.Image.insert({image.name})'
                             )
-                        elif image_id:
-                            error = f'Error deleting image with ID {image_id} in Middleware. \nQuery: {q}\nResponse: {res}'
+                            raise Exception(error)
+
+                    def update(image):
+                        q = f"""
+                        UPDATE {creds.shopify_image_table}
+                        SET IMAGE_NAME = '{image.name}', ITEM_NO = '{image.sku}', FILE_PATH = '{image.file_path}',
+                        PRODUCT_ID = '{image.product_id}', IMAGE_ID = '{image.shopify_id}',
+                        THUMBNAIL = '{1 if image.is_thumbnail else 0}', IMAGE_NUMBER = '{image.number}',
+                        SORT_ORDER = '{image.sort_order}', IS_BINDING_IMAGE = '{image.is_binding_image}',
+                        BINDING_ID = {f"'{image.binding_id}'" if image.binding_id else 'NULL'},
+                        IS_VARIANT_IMAGE = '{image.is_variant_image}',
+                        DESCR = {f"'{image.description.replace("'", "''")}'" if
+                                    image.description != '' else 'NULL'}, SIZE = '{image.size}'
+                        WHERE ID = {image.db_id}"""
+
+                        res = Database.db.query(q)
+                        if res['code'] == 200:
+                            Database.logger.success(f'SQL UPDATE Image {image.name}: Success')
+                        elif res['code'] == 201:
+                            Database.logger.warn(f'SQL UPDATE Image {image.name}: Not found')
+                        else:
+                            error = (
+                                f'Error updating image {image.name} in Middleware. \nQuery: {q}\nResponse: {res}'
+                            )
+                            Database.error_handler.add_error_v(
+                                error=error, origin=f'Database.Shopify.Product.Media.Image.update({image.name})'
+                            )
+                            raise Exception(error)
+
+                    def delete(image=None, image_id=None, product_id=None):
+                        if image_id:
+                            # Delete Single Image from Image ID
+                            q = f"DELETE FROM {creds.shopify_image_table} WHERE IMAGE_ID = '{image_id}'"
+                        elif image:
+                            # Delete Single Image from Image Object
+                            if image.shopify_id is None:
+                                image.shopify_id = Database.Shopify.Product.Media.Image.get_image_id(
+                                    filename=image.name
+                                )
+                            q = f"DELETE FROM {creds.shopify_image_table} WHERE IMAGE_ID = '{image.shopify_id}'"
                         elif product_id:
-                            error = f'Error deleting images for product {product_id} in Middleware. \nQuery: {q}\nResponse: {res}'
-                        Database.error_handler.add_error_v(
-                            error=error, origin=f'Database.Shopify.Product.Image.delete(query:\n{q})'
-                        )
-                        raise Exception(error)
+                            # Delete All Images from Product ID
+                            q = f"DELETE FROM {creds.shopify_image_table} WHERE PRODUCT_ID = '{product_id}'"
+                        else:
+                            Database.logger.warn('No image or image_id provided for deletion.')
+                            return
+                        res = Database.db.query(q)
+                        print(res['code'])
+                        if res['code'] == 200:
+                            Database.logger.success(f'Query: {q}\nSQL DELETE Image')
+                        elif res['code'] == 201:
+                            Database.logger.warn(f'IMAGE DELETE: Not found\n\nQuery: {q}\n')
+                        else:
+                            if image:
+                                error = f'Error deleting image {image.name} in Middleware. \nQuery: {q}\nResponse: {res}'
+                            elif image_id:
+                                error = f'Error deleting image with ID {image_id} in Middleware. \nQuery: {q}\nResponse: {res}'
+                            elif product_id:
+                                error = f'Error deleting images for product {product_id} in Middleware. \nQuery: {q}\nResponse: {res}'
+                            Database.error_handler.add_error_v(
+                                error=error, origin=f'Database.Shopify.Product.Media.Image.delete(query:\n{q})'
+                            )
+                            raise Exception(error)
 
-            class Video:
-                table = creds.shopify_video_table
+                class Video:
+                    table = creds.shopify_video_table
 
-                def get(product_id):
-                    query = f"""
-                    SELECT * FROM {Database.Shopify.Product.Video.table}
-                    WHERE PRODUCT_ID = {product_id}
-                    """
-                    return Database.db.query(query)
+                    def get(product_id):
+                        query = f"""
+                        SELECT * FROM {Database.Shopify.Product.Media.Video.table}
+                        WHERE PRODUCT_ID = {product_id}
+                        """
+                        return Database.db.query(query)
 
-                def insert(
-                    item_no,
-                    product_id,
-                    video_id,
-                    video_number,
-                    sort_order,
-                    descr=None,
-                    name=None,
-                    binding_id=None,
-                    size=None,
-                    file_path=None,
-                ):
-                    query = f"""
-                    INSERT INTO {Database.Shopify.Product.Video.table} (VIDEO_NAME, ITEM_NO, FILE_PATH, PRODUCT_ID, 
-                    VIDEO_ID, VIDEO_NUMBER, SORT_ORDER, BINDING_ID, DESCR, SIZE)
-                    VALUES ({f"'{name}'" if name else 'NULL'}, 
-                    '{item_no}', 
-                    {f"'{file_path}'" if file_path else 'NULL'}, 
-                    {product_id}, 
-                    {video_id}, 
-                    {video_number}, 
-                    {sort_order}, {f"'{binding_id}'" if binding_id else 'NULL'}, 
-                    {f"'{descr}'" if descr else 'NULL'}, {size if size else 'NULL'})
-                    """
-                    response = Database.db.query(query)
-                    if response['code'] == 200:
-                        Database.logger.success(f'Video {name} added to Middleware.')
-                    else:
-                        error = f'Error adding video {name} to Middleware. \nQuery: {query}\nResponse: {response}'
-                        Database.error_handler.add_error_v(error=error)
-                        raise Exception(error)
+                    def insert(video):
+                        query = f"""
+                        INSERT INTO {Database.Shopify.Product.Media.Video.table} (VIDEO_NAME, FILE_PATH, PRODUCT_ID, 
+                        VIDEO_ID, VIDEO_NUMBER, SORT_ORDER, BINDING_ID, DESCR, SIZE)
+                        VALUES ({f"'{video.name}'" if video.name else 'NULL'}, 
+                        {f"'{video.file_path}'" if video.file_path else 'NULL'}, 
+                        {video.product_id}, 
+                        {video.shopify_id}, 
+                        {video.number}, 
+                        {video.sort_order}, {f"'{video.binding_id}'" if video.binding_id else 'NULL'}, 
+                        {f"'{video.description}'" if video.description else 'NULL'}, {video.size if video.size else 'NULL'})
+                        """
+                        response = Database.db.query(query)
+                        if response['code'] == 200:
+                            Database.logger.success(f'Video {video.shopify_id} added to Middleware.')
+                        else:
+                            error = f'Error adding video {video.shopify_id} to Middleware. \nQuery: {query}\nResponse: {response}'
+                            Database.error_handler.add_error_v(error=error)
+                            raise Exception(error)
 
-                def update(
-                    item_no,
-                    product_id,
-                    video_id,
-                    video_number,
-                    sort_order,
-                    descr=None,
-                    name=None,
-                    binding_id=None,
-                    size=None,
-                    file_path=None,
-                ):
-                    query = f"""
-                    UPDATE {Database.Shopify.Product.Video.table}
-                    SET VIDEO_NAME = {f"'{name}'" if name else 'NULL'}, 
-                    ITEM_NO = '{item_no}', 
-                    FILE_PATH = {f"'{file_path}'" if file_path else 'NULL'}, 
-                    PRODUCT_ID = {product_id}, 
-                    VIDEO_ID = {video_id}, 
-                    VIDEO_NUMBER = {video_number}, 
-                    SORT_ORDER = {sort_order}, 
-                    BINDING_ID = {f"'{binding_id}'" if binding_id else 'NULL'}, 
-                    DESCR = {f"'{descr}'" if descr else 'NULL'}, 
-                    SIZE = {size if size else 'NULL'}
-                    WHERE PRODUCT_ID = {product_id}
-                    """
-                    response = Database.db.query(query)
-                    if response['code'] == 200:
-                        Database.logger.success(f'Video {name} updated in Middleware.')
-                    elif response['code'] == 201:
-                        Database.logger.warn(f'Video {name} not found in Middleware.')
-                    else:
-                        error = f'Error updating video {name} in Middleware. \nQuery: {query}\nResponse: {response}'
-                        Database.error_handler.add_error_v(error=error)
-                        raise Exception(error)
+                    def update(video):
+                        query = f"""
+                        UPDATE {Database.Shopify.Product.Media.Video.table}
+                        SET VIDEO_NAME = {f"'{video.name}'" if video.name else 'NULL'}, 
+                        FILE_PATH = {f"'{video.file_path}'" if video.file_path else 'NULL'}, 
+                        PRODUCT_ID = {video.product_id}, 
+                        VIDEO_ID = {video.shopify_id}, 
+                        VIDEO_NUMBER = {video.number}, 
+                        SORT_ORDER = {video.sort_order}, 
+                        BINDING_ID = {f"'{video.binding_id}'" if video.binding_id else 'NULL'}, 
+                        DESCR = {f"'{video.descr}'" if video.descr else 'NULL'}, 
+                        SIZE = {video.size if video.size else 'NULL'}
+                        WHERE PRODUCT_ID = {video.product_id}
+                        """
+                        response = Database.db.query(query)
+                        if response['code'] == 200:
+                            Database.logger.success(f'Video {video.shopify_id} updated in Middleware.')
+                        elif response['code'] == 201:
+                            Database.logger.warn(f'UPDATE: Video {video.shopify_id} not found.\n\nQuery: {query}')
+                        else:
+                            error = f'Error updating video {video.shopify_id} in Middleware. \nQuery: {query}\nResponse: {response}'
+                            Database.error_handler.add_error_v(error=error)
+                            raise Exception(error)
 
-                def delete(video_id=None):
-                    if video_id:
-                        where_filter = f'WHERE VIDEO_ID = {video_id}'
-                    else:
-                        where_filter = ''
-                    query = f'DELETE FROM {Database.Shopify.Product.Video.table} {where_filter}'
-                    response = Database.db.query(query)
-                    if response['code'] == 200:
-                        Database.logger.success(f'Video {video_id} deleted from Middleware.')
-                    elif response['code'] == 201:
-                        Database.logger.warn(f'Video {video_id} not found in Middleware.')
-                    else:
-                        error = f'Error deleting video {video_id} from Middleware. \n Query: {query}\nResponse: {response}'
-                        Database.error_handler.add_error_v(error=error)
-                        raise Exception(error)
+                    def delete(video_id=None, product_id=None):
+                        if video_id:
+                            where_filter = f'WHERE VIDEO_ID = {video_id}'
+                        elif product_id:
+                            where_filter = f'WHERE PRODUCT_ID = {product_id}'
+                        else:
+                            raise Exception('No video_id or product_id provided for deletion.')
+                        query = f'DELETE FROM {Database.Shopify.Product.Media.Video.table} {where_filter}'
+                        response = Database.db.query(query)
+                        if response['code'] == 200:
+                            if video_id:
+                                Database.logger.success(f'Video {video_id} deleted from Middleware.')
+                            elif product_id:
+                                Database.logger.success(f'Videos for product {product_id} deleted from Middleware.')
+                        elif response['code'] == 201:
+                            if video_id:
+                                Database.logger.warn(f'DELETE: Video {video_id} not found.')
+                            elif product_id:
+                                Database.logger.warn(
+                                    f'Videos for product {product_id} not found in Middleware.\n\nQuery: {query}\n'
+                                )
+                        else:
+                            if video_id:
+                                error = f'Error deleting video {video_id} from Middleware. \n Query: {query}\nResponse: {response}'
+                            elif product_id:
+                                error = f'Error deleting videos for product {product_id} from Middleware. \n Query: {query}\nResponse: {response}'
+                            Database.error_handler.add_error_v(error=error)
+                            raise Exception(error)
 
             class Metafield:
                 def delete(product_id):

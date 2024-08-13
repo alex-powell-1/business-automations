@@ -258,9 +258,9 @@ class Catalog:
             self.process_images()
 
         # Sync Products
-        self.get_sync_queue()  # Get all products that have been updated since the last sync
+        # self.get_sync_queue()  # Get all products that have been updated since the last sync
 
-        # self.sync_queue = [{'sku': '200793'}]
+        self.sync_queue = [{'sku': '10092'}, {'sku': '10090'}]
 
         if not self.sync_queue:
             if not self.inventory_only or self.verbose:  # don't log this for inventory sync.
@@ -682,7 +682,10 @@ class Catalog:
 
             # A list of image objects
             self.images: list = []
+            self.expected_media_order = []
             self.videos: list = []
+            self.media: list = []  # list of all media objects (Images and Videos)
+            self.reorder_media_queue = []
             self.has_variant_image = False  # used during image processing
 
             # Product Information
@@ -987,9 +990,12 @@ class Catalog:
                 get_single_product_details()
 
             self.shopify_collections = self.get_shopify_collections()
+
             self.type = self.get_collection_names()[0] if self.get_collection_names() else None
 
             # Now all images are in self.images list and are in order by binding img first then variant img
+            # Add all images and videos to self.media list
+            self.media = self.images + self.videos
 
         def validate(self):
             """Validate product inputs to check for errors in user input"""
@@ -1458,19 +1464,42 @@ class Catalog:
                 result = []
                 images = get_image_payload()
                 videos = get_video_payload()
+
                 for image in images:
                     result.append(image)
-                # for video in videos:
-                #     result.append(video)
+
+                for video in videos:
+                    result.append(video)
+
+                # Get Desired Sort Order of Images and Videos
+                i = 0  # Desired Sort Order
+                j = 0  # Temp Sort Order, used for created anticipated order of media in response
+
+                for m in self.media:
+                    m.sort_order = i
+                    i += 1
+                    if m.db_id:
+                        m.temp_sort_order = j
+                        j += 1
+
+                for m in self.media:
+                    if not m.db_id:
+                        m.temp_sort_order = j
+                        j += 1
+
+                for m in self.media:
+                    if m.temp_sort_order != m.sort_order:
+                        self.reorder_media_queue.append(m)
+
                 return result
 
             def get_image_payload():
-                sort_order = 0
+                count = 0
                 for x in self.images:
-                    if sort_order == 0:
+                    if count == 0:
                         x.is_thumbnail = True
-                    x.sort_order = sort_order
-                    sort_order += 1
+                    x.sort_order = count
+                    count += 1
 
                 result = []
 
@@ -1478,19 +1507,21 @@ class Catalog:
                 stagedUploadsCreateVariables = {'input': []}
 
                 updated = False
+
                 for image in self.images:
                     image_size = get_filesize(image.file_path)
                     if image_size != image.size:
                         updated = True
+
                 if updated:
                     # Delete all current images for the product
                     if self.product_id:
                         Shopify.Product.Media.Image.delete(product_id=self.product_id)
-                        Database.Shopify.Product.Image.delete(product_id=self.product_id)
+                        Database.Shopify.Product.Media.Image.delete(product_id=self.product_id)
 
                     for image in self.images:
                         # Reset Image Properties
-                        image.image_id = None
+                        image.shopify_id = None
                         image.image_url = None
                         image.db_id = None
                         # Get Size
@@ -1517,7 +1548,7 @@ class Catalog:
                                 image_payload = {
                                     'originalSource': image.image_url,
                                     'alt': image.description,
-                                    'mediaContentType': 'IMAGE',
+                                    'mediaContentType': image.type,
                                 }
                                 result.append(image_payload)
 
@@ -1534,7 +1565,7 @@ class Catalog:
                         if video.url and not video.file_path:
                             # External Video
                             video_payload['originalSource'] = video.url
-                            video_payload['mediaContentType'] = 'EXTERNAL_VIDEO'
+                            video_payload['mediaContentType'] = video.type
 
                     if video.description:
                         video_payload['alt'] = video.description
@@ -1733,12 +1764,12 @@ class Catalog:
                         print(f'Checking Image: {image.name}')
                         if image.is_variant_image:
                             print(f'Image: {image.name} is the variant image')
-                            print(f'Image ID: {image.image_id}')
+                            print(f'Image ID: {image.shopify_id}')
                             print(f'Variant ID: {child.variant_id}')
                             variant_image_payload.append(
                                 {
                                     'id': f'{Shopify.Product.Variant.prefix}{child.variant_id}',
-                                    'imageId': f'{Shopify.Product.Variant.Image.prefix}{image.image_id}',
+                                    'imageId': f'{Shopify.Product.Variant.Image.prefix}{image.shopify_id}',
                                 }
                             )
 
@@ -1765,7 +1796,7 @@ class Catalog:
 
                 for x, image in enumerate(self.images):
                     image.product_id = self.product_id
-                    image.image_id = response['media_ids'][x]
+                    image.shopify_id = response['media_ids'][x]
 
                 if len(self.variants) > 1:
                     # Save Default Option Value ID for Deletion
@@ -1800,22 +1831,24 @@ class Catalog:
 
                 Database.Shopify.Product.insert(self)
                 for image in self.images:
-                    Database.Shopify.Product.Image.insert(image)
+                    Database.Shopify.Product.Media.Image.insert(image)
 
             def update():
                 """Will update existing product. Will clear out custom field data and reinsert."""
+
                 product_payload = self.get_payload()
                 response = Shopify.Product.update(product_payload)
                 self.option_id = response['option_ids'][0]
                 if 'meta_ids' in response:
                     self.get_metafield_ids(response)
 
-                Shopify.Product.Media.reorder(self)
-
                 if 'media_ids' in response:
-                    for x, image in enumerate(self.images):
-                        image.image_id = response['media_ids'][x]
-                        image.product_id = self.product_id
+                    for x in self.media:
+                        x.product_id = self.product_id
+                        x.shopify_id = response['media_ids'][x.temp_sort_order]
+
+                    if self.reorder_media_queue:
+                        Shopify.Product.Media.reorder(self)
 
                 if self.is_bound:
                     # Update the Variants
@@ -1850,8 +1883,8 @@ class Catalog:
         def replace_image(self, image) -> bool:
             """Replace image in BigCommerce and SQL."""
             self.delete_image(image)
-            image.image_id = Shopify.Product.Media.Image.create(image)
-            Database.Shopify.Product.Image.insert(image)
+            image.shopify_id = Shopify.Product.Media.Image.create(image)
+            Database.Shopify.Product.Media.Image.insert(image)
 
         def get_metafield_ids(self, response):
             for meta_id in response['meta_ids']:
@@ -2014,7 +2047,7 @@ class Catalog:
         def delete_image(self, image):
             """Delete image from Shopify and Middleware."""
             Shopify.Product.Media.Image.delete(image)
-            Database.Shopify.Product.Image.delete(image)
+            Database.Shopify.Product.Media.Image.delete(image)
 
         def is_parent(self, sku):
             """Check if this product is a parent product."""
@@ -2473,6 +2506,8 @@ class Catalog:
                     self.variant_image_url = ''
 
                 self.videos = [Catalog.Product.Video(video) for video in product_data['videos']]
+                for video in self.videos:
+                    video.number = self.videos.index(video) + 1
 
             def __str__(self):
                 result = ''
@@ -2825,26 +2860,9 @@ class Catalog:
                     else datetime(1970, 1, 1)
                 )
 
-        class Video:
-            def __init__(self, url, item_no, binding_id=None, name=None, description=None):
-                self.db_id = None
-                self.shopify_id = None
-                self.item_no = item_no
-                self.binding_id = binding_id
-                self.name = name
-                self.number = None
-                self.sort_order = None
-                self.size = None
-                self.url = url
-                self.description = description
-
-        class Modifier:
-            """Placeholder for modifier class"""
-
-            pass
-
         class Image:
             def __init__(self, image_name: str, product_id: int = None):
+                self.type = 'IMAGE'
                 self.db_id = None
                 self.name = image_name  # This is the file name
                 self.sku = ''
@@ -2852,10 +2870,11 @@ class Catalog:
                 self.image_url = ''
                 self.product_id = product_id
                 self.variant_id = None
-                self.image_id = None
+                self.shopify_id = None
                 self.is_thumbnail = False
-                self.image_number = 1
+                self.number = 1
                 self.sort_order = 0
+                self.temp_sort_order = None
                 self.is_binding_image = False
                 self.binding_id = None
                 self.is_variant_image = False
@@ -2880,8 +2899,8 @@ class Catalog:
                     self.sku = response[0][2]
                     self.file_path = response[0][3]
                     self.product_id = response[0][4]
-                    self.image_id = response[0][5]
-                    self.image_number = response[0][7]
+                    self.shopify_id = response[0][5]
+                    self.number = response[0][7]
                     self.is_binding_image = True if response[0][9] == 1 else False
                     self.binding_id = response[0][10]
                     self.is_variant_image = True if response[0][11] == 1 else False
@@ -3025,7 +3044,7 @@ class Catalog:
                     return image_number
 
                 self.sku, self.binding_id = get_item_no_from_image_name(self.name)
-                self.image_number = get_image_number()
+                self.number = get_image_number()
 
                 # self.size = os.path.getsize(self.file_path)
 
@@ -3035,9 +3054,9 @@ class Catalog:
 
             def get_image_description(self):
                 # currently there are only 4 counterpoint fields for descriptions.
-                if self.image_number < 5:
+                if self.number < 5:
                     query = f"""
-                           SELECT {str(f'USR_PROF_ALPHA_{self.image_number + 21}')} FROM IM_ITEM
+                           SELECT {str(f'USR_PROF_ALPHA_{self.number + 21}')} FROM IM_ITEM
                            WHERE ITEM_NO = '{self.sku}'
                            """
                     response = db.query(query)
@@ -3093,11 +3112,32 @@ class Catalog:
                     )
 
                 Shopify.Product.Media.Image.delete(product_id=product_id, image_id=image_id, variant_id=variant_id)
-                Database.Shopify.Product.Image.delete(image_id=image_id)
+                Database.Shopify.Product.Media.Image.delete(image_id=image_id)
+
+        class Video:
+            def __init__(self, url, item_no=None, binding_id=None, name=None, description=None, file_path=None):
+                self.type = 'EXTERNAL_VIDEO'
+                self.db_id = None
+                self.shopify_id = None
+                self.item_no = item_no
+                self.binding_id = binding_id
+                self.name = name
+                self.number = None
+                self.sort_order = None
+                self.temp_sort_order = None
+                self.file_path = file_path
+                self.size = None
+                self.url = url
+                self.description = description
+
+        class Modifier:
+            """Placeholder for modifier class"""
+
+            pass
 
 
 if __name__ == '__main__':
     from datetime import datetime
 
-    cat = Catalog(last_sync=datetime(2024, 8, 3))
+    cat = Catalog(last_sync=datetime(2024, 8, 12, 12, 0, 0))
     cat.sync()

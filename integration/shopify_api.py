@@ -799,7 +799,7 @@ class Shopify:
                             ]
                             if x['name'] == name
                         ][0],
-                        # 'image_id': [
+                        # 'shopify_id': [
                         #     x['image']['id'].split('/')[-1]
                         #     for x in response.data['productVariantsBulkUpdate']['productVariants']
                         #     if x['sku'] == sku and x['image'] is not None
@@ -820,13 +820,13 @@ class Shopify:
                 #     x['id'].split('/')[-1]
                 #     for x in response.data['productVariantsBulkUpdate']['product']['options'][0]['optionValues']
                 # ]
-                # image_ids = [
+                # shopify_ids = [
                 #     x['image']['id'].split('/')[-1]
                 #     for x in response.data['productVariantsBulkUpdate']['productVariants']
                 #     if x['image'] is not None
                 # ]
 
-                # result = {'option_value_ids': option_value_ids, 'variant_ids': variant_ids, 'image_ids': image_ids}
+                # result = {'option_value_ids': option_value_ids, 'variant_ids': variant_ids, 'shopify_ids': shopify_ids}
                 print(result)
                 return result
 
@@ -860,12 +860,12 @@ class Shopify:
                     )
                     return response.data
 
-                def delete(product_id: int, variant_id, image_id):
+                def delete(product_id: int, variant_id, shopify_id):
                     variables = {
                         'productId': f'{Shopify.Product.prefix}{product_id}',
                         'variantMedia': [
                             {
-                                'mediaIds': [f'{Shopify.Product.Variant.Image.prefix}{image_id}'],
+                                'mediaIds': [f'{Shopify.Product.Variant.Image.prefix}{shopify_id}'],
                                 'variantId': f'{Shopify.Product.Variant.prefix}{variant_id}',
                             }
                         ],
@@ -881,20 +881,39 @@ class Shopify:
         class Media:
             queries = './integration/queries/media.graphql'
 
+            def get(product_id: int):
+                response = Shopify.Query(
+                    document=Shopify.Product.queries,
+                    variables={'id': f'{Shopify.Product.prefix}{product_id}'},
+                    operation_name='product',
+                )
+
+                return [x['id'] for x in response.data['product']['media']['nodes']]
+
             def reorder(product):
                 variables = {'id': f'{Shopify.Product.prefix}{product.product_id}', 'moves': []}
-                for image in product.images:
-                    print(f'Image Name: {image.name}, Image ID: {image.image_id}, Sort Order: {image.sort_order}')
-                    variables['moves'].append(
-                        {
-                            'id': f'{Shopify.Product.Media.Image.prefix}{image.image_id}',
-                            'newPosition': str(image.sort_order + 1),
-                        }
-                    )
+                for m in product.reorder_media_queue:
+                    if m.type == 'IMAGE':
+                        id = f'{Shopify.Product.Media.Image.prefix}{m.shopify_id}'
+                    elif m.type == 'EXTENAL_VIDEO':
+                        id = f'{Shopify.Product.Media.Video.prefix}{m.shopify_id}'
+
+                    variables['moves'].append({'id': id, 'newPosition': str(m.sort_order)})
+
                 response = Shopify.Query(
                     document=Shopify.Product.Media.queries,
                     variables=variables,
                     operation_name='productReorderMedia',
+                )
+                return response.data
+
+            def delete(product_id: int):
+                variables = {
+                    'mediaIds': Shopify.Product.Media.get(product_id),
+                    'productId': f'{Shopify.Product.prefix}{product_id}',
+                }
+                response = Shopify.Query(
+                    document=Shopify.Product.Media.queries, variables=variables, operation_name='productDeleteMedia'
                 )
                 return response.data
 
@@ -927,7 +946,7 @@ class Shopify:
                 def update(image):
                     variables = {
                         'productId': f'{Shopify.Product.prefix}{image.product_id}',
-                        'media': {'id': f'{Shopify.Product.Media.Image.prefix}{image.image_id}'},
+                        'media': {'id': f'{Shopify.Product.Media.Image.prefix}{image.shopify_id}'},
                     }
                     if image.description:
                         variables['media']['alt'] = image.description
@@ -939,16 +958,16 @@ class Shopify:
                     )
                     return response.data
 
-                def delete(image=None, product_id=None, image_id=None, variant_id=None):
+                def delete(image=None, product_id=None, shopify_id=None, variant_id=None):
                     if image:
                         variables = {
-                            'mediaIds': [f'{Shopify.Product.Media.Image.prefix}{image.image_id}'],
+                            'mediaIds': [f'{Shopify.Product.Media.Image.prefix}{image.shopify_id}'],
                             'productId': f'{Shopify.Product.prefix}{image.product_id}',
                         }
 
-                    elif image_id and product_id:
+                    elif shopify_id and product_id:
                         variables = {
-                            'mediaIds': [f'{Shopify.Product.Media.Image.prefix}{image_id}'],
+                            'mediaIds': [f'{Shopify.Product.Media.Image.prefix}{shopify_id}'],
                             'productId': f'{Shopify.Product.prefix}{product_id}',
                         }
 
@@ -970,7 +989,7 @@ class Shopify:
                     return response.data
 
             class Video:
-                pass
+                prefix = 'gid://shopify/ExternalVideo/'
 
         class Option:
             queries = './integration/queries/productOptions.graphql'
@@ -1447,13 +1466,14 @@ class Shopify:
         queries = './integration/queries/webhooks.graphql'
         prefix = 'gid://shopify/WebhookSubscription'
         format = 'JSON'
-        # topics = ['ORDERS_CREATE', 'REFUNDS_CREATE', 'DRAFT_ORDERS_CREATE', 'DRAFT_ORDERS_UPDATE']
-
         topics = [
-            {'topic': 'DRAFT_ORDERS_CREATE', 'url': f'{creds.ngrok_domain}/shopify_draft_create'},
-            {'topic': 'DRAFT_ORDERS_UPDATE', 'url': f'{creds.ngrok_domain}/shopify_draft_update'},
+            # {'topic': 'ORDERS_CREATE', 'url': f'{creds.ngrok_domain}{creds.route_shopify_order_create}'},
+            # {'topic': 'REFUNDS_CREATE', 'url': f'{creds.ngrok_domain}{creds.route_shopify_refund_create}'},
+            # {'topic': 'DRAFT_ORDERS_CREATE', 'url': f'{creds.ngrok_domain}{creds.route_shopify_draft_create}'},
+            # {'topic': 'DRAFT_ORDERS_UPDATE', 'url': f'{creds.ngrok_domain}{creds.route_shopify_draft_update}'},
+            {'topic': 'CUSTOMERS_UPDATE', 'url': f'{creds.ngrok_domain}{creds.route_shopify_customer_update}'},
+            {'topic': 'PRODUCTS_UPDATE', 'url': f'{creds.ngrok_domain}{creds.route_shopify_product_update}'},
         ]
-        address = f'{creds.ngrok_domain}/shopify'
 
         def get(id='', ids_only=False):
             if id:
@@ -1469,33 +1489,53 @@ class Shopify:
                     return [x['node']['id'].split('/')[-1] for x in response.data['webhookSubscriptions']['edges']]
                 return response.data
 
-        def create(topic=None, address=None, default=False) -> int:
-            if default:
-                # Create all default webhooks
-                result = []
-                for topic in Shopify.Webhook.topics:
-                    response = Shopify.Query(
-                        document=Shopify.Webhook.queries,
-                        variables={
-                            'topic': topic['topic'],
-                            'webhookSubscription': {'callbackUrl': topic['url'], 'format': Shopify.Webhook.format},
-                        },
-                        operation_name='webhookSubscriptionCreate',
-                    )
-                    result.append(
-                        {
-                            'TOPIC': topic['topic'],
-                            'HOOK_ID': response.data['webhookSubscriptionCreate']['webhookSubscription'][
-                                'id'
-                            ].split('/')[-1],
-                            'DESTINATION': topic['url'],
-                            'FORMAT': Shopify.Webhook.format,
-                            'DOMAIN': 'Shopify',
-                        }
-                    )
-                for i in result:
-                    Database.Shopify.Webhook.insert(i)
-                return
+        def create(topic=None, address=None) -> int:
+            if topic and address:
+                response = Shopify.Query(
+                    document=Shopify.Webhook.queries,
+                    variables={'topic': topic, 'address': address},
+                    operation_name='webhookSubscriptionCreate',
+                )
+
+                Database.Shopify.Webhook.insert(
+                    {
+                        'TOPIC': topic,
+                        'HOOK_ID': response.data['webhookSubscriptionCreate']['webhookSubscription']['id'].split(
+                            '/'
+                        )[-1],
+                        'DESTINATION': address,
+                        'FORMAT': Shopify.Webhook.format,
+                        'DOMAIN': 'Shopify',
+                    }
+                )
+
+                return response.data['webhookSubscriptionCreate']['webhookSubscription']['id'].split('/')[-1]
+
+            # Create all default webhooks
+            result = []
+            for topic in Shopify.Webhook.topics:
+                response = Shopify.Query(
+                    document=Shopify.Webhook.queries,
+                    variables={
+                        'topic': topic['topic'],
+                        'webhookSubscription': {'callbackUrl': topic['url'], 'format': Shopify.Webhook.format},
+                    },
+                    operation_name='webhookSubscriptionCreate',
+                )
+                result.append(
+                    {
+                        'TOPIC': topic['topic'],
+                        'HOOK_ID': response.data['webhookSubscriptionCreate']['webhookSubscription']['id'].split(
+                            '/'
+                        )[-1],
+                        'DESTINATION': topic['url'],
+                        'FORMAT': Shopify.Webhook.format,
+                        'DOMAIN': 'Shopify',
+                    }
+                )
+            for i in result:
+                Database.Shopify.Webhook.insert(i)
+            return
 
             response = Shopify.Query(
                 document=Shopify.Webhook.queries,
@@ -1531,13 +1571,6 @@ class Shopify:
 
 
 if __name__ == '__main__':
-    payload = {
-        'id': 'gid://shopify/StandardMetafieldDefinitionTemplate/2',
-        'ownerType': 'PRODUCT',
-        'pin': False,
-        'visibleToStorefrontApi': True,
-    }
-
     # # Shopify.MetafieldDefinition.create(payload)
 
     # # Shopify.Metafield.get('gid://shopify/Metafield/33063278018727')
@@ -1552,6 +1585,10 @@ if __name__ == '__main__':
     #     type='single_line_text_field',
     # )
 
-    # Shopify.Product.get(8308188610727)
+    # Shopify.Product.get(10092)
+    # queue = [8308199522471, 8308199391399]
+    # for i in queue:
+    #     Shopify.Product.Media.delete(i)
+    #     Database.Shopify.Product.Media.delete(i)
 
-    Shopify.Webhook.create(default=True)
+    Shopify.Webhook.create()

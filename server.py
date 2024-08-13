@@ -81,11 +81,11 @@ def get_service_information():
 
         channel = connection.channel()
 
-        channel.queue_declare(queue='design_info', durable=True)
+        channel.queue_declare(queue=creds.consumer_design_lead_form, durable=True)
 
         channel.basic_publish(
             exchange='',
-            routing_key='design_info',
+            routing_key=creds.consumer_design_lead_form,
             body=payload,
             properties=pika.BasicProperties(delivery_mode=pika.DeliveryMode.Persistent),
         )
@@ -283,7 +283,7 @@ def update_uuid_name():
 
 
 @app.route('/newsletter', methods=['POST'])
-@limiter.limit('20 per minute')  # 20 requests per minute
+@limiter.limit('20 per minute')
 def newsletter_signup():
     """Route for website pop-up. Offers user a coupon and adds their information to a csv."""
     token = request.headers.get('Authorization').split(' ')[1]
@@ -452,7 +452,7 @@ def incoming_sms():
 
 
 @app.route('/bc', methods=['POST'])
-@limiter.limit('20/minute')  # 10 requests per minute
+@limiter.limit('20/minute')
 def bc_orders():
     """Webhook route for incoming orders. Sends to RabbitMQ queue for asynchronous processing"""
     response_data = request.get_json()
@@ -482,8 +482,8 @@ def bc_orders():
     return jsonify({'success': True}), 200
 
 
-@app.route('/shopify', methods=['POST'])
-@limiter.limit('20/minute')  # 10 requests per minute
+@app.route(creds.route_shopify_order_create, methods=['POST'])
+@limiter.limit('20/minute')
 def shopify():
     """Webhook route for incoming orders. Sends to RabbitMQ queue for asynchronous processing"""
     webhook_data = request.json
@@ -492,11 +492,11 @@ def shopify():
         connection = pika.BlockingConnection(pika.ConnectionParameters('localhost'))
         channel = connection.channel()
 
-        channel.queue_declare(queue='shopify_orders', durable=True)
+        channel.queue_declare(queue=creds.consumer_shopify_orders, durable=True)
 
         channel.basic_publish(
             exchange='',
-            routing_key='shopify_orders',
+            routing_key=creds.consumer_shopify_orders,
             body=str(order_id),
             properties=pika.BasicProperties(delivery_mode=pika.DeliveryMode.Persistent),
         )
@@ -505,6 +505,118 @@ def shopify():
         ProcessInErrorHandler.error_handler.add_error_v(
             error=f'Error sending order {order_id} to RabbitMQ: {e}', origin='shopify_orders'
         )
+
+    return jsonify({'success': True}), 200
+
+
+@app.route(creds.route_shopify_draft_create, methods=['POST'])
+@limiter.limit('20/minute')
+def shopify_draft_create():
+    """Webhook route for newly created draft orders. Sends to RabbitMQ queue for asynchronous processing"""
+    webhook_data = request.json
+    order_id = webhook_data['id']
+    try:
+        connection = pika.BlockingConnection(pika.ConnectionParameters('localhost'))
+        channel = connection.channel()
+
+        channel.queue_declare(queue=creds.consumer_shopify_draft_create, durable=True)
+
+        channel.basic_publish(
+            exchange='',
+            routing_key=creds.consumer_shopify_draft_create,
+            body=str(order_id),
+            properties=pika.BasicProperties(delivery_mode=pika.DeliveryMode.Persistent),
+        )
+        connection.close()
+    except Exception as e:
+        ProcessInErrorHandler.error_handler.add_error_v(
+            error=f'Error sending order {order_id} to RabbitMQ: {e}', origin='shopify_orders'
+        )
+
+    return jsonify({'success': True}), 200
+
+
+@app.route(creds.route_shopify_draft_update, methods=['POST'])
+@limiter.limit('20/minute')
+def shopify_draft_update():
+    """Webhook route for updated draft orders. Sends to RabbitMQ queue for asynchronous processing"""
+    webhook_data = request.json
+    order_id = webhook_data['id']
+    try:
+        connection = pika.BlockingConnection(pika.ConnectionParameters('localhost'))
+        channel = connection.channel()
+
+        channel.queue_declare(queue=creds.consumer_shopify_draft_update, durable=True)
+
+        channel.basic_publish(
+            exchange='',
+            routing_key=creds.consumer_shopify_draft_update,
+            body=str(order_id),
+            properties=pika.BasicProperties(delivery_mode=pika.DeliveryMode.Persistent),
+        )
+        connection.close()
+    except Exception as e:
+        ProcessInErrorHandler.error_handler.add_error_v(
+            error=f'Error sending order {order_id} to RabbitMQ: {e}', origin='shopify_orders'
+        )
+
+    return jsonify({'success': True}), 200
+
+
+@app.route(creds.route_shopify_customer_update, methods=['POST'])
+@limiter.limit('60/minute')
+def shopify_customer_update():
+    """Webhook route for updated customers. Sends to RabbitMQ queue for asynchronous processing"""
+    webhook_data = request.json
+    with open('customer_update.json', 'a') as f:
+        json.dump(webhook_data, f)
+    # customer_id = webhook_data['id']
+    # try:
+    #     connection = pika.BlockingConnection(pika.ConnectionParameters('localhost'))
+    #     channel = connection.channel()
+
+    #     channel.queue_declare(queue='shopify_customer_update', durable=True)
+
+    #     channel.basic_publish(
+    #         exchange='',
+    #         routing_key='shopify_customer_update',
+    #         body=str(customer_id),
+    #         properties=pika.BasicProperties(delivery_mode=pika.DeliveryMode.Persistent),
+    #     )
+    #     connection.close()
+    # except Exception as e:
+    #     ProcessInErrorHandler.error_handler.add_error_v(
+    #         error=f'Error sending customer {customer_id} to RabbitMQ: {e}', origin='shopify_customer_update'
+    #     )
+
+    return jsonify({'success': True}), 200
+
+
+@app.route(creds.route_shopify_product_update, methods=['POST'])
+@limiter.limit('60/minute')
+def shopify_product_update():
+    """Webhook route for updated products. Sends to RabbitMQ queue for asynchronous processing"""
+    webhook_data = request.json
+    with open('product_update.json', 'a') as f:
+        json.dump(webhook_data, f)
+    # product_id = webhook_data['id']
+    # try:
+    #     connection = pika.BlockingConnection(pika.ConnectionParameters('localhost'))
+    #     channel = connection.channel()
+
+    #     channel.queue_declare(queue='shopify_product_update', durable=True)
+
+    #     channel.basic_publish(
+    #         exchange='',
+    #         routing_key='shopify_product_update',
+    #         body=str(product_id),
+    #         properties=pika.BasicProperties(delivery_mode=pika.DeliveryMode.Persistent),
+    #     )
+    #     connection.close()
+    # except Exception as e:
+    #     ProcessInErrorHandler.error_handler.add_error_v(
+    #         error=f'Error sending product {product_id} to RabbitMQ: {e}', origin='shopify_product_update'
+    #     )
 
     return jsonify({'success': True}), 200
 
