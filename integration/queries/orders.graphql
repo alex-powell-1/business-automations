@@ -101,10 +101,18 @@ query order($id: ID!) {
                             presentmentMoney {
                                 amount
                             }
+
+                            shopMoney {
+                                amount
+                            }
                         }
 
                         originalUnitPriceSet {
                             presentmentMoney {
+                                amount
+                            }
+
+                            shopMoney {
                                 amount
                             }
                         }
@@ -113,10 +121,18 @@ query order($id: ID!) {
                             presentmentMoney {
                                 amount
                             }
+
+                            shopMoney {
+                                amount
+                            }
                         }
 
                         discountedTotalSet {
                             presentmentMoney {
+                                amount
+                            }
+
+                            shopMoney {
                                 amount
                             }
                         }
@@ -138,9 +154,17 @@ query order($id: ID!) {
                 presentmentMoney {
                     amount
                 }
+
+                shopMoney {
+                    amount
+                }
             }
             currentCartDiscountAmountSet {
                 presentmentMoney {
+                    amount
+                }
+
+                shopMoney {
                     amount
                 }
             }
@@ -156,11 +180,19 @@ query order($id: ID!) {
                     presentmentMoney {
                         amount
                     }
+
+                    shopMoney {
+                        amount
+                    }
                 }
             }
 
             currentTotalAdditionalFeesSet {
                 presentmentMoney {
+                    amount
+                }
+
+                shopMoney {
                     amount
                 }
             }
@@ -169,10 +201,18 @@ query order($id: ID!) {
                 presentmentMoney {
                     amount
                 }
+
+                shopMoney {
+                    amount
+                }
             }
 
             totalDiscountsSet {
                 presentmentMoney {
+                    amount
+                }
+
+                shopMoney {
                     amount
                 }
             }
@@ -182,6 +222,10 @@ query order($id: ID!) {
             transactions(first: 10) {
                 amountSet {
                     presentmentMoney {
+                        amount
+                    }
+
+                    shopMoney {
                         amount
                     }
                 }
@@ -219,6 +263,10 @@ query order($id: ID!) {
                             quantity
                             subtotalSet {
                                 presentmentMoney {
+                                    amount
+                                }
+
+                                shopMoney {
                                     amount
                                 }
                             }

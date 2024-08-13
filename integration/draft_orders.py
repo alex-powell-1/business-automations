@@ -6,6 +6,8 @@ from traceback import format_exc as tb
 
 from setup.error_handler import ProcessInErrorHandler
 
+import datetime
+
 logger = ProcessInErrorHandler.logger
 error_handler = ProcessInErrorHandler.error_handler
 
@@ -119,7 +121,10 @@ def get_doc_id_from_hold_id(hold_id):
 
         logger.success(f'Doc id from hold order {hold_id} retrieved.')
 
-        return response[0][0]
+        try:
+            return response[0][0]
+        except:
+            return None
     except Exception as e:
         error_handler.add_error_v(
             error=f'Error getting hold order id for customer {cust_no} and ticket date {tkt_dt}: {e}',
@@ -181,6 +186,34 @@ def check_cp_closed_orders():
         )
 
 
+# [2024-08-13T17:20:24Z] Luke Barrier created this draft order.
+
+
+def format_date(date: str):
+    date: datetime.datetime = datetime.datetime.strptime(date, '%Y-%m-%dT%H:%M:%SZ')
+
+    # convert to local time
+    date = date.replace(tzinfo=datetime.timezone.utc).astimezone(tz=None)
+
+    year = date.year
+    month = date.month
+    day = date.day
+    hour = date.hour
+    minute = date.minute
+    second = date.second
+
+    year -= 2000
+
+    hour = hour - 12 if hour > 12 else hour
+
+    minute = str(minute).zfill(2)
+    second = str(second).zfill(2)
+
+    date = f'{month}-{day}-{year} {hour}:{minute}:{second}'
+
+    return date
+
+
 # This function should be called when a draft order is created.
 def on_draft_created(draft_id):
     """This function should be called when a draft order is created."""
@@ -194,12 +227,28 @@ def on_draft_created(draft_id):
 
         lines = HoldOrder.get_lines_from_draft_order(draft_id)
         cust_no = Shopify.Order.Draft.get_cust_no(draft_id)
-        pl = HoldOrder.create(lines=lines, cust_no=cust_no)
+        doc = HoldOrder.create(lines=lines, cust_no=cust_no)
+
+        note = Shopify.Order.Draft.get_note(draft_id)
+
+        events = Shopify.Order.Draft.get_events(draft_id)
+
+        for event in events:
+            doc.add_note(f"[{format_date(event['createdAt'])}] {event['message']}", 'TIMELINE')
+
+        doc.add_note(note)
+
+        pl = doc.get()
 
         logger.success('Info retrieved.')
         logger.info('Posting hold order...')
 
-        response = HoldOrder.post_pl(payload=pl)
+        response = HoldOrder.post_pl(
+            payload=pl,
+            discount=Shopify.Order.Draft.get_discount(draft_id),
+            shipping=Shopify.Order.Draft.get_shipping(draft_id),
+            sub_tot=Shopify.Order.Draft.get_subtotal(draft_id),
+        )
 
         if (
             response is None
@@ -208,6 +257,7 @@ def on_draft_created(draft_id):
             or len(response['Documents']) == 0
         ):
             error_handler.add_error_v(error='Could not post document', origin='draft_orders')
+            error_handler.add_error_v(error=str(response), origin='draft_orders')
             return
 
         doc_id = response['Documents'][0]['DOC_ID']

@@ -10,6 +10,18 @@ query draftOrder($id: ID!) {
                 name
             }
 
+            note2
+
+            events(first: 250) {
+                edges {
+                    node {
+                        id
+                        message
+                        createdAt
+                    }
+                }
+            }
+
             customer {
                 id
                 firstName
@@ -35,6 +47,26 @@ query draftOrder($id: ID!) {
                                 amount
                             }
                         }
+                    }
+                }
+            }
+
+            totalDiscountsSet {
+                presentmentMoney {
+                    amount
+                }
+            }
+
+            subtotalPriceSet {
+                presentmentMoney {
+                    amount
+                }
+            }
+
+            shippingLine {
+                discountedPriceSet {
+                    presentmentMoney {
+                        amount
                     }
                 }
             }
