@@ -372,16 +372,27 @@ class Shopify:
             @staticmethod
             def get_cust_no(order_id: int):
                 """Convert Shopify order to BigCommerce order format"""
-                shopify_order = Shopify.Order.Draft.get(order_id)
-                snode = shopify_order['node']
-                customer = snode['customer']
-                billing = snode['billingAddress']
-                email = snode['email'] or customer['email']
-                phone = billing['phone'] if billing is not None else customer['phone']
 
-                cust_no = lookup_customer(email_address=email, phone_number=phone)
+                try:
+                    shopify_order = Shopify.Order.Draft.get(order_id)
+                    snode = shopify_order['node']
+                    customer = snode['customer']
+                    billing = snode['billingAddress']
+                    email = snode['email']
 
-                return cust_no
+                    if customer is not None:
+                        email = customer['email']
+
+                    phone = billing['phone'] if billing is not None else None
+
+                    if phone is not None:
+                        phone = customer['phone']
+
+                    cust_no = lookup_customer(email_address=email, phone_number=phone)
+
+                    return cust_no
+                except:
+                    return None
 
             @staticmethod
             def delete(order_id: int):
