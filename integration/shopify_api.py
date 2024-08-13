@@ -371,8 +371,6 @@ class Shopify:
 
             @staticmethod
             def get_cust_no(order_id: int):
-                """Convert Shopify order to BigCommerce order format"""
-
                 try:
                     shopify_order = Shopify.Order.Draft.get(order_id)
                     snode = shopify_order['node']
