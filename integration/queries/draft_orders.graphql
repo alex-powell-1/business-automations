@@ -56,6 +56,20 @@ query draftOrder($id: ID!) {
                     amount
                 }
             }
+
+            subtotalPriceSet {
+                presentmentMoney {
+                    amount
+                }
+            }
+
+            shippingLine {
+                discountedPriceSet {
+                    presentmentMoney {
+                        amount
+                    }
+                }
+            }
         }
     }
 }

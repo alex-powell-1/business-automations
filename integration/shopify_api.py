@@ -359,14 +359,23 @@ class Shopify:
 
         class Draft:
             queries = './integration/queries/draft_orders.graphql'
+            prev_order_id = -1
+            prev_order = None
 
             @staticmethod
             def get(order_id: int):
+                if Shopify.Order.Draft.prev_order_id == order_id:
+                    return Shopify.Order.Draft.prev_order
+
                 response = Shopify.Query(
                     document=Shopify.Order.Draft.queries,
                     variables={'id': f'gid://shopify/DraftOrder/{order_id}'},
                     operation_name='draftOrder',
                 )
+
+                Shopify.Order.Draft.prev_order = response.data
+                Shopify.Order.Draft.prev_order_id = order_id
+
                 return response.data
 
             @staticmethod
@@ -421,10 +430,33 @@ class Shopify:
 
             @staticmethod
             def get_discount(order_id: int):
-                shopify_order = Shopify.Order.Draft.get(order_id)
-                snode = shopify_order['node']
-                hdsc = float(snode['totalDiscountsSet']['presentmentMoney']['amount'])
-                return hdsc
+                try:
+                    shopify_order = Shopify.Order.Draft.get(order_id)
+                    snode = shopify_order['node']
+                    hdsc = float(snode['totalDiscountsSet']['presentmentMoney']['amount'])
+                    return hdsc
+                except:
+                    return 0
+
+            @staticmethod
+            def get_shipping(order_id: int):
+                try:
+                    shopify_order = Shopify.Order.Draft.get(order_id)
+                    snode = shopify_order['node']
+                    shipping = snode['shippingLine']['discountedPriceSet']['presentmentMoney']['amount']
+                    return float(shipping)
+                except:
+                    return 0
+
+            @staticmethod
+            def get_subtotal(order_id: int):
+                try:
+                    shopify_order = Shopify.Order.Draft.get(order_id)
+                    snode = shopify_order['node']
+                    sub_tot = float(snode['subtotalPriceSet']['presentmentMoney']['amount'])
+                    return sub_tot
+                except:
+                    return 0
 
     class Customer:
         queries = './integration/queries/customers.graphql'
