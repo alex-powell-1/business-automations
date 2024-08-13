@@ -1,9 +1,4 @@
 query order($id: ID!) {
-  node(id: $id) {
-    id
-    ... on Order {
-      id
-      name
     node(id: $id) {
         id
         ... on Order {
@@ -20,219 +15,219 @@ query order($id: ID!) {
                 }
             }
 
-      billingAddress {
-        address1
-        address2
-        city
-        company
-        country
-        firstName
-        lastName
-        phone
-        province
-        zip
-      }
-
-      createdAt
-
-      customer {
-        id
-        firstName
-        lastName
-        email
-        phone
-      }
-
-      email
-      discountCodes
-      note
-      requiresShipping
-
-      shippingAddress {
-        address1
-        address2
-        city
-        company
-        country
-        firstName
-        lastName
-        phone
-        province
-        zip
-      }
-
-      shippingLine {
-        discountedPriceSet {
-          presentmentMoney {
-            amount
-          }
-        }
-      }
-
-      updatedAt
-
-      currentSubtotalPriceSet {
-        presentmentMoney {
-          amount
-        }
-
-        shopMoney {
-          amount
-        }
-      }
-
-      currentTotalPriceSet {
-        presentmentMoney {
-          amount
-        }
-
-        shopMoney {
-          amount
-        }
-      }
-
-      displayFinancialStatus
-      displayFulfillmentStatus
-
-      subtotalLineItemsQuantity
-
-      lineItems(first: 250) {
-        edges {
-          node {
-            id
-            name
-
-            originalTotalSet {
-              presentmentMoney {
-                amount
-              }
+            billingAddress {
+                address1
+                address2
+                city
+                company
+                country
+                firstName
+                lastName
+                phone
+                province
+                zip
             }
 
-            originalUnitPriceSet {
-              presentmentMoney {
-                amount
-              }
-            }
+            createdAt
 
-            totalDiscountSet {
-              presentmentMoney {
-                amount
-              }
-            }
-
-            discountedTotalSet {
-              presentmentMoney {
-                amount
-              }
-            }
-
-            quantity
-            sku
-          }
-        }
-      }
-
-      billingAddressMatchesShippingAddress
-      cancelReason
-      cancellation {
-        staffNote
-      }
-      cancelledAt
-
-      cartDiscountAmountSet {
-        presentmentMoney {
-          amount
-        }
-      }
-      currentCartDiscountAmountSet {
-        presentmentMoney {
-          amount
-        }
-      }
-
-      closed
-      closedAt
-
-      currentTaxLines {
-        rate
-        ratePercentage
-        title
-        priceSet {
-          presentmentMoney {
-            amount
-          }
-        }
-      }
-
-      currentTotalAdditionalFeesSet {
-        presentmentMoney {
-          amount
-        }
-      }
-
-      currentTotalDiscountsSet {
-        presentmentMoney {
-          amount
-        }
-      }
-
-      totalDiscountsSet {
-        presentmentMoney {
-          amount
-        }
-      }
-
-      returnStatus
-
-      transactions(first: 10) {
-        amountSet {
-          presentmentMoney {
-            amount
-          }
-        }
-        status
-        gateway
-        formattedGateway
-        kind
-
-        paymentIcon {
-          url
-        }
-      }
-
-      originalTotalPriceSet {
-        presentmentMoney {
-          amount
-        }
-
-        shopMoney {
-          amount
-        }
-      }
-
-      discountCode
-
-      discountCodes
-
-      refunds(first: 10) {
-        refundLineItems(first: 250) {
-          edges {
-            node {
-              lineItem {
+            customer {
                 id
-              }
-              quantity
-              subtotalSet {
-                presentmentMoney {
-                  amount
-                }
-              }
+                firstName
+                lastName
+                email
+                phone
             }
-          }
+
+            email
+            discountCodes
+            note
+            requiresShipping
+
+            shippingAddress {
+                address1
+                address2
+                city
+                company
+                country
+                firstName
+                lastName
+                phone
+                province
+                zip
+            }
+
+            shippingLine {
+                discountedPriceSet {
+                    presentmentMoney {
+                        amount
+                    }
+                }
+            }
+
+            updatedAt
+
+            currentSubtotalPriceSet {
+                presentmentMoney {
+                    amount
+                }
+
+                shopMoney {
+                    amount
+                }
+            }
+
+            currentTotalPriceSet {
+                presentmentMoney {
+                    amount
+                }
+
+                shopMoney {
+                    amount
+                }
+            }
+
+            displayFinancialStatus
+            displayFulfillmentStatus
+
+            subtotalLineItemsQuantity
+
+            lineItems(first: 250) {
+                edges {
+                    node {
+                        id
+                        name
+
+                        originalTotalSet {
+                            presentmentMoney {
+                                amount
+                            }
+                        }
+
+                        originalUnitPriceSet {
+                            presentmentMoney {
+                                amount
+                            }
+                        }
+
+                        totalDiscountSet {
+                            presentmentMoney {
+                                amount
+                            }
+                        }
+
+                        discountedTotalSet {
+                            presentmentMoney {
+                                amount
+                            }
+                        }
+
+                        quantity
+                        sku
+                    }
+                }
+            }
+
+            billingAddressMatchesShippingAddress
+            cancelReason
+            cancellation {
+                staffNote
+            }
+            cancelledAt
+
+            cartDiscountAmountSet {
+                presentmentMoney {
+                    amount
+                }
+            }
+            currentCartDiscountAmountSet {
+                presentmentMoney {
+                    amount
+                }
+            }
+
+            closed
+            closedAt
+
+            currentTaxLines {
+                rate
+                ratePercentage
+                title
+                priceSet {
+                    presentmentMoney {
+                        amount
+                    }
+                }
+            }
+
+            currentTotalAdditionalFeesSet {
+                presentmentMoney {
+                    amount
+                }
+            }
+
+            currentTotalDiscountsSet {
+                presentmentMoney {
+                    amount
+                }
+            }
+
+            totalDiscountsSet {
+                presentmentMoney {
+                    amount
+                }
+            }
+
+            returnStatus
+
+            transactions(first: 10) {
+                amountSet {
+                    presentmentMoney {
+                        amount
+                    }
+                }
+                status
+                gateway
+                formattedGateway
+                kind
+
+                paymentIcon {
+                    url
+                }
+            }
+
+            originalTotalPriceSet {
+                presentmentMoney {
+                    amount
+                }
+
+                shopMoney {
+                    amount
+                }
+            }
+
+            discountCode
+
+            discountCodes
+
+            refunds(first: 10) {
+                refundLineItems(first: 250) {
+                    edges {
+                        node {
+                            lineItem {
+                                id
+                            }
+                            quantity
+                            subtotalSet {
+                                presentmentMoney {
+                                    amount
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
-      }
     }
-  }
 }
 
 query orders {
@@ -250,32 +245,3 @@ query orders {
         }
     }
 }
-
-query giftCards {
-    giftCards(first: 10) {
-        edges {
-            node {
-                id
-                order {
-                    id
-                }
-            }
-        }
-    }
-}
-
-# query giftCard($id: ID!) {
-#     giftCard(id: $id) {
-#         id
-#         order {
-#             id
-#         }
-#         initialValue {
-#             amount
-#         }
-#         balance
-#         customer {
-#             id
-#         }
-#     }
-# }

@@ -146,6 +146,10 @@ def check_cp_closed_orders():
     try:
         response = Database.db.query(query)
 
+        if response is None:
+            logger.info('No closed hold orders found.')
+            return
+
         logger.info(f'Found {len(response)} closed hold orders.')
 
         for row in response:
