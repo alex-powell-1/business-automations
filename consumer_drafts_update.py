@@ -29,7 +29,6 @@ class RabbitMQConsumer:
 
     def callback(self, ch, method, properties, body):
         order_id = body.decode()
-        # Create order object
         self.logger.info(f'Beginning processing for Order #{order_id}')
 
         try:
