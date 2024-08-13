@@ -316,7 +316,9 @@ class Shopify:
                 'coupons': {'url': []},
                 'transactions': {'data': []},
                 'order_coupons': snode['discountCodes'],
-                'channel': snode['channelInformation']['channelDefinition']['handle'],
+                'channel': snode['channelInformation']['channelDefinition']['handle']
+                if snode['channelInformation'] is not None
+                else 'EMPTY',
             }
 
             if hdsc > 0:
@@ -327,7 +329,6 @@ class Shopify:
         def get_orders_not_in_cp():
             query = """
             SELECT TKT_NO, TKT_DT FROM PS_DOC_HDR
-            WHERE STR_ID = 'WEB'
             UNION
             SELECT TKT_NO, TKT_DT FROM PS_TKT_HIST
             WHERE STR_ID = 'WEB'

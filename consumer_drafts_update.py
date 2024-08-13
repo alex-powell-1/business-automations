@@ -7,6 +7,8 @@ from setup.error_handler import ProcessInErrorHandler
 from traceback import format_exc as tb
 from datetime import datetime
 
+from integration.draft_orders import on_draft_updated
+
 origin = 'Consumer-Draft Update'
 
 
@@ -26,13 +28,11 @@ class RabbitMQConsumer:
         self.channel.queue_declare(queue=self.queue_name, durable=True)
 
     def callback(self, ch, method, properties, body):
-        order_id = body.decode()
-        # Create order object
-        self.logger.info(f'Beginning processing for Order #{order_id}')
+        draft_id = body.decode()
+        self.logger.info(f'Beginning processing for Draft #{draft_id}')
 
         try:
-            pass
-
+            on_draft_updated(draft_id)
         except Exception as err:
             error_type = 'General Catch'
             self.error_handler.add_error_v(

@@ -13,11 +13,11 @@ from setup.error_handler import ProcessOutErrorHandler
 class PhoneNumber:
     def __init__(self, phone_number: str):
         self.raw = self.strip_number(phone_number)
-        self.area_code = self.get_area_code()
-        self.exchange = self.get_exchange()
-        self.subscriber_number = self.get_subscriber_number()
+        self.area_code = self.raw[0:3]
+        self.exchange = self.raw[3:6]
+        self.subscriber_number = self.raw[6:]
 
-    def strip_number(self, phone_number):
+    def strip_number(self, phone_number: str):
         return (
             phone_number.replace('+1', '')
             .replace('-', '')
@@ -26,15 +26,6 @@ class PhoneNumber:
             .replace(' ', '')
             .replace('_', '')
         )
-
-    def get_area_code(self):
-        return self.raw[0:3]
-
-    def get_exchange(self):
-        return self.raw[3:6]
-
-    def get_subscriber_number(self):
-        return self.raw[6:]
 
     def to_cp(self):
         return f'{self.area_code}-{self.exchange}-{self.subscriber_number}'
