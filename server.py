@@ -26,6 +26,7 @@ from integration.shopify_api import Shopify
 from qr.qr_codes import QR
 
 from integration.database import Database
+from traceback import format_exc as tb
 
 import uuid_utils as uuidu
 
@@ -51,7 +52,9 @@ def handle_validation_error(e):
 def handle_exception(e):
     url = request.url
     # Return a JSON response with a generic error message
-    ProcessInErrorHandler.error_handler.add_error_v(error=f'An error occurred: {e}', origin=f'exception - {url}')
+    ProcessInErrorHandler.error_handler.add_error_v(
+        error=f'An error occurred: {e}', origin=f'exception - {url}', traceback=tb()
+    )
     return jsonify({'error': f'An error occurred {e}'}), 500
 
 
@@ -602,6 +605,11 @@ def shopify_product_update():
     product_id = webhook_data['id']
     title = webhook_data['title']
     description = webhook_data['body_html']
+    status = webhook_data['status']
+    item_no = Database.Shopify.Product.get_parent_item_no(product_id)
+    if description:
+        Database.Counterpoint.Product.HTMLDescription.update(item_no=item_no, description=description)
+
     # Get SEO data
     seo_data = Shopify.Product.SEO.get(product_id)
     meta_title = seo_data['title']
@@ -610,7 +618,7 @@ def shopify_product_update():
     # Get media data
     media_payload = []
     media = webhook_data['media']
-    print(f'Media: {media}')
+
     if media:
         for m in media:
             id = m['id']
@@ -619,7 +627,28 @@ def shopify_product_update():
             if alt_text and position < 4:  # First 4 images only at this time.
                 media_payload.append({'position': position, 'id': id, 'alt_text': alt_text})
 
-    print(f'Media Payload: {media_payload}')
+    if item_no:
+        update_payload = {'product_id': product_id, 'item_no': item_no}
+
+        if status:
+            update_payload['status'] = status
+        if title:
+            update_payload['title'] = title
+        if meta_title:
+            update_payload['meta_title'] = meta_title
+        if meta_description:
+            update_payload['meta_description'] = meta_description
+
+        if media_payload:
+            for m in media_payload:
+                position = m['position']
+                update_payload[f'alt_text_{position}'] = m['alt_text']
+        try:
+            Database.Counterpoint.Product.update(update_payload)
+        except Exception as e:
+            ProcessInErrorHandler.error_handler.add_error_v(
+                error=f'Error updating product {item_no}: {e}', origin='shopify_product_update', traceback=tb()
+            )
 
     return jsonify({'success': True}), 200
 

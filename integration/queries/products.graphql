@@ -52,6 +52,22 @@ mutation CreateProductWithNewMedia(
   }
 }
 
+mutation productSEOupdate($input: ProductInput!) {
+  productUpdate(input: $input) {
+    product {
+      id
+      seo {
+        title
+        description
+      }
+    }
+    userErrors {
+      field
+      message
+    }
+  }
+}
+
 mutation UpdateProductWithNewMedia(
   $input: ProductInput!
   $media: [CreateMediaInput!]

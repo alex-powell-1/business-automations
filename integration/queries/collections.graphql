@@ -62,7 +62,21 @@ query collections {
     edges {
       node {
         id
+        title
+        descriptionHtml
+        handle
+        updatedAt
       }
     }
+  }
+}
+
+query collectionByHandle($handle: String!) {
+  collectionByHandle(handle: $handle) {
+    id
+    title
+    descriptionHtml
+    handle
+    updatedAt
   }
 }

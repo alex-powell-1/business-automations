@@ -347,7 +347,7 @@ class Catalog:
                 Database.Shopify.Collection.delete(collection_id=target)
 
             # Check for any remaining categories in Shopify
-            response = Shopify.Collection.get_all()
+            response = Shopify.Collection.get()
             if response:
                 for collection in response:
                     Shopify.Collection.delete(collection)

@@ -1095,6 +1095,20 @@ class Shopify:
                 )
                 return response.data['product']['seo']
 
+            def update(product_id: int, title=None, description=None):
+                variables = {'input': {'id': f'{Shopify.Product.prefix}{product_id}', 'seo': {}}}
+                if title:
+                    variables['input']['seo']['title'] = title
+
+                if description:
+                    variables['input']['seo']['description'] = description
+
+                if title or description:
+                    response = Shopify.Query(
+                        document=Shopify.Product.queries, variables=variables, operation_name='productSEOupdate'
+                    )
+                    return response.data
+
     class Inventory:
         queries = './integration/queries/inventory.graphql'
 
@@ -1116,23 +1130,40 @@ class Shopify:
         queries = './integration/queries/collections.graphql'
         prefix = 'gid://shopify/Collection/'
 
-        def get(collection_id: int):
-            response = Shopify.Query(
-                document=Shopify.Collection.queries,
-                variables={'id': f'{Shopify.Collection.prefix}{collection_id}'},
-                operation_name='collection',
-                verbose=False,
-            )
-            return response.data
+        def get(collection_id: int = None, collection_handle=None):
+            if collection_id:
+                response = Shopify.Query(
+                    document=Shopify.Collection.queries,
+                    variables={'id': f'{Shopify.Collection.prefix}{collection_id}'},
+                    operation_name='collection',
+                    verbose=False,
+                )
+                return response.data
 
-        def get_all():
+            elif collection_handle:
+                response = Shopify.Query(
+                    document=Shopify.Collection.queries,
+                    variables={'handle': collection_handle},
+                    operation_name='collectionByHandle',
+                    verbose=False,
+                )
+                return response.data
+
+            # Get all collections and return list of IDs
             response = Shopify.Query(document=Shopify.Collection.queries, operation_name='collections')
-            id_list = [x['node']['id'].split('/')[-1] for x in response.data['collections']['edges']]
-            return id_list
+            return [
+                {
+                    'id': x['node']['id'].split('/')[-1],
+                    'title': x['node']['title'],
+                    'description': x['node']['descriptionHtml'],
+                    'handle': x['node']['handle'],
+                }
+                for x in response.data['collections']['edges']
+            ]
 
         def backfill_collections_to_counterpoint():
             """Backfill HTML descriptions for all collections presently on Shopify"""
-            id_list = Shopify.Collection.get_all()
+            id_list = Shopify.Collection.get()
             for i in id_list:
                 html_description = Shopify.Collection.get(i)['collection']['descriptionHtml']
                 html_description = (
@@ -1581,22 +1612,7 @@ class Shopify:
 
 
 if __name__ == '__main__':
-    # # Shopify.MetafieldDefinition.create(payload)
-
-    # # Shopify.Metafield.get('gid://shopify/Metafield/33063278018727')
-
-    # # Shopify.MetafieldDefinition.get()
-
-    # Shopify.Metafield.set(
-    #     owner_id='gid://shopify/MediaImage/29689618727079',
-    #     namespace='image',
-    #     key='name',
-    #     value='test',
-    #     type='single_line_text_field',
-    # )
-
-    print(Shopify.Product.SEO.get(8308153712807))
-    # queue = [8308199522471, 8308199391399]
-    # for i in queue:
-    #     Shopify.Product.Media.delete(i)
-    #     Database.Shopify.Product.Media.delete(i)
+    description = Shopify.Product.SEO.get(8308139983015)['description']
+    if description:
+        description += ' '
+        Shopify.Product.SEO.update(product_id=8308139983015, description=description)

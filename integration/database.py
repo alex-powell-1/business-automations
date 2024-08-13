@@ -205,25 +205,112 @@ class Database:
     class Counterpoint:
         class Product:
             table = creds.cp_item_table
+            columns = {
+                'item_no': creds.column_product_item_no,
+                'web_enabled': creds.column_product_web_enabled,
+                'web_visible': creds.column_product_web_visible,
+                'binding_id': creds.column_product_binding_id,
+                'is_parent': creds.column_product_is_parent,
+                'variant_name': creds.column_product_variant_name,
+                'weight': creds.column_product_weight,
+                'brand': creds.column_product_brand,
+                'web_title': creds.column_product_web_title,
+                'meta_title': creds.column_product_meta_title,
+                'meta_description': creds.column_product_meta_description,
+                'alt_text_1': creds.column_product_alt_text_1,
+                'alt_text_2': creds.column_product_alt_text_2,
+                'alt_text_3': creds.column_product_alt_text_3,
+                'alt_text_4': creds.column_product_alt_text_4,
+                'videos': creds.column_product_videos,
+                'featured': creds.column_product_featured,
+            }
+
+            def update(payload):
+                """FOR PRODUCTS_UPDATE WEBHOOK ONLY. Normal updates from shopify_catalog.py use sync()"""
+                query = f'UPDATE {Database.Counterpoint.Product.table} SET '
+                if 'status' in payload:
+                    if payload['status'] == 'active':
+                        query += f"{Database.Counterpoint.Product.columns['web_visible']} = 'Y', "
+                    else:
+                        query += f"{Database.Counterpoint.Product.columns['web_visible']} = 'N', "
+                if 'title' in payload:
+                    title = payload['title'].replace("'", "''")[:80]  # 80 char limit
+                    query += f"{Database.Counterpoint.Product.columns['web_title']} = '{title}', "
+                if 'meta_title' in payload:
+                    meta_title = payload['meta_title'].replace("'", "''")[:80]  # 80 char limit
+                    query += f"{Database.Counterpoint.Product.columns['meta_title']} = '{meta_title}', "
+                if 'meta_description' in payload:
+                    meta_description = payload['meta_description'].replace("'", "''")[:160]  # 160 char limit
+                    query += f"{Database.Counterpoint.Product.columns['meta_description']} = '{meta_description}', "
+                if 'alt_text_1' in payload:
+                    alt_text_1 = payload['alt_text_1'].replace("'", "''")[:160]  # 160 char limit
+                    query += f"{Database.Counterpoint.Product.columns['alt_text_1']} = '{alt_text_1}', "
+                if 'alt_text_2' in payload:
+                    alt_text_2 = payload['alt_text_2'].replace("'", "''")[:160]  # 160 char limit
+                    query += f"{Database.Counterpoint.Product.columns['alt_text_2']} = '{alt_text_2}', "
+                if 'alt_text_3' in payload:
+                    alt_text_3 = payload['alt_text_3'].replace("'", "''")[:160]  # 160 char limit
+                    query += f"{Database.Counterpoint.Product.columns['alt_text_3']} = '{alt_text_3}', "
+                if 'alt_text_4' in payload:
+                    alt_text_4 = payload['alt_text_4'].replace("'", "''")[:160]  # 160 char limit
+                    query += f"{Database.Counterpoint.Product.columns['alt_text_4']} = '{alt_text_4}', "
+
+                if query[-2:] == ', ':
+                    query = query[:-2]
+
+                query += f" WHERE ITEM_NO = '{payload['item_no']}'"
+
+                print(f'\n\n\n{query}\n\n\n')
+                response = Database.db.query(query)
+                if response['code'] == 200:
+                    Database.logger.success(f'Product {payload["item_no"]} updated in Middleware.')
+                elif response['code'] == 201:
+                    Database.logger.warn(f'Product {payload["item_no"]} not found in Middleware.')
+                else:
+                    error = f'Error updating product {payload["item_no"]} in Middleware. \n Query: {query}\nResponse: {response}'
+                    Database.error_handler.add_error_v(error=error)
+                    raise Exception(error)
 
             class HTMLDescription:
+                table = 'EC_ITEM_DESCR'
+
                 def get(item_no):
                     query = f"""
-                    SELECT HTML_DESCR FROM EC_ITEM WHERE ITEM_NO = '{item_no}'
+                    SELECT HTML_DESCR FROM {Database.Counterpoint.Product.HTMLDescription.table} 
+                    WHERE ITEM_NO = '{item_no}'
                     """
                     return Database.db.query(query)
 
                 def update(item_no, description):
+                    description = description.replace("'", "''")
                     query = f"""
-                    UPDATE EC_ITEM
-                    SET HTML_DESCR = '{description}'
+                    UPDATE {Database.Counterpoint.Product.HTMLDescription.table}
+                    SET HTML_DESCR = '{description}', LST_MAINT_DT = GETDATE()
                     WHERE ITEM_NO = '{item_no}'
                     """
                     response = Database.db.query(query)
                     if response['code'] == 200:
                         Database.logger.success(f'HTML Description updated for item {item_no}.')
+                    elif response['code'] == 201:
+                        Database.Counterpoint.Product.HTMLDescription.insert(item_no, description)
                     else:
                         error = f'Error updating HTML Description for item {item_no}. \nQuery: {query}\nResponse: {response}'
+                        Database.error_handler.add_error_v(error=error)
+                        raise Exception(error)
+
+                def insert(item_no, description):
+                    description = description.replace("'", "''")
+
+                    query = f"""
+                    INSERT INTO {Database.Counterpoint.Product.HTMLDescription.table} (ITEM_NO, HTML_DESCR, LST_MAINT_DT, 
+                    LST_MAINT_USR_ID)
+                    VALUES ('{item_no}', '{description}', GETDATE(), 'AP')
+                    """
+                    response = Database.db.query(query)
+                    if response['code'] == 200:
+                        Database.logger.success(f'INSERT: HTML Description for {item_no}.')
+                    else:
+                        error = f'Error adding HTML Description for item {item_no}. \nQuery: {query}\nResponse: {response}'
                         Database.error_handler.add_error_v(error=error)
                         raise Exception(error)
 
@@ -647,25 +734,6 @@ class Database:
 
         class Product:
             table = creds.shopify_product_table
-            columns = {
-                'item_no': creds.column_product_item_no,
-                'web_enabled': creds.column_product_web_enabled,
-                'web_visible': creds.column_product_web_visible,
-                'binding_id': creds.column_product_binding_id,
-                'is_parent': creds.column_product_is_parent,
-                'variant_name': creds.column_product_variant_name,
-                'weight': creds.column_product_weight,
-                'brand': creds.column_product_brand,
-                'web_title': creds.column_product_web_title,
-                'meta_title': creds.column_product_meta_title,
-                'meta_description': creds.column_product_meta_description,
-                'alt_text_1': creds.column_product_alt_text_1,
-                'alt_text_2': creds.column_product_alt_text_2,
-                'alt_text_3': creds.column_product_alt_text_3,
-                'alt_text_4': creds.column_product_alt_text_4,
-                'videos': creds.column_product_videos,
-                'featured': creds.column_product_featured,
-            }
 
             def get_id(item_no=None, binding_id=None, image_id=None):
                 """Get product ID from SQL using image ID. If not found, return None."""
@@ -687,11 +755,14 @@ class Database:
                     if prod_id_res is not None:
                         return prod_id_res[0][0]
 
-            def update(payload):
-                """FOR WEBHOOK ONLY. Normal updates from shopify_catalog.py use sync()"""
-                query = f'UPDATE {Database.Counterpoint.Product.table} SET '
-                if payload['title']:
-                    query += f"TITLE = '{payload['title']}', "
+            def get_parent_item_no(product_id):
+                query = f"""
+                        SELECT ITEM_NO FROM {Database.Shopify.Product.table}
+                        WHERE PRODUCT_ID = {product_id} AND (BINDING_ID IS NULL OR IS_PARENT = 1)
+                        """
+                response = Database.db.query(query)
+                if response is not None:
+                    return response[0][0]
 
             def sync(product):
                 for variant in product.variants:
@@ -1239,4 +1310,4 @@ class Database:
 
 
 if __name__ == '__main__':
-    print(Database.DesignLead.get())
+    print(Database.Shopify.Product.get_parent_item_no(8308193788071))
