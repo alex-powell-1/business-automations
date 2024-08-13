@@ -109,6 +109,15 @@ mutation productDelete($id: ID!) {
 }
 
 
+query SEO($id: ID!) {
+  product(id: $id) {
+    seo {
+      title
+      description
+    }
+  }
+}
+
 query product($id: ID!) {
   product(id: $id) {
     collections(first: 5) {
@@ -186,6 +195,7 @@ query product($id: ID!) {
 
     seo {
       title
+      description
     }
     storefrontId
     tags

@@ -203,8 +203,32 @@ class Database:
                 Database.error_handler.add_error_v(error=error, origin='insert_sms')
 
     class Counterpoint:
+        class Product:
+            table = creds.cp_item_table
+
+            class HTMLDescription:
+                def get(item_no):
+                    query = f"""
+                    SELECT HTML_DESCR FROM EC_ITEM WHERE ITEM_NO = '{item_no}'
+                    """
+                    return Database.db.query(query)
+
+                def update(item_no, description):
+                    query = f"""
+                    UPDATE EC_ITEM
+                    SET HTML_DESCR = '{description}'
+                    WHERE ITEM_NO = '{item_no}'
+                    """
+                    response = Database.db.query(query)
+                    if response['code'] == 200:
+                        Database.logger.success(f'HTML Description updated for item {item_no}.')
+                    else:
+                        error = f'Error updating HTML Description for item {item_no}. \nQuery: {query}\nResponse: {response}'
+                        Database.error_handler.add_error_v(error=error)
+                        raise Exception(error)
+
         class Customer:
-            table = creds.ar_cust_table
+            table = creds.cp_customer_table
 
             def get(last_sync=datetime(1970, 1, 1), customer_no=None, customer_list=None):
                 if customer_no:
@@ -623,6 +647,25 @@ class Database:
 
         class Product:
             table = creds.shopify_product_table
+            columns = {
+                'item_no': creds.column_product_item_no,
+                'web_enabled': creds.column_product_web_enabled,
+                'web_visible': creds.column_product_web_visible,
+                'binding_id': creds.column_product_binding_id,
+                'is_parent': creds.column_product_is_parent,
+                'variant_name': creds.column_product_variant_name,
+                'weight': creds.column_product_weight,
+                'brand': creds.column_product_brand,
+                'web_title': creds.column_product_web_title,
+                'meta_title': creds.column_product_meta_title,
+                'meta_description': creds.column_product_meta_description,
+                'alt_text_1': creds.column_product_alt_text_1,
+                'alt_text_2': creds.column_product_alt_text_2,
+                'alt_text_3': creds.column_product_alt_text_3,
+                'alt_text_4': creds.column_product_alt_text_4,
+                'videos': creds.column_product_videos,
+                'featured': creds.column_product_featured,
+            }
 
             def get_id(item_no=None, binding_id=None, image_id=None):
                 """Get product ID from SQL using image ID. If not found, return None."""
@@ -643,6 +686,12 @@ class Database:
                     prod_id_res = Database.db.query(product_query)
                     if prod_id_res is not None:
                         return prod_id_res[0][0]
+
+            def update(payload):
+                """FOR WEBHOOK ONLY. Normal updates from shopify_catalog.py use sync()"""
+                query = f'UPDATE {Database.Counterpoint.Product.table} SET '
+                if payload['title']:
+                    query += f"TITLE = '{payload['title']}', "
 
             def sync(product):
                 for variant in product.variants:

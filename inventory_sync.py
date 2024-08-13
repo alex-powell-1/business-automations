@@ -14,9 +14,9 @@ class Inventory:
     logger = Logger(f"{creds.log_main}/integration/process_out/log_{datetime.now().strftime("%m_%d_%y")}.log")
     error_handler = ErrorHandler(logger)
 
-    def __init__(self):
+    def __init__(self, verbose=False):
         self.last_sync = get_last_sync(file_name='last_sync_inventory.txt')
-        self.verbose = False
+        self.verbose = verbose
         self.catalog = Catalog(last_sync=self.last_sync, inventory_only=True, verbose=self.verbose)
 
     def __str__(self):
@@ -49,7 +49,7 @@ if __name__ == '__main__':
             inventory_upload.upload_inventory()
 
             for i in range(step):
-                inventory = Inventory()
+                inventory = Inventory(verbose=True)
                 inventory.sync()
                 sleep(delay)
 

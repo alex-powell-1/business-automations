@@ -1086,6 +1086,15 @@ class Shopify:
 
                 return url_list
 
+        class SEO:
+            def get(product_id: int):
+                response = Shopify.Query(
+                    document=Shopify.Product.queries,
+                    variables={'id': f'{Shopify.Product.prefix}{product_id}'},
+                    operation_name='SEO',
+                )
+                return response.data['product']['seo']
+
     class Inventory:
         queries = './integration/queries/inventory.graphql'
 
@@ -1586,10 +1595,8 @@ if __name__ == '__main__':
     #     type='single_line_text_field',
     # )
 
-    # Shopify.Product.get(10092)
+    print(Shopify.Product.SEO.get(8308153712807))
     # queue = [8308199522471, 8308199391399]
     # for i in queue:
     #     Shopify.Product.Media.delete(i)
     #     Database.Shopify.Product.Media.delete(i)
-
-    Shopify.Webhook.create()

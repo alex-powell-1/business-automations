@@ -23,13 +23,13 @@ class Catalog:
     logger = Logger(f"{creds.log_main}/integration/process_out/log_{datetime.now().strftime("%m_%d_%y")}.log")
     error_handler = ErrorHandler(logger)
 
-    def __init__(self, last_sync=datetime(1970, 1, 1), inventory_only=False, verbose=True):
+    def __init__(self, last_sync=datetime(1970, 1, 1), inventory_only=False, verbose=True, test_mode=False):
         self.last_sync = last_sync
         self.inventory_only = inventory_only
         self.verbose = verbose
+        self.test_mode = test_mode
         if not self.inventory_only:
             self.category_tree = self.CategoryTree(last_sync=last_sync)
-            # Used to process preliminary deletions of products and images
             self.product_images = get_product_images()
         self.cp_items = []
         self.mw_items = []
@@ -52,14 +52,22 @@ class Catalog:
         # Create the Sync Queue
         # ---------------------
         # Get all products that have been updated since the last sync
-
-        query = f"""
-        SELECT ITEM_NO, ITEM.{creds.cp_field_binding_id} as 'Binding ID'
-        FROM IM_ITEM ITEM
-        WHERE ITEM.LST_MAINT_DT > '{self.last_sync: %Y-%m-%d %H:%M:%S}' and
-        ITEM.IS_ECOMM_ITEM = 'Y'
-        ORDER BY {creds.cp_field_binding_id} DESC
-        """
+        if self.inventory_only:
+            query = f"""
+            SELECT ITEM.ITEM_NO, ITEM.{creds.cp_field_binding_id} as 'Binding ID'
+            FROM IM_ITEM ITEM
+            INNER JOIN IM_INV INV on ITEM.ITEM_NO = INV.ITEM_NO
+            WHERE INV.LST_MAINT_DT > '{self.last_sync: %Y-%m-%d %H:%M:%S}' and
+            ITEM.IS_ECOMM_ITEM = 'Y'
+            ORDER BY {creds.cp_field_binding_id} DESC"""
+        else:
+            query = f"""
+            SELECT ITEM_NO, ITEM.{creds.cp_field_binding_id} as 'Binding ID'
+            FROM IM_ITEM ITEM
+            WHERE ITEM.LST_MAINT_DT > '{self.last_sync: %Y-%m-%d %H:%M:%S}' and
+            ITEM.IS_ECOMM_ITEM = 'Y'
+            ORDER BY {creds.cp_field_binding_id} DESC
+            """
         response = db.query(query)
         if response is not None:
             result = []
@@ -253,14 +261,14 @@ class Catalog:
         # self.category_tree.sync()
 
         if not initial and not self.inventory_only:
-            # Process Product Deletions and Images
             self.process_product_deletes()
             self.process_images()
 
         # Sync Products
-        # self.get_sync_queue()  # Get all products that have been updated since the last sync
-
-        self.sync_queue = [{'sku': '10092'}, {'sku': '10090'}]
+        if self.test_mode:
+            self.sync_queue = [{'sku': '10338', 'binding_id': 'B0001'}]
+        else:
+            self.get_sync_queue()  # Get all products that have been updated since the last sync
 
         if not self.sync_queue:
             if not self.inventory_only or self.verbose:  # don't log this for inventory sync.
@@ -1005,6 +1013,9 @@ class Catalog:
             min_description_length = 20
             check_missing_images = True
             check_for_item_cost = False
+
+            if self.inventory_only:
+                return True
 
             def set_parent(status: bool = True) -> None:
                 """Target lowest price item in family to set as parent."""
