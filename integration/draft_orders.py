@@ -2,62 +2,12 @@ from integration.shopify_api import Shopify
 from integration.cp_api import HoldOrder
 from integration.database import Database
 
+from traceback import format_exc as tb
+
 from setup.error_handler import ProcessInErrorHandler
 
 logger = ProcessInErrorHandler.logger
 error_handler = ProcessInErrorHandler.error_handler
-
-from traceback import format_exc as tb
-
-
-############################################################
-## TODO: Add error handling and logging to all functions. ##
-############################################################
-
-
-# This function should be called when a draft order is created.
-def on_draft_created(draft_id):
-    logger.info(f'Creating hold order for draft order {draft_id}...')
-
-    """This function should be called when a draft order is created."""
-    try:
-        logger.info('Getting information from draft order...')
-
-        lines = HoldOrder.get_lines_from_draft_order(draft_id)
-        cust_no = Shopify.Order.Draft.get_cust_no(draft_id)
-        pl = HoldOrder.create(lines=lines, cust_no=cust_no)
-
-        logger.success('Info retrieved.')
-        logger.info('Posting hold order...')
-
-        response = HoldOrder.post_pl(payload=pl)
-
-        if (
-            response is None
-            or response['ErrorCode'] != 'SUCCESS'
-            or response['Documents'] is None
-            or len(response['Documents']) == 0
-        ):
-            error_handler.add_error_v(error='Could not post document', origin='draft_orders')
-            return
-
-        doc_id = response['Documents'][0]['DOC_ID']
-
-        logger.success('Posted hold order with doc id: {doc_id}')
-
-        query = f"""
-            INSERT INTO SN_DRAFT_ORDERS
-            (DOC_ID, DRAFT_ID)
-            VALUES
-            ('{doc_id}', '{draft_id}')
-        """
-
-        return Database.db.query(query)
-    except Exception as e:
-        error_handler.add_error_v(
-            error=f'Error creating draft order {draft_id}: {e}', origin='draft_orders', traceback=tb()
-        )
-        return
 
 
 def get_paid_status(draft_id):
@@ -208,6 +158,10 @@ def check_cp_closed_orders():
                 return
 
             Shopify.Order.Draft.delete(draft_id)
+            try:
+                delete_hold(hold_id)
+            except:
+                pass
 
             query = f"""
             DELETE FROM SN_DRAFT_ORDERS
@@ -223,8 +177,57 @@ def check_cp_closed_orders():
         )
 
 
+# This function should be called when a draft order is created.
+def on_draft_created(draft_id):
+    check_cp_closed_orders()
+
+    logger.info(f'Creating hold order for draft order {draft_id}...')
+
+    """This function should be called when a draft order is created."""
+    try:
+        logger.info('Getting information from draft order...')
+
+        lines = HoldOrder.get_lines_from_draft_order(draft_id)
+        cust_no = Shopify.Order.Draft.get_cust_no(draft_id)
+        pl = HoldOrder.create(lines=lines, cust_no=cust_no)
+
+        logger.success('Info retrieved.')
+        logger.info('Posting hold order...')
+
+        response = HoldOrder.post_pl(payload=pl)
+
+        if (
+            response is None
+            or response['ErrorCode'] != 'SUCCESS'
+            or response['Documents'] is None
+            or len(response['Documents']) == 0
+        ):
+            error_handler.add_error_v(error='Could not post document', origin='draft_orders')
+            return
+
+        doc_id = response['Documents'][0]['DOC_ID']
+
+        logger.success('Posted hold order with doc id: {doc_id}')
+
+        query = f"""
+            INSERT INTO SN_DRAFT_ORDERS
+            (DOC_ID, DRAFT_ID)
+            VALUES
+            ('{doc_id}', '{draft_id}')
+        """
+
+        return Database.db.query(query)
+    except Exception as e:
+        error_handler.add_error_v(
+            error=f'Error creating draft order {draft_id}: {e}', origin='draft_orders', traceback=tb()
+        )
+        return
+
+
 # This function should be called when a draft order is updated.
 def on_draft_updated(draft_id):
+    check_cp_closed_orders()
+
     logger.info(f'Updating hold order for draft order {draft_id}...')
 
     """This function should be called when a draft order is updated."""
