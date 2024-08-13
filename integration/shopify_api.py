@@ -412,6 +412,13 @@ class Shopify:
 
                 return events
 
+            @staticmethod
+            def get_discount(order_id: int):
+                shopify_order = Shopify.Order.Draft.get(order_id)
+                snode = shopify_order['node']
+                hdsc = float(snode['totalDiscountsSet']['presentmentMoney']['amount'])
+                return hdsc
+
     class Customer:
         queries = './integration/queries/customers.graphql'
         prefix = 'gid://shopify/Customer/'

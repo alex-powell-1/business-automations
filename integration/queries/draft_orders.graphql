@@ -50,6 +50,12 @@ query draftOrder($id: ID!) {
                     }
                 }
             }
+
+            totalDiscountsSet {
+                presentmentMoney {
+                    amount
+                }
+            }
         }
     }
 }

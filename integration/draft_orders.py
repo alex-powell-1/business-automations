@@ -240,7 +240,7 @@ def on_draft_created(draft_id):
         logger.success('Info retrieved.')
         logger.info('Posting hold order...')
 
-        response = HoldOrder.post_pl(payload=pl)
+        response = HoldOrder.post_pl(payload=pl, discount=Shopify.Order.Draft.get_discount(draft_id))
 
         if (
             response is None

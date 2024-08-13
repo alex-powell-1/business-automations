@@ -2136,9 +2136,34 @@ class HoldOrder(DocumentAPI):
                 self.line_items.add(line)
 
     @staticmethod
-    def post_pl(payload: dict):
+    def apply_discount(doc_id: str, amount: float):
+        query = f"""
+        INSERT INTO PS_DOC_DISC
+        (DOC_ID, DISC_SEQ_NO, DISC_ID, APPLY_TO, DISC_TYP, DISC_AMT, DISC_PCT, DISC_AMT_SHIPPED)
+        VALUES
+        ('{doc_id}', 1, '100000000000330', 'H', 'A', '{amount}', 0, 0)
+        """
+
+        return Database.db.query(query)
+
+    @staticmethod
+    def post_pl(payload: dict, discount: float = 0):
         ho = HoldOrder()
-        return ho.post_document(payload=payload)
+        data = ho.post_document(payload=payload)
+
+        if (
+            data is None
+            or data['ErrorCode'] != 'SUCCESS'
+            or data['Documents'] is None
+            or len(data['Documents']) == 0
+        ):
+            return data
+
+        doc_id = data['Documents'][0]['DOC_ID']
+
+        HoldOrder.apply_discount(doc_id=doc_id, amount=discount)
+
+        return data
 
     @staticmethod
     def create(lines: list[dict], cust_no: str | int = 'CASH'):
