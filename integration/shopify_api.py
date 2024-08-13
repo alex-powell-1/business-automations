@@ -318,7 +318,7 @@ class Shopify:
                 'order_coupons': snode['discountCodes'],
                 'channel': snode['channelInformation']['channelDefinition']['handle']
                 if snode['channelInformation'] is not None
-                else '',
+                else 'EMPTY',
             }
 
             if hdsc > 0:
