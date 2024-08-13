@@ -392,6 +392,13 @@ class Shopify:
                 )
                 return response.data
 
+            @staticmethod
+            def get_note(order_id: int):
+                shopify_order = Shopify.Order.Draft.get(order_id)
+                snode = shopify_order['node']
+                note = snode['note2']
+                return note or ''
+
     class Customer:
         queries = './integration/queries/customers.graphql'
         prefix = 'gid://shopify/Customer/'

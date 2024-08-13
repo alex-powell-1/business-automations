@@ -194,7 +194,13 @@ def on_draft_created(draft_id):
 
         lines = HoldOrder.get_lines_from_draft_order(draft_id)
         cust_no = Shopify.Order.Draft.get_cust_no(draft_id)
-        pl = HoldOrder.create(lines=lines, cust_no=cust_no)
+        doc = HoldOrder.create(lines=lines, cust_no=cust_no)
+
+        note = Shopify.Order.Draft.get_note(draft_id)
+
+        doc.add_note(note)
+
+        pl = doc.get()
 
         logger.success('Info retrieved.')
         logger.info('Posting hold order...')

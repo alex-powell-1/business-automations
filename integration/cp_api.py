@@ -2144,7 +2144,7 @@ class HoldOrder(DocumentAPI):
     def create(lines: list[dict], cust_no: str | int = 'CASH'):
         doc = HoldOrder.DocumentPayload(cust_no=cust_no)
         doc.add_lines(lines)
-        return doc.get()
+        return doc
 
     @staticmethod
     def get_lines_from_draft_order(draft_order_id: str | int):

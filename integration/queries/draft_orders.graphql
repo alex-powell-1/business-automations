@@ -10,6 +10,8 @@ query draftOrder($id: ID!) {
                 name
             }
 
+            note2
+
             customer {
                 id
                 firstName
