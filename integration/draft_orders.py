@@ -232,10 +232,10 @@ def on_draft_created(draft_id):
 
         events = Shopify.Order.Draft.get_events(draft_id)
 
+        doc.add_note(note)
+
         for event in events:
             doc.add_note(f"[{format_date(event['createdAt'])}] {event['message']}", 'TIMELINE')
-
-        doc.add_note(note)
 
         pl = doc.get()
 
