@@ -314,6 +314,26 @@ class Database:
                         Database.error_handler.add_error_v(error=error)
                         raise Exception(error)
 
+            class Media:
+                class Video:
+                    def get():
+                        query = f"""
+                        SELECT ITEM_NO, {Database.Counterpoint.Product.columns['videos']} 
+                        FROM {Database.Counterpoint.Product.table}
+                        WHERE {Database.Counterpoint.Product.columns['videos']} IS NOT NULL AND
+                        {Database.Counterpoint.Product.columns['web_enabled']} = 'Y'
+                        """
+                        response = Database.db.query(query)
+                        all_videos = [[x[0], x[1]] for x in response] if response else []
+                        if all_videos:
+                            for entry in all_videos:
+                                if ',' in entry[1]:
+                                    multi_video_list = entry[1].replace(' ', '').split(',')
+                                    for video in multi_video_list:
+                                        all_videos.append([entry[0], video])
+                                    all_videos.remove(entry)
+                        return all_videos
+
         class Customer:
             table = creds.cp_customer_table
 
@@ -436,6 +456,8 @@ class Database:
                     'videos': f"""
                                             CREATE TABLE {Database.Shopify.video_table} (
                                             ID int IDENTITY(1,1) PRIMARY KEY,
+                                            ITEM_NO varchar(50),
+                                            URL nvarchar(255),
                                             VIDEO_NAME nvarchar(255),
                                             FILE_PATH nvarchar(255),
                                             PRODUCT_ID bigint,
@@ -734,6 +756,28 @@ class Database:
 
         class Product:
             table = creds.shopify_product_table
+
+            def get_by_category(cp_category=None, cp_subcategory=None):
+                query = f"""SELECT ITEM_NO FROM {Database.Counterpoint.Product.table} 
+                WHERE {Database.Counterpoint.Product.columns['web_enabled']} = 'Y' AND 
+                ({Database.Counterpoint.Product.columns['binding_id']} IS NULL OR
+                {Database.Counterpoint.Product.columns['is_parent']} = 'Y') AND 
+                """
+                if cp_category and cp_subcategory:
+                    query += f" CATEG_COD = '{cp_category}' AND SUBCAT_COD = '{cp_subcategory}'"
+                else:
+                    if cp_category:
+                        query += f" CATEG_COD = '{cp_category}'"
+                    if cp_subcategory:
+                        query += f" SUBCAT_COD = '{cp_subcategory}'"
+
+                sku_list = [x[0] for x in Database.db.query(query)] if Database.db.query(query) else None
+
+                if sku_list:
+                    product_list = []
+                    for sku in sku_list:
+                        product_list.append(Database.Shopify.Product.get_id(item_no=sku))
+                    return product_list
 
             def get_id(item_no=None, binding_id=None, image_id=None):
                 """Get product ID from SQL using image ID. If not found, return None."""
@@ -1062,9 +1106,12 @@ class Database:
 
                     def insert(video):
                         query = f"""
-                        INSERT INTO {Database.Shopify.Product.Media.Video.table} (VIDEO_NAME, FILE_PATH, PRODUCT_ID, 
-                        VIDEO_ID, VIDEO_NUMBER, SORT_ORDER, BINDING_ID, DESCR, SIZE)
-                        VALUES ({f"'{video.name}'" if video.name else 'NULL'}, 
+                        INSERT INTO {Database.Shopify.Product.Media.Video.table} (ITEM_NO, URL, VIDEO_NAME, FILE_PATH, 
+                        PRODUCT_ID, VIDEO_ID, VIDEO_NUMBER, SORT_ORDER, BINDING_ID, DESCR, SIZE)
+                        VALUES (
+                        {f"'{video.sku}'" if video.sku else 'NULL'},
+                        {f"'{video.url}'" if video.url else 'NULL'},
+                        {f"'{video.name}'" if video.name else 'NULL'}, 
                         {f"'{video.file_path}'" if video.file_path else 'NULL'}, 
                         {video.product_id}, 
                         {video.shopify_id}, 
@@ -1083,14 +1130,17 @@ class Database:
                     def update(video):
                         query = f"""
                         UPDATE {Database.Shopify.Product.Media.Video.table}
-                        SET VIDEO_NAME = {f"'{video.name}'" if video.name else 'NULL'}, 
+                        SET 
+                        ITEM_NO = {f"'{video.sku}'" if video.sku else 'NULL'},
+                        URL = {f"'{video.url}'" if video.url else 'NULL'},
+                        VIDEO_NAME = {f"'{video.name}'" if video.name else 'NULL'}, 
                         FILE_PATH = {f"'{video.file_path}'" if video.file_path else 'NULL'}, 
                         PRODUCT_ID = {video.product_id}, 
                         VIDEO_ID = {video.shopify_id}, 
                         VIDEO_NUMBER = {video.number}, 
                         SORT_ORDER = {video.sort_order}, 
                         BINDING_ID = {f"'{video.binding_id}'" if video.binding_id else 'NULL'}, 
-                        DESCR = {f"'{video.descr}'" if video.descr else 'NULL'}, 
+                        DESCR = {f"'{video.description}'" if video.description else 'NULL'}, 
                         SIZE = {video.size if video.size else 'NULL'}
                         WHERE PRODUCT_ID = {video.product_id}
                         """
@@ -1310,4 +1360,6 @@ class Database:
 
 
 if __name__ == '__main__':
-    print(Database.Shopify.Product.get_parent_item_no(8308193788071))
+    video_list = Database.Counterpoint.Product.Media.Video.get()
+    for x in video_list:
+        print(x)
