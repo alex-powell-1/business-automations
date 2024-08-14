@@ -2085,7 +2085,7 @@ class HoldOrder(DocumentAPI):
                 sku = 'SERVICE'
 
             if self.name.lower() == 'delivery':
-                return None
+                sku = 'DELIVERY'
 
             return {
                 'LIN_TYP': 'O',
@@ -2156,16 +2156,16 @@ class HoldOrder(DocumentAPI):
                 self.line_items.add(line)
 
     @staticmethod
-    def apply_total(doc_id: str, shipping: float, sub_tot: float, total_discount: float):
-        tot = float(sub_tot) + float(shipping)
+    def apply_total(doc_id: str, sub_tot: float, total_discount: float):
+        tot = float(sub_tot)
 
-        sub_tot = tot + float(total_discount) - float(shipping)
+        sub_tot = tot + float(total_discount)
 
         query = f"""
         INSERT INTO PS_DOC_HDR_TOT
         (DOC_ID, TOT_TYP, INITIAL_MIN_DUE, HAS_TAX_OVRD, TAX_AMT_SHIPPED, LINS, TOT_GFC_AMT, TOT_SVC_AMT, SUB_TOT, TAX_OVRD_LINS, TOT_EXT_COST, TOT_MISC, TAX_AMT, NORM_TAX_AMT, TOT_TND, TOT_CHNG, TOT_WEIGHT, TOT_CUBE, TOT, AMT_DUE, TOT_HDR_DISC, TOT_LIN_DISC, TOT_HDR_DISCNTBL_AMT, TOT_TIP_AMT)
         VALUES
-        ('{doc_id}', 'O', 0, '!', 0, 0, 0, 0, {sub_tot}, 0, 0, {shipping}, 0, 0, 0, 0, 0, 0, {tot}, 0, {total_discount}, 0, {sub_tot}, 0)
+        ('{doc_id}', 'O', 0, '!', 0, 0, 0, 0, {sub_tot}, 0, 0, 0, 0, 0, 0, 0, 0, 0, {tot}, 0, {total_discount}, 0, {sub_tot}, 0)
         """
 
         return Database.db.query(query)
@@ -2182,7 +2182,7 @@ class HoldOrder(DocumentAPI):
         return Database.db.query(query)
 
     @staticmethod
-    def post_pl(payload: dict, discount: float = 0, shipping: float = 0, sub_tot: float = 0):
+    def post_pl(payload: dict, discount: float = 0, sub_tot: float = 0):
         ho = HoldOrder()
         data = ho.post_document(payload=payload)
 
@@ -2198,7 +2198,7 @@ class HoldOrder(DocumentAPI):
 
         HoldOrder.apply_discount(doc_id=doc_id, amount=discount)
 
-        HoldOrder.apply_total(doc_id=doc_id, shipping=shipping, sub_tot=sub_tot, total_discount=discount)
+        HoldOrder.apply_total(doc_id=doc_id, sub_tot=sub_tot, total_discount=discount)
 
         return data
 
