@@ -153,6 +153,8 @@ class Shopify:
 
             shopify_products = []
 
+            delivery_from_lines = 0
+
             for _item in shopify_order['node']['lineItems']['edges']:
                 item = _item['node']
 
@@ -161,13 +163,17 @@ class Shopify:
 
                 price = float(get_money(item['originalUnitPriceSet']))  # Fixed
 
+                if item['name'] is None:
+                    item['name'] = ''
+
+                if item['name'].lower() == 'delivery':
+                    delivery_from_lines += price * float(item['quantity'])
+                    continue
+
                 item['isGiftCard'] = False
 
                 if item['sku'] is not None:
                     item['isGiftCard'] = 'GFC' in item['sku']
-
-                if item['name'] is None:
-                    item['name'] = ''
 
                 pl = {
                     'id': item['id'],
@@ -251,6 +257,8 @@ class Shopify:
                 shippingCost = float(get_money(snode['shippingLine']['discountedPriceSet']))
             except:
                 shippingCost = 0
+
+            shippingCost += delivery_from_lines
 
             hdsc = float(get_money(snode['totalDiscountsSet']))
 
@@ -444,6 +452,16 @@ class Shopify:
                     shopify_order = Shopify.Order.Draft.get(order_id)
                     snode = shopify_order['node']
                     shipping = snode['shippingLine']['discountedPriceSet']['presentmentMoney']['amount']
+
+                    for _item in snode['lineItems']['edges']:
+                        item = _item['node']
+
+                        price = float(item['originalUnitPriceSet']['presentmentMoney']['amount'])
+                        qty = float(item['quantity'])
+
+                        if item['name'] is not None and item['name'].lower() == 'delivery':
+                            shipping += price * qty
+
                     return float(shipping)
                 except:
                     return 0
