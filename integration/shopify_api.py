@@ -159,7 +159,7 @@ class Shopify:
                 item = _item['node']
 
                 def get_money(money: dict):
-                    return money['presentmentMoney']['amount']
+                    return money['shopMoney']['amount']
 
                 price = float(get_money(item['originalUnitPriceSet']))  # Fixed
 
@@ -251,7 +251,7 @@ class Shopify:
                 shopify_products.append(pl)
 
             def get_money(money: dict):
-                return money['presentmentMoney']['amount']
+                return money['shopMoney']['amount']
 
             try:
                 shippingCost = float(get_money(snode['shippingLine']['discountedPriceSet']))
@@ -441,7 +441,7 @@ class Shopify:
                 try:
                     shopify_order = Shopify.Order.Draft.get(order_id)
                     snode = shopify_order['node']
-                    hdsc = float(snode['totalDiscountsSet']['presentmentMoney']['amount'])
+                    hdsc = float(snode['totalDiscountsSet']['shopMoney']['amount'])
                     return hdsc
                 except:
                     return 0
@@ -451,12 +451,12 @@ class Shopify:
                 try:
                     shopify_order = Shopify.Order.Draft.get(order_id)
                     snode = shopify_order['node']
-                    shipping = float(snode['shippingLine']['discountedPriceSet']['presentmentMoney']['amount'])
+                    shipping = float(snode['shippingLine']['discountedPriceSet']['shopMoney']['amount'])
 
                     for _item in snode['lineItems']['edges']:
                         item = _item['node']
 
-                        price = float(item['originalUnitPriceSet']['presentmentMoney']['amount'])
+                        price = float(item['originalUnitPriceSet']['shopMoney']['amount'])
                         qty = float(item['quantity'])
 
                         if item['name'] is not None and item['name'].lower() == 'delivery':
@@ -471,7 +471,7 @@ class Shopify:
                 try:
                     shopify_order = Shopify.Order.Draft.get(order_id)
                     snode = shopify_order['node']
-                    sub_tot = float(snode['subtotalPriceSet']['presentmentMoney']['amount'])
+                    sub_tot = float(snode['subtotalPriceSet']['shopMoney']['amount'])
                     return sub_tot
                 except:
                     return 0

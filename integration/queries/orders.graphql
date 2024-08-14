@@ -58,7 +58,7 @@ query order($id: ID!) {
 
             shippingLine {
                 discountedPriceSet {
-                    presentmentMoney {
+                    shopMoney {
                         amount
                     }
                 }
@@ -67,7 +67,7 @@ query order($id: ID!) {
             updatedAt
 
             currentSubtotalPriceSet {
-                presentmentMoney {
+                shopMoney {
                     amount
                 }
 
@@ -77,7 +77,7 @@ query order($id: ID!) {
             }
 
             currentTotalPriceSet {
-                presentmentMoney {
+                shopMoney {
                     amount
                 }
 
@@ -98,7 +98,7 @@ query order($id: ID!) {
                         name
 
                         originalTotalSet {
-                            presentmentMoney {
+                            shopMoney {
                                 amount
                             }
 
@@ -108,7 +108,7 @@ query order($id: ID!) {
                         }
 
                         originalUnitPriceSet {
-                            presentmentMoney {
+                            shopMoney {
                                 amount
                             }
 
@@ -118,7 +118,7 @@ query order($id: ID!) {
                         }
 
                         totalDiscountSet {
-                            presentmentMoney {
+                            shopMoney {
                                 amount
                             }
 
@@ -128,7 +128,7 @@ query order($id: ID!) {
                         }
 
                         discountedTotalSet {
-                            presentmentMoney {
+                            shopMoney {
                                 amount
                             }
 
@@ -151,7 +151,7 @@ query order($id: ID!) {
             cancelledAt
 
             cartDiscountAmountSet {
-                presentmentMoney {
+                shopMoney {
                     amount
                 }
 
@@ -160,7 +160,7 @@ query order($id: ID!) {
                 }
             }
             currentCartDiscountAmountSet {
-                presentmentMoney {
+                shopMoney {
                     amount
                 }
 
@@ -177,7 +177,7 @@ query order($id: ID!) {
                 ratePercentage
                 title
                 priceSet {
-                    presentmentMoney {
+                    shopMoney {
                         amount
                     }
 
@@ -188,7 +188,7 @@ query order($id: ID!) {
             }
 
             currentTotalAdditionalFeesSet {
-                presentmentMoney {
+                shopMoney {
                     amount
                 }
 
@@ -198,7 +198,7 @@ query order($id: ID!) {
             }
 
             currentTotalDiscountsSet {
-                presentmentMoney {
+                shopMoney {
                     amount
                 }
 
@@ -208,7 +208,7 @@ query order($id: ID!) {
             }
 
             totalDiscountsSet {
-                presentmentMoney {
+                shopMoney {
                     amount
                 }
 
@@ -221,7 +221,7 @@ query order($id: ID!) {
 
             transactions(first: 10) {
                 amountSet {
-                    presentmentMoney {
+                    shopMoney {
                         amount
                     }
 
@@ -240,7 +240,7 @@ query order($id: ID!) {
             }
 
             originalTotalPriceSet {
-                presentmentMoney {
+                shopMoney {
                     amount
                 }
 
@@ -262,7 +262,7 @@ query order($id: ID!) {
                             }
                             quantity
                             subtotalSet {
-                                presentmentMoney {
+                                shopMoney {
                                     amount
                                 }
 

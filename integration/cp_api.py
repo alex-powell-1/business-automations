@@ -2225,7 +2225,7 @@ class HoldOrder(DocumentAPI):
                     'name': item['name'] or '',
                     'item_no': item['sku'],
                     'qty': item['quantity'],
-                    'price': float(item['originalUnitPriceSet']['presentmentMoney']['amount']),
+                    'price': float(item['originalUnitPriceSet']['shopMoney']['amount']),
                 }
             )
 

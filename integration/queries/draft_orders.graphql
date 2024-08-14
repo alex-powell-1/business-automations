@@ -43,7 +43,7 @@ query draftOrder($id: ID!) {
                         sku
                         quantity
                         originalUnitPriceSet {
-                            presentmentMoney {
+                            shopMoney {
                                 amount
                             }
                         }
@@ -52,20 +52,20 @@ query draftOrder($id: ID!) {
             }
 
             totalDiscountsSet {
-                presentmentMoney {
+                shopMoney {
                     amount
                 }
             }
 
             subtotalPriceSet {
-                presentmentMoney {
+                shopMoney {
                     amount
                 }
             }
 
             shippingLine {
                 discountedPriceSet {
-                    presentmentMoney {
+                    shopMoney {
                         amount
                     }
                 }
