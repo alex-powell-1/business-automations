@@ -276,8 +276,12 @@ class Catalog:
             if delete_targets:
                 Catalog.logger.info(f'Delete Targets: {delete_targets}')
                 for x in delete_targets:
-                    Catalog.logger.info(f'Deleting Video {x[0]}.\n')
-                    Catalog.Product.Video.delete(x[0])
+                    Catalog.logger.info(f'Deleting Video for:\nITEM: {x[0]}\nURL: {x[1]}\n')
+                    Catalog.Product.Video.delete(sku=x[0], url=x[1])
+            else:
+                Catalog.logger.info('No video deletions found.')
+
+            Catalog.logger.info(f'Video Add/Delete Processing Complete. Time: {time.time() - start_time}')
 
         process_images()
         process_videos()
@@ -1032,6 +1036,9 @@ class Catalog:
             # Add all images and videos to self.media list
             self.media = self.images + self.videos
 
+            for x in self.media:
+                print(x)
+
         def validate(self):
             """Validate product inputs to check for errors in user input"""
             check_web_title = True
@@ -1502,8 +1509,10 @@ class Catalog:
                     if count == 0:
                         m.is_thumbnail = True
                     if not m.db_id:
+                        # If new media is found, set flag to True to trigger correct mutation
                         self.has_new_media = True
-                    m.sort_order = count
+                        # Set sort order for new media. Leave existing sort order for existing media
+                        m.sort_order = count
                     count += 1
 
                 if not self.has_new_media:
@@ -1871,12 +1880,21 @@ class Catalog:
 
                 if 'media_ids' in response:
                     for x in self.media:
+                        print(x)
+
+                    for x in self.media:
                         x.product_id = self.product_id
                         x.shopify_id = response['media_ids'][x.temp_sort_order]
                         if x.temp_sort_order > x.sort_order:
                             # Newly added media will be at the end of the media response list.
                             # If that expected position is higher than the required position, add to job queue.
                             print(f'Image {x.name} has a higher temp sort order. Will reorder.')
+                            self.reorder_media_queue.append(x)
+
+                        elif response['media_ids'].index(x.shopify_id) != self.media.index(x):
+                            print(f'Image {x.name} is in the wrong position. Will reorder.')
+                            print(f'Expected Position: {self.media.index(x)}')
+                            print(f'Actual Position: {response["media_ids"].index(x.shopify_id)}')
                             self.reorder_media_queue.append(x)
 
                     if self.reorder_media_queue:
@@ -3153,7 +3171,6 @@ class Catalog:
 
         class Video:
             def __init__(self, url, sku, binding_id):
-                self.type = 'EXTERNAL_VIDEO'
                 self.db_id = None
                 self.sku = sku
                 self.shopify_id = None
@@ -3165,9 +3182,15 @@ class Catalog:
                 self.file_path = None
                 self.size = None
                 self.url = url
+                self.has_valid_url = True
                 self.description = None
+
+                if self.url and not (self.file_path and self.name):
+                    self.type = 'EXTERNAL_VIDEO'
+                else:
+                    self.type = 'VIDEO'
+
                 self.get_video_details()
-                self.has_valid_url = self.validate()
 
             def __str__(self):
                 result = ''
@@ -3194,29 +3217,32 @@ class Catalog:
                     self.description = response[0][10]
                     self.size = response[0][11]
                     self.last_maintained_dt = response[0][12]
+                else:
+                    # All new videos will be checked for validity
+                    self.has_valid_url = Catalog.Product.Video.validate(url=self.url)
 
             @staticmethod
-            def validate(self, url):
+            def validate(url):
                 # Check for valid URL
                 try:
                     response = requests.get(url)
                     if response.status_code != 200:
                         Catalog.error_handler.add_error_v(
-                            f'Video {self.url} is not a valid URL. Validation failed.', origin='Video Validation'
+                            f'Video {url} is not a valid URL. Validation failed.', origin='Video Validation'
                         )
                         return False
 
                     if 'youtube.com' in url.lower():
                         if 'video unavailable' in response.text.lower():
                             Catalog.error_handler.add_error_v(
-                                f'Video {self.url} is unavailable. Validation failed.', origin='Video Validation'
+                                f'Video {url} is unavailable. Validation failed.', origin='Video Validation'
                             )
                             return False
 
                     elif 'vimeo' in url.lower():
                         if 'sorry, this url is unavailable' in response.text.lower():
                             Catalog.error_handler.add_error_v(
-                                f'Video {self.url} is unavailable. Validation failed.', origin='Video Validation'
+                                f'Video {url} is unavailable. Validation failed.', origin='Video Validation'
                             )
                             return False
 
@@ -3227,15 +3253,24 @@ class Catalog:
                 return True
 
             @staticmethod
-            def get_video_id(url):
-                pass
+            def get_video_id(sku, url):
+                query = f"""
+                SELECT VIDEO_ID FROM {Database.Shopify.Product.Media.Video.table} 
+                WHERE ITEM_NO = '{sku}' and URL = '{url}'"""
+                response = db.query(query)
+                return response[0][0] if response is not None else None
 
             @staticmethod
             def delete(sku, url):
-                Shopify.Product.Media.delete(
-                    sku=sku, media_type='video', media_id=Catalog.Product.Video.get_video_id(url)
-                )
-                Database.Shopify.Product.Media.Video.delete(sku=sku, url=url)
+                product_id = Catalog.Product.get_product_id(sku)
+                video_id = Catalog.Product.Video.get_video_id(sku, url)
+                if video_id:
+                    Shopify.Product.Media.delete(product_id=product_id, media_type='video', media_id=video_id)
+                    Database.Shopify.Product.Media.Video.delete(video_id=video_id)
+
+                else:
+                    # Shopify Video ID not found. Attempt MW cleanup with SKU and URL
+                    Database.Shopify.Product.Media.Video.delete(url=url, sku=sku)
 
         class Modifier:
             """Placeholder for modifier class"""
@@ -3244,8 +3279,8 @@ class Catalog:
 
 
 if __name__ == '__main__':
-    # cat = Catalog(test_mode=True, test_queue=[{'sku': '200796'}])
-    # cat.sync()
-    response = requests.get('https://vimeo.com/channels/staffpicks/986306345634563456956')
-    print(response.status_code)
-    print('sorry, this url is unavailable' in response.text.lower())
+    cat = Catalog(test_mode=True, test_queue=[{'sku': '200796'}])
+    cat.sync()
+    # response = requests.get('https://vimeo.com/channels/staffpicks/986306345634563456956')
+    # print(response.status_code)
+    # print('sorry, this url is unavailable' in response.text.lower())
