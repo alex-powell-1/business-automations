@@ -4,7 +4,7 @@ import json
 from datetime import datetime
 
 import time
-
+import requests
 from integration.shopify_api import Shopify
 from PIL import Image, ImageOps
 
@@ -23,14 +23,18 @@ class Catalog:
     logger = Logger(f"{creds.log_main}/integration/process_out/log_{datetime.now().strftime("%m_%d_%y")}.log")
     error_handler = ErrorHandler(logger)
 
-    def __init__(self, last_sync=datetime(1970, 1, 1), inventory_only=False, verbose=True, test_mode=False):
+    def __init__(
+        self, last_sync=datetime(1970, 1, 1), inventory_only=False, verbose=True, test_mode=False, test_queue=None
+    ):
         self.last_sync = last_sync
         self.inventory_only = inventory_only
         self.verbose = verbose
         self.test_mode = test_mode
-        if not self.inventory_only:
+        self.test_queue = test_queue
+        if not self.inventory_only or not self.test_mode:
             self.category_tree = self.CategoryTree(last_sync=last_sync)
             self.product_images = get_product_images()
+            self.product_videos = Database.Counterpoint.Product.Media.Video.get()
         self.cp_items = []
         self.mw_items = []
         self.sync_queue = []
@@ -194,67 +198,89 @@ class Catalog:
         # else:
         #     Catalog.logger.info('No products to add.')
 
-    def process_images(self):
+    def process_media(self):
         """Assesses Image folder. Deletes images from MW and Shopify.
         Updates LST_MAINT_DT in CP if new images have been added."""
 
-        def get_middleware_images():
-            query = f'SELECT IMAGE_NAME, SIZE FROM {creds.shopify_image_table}'
-            response = db.query(query)
-            return [[x[0], x[1]] for x in response] if response else []
+        def process_images():
+            def get_middleware_images():
+                query = f'SELECT IMAGE_NAME, SIZE FROM {creds.shopify_image_table}'
+                response = db.query(query)
+                return [[x[0], x[1]] for x in response] if response else []
 
-        Catalog.logger.info('Processing Image Updates.')
-        start_time = time.time()
-        mw_image_list = get_middleware_images()
+            Catalog.logger.info('Processing Image Updates.')
+            start_time = time.time()
+            mw_image_list = get_middleware_images()
 
-        delete_targets = Catalog.get_deletion_target(
-            primary_source=self.product_images, secondary_source=mw_image_list
-        )
-
-        if delete_targets:
-            Catalog.logger.info(message=f'Delete Targets: {delete_targets}')
-            for x in delete_targets:
-                Catalog.logger.info(f'Deleting Image {x[0]}.\n')
-                Catalog.logger.warn('Skipping image deletion during testing.')
-                Catalog.Product.Image.delete(x[0])
-        else:
-            Catalog.logger.info('No image deletions found.')
-
-        update_list = delete_targets
-
-        addition_targets = Catalog.get_deletion_target(
-            primary_source=mw_image_list, secondary_source=self.product_images
-        )
-
-        if addition_targets:
-            for x in addition_targets:
-                update_list.append(x)
-        else:
-            Catalog.logger.info('No image additions found.')
-
-        if update_list:
-            sku_list = [x[0].split('.')[0].split('^')[0] for x in update_list]
-            binding_list = [x for x in sku_list if x in Catalog.all_binding_ids]
-
-            sku_list = tuple(sku_list)
-            if binding_list:
-                if len(binding_list) > 1:
-                    binding_list = tuple(binding_list)
-                    where_filter = f' or {creds.cp_field_binding_id} in {binding_list}'
-                else:
-                    where_filter = f" or {creds.cp_field_binding_id} = '{binding_list[0]}'"
-            else:
-                where_filter = ''
-
-            query = (
-                'UPDATE IM_ITEM '
-                'SET LST_MAINT_DT = GETDATE() '
-                f"WHERE (ITEM_NO in {sku_list} {where_filter}) and IS_ECOMM_ITEM = 'Y'"
+            delete_targets = Catalog.get_deletion_target(
+                primary_source=self.product_images, secondary_source=mw_image_list
             )
 
-            db.query(query)
+            if delete_targets:
+                Catalog.logger.info(message=f'Delete Targets: {delete_targets}')
+                for x in delete_targets:
+                    Catalog.logger.info(f'Deleting Image {x[0]}.\n')
+                    Catalog.Product.Image.delete(x[0])
+            else:
+                Catalog.logger.info('No image deletions found.')
 
-        Catalog.logger.info(f'Image Add/Delete Processing Complete. Time: {time.time() - start_time}')
+            # Update Item LST_MAINT_DT if new images have been deleted/added/changed.
+            update_list = delete_targets
+
+            addition_targets = Catalog.get_deletion_target(
+                primary_source=mw_image_list, secondary_source=self.product_images
+            )
+
+            if addition_targets:
+                for x in addition_targets:
+                    update_list.append(x)
+
+            if update_list:
+                sku_list = [x[0].split('.')[0].split('^')[0] for x in update_list]
+                binding_list = [x for x in sku_list if x in Catalog.all_binding_ids]
+
+                sku_list = tuple(sku_list)
+                if binding_list:
+                    if len(binding_list) > 1:
+                        binding_list = tuple(binding_list)
+                        where_filter = f' or {creds.cp_field_binding_id} in {binding_list}'
+                    else:
+                        where_filter = f" or {creds.cp_field_binding_id} = '{binding_list[0]}'"
+                else:
+                    where_filter = ''
+
+                query = (
+                    'UPDATE IM_ITEM '
+                    'SET LST_MAINT_DT = GETDATE() '
+                    f"WHERE (ITEM_NO in {sku_list} {where_filter}) and IS_ECOMM_ITEM = 'Y'"
+                )
+
+                db.query(query)
+
+            Catalog.logger.info(f'Image Add/Delete Processing Complete. Time: {time.time() - start_time}')
+
+        def process_videos():
+            def get_middleware_videos():
+                query = f'SELECT ITEM_NO, URL FROM {creds.shopify_video_table}'
+                response = db.query(query)
+                return [[x[0], x[1]] for x in response] if response else []
+
+            Catalog.logger.info('Processing Video Updates.')
+            start_time = time.time()
+            mw_video_list = get_middleware_videos()
+
+            delete_targets = Catalog.get_deletion_target(
+                primary_source=self.product_videos, secondary_source=mw_video_list
+            )
+
+            if delete_targets:
+                Catalog.logger.info(f'Delete Targets: {delete_targets}')
+                for x in delete_targets:
+                    Catalog.logger.info(f'Deleting Video {x[0]}.\n')
+                    Catalog.Product.Video.delete(x[0])
+
+        process_images()
+        process_videos()
 
     def sync(self, initial=False):
         # Sync Category Tree
@@ -262,11 +288,11 @@ class Catalog:
 
         if not initial and not self.inventory_only:
             self.process_product_deletes()
-            self.process_images()
+            self.process_media()
 
         # Sync Products
         if self.test_mode:
-            self.sync_queue = [{'sku': '10338', 'binding_id': 'B0001'}]
+            self.sync_queue = self.test_queue
         else:
             self.get_sync_queue()  # Get all products that have been updated since the last sync
 
@@ -694,6 +720,7 @@ class Catalog:
             self.videos: list = []
             self.media: list = []  # list of all media objects (Images and Videos)
             self.reorder_media_queue = []
+            self.has_new_media = False
             self.has_variant_image = False  # used during image processing
 
             # Product Information
@@ -1193,7 +1220,6 @@ class Catalog:
 
                 # Botanical Name
                 if self.meta_botanical_name['value']:
-                    print(self.meta_botanical_name)
                     botantical_name_data = {'value': self.meta_botanical_name['value']}
                     if self.meta_botanical_name['id']:
                         botantical_name_data['id'] = f'{Shopify.Metafield.prefix}{self.meta_botanical_name['id']}'
@@ -1310,7 +1336,6 @@ class Catalog:
                 # This only applies to single products
                 if not self.binding_id:
                     if self.meta_size['value']:
-                        print(f'Meta Size: {self.meta_size}, type: {type(self.meta_size['value'])}')
                         size_data = {'value': self.meta_size['value']}
                         if self.meta_size['id']:
                             size_data['id'] = f'{Shopify.Metafield.prefix}{self.meta_size["id"]}'
@@ -1367,7 +1392,7 @@ class Catalog:
                     try:
                         Shopify.Metafield.delete(metafield_id=self.meta_colors['id'])
                     except Exception as e:
-                        print(f'Error deleting metafield: {e}')
+                        Catalog.error_handler.add_error_v(f'Error deleting metafield: {e}')
                         query = f"""
                         UPDATE {creds.shopify_product_table}
                         SET {creds.meta_color} = NULL
@@ -1392,7 +1417,7 @@ class Catalog:
                     try:
                         Shopify.Metafield.delete(metafield_id=self.meta_bloom_color['id'])
                     except Exception as e:
-                        print(f'Error deleting metafield: {e}')
+                        Catalog.error_handler.add_error_v(f'Error deleting metafield: {e}')
                         query = f"""
                         UPDATE {creds.shopify_product_table}
                         SET {creds.meta_bloom_color} = NULL
@@ -1472,6 +1497,21 @@ class Catalog:
                 return result
 
             def get_media_payload():
+                count = 0
+                for m in self.media:
+                    if count == 0:
+                        m.is_thumbnail = True
+                    if not m.db_id:
+                        self.has_new_media = True
+                    m.sort_order = count
+                    count += 1
+
+                if not self.has_new_media:
+                    for m in self.media:
+                        m.temp_sort_order = m.sort_order
+
+                    return None
+
                 result = []
                 images = get_image_payload()
                 videos = get_video_payload()
@@ -1498,46 +1538,22 @@ class Catalog:
                         m.temp_sort_order = j
                         j += 1
 
-                for m in self.media:
-                    if m.temp_sort_order != m.sort_order:
-                        self.reorder_media_queue.append(m)
-
                 return result
 
             def get_image_payload():
-                count = 0
-                for x in self.images:
-                    if count == 0:
-                        x.is_thumbnail = True
-                    x.sort_order = count
-                    count += 1
-
                 result = []
-
                 file_list = []
                 stagedUploadsCreateVariables = {'input': []}
-
-                updated = False
 
                 for image in self.images:
                     image_size = get_filesize(image.file_path)
                     if image_size != image.size:
-                        updated = True
-
-                if updated:
-                    # Delete all current images for the product
-                    if self.product_id:
-                        Shopify.Product.Media.Image.delete(product_id=self.product_id)
-                        Database.Shopify.Product.Media.Image.delete(product_id=self.product_id)
-
-                    for image in self.images:
-                        # Reset Image Properties
+                        Shopify.Product.Media.Image.delete(image=image)
+                        Database.Shopify.Product.Media.Image.delete(image_id=image.shopify_id)
                         image.shopify_id = None
                         image.image_url = None
                         image.db_id = None
-                        # Get Size
                         image.size = get_filesize(image.file_path)
-                        # Add to file list
                         file_list.append(image.file_path)
                         stagedUploadsCreateVariables['input'].append(
                             {
@@ -1548,40 +1564,37 @@ class Catalog:
                             }
                         )
 
-                    # Upload new images
-                    uploaded_files = Shopify.Product.Files.create(
-                        variables=stagedUploadsCreateVariables, file_list=file_list
-                    )
-                    for file in uploaded_files:
-                        for image in self.images:
-                            if file['file_path'] == image.file_path:
-                                image.image_url = file['url']
-                                image_payload = {
-                                    'originalSource': image.image_url,
-                                    'alt': image.description,
-                                    'mediaContentType': image.type,
-                                }
-                                result.append(image_payload)
+                # Upload new images
+                uploaded_files = Shopify.Product.Files.create(
+                    variables=stagedUploadsCreateVariables, file_list=file_list
+                )
+
+                for file in uploaded_files:
+                    for image in self.images:
+                        if file['file_path'] == image.file_path:
+                            image.image_url = file['url']
+                            image_payload = {
+                                'originalSource': image.image_url,
+                                'alt': image.description,
+                                'mediaContentType': image.type,
+                            }
+                            result.append(image_payload)
 
                 return result
 
             def get_video_payload():
                 result = []
                 for video in self.videos:
-                    video_payload = {}
+                    if video.has_valid_url:  # filter out videos with invalid URLs
+                        if not video.db_id:  # only add videos that are not already in the database
+                            video_payload = {'originalSource': video.url, 'mediaContentType': video.type}
 
-                    if video.shopify_id:
-                        video_payload['id'] = video.shopify_id
-                    else:
-                        if video.url and not video.file_path:
-                            # External Video
-                            video_payload['originalSource'] = video.url
-                            video_payload['mediaContentType'] = video.type
+                            if video.shopify_id:
+                                video_payload['id'] = f'{Shopify.Product.Media.Video.prefix}{video.shopify_id}'
+                            if video.description:
+                                video_payload['alt'] = video.description
 
-                    if video.description:
-                        video_payload['alt'] = video.description
-
-                    result.append(video_payload)
+                            result.append(video_payload)
 
                 return result
 
@@ -1603,9 +1616,13 @@ class Catalog:
                     'status': 'ACTIVE' if self.visible else 'DRAFT',
                     'seo': {},
                     'metafields': get_custom_fields(),
-                },
-                'media': get_media_payload(),
+                }
             }
+
+            media_payload = get_media_payload()
+            if media_payload:
+                product_payload['media'] = media_payload
+
             if self.product_id:
                 product_payload['input']['id'] = f'gid://shopify/Product/{self.product_id}'
 
@@ -1623,14 +1640,14 @@ class Catalog:
                     f'gid://shopify/Collection/{x}' for x in self.shopify_collections
                 ]
 
-            # if self.meta_title:
-            #     product_payload['input']['seo']['title'] = self.meta_title
+            if self.meta_title:
+                product_payload['input']['seo']['title'] = self.meta_title
 
-            # if self.html_description:
-            #     product_payload['input']['descriptionHtml'] = self.html_description
+            if self.html_description:
+                product_payload['input']['descriptionHtml'] = self.html_description
 
-            # if self.meta_description:
-            #     product_payload['input']['seo']['description'] = self.meta_description
+            if self.meta_description:
+                product_payload['input']['seo']['description'] = self.meta_description
 
             if not self.product_id:  # new product
                 # If Add Standalone Variant Option - will be deleted later
@@ -1768,7 +1785,6 @@ class Catalog:
             # Add Variant Image
             variant_image_payload = []
             for child in self.variants:
-                print(f'Checking Variant: {child.sku}')
                 if not child.has_variant_image:
                     print(f'Variant {child.sku} is missing an image. Checking images for variant')
                     for image in child.images:
@@ -1857,6 +1873,11 @@ class Catalog:
                     for x in self.media:
                         x.product_id = self.product_id
                         x.shopify_id = response['media_ids'][x.temp_sort_order]
+                        if x.temp_sort_order > x.sort_order:
+                            # Newly added media will be at the end of the media response list.
+                            # If that expected position is higher than the required position, add to job queue.
+                            print(f'Image {x.name} has a higher temp sort order. Will reorder.')
+                            self.reorder_media_queue.append(x)
 
                     if self.reorder_media_queue:
                         Shopify.Product.Media.reorder(self)
@@ -2516,7 +2537,10 @@ class Catalog:
                 else:
                     self.variant_image_url = ''
 
-                self.videos = [Catalog.Product.Video(video) for video in product_data['videos']]
+                self.videos = [
+                    Catalog.Product.Video(url=video, sku=self.sku, binding_id=self.binding_id)
+                    for video in product_data['videos']
+                ]
                 for video in self.videos:
                     video.number = self.videos.index(video) + 1
 
@@ -2799,7 +2823,7 @@ class Catalog:
                         'custom_is_featured_id': item[0][105],
                         'custom_in_store_only_id': item[0][106],
                         'custom_size_unit': item[0][107],
-                        'videos': item[0][108].split(',') if item[0][108] else [],
+                        'videos': item[0][108].replace(' ', '').split(',') if item[0][108] else [],
                     }
 
                     # for k, v in details.items():
@@ -2876,7 +2900,7 @@ class Catalog:
                 self.type = 'IMAGE'
                 self.db_id = None
                 self.name = image_name  # This is the file name
-                self.sku = ''
+                self.sku = None
                 self.file_path = f'{creds.photo_path}/{self.name}'
                 self.image_url = ''
                 self.product_id = product_id
@@ -3122,24 +3146,96 @@ class Catalog:
                         product_id=product_id, variant_id=variant_id, image_id=image_id
                     )
 
-                Shopify.Product.Media.Image.delete(product_id=product_id, image_id=image_id, variant_id=variant_id)
+                Shopify.Product.Media.Image.delete(
+                    product_id=product_id, shopify_id=image_id, variant_id=variant_id
+                )
                 Database.Shopify.Product.Media.Image.delete(image_id=image_id)
 
         class Video:
-            def __init__(self, url, item_no=None, binding_id=None, name=None, description=None, file_path=None):
+            def __init__(self, url, sku, binding_id):
                 self.type = 'EXTERNAL_VIDEO'
                 self.db_id = None
+                self.sku = sku
                 self.shopify_id = None
-                self.item_no = item_no
                 self.binding_id = binding_id
-                self.name = name
+                self.name = None
                 self.number = None
                 self.sort_order = None
                 self.temp_sort_order = None
-                self.file_path = file_path
+                self.file_path = None
                 self.size = None
                 self.url = url
-                self.description = description
+                self.description = None
+                self.get_video_details()
+                self.has_valid_url = self.validate()
+
+            def __str__(self):
+                result = ''
+                for k, v in self.__dict__.items():
+                    result += f'{k}: {v}\n'
+                return result
+
+            def get_video_details(self):
+                query = (
+                    f"SELECT * FROM {creds.shopify_video_table} WHERE URL = '{self.url}' and ITEM_NO = '{self.sku}'"
+                )
+                response = db.query(query)
+                if response is not None:
+                    self.db_id = response[0][0]
+                    self.sku = response[0][1]
+                    self.url = response[0][2]
+                    self.name = response[0][3]
+                    self.file_path = response[0][4]
+                    self.product_id = response[0][5]
+                    self.shopify_id = response[0][6]
+                    self.number = response[0][7]
+                    self.sort_order = response[0][8]
+                    self.binding_id = response[0][9]
+                    self.description = response[0][10]
+                    self.size = response[0][11]
+                    self.last_maintained_dt = response[0][12]
+
+            @staticmethod
+            def validate(self, url):
+                # Check for valid URL
+                try:
+                    response = requests.get(url)
+                    if response.status_code != 200:
+                        Catalog.error_handler.add_error_v(
+                            f'Video {self.url} is not a valid URL. Validation failed.', origin='Video Validation'
+                        )
+                        return False
+
+                    if 'youtube.com' in url.lower():
+                        if 'video unavailable' in response.text.lower():
+                            Catalog.error_handler.add_error_v(
+                                f'Video {self.url} is unavailable. Validation failed.', origin='Video Validation'
+                            )
+                            return False
+
+                    elif 'vimeo' in url.lower():
+                        if 'sorry, this url is unavailable' in response.text.lower():
+                            Catalog.error_handler.add_error_v(
+                                f'Video {self.url} is unavailable. Validation failed.', origin='Video Validation'
+                            )
+                            return False
+
+                except Exception as e:
+                    Catalog.error_handler.add_error_v(f'Error checking URL {url}: {e}', origin='Video Validation')
+                    return False
+
+                return True
+
+            @staticmethod
+            def get_video_id(url):
+                pass
+
+            @staticmethod
+            def delete(sku, url):
+                Shopify.Product.Media.delete(
+                    sku=sku, media_type='video', media_id=Catalog.Product.Video.get_video_id(url)
+                )
+                Database.Shopify.Product.Media.Video.delete(sku=sku, url=url)
 
         class Modifier:
             """Placeholder for modifier class"""
@@ -3148,7 +3244,8 @@ class Catalog:
 
 
 if __name__ == '__main__':
-    from datetime import datetime
-
-    cat = Catalog(last_sync=datetime(2024, 8, 12, 12, 0, 0))
-    cat.sync()
+    # cat = Catalog(test_mode=True, test_queue=[{'sku': '200796'}])
+    # cat.sync()
+    response = requests.get('https://vimeo.com/channels/staffpicks/986306345634563456956')
+    print(response.status_code)
+    print('sorry, this url is unavailable' in response.text.lower())

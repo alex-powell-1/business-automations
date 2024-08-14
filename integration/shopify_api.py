@@ -649,13 +649,22 @@ class Shopify:
         queries = './integration/queries/products.graphql'
         prefix = 'gid://shopify/Product/'
 
-        def get(product_id: int = None):
+        def get(product_id: int = None, collection_title: str = None):
             if product_id:
                 variables = {'id': f'{Shopify.Product.prefix}{product_id}'}
                 response = Shopify.Query(
                     document=Shopify.Product.queries, variables=variables, operation_name='product'
                 )
                 return response.data
+            collection_id = None
+            if collection_title:
+                collections = Shopify.Product.Collection.get()
+                for collection in collections:
+                    if collection['title'] == collection_title:
+                        collection_id = collection['id']
+                        break
+            if collection_id:
+                Database.Shopify.Product.get(collection_id=collection_id)
 
             id_list = []
             variables = {'first': 250, 'after': None}
@@ -717,11 +726,15 @@ class Shopify:
             return result
 
         def update(product_payload):
+            if 'media' in product_payload:
+                operation_name = 'UpdateProductWithNewMedia'
+            else:
+                operation_name = 'updateProduct'
+
             response = Shopify.Query(
-                document=Shopify.Product.queries,
-                operation_name='UpdateProductWithNewMedia',
-                variables=product_payload,
+                document=Shopify.Product.queries, operation_name=operation_name, variables=product_payload
             )
+
             if response.errors or response.user_errors:
                 raise Exception(
                     f'Error: {response.errors}\nUser Error: {response.user_errors}\nPayload: {product_payload}'
@@ -966,7 +979,9 @@ class Shopify:
                         id = f'{Shopify.Product.Media.Video.prefix}{m.shopify_id}'
 
                     variables['moves'].append({'id': id, 'newPosition': str(m.sort_order)})
-
+                print()
+                print(variables)
+                print()
                 response = Shopify.Query(
                     document=Shopify.Product.Media.queries,
                     variables=variables,
@@ -974,11 +989,32 @@ class Shopify:
                 )
                 return response.data
 
-            def delete(product_id: int):
-                variables = {
-                    'mediaIds': Shopify.Product.Media.get(product_id),
-                    'productId': f'{Shopify.Product.prefix}{product_id}',
-                }
+            def delete(product_id: int, media_type, media_ids: list = None, media_id: int = None):
+                if media_id or media_ids:
+                    if media_type == 'video':
+                        prefix = Shopify.Product.Media.Video.prefix
+                    elif media_type == 'image':
+                        prefix = Shopify.Product.Media.Image.prefix
+                    elif media_type == 'all':
+                        prefix = ''
+                    else:
+                        message = 'Must include valid media type: video or image or all. If all, do not include media_id or media_ids'
+                        raise Exception(message)
+                if media_id:
+                    variables = {
+                        'mediaIds': [f'{prefix}{media_id}'],
+                        'productId': f'{Shopify.Product.prefix}{product_id}',
+                    }
+                elif media_ids:
+                    variables = {
+                        'mediaIds': [f'{prefix}{x}' for x in media_ids],
+                        'productId': f'{Shopify.Product.prefix}{product_id}',
+                    }
+                else:
+                    variables = {
+                        'mediaIds': Shopify.Product.Media.get(product_id),
+                        'productId': f'{Shopify.Product.prefix}{product_id}',
+                    }
                 response = Shopify.Query(
                     document=Shopify.Product.Media.queries, variables=variables, operation_name='productDeleteMedia'
                 )
@@ -1678,7 +1714,10 @@ class Shopify:
 
 
 if __name__ == '__main__':
-    description = Shopify.Product.SEO.get(8308139983015)['description']
-    if description:
-        description += ' '
-        Shopify.Product.SEO.update(product_id=8308139983015, description=description)
+    # mums = Database.Shopify.Product.get_by_category(cp_subcategory='MUM')
+    # for mum in mums[0:1]:
+    #     description = Shopify.Product.SEO.get(mum)['description']
+    #     if description:
+    #         Shopify.Product.SEO.update(product_id=mum, description=description)
+
+    Shopify.Product.Media.reorder()

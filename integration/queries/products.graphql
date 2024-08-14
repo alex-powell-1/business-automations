@@ -114,6 +114,50 @@ mutation UpdateProductWithNewMedia(
   }
 }
 
+mutation updateProduct(
+  $input: ProductInput!
+) {
+  productUpdate(input: $input) {
+    product {
+      id
+      media(first: 75) {
+        nodes {
+          id
+          alt
+          mediaContentType
+          preview {
+            status
+            image {
+              url
+            }
+          }
+        }
+      }
+      options(first: 20) {
+        id
+        optionValues {
+          id
+        }
+      }
+      metafields(first: 25) {
+        edges {
+          node {
+            id
+            key
+            value
+            namespace
+          }
+        }
+      }
+    }
+
+    userErrors {
+      field
+      message
+    }
+  }
+}
+
 mutation productDelete($id: ID!) {
   productDelete(input: { id: $id }) {
     deletedProductId
