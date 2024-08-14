@@ -2084,7 +2084,7 @@ class HoldOrder(DocumentAPI):
             if self.name.lower() == 'delivery':
                 sku = 'DELIVERY'
 
-            if sku == 'SERVICE':
+            if self.name.lower() == 'service':
                 sku = 'SERVICE'
 
             return {
