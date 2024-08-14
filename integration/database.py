@@ -815,6 +815,10 @@ class Database:
                     else:
                         Database.Shopify.Product.Variant.insert(product=product, variant=variant)
 
+                print('FINAL MEDIA PRINT')
+                for m in product.media:
+                    print(m)
+
                 for m in product.media:
                     if m.db_id is None:
                         if m.type == 'IMAGE':
@@ -1128,6 +1132,8 @@ class Database:
                             raise Exception(error)
 
                     def update(video):
+                        print(f'UPDATING VIDEO {video.shopify_id}')
+                        print(video)
                         query = f"""
                         UPDATE {Database.Shopify.Product.Media.Video.table}
                         SET 
@@ -1142,8 +1148,11 @@ class Database:
                         BINDING_ID = {f"'{video.binding_id}'" if video.binding_id else 'NULL'}, 
                         DESCR = {f"'{video.description}'" if video.description else 'NULL'}, 
                         SIZE = {video.size if video.size else 'NULL'}
-                        WHERE PRODUCT_ID = {video.product_id}
+                        WHERE ID = {video.db_id}
                         """
+                        print()
+                        print(query)
+                        print()
                         response = Database.db.query(query)
                         if response['code'] == 200:
                             Database.logger.success(f'Video {video.shopify_id} updated in Middleware.')
@@ -1154,11 +1163,15 @@ class Database:
                             Database.error_handler.add_error_v(error=error)
                             raise Exception(error)
 
-                    def delete(video_id=None, product_id=None):
-                        if video_id:
+                    def delete(video=None, video_id=None, product_id=None, url=None, sku=None):
+                        if video:  # Video Object
+                            where_filter = f'WHERE VIDEO_ID = {video.shopify_id}'
+                        elif video_id:
                             where_filter = f'WHERE VIDEO_ID = {video_id}'
                         elif product_id:
                             where_filter = f'WHERE PRODUCT_ID = {product_id}'
+                        elif url and sku:
+                            where_filter = f"WHERE URL = '{url}' AND ITEM_NO = '{sku}'"
                         else:
                             raise Exception('No video_id or product_id provided for deletion.')
                         query = f'DELETE FROM {Database.Shopify.Product.Media.Video.table} {where_filter}'
@@ -1168,6 +1181,8 @@ class Database:
                                 Database.logger.success(f'Video {video_id} deleted from Middleware.')
                             elif product_id:
                                 Database.logger.success(f'Videos for product {product_id} deleted from Middleware.')
+                            elif url and sku:
+                                Database.logger.success(f'Video {url} for product {sku} deleted from Middleware.')
                         elif response['code'] == 201:
                             if video_id:
                                 Database.logger.warn(f'DELETE: Video {video_id} not found.')
@@ -1175,11 +1190,17 @@ class Database:
                                 Database.logger.warn(
                                     f'Videos for product {product_id} not found in Middleware.\n\nQuery: {query}\n'
                                 )
+                            elif url and sku:
+                                Database.logger.warn(
+                                    f'Video {url} for product {sku} not found in Middleware.\n\nQuery: {query}\n'
+                                )
                         else:
                             if video_id:
                                 error = f'Error deleting video {video_id} from Middleware. \n Query: {query}\nResponse: {response}'
                             elif product_id:
                                 error = f'Error deleting videos for product {product_id} from Middleware. \n Query: {query}\nResponse: {response}'
+                            elif url and sku:
+                                error = f'Error deleting video {url} for product {sku} from Middleware. \n Query: {query}\nResponse: {response}'
                             Database.error_handler.add_error_v(error=error)
                             raise Exception(error)
 
