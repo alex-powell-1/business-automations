@@ -173,10 +173,6 @@ def check_cp_closed_orders():
             logger.info(f'Deleting draft: {draft_id}')
 
             Shopify.Order.Draft.delete(draft_id)
-            # try:
-            #     delete_hold(hold_id)
-            # except:
-            #     pass
 
             query = f"""
             DELETE FROM SN_DRAFT_ORDERS
@@ -190,9 +186,6 @@ def check_cp_closed_orders():
         error_handler.add_error_v(
             error=f'Error checking for closed orders: {e}', origin='draft_orders', traceback=tb()
         )
-
-
-# [2024-08-13T17:20:24Z] Luke Barrier created this draft order.
 
 
 def format_date(date: str):

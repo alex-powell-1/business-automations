@@ -2072,15 +2072,24 @@ class HoldOrder(DocumentAPI):
         super().__init__(session=session)
 
     class ItemPayload:
-        def __init__(self, item_no, qty, price):
+        def __init__(self, name, item_no, qty, price):
+            self.name = name
             self.item_no = item_no
             self.qty = qty
             self.price = price
 
         def get(self):
+            sku = self.item_no
+
+            if self.name.lower() == 'service':
+                sku = 'SERVICE'
+
+            if self.name.lower() == 'delivery':
+                return None
+
             return {
                 'LIN_TYP': 'O',
-                'ITEM_NO': self.item_no,
+                'ITEM_NO': sku,
                 'QTY_SOLD': float(self.qty),
                 'PRC': float(self.price),
                 'EXT_PRC': float(self.price) * float(self.qty),
@@ -2094,9 +2103,12 @@ class HoldOrder(DocumentAPI):
             return self.line_items
 
         def add(self, item: dict):
-            itemPayload = HoldOrder.ItemPayload(item_no=item['item_no'], qty=item['qty'], price=item['price'])
+            itemPayload = HoldOrder.ItemPayload(
+                name=item['name'], item_no=item['item_no'], qty=item['qty'], price=item['price']
+            )
             data = itemPayload.get()
-            self.line_items.append(data)
+            if data is not None:
+                self.line_items.append(data)
 
     class DocumentPayload:
         def __init__(self, cust_no: str | int):
@@ -2136,8 +2148,8 @@ class HoldOrder(DocumentAPI):
         def add_note(self, note, note_id='ADMIN NOTE'):
             self.notes.append({'NOTE_ID': note_id, 'NOTE': note})
 
-        def add_item(self, item_no: str, qty: int, price: float):
-            self.line_items.add({'item_no': item_no, 'qty': qty, 'price': price})
+        def add_item(self, name: str, item_no: str, qty: int, price: float):
+            self.line_items.add({'name': name, 'item_no': item_no, 'qty': qty, 'price': price})
 
         def add_lines(self, lines: list[dict]):
             for line in lines:
@@ -2210,9 +2222,10 @@ class HoldOrder(DocumentAPI):
 
             lines.append(
                 {
+                    'name': item['name'] or '',
                     'item_no': item['sku'],
                     'qty': item['quantity'],
-                    'price': float(item['originalUnitPriceSet']['presentmentMoney']['amount']),
+                    'price': float(item['originalUnitPriceSet']['shopMoney']['amount']),
                 }
             )
 
