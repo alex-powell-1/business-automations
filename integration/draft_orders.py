@@ -97,7 +97,10 @@ def get_doc_id_from_hold_id(hold_id):
 
         try:
             response = Database.db.query(query)
-            return (response[0][0], response[0][1])
+            try:
+                return (response[0][0], response[0][1])
+            except:
+                return
         except Exception as e:
             error_handler.add_error_v(
                 error=f'Error getting customer number and ticket date for hold order {hold_id}: {e}',
@@ -106,32 +109,32 @@ def get_doc_id_from_hold_id(hold_id):
             )
             return
 
-    cust_no, tkt_dt = get_info()
+    return get_info()
 
-    query = f"""
-    SELECT DOC_ID FROM PS_DOC_HDR
-    WHERE
-    TKT_DT >= '{tkt_dt}' AND
-    CUST_NO = '{cust_no}' AND
-    DOC_TYP = 'T'
-    """
+    # query = f"""
+    # SELECT DOC_ID FROM PS_DOC_HDR
+    # WHERE
+    # TKT_DT >= '{tkt_dt}' AND
+    # CUST_NO = '{cust_no}' AND
+    # DOC_TYP = 'T'
+    # """
 
-    try:
-        response = Database.db.query(query)
+    # try:
+    #     response = Database.db.query(query)
 
-        logger.success(f'Doc id from hold order {hold_id} retrieved.')
+    #     logger.success(f'Doc id from hold order {hold_id} retrieved.')
 
-        try:
-            return response[0][0]
-        except:
-            return None
-    except Exception as e:
-        error_handler.add_error_v(
-            error=f'Error getting hold order id for customer {cust_no} and ticket date {tkt_dt}: {e}',
-            origin='draft_orders',
-            traceback=tb(),
-        )
-        return None
+    #     try:
+    #         return response[0][0]
+    #     except:
+    #         return None
+    # except Exception as e:
+    #     error_handler.add_error_v(
+    #         error=f'Error getting hold order id for customer {cust_no} and ticket date {tkt_dt}: {e}',
+    #         origin='draft_orders',
+    #         traceback=tb(),
+    #     )
+    #     return None
 
 
 def on_draft_completed(draft_id):
@@ -152,10 +155,10 @@ def check_cp_closed_orders():
         response = Database.db.query(query)
 
         if response is None:
-            logger.info('No closed hold orders found.')
+            logger.info('No hold orders found.')
             return
 
-        logger.info(f'Found {len(response)} closed hold orders.')
+        logger.info(f'Found {len(response)} hold orders.')
 
         for row in response:
             hold_id = row[0]
@@ -163,14 +166,17 @@ def check_cp_closed_orders():
 
             doc_id = get_doc_id_from_hold_id(hold_id)
 
-            if doc_id is None:
-                return
+            if doc_id is not None:
+                logger.info(f'Skipping draft: {draft_id}')
+                continue
+
+            logger.info(f'Deleting draft: {draft_id}')
 
             Shopify.Order.Draft.delete(draft_id)
-            try:
-                delete_hold(hold_id)
-            except:
-                pass
+            # try:
+            #     delete_hold(hold_id)
+            # except:
+            #     pass
 
             query = f"""
             DELETE FROM SN_DRAFT_ORDERS

@@ -403,7 +403,7 @@ class Shopify:
             def delete(order_id: int):
                 response = Shopify.Query(
                     document=Shopify.Order.Draft.queries,
-                    variables={'id': f'gid://shopify/DraftOrder/{order_id}'},
+                    variables={'input': {'id': f'gid://shopify/DraftOrder/{order_id}'}},
                     operation_name='draftOrderDelete',
                 )
                 return response.data
