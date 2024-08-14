@@ -31,7 +31,7 @@ class Catalog:
         self.verbose = verbose
         self.test_mode = test_mode
         self.test_queue = test_queue
-        if not self.inventory_only or not self.test_mode:
+        if not self.inventory_only:
             self.category_tree = self.CategoryTree(last_sync=last_sync)
             self.product_images = get_product_images()
             self.product_videos = Database.Counterpoint.Product.Media.Video.get()
@@ -288,7 +288,7 @@ class Catalog:
 
     def sync(self, initial=False):
         # Sync Category Tree
-        # self.category_tree.sync()
+        self.category_tree.sync()
 
         if not initial and not self.inventory_only:
             self.process_product_deletes()
@@ -306,7 +306,7 @@ class Catalog:
         else:
             queue_length = len(self.sync_queue)
             success_count = 0
-            fail_count = 0
+            fail_count = {'number': 0, 'items': []}
             if not self.inventory_only or self.verbose:
                 Catalog.logger.info(f'Syncing {queue_length} products.')
             while len(self.sync_queue) > 0:
@@ -334,7 +334,9 @@ class Catalog:
                     '-----------------------\n'
                     'Sync Complete.\n'
                     f'Success Count: {success_count}\n'
-                    f'Fail Count: {fail_count}\n'
+                    f'Fail Count: {fail_count["number"]}\n'
+                    f'Fail Items: {fail_count["items"]}\n'
+                    '-----------------------\n'
                 )
 
     @staticmethod
@@ -1888,13 +1890,16 @@ class Catalog:
                         if x.temp_sort_order > x.sort_order:
                             # Newly added media will be at the end of the media response list.
                             # If that expected position is higher than the required position, add to job queue.
-                            print(f'Image {x.name} has a higher temp sort order. Will reorder.')
+                            print(f'Image {x.shopify_id} has a higher temp sort order. Will reorder.')
                             self.reorder_media_queue.append(x)
 
                         elif response['media_ids'].index(x.shopify_id) != self.media.index(x):
-                            print(f'Image {x.name} is in the wrong position. Will reorder.')
+                            # This block accounts for existing media that has changed position.
+                            # Currently, this only applies to videos that are a comma separated list.
+                            print(f'Image {x.shopify_id} is in the wrong position. Will reorder.')
                             print(f'Expected Position: {self.media.index(x)}')
                             print(f'Actual Position: {response["media_ids"].index(x.shopify_id)}')
+                            x.sort_order = self.media.index(x)
                             self.reorder_media_queue.append(x)
 
                     if self.reorder_media_queue:
@@ -2559,8 +2564,6 @@ class Catalog:
                     Catalog.Product.Video(url=video, sku=self.sku, binding_id=self.binding_id)
                     for video in product_data['videos']
                 ]
-                for video in self.videos:
-                    video.number = self.videos.index(video) + 1
 
             def __str__(self):
                 result = ''
@@ -2954,6 +2957,7 @@ class Catalog:
                     self.product_id = response[0][4]
                     self.shopify_id = response[0][5]
                     self.number = response[0][7]
+                    self.sort_order = response[0][8]
                     self.is_binding_image = True if response[0][9] == 1 else False
                     self.binding_id = response[0][10]
                     self.is_variant_image = True if response[0][11] == 1 else False
@@ -3176,7 +3180,6 @@ class Catalog:
                 self.shopify_id = None
                 self.binding_id = binding_id
                 self.name = None
-                self.number = None
                 self.sort_order = None
                 self.temp_sort_order = None
                 self.file_path = None
@@ -3211,12 +3214,11 @@ class Catalog:
                     self.file_path = response[0][4]
                     self.product_id = response[0][5]
                     self.shopify_id = response[0][6]
-                    self.number = response[0][7]
-                    self.sort_order = response[0][8]
-                    self.binding_id = response[0][9]
-                    self.description = response[0][10]
-                    self.size = response[0][11]
-                    self.last_maintained_dt = response[0][12]
+                    self.sort_order = response[0][7]
+                    self.binding_id = response[0][8]
+                    self.description = response[0][9]
+                    self.size = response[0][10]
+                    self.last_maintained_dt = response[0][11]
                 else:
                     # All new videos will be checked for validity
                     self.has_valid_url = Catalog.Product.Video.validate(url=self.url)
@@ -3279,7 +3281,7 @@ class Catalog:
 
 
 if __name__ == '__main__':
-    cat = Catalog(test_mode=True, test_queue=[{'sku': '200796'}])
+    cat = Catalog(test_mode=True, test_queue=[{'sku': '10338', 'binding_id': 'B0006'}])
     cat.sync()
     # response = requests.get('https://vimeo.com/channels/staffpicks/986306345634563456956')
     # print(response.status_code)

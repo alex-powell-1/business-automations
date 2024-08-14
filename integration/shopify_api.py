@@ -979,27 +979,31 @@ class Shopify:
         class Media:
             queries = './integration/queries/media.graphql'
 
-            def get(product_id: int):
+            def get(product_id: int, id_list=True):
                 response = Shopify.Query(
                     document=Shopify.Product.queries,
                     variables={'id': f'{Shopify.Product.prefix}{product_id}'},
                     operation_name='product',
                 )
-
-                return [x['id'] for x in response.data['product']['media']['nodes']]
+                if id_list:
+                    return [x['id'] for x in response.data['product']['media']['nodes']]
+                else:
+                    return [x for x in response.data['product']['media']['nodes']]
 
             def reorder(product):
                 variables = {'id': f'{Shopify.Product.prefix}{product.product_id}', 'moves': []}
                 for m in product.reorder_media_queue:
                     if m.type == 'IMAGE':
                         id = f'{Shopify.Product.Media.Image.prefix}{m.shopify_id}'
-                    elif m.type == 'EXTENAL_VIDEO':
+                    elif m.type == 'EXTERNAL_VIDEO':
                         id = f'{Shopify.Product.Media.Video.prefix}{m.shopify_id}'
+                    else:
+                        raise Exception(f'Invalid media type: {m.type}')
+
+                    print(f'ID: {id}')
 
                     variables['moves'].append({'id': id, 'newPosition': str(m.sort_order)})
-                print()
-                print(variables)
-                print()
+
                 response = Shopify.Query(
                     document=Shopify.Product.Media.queries,
                     variables=variables,
@@ -1008,35 +1012,61 @@ class Shopify:
                 return response.data
 
             def delete(product_id: int, media_type, media_ids: list = None, media_id: int = None):
-                if media_id or media_ids:
-                    if media_type == 'video':
-                        prefix = Shopify.Product.Media.Video.prefix
-                    elif media_type == 'image':
-                        prefix = Shopify.Product.Media.Image.prefix
-                    elif media_type == 'all':
-                        prefix = ''
-                    else:
-                        message = 'Must include valid media type: video or image or all. If all, do not include media_id or media_ids'
-                        raise Exception(message)
+                variables = None
+                if media_type == 'video':
+                    prefix = Shopify.Product.Media.Video.prefix
+                elif media_type == 'image':
+                    prefix = Shopify.Product.Media.Image.prefix
+                elif media_type == 'all':
+                    prefix = ''
+                else:
+                    message = 'Must include valid media type: video or image or all. If all, do not include media_id or media_ids'
+                    raise Exception(message)
+
                 if media_id:
+                    # Delete single media
                     variables = {
                         'mediaIds': [f'{prefix}{media_id}'],
                         'productId': f'{Shopify.Product.prefix}{product_id}',
                     }
                 elif media_ids:
+                    # Delete multiple media
                     variables = {
                         'mediaIds': [f'{prefix}{x}' for x in media_ids],
                         'productId': f'{Shopify.Product.prefix}{product_id}',
                     }
                 else:
-                    variables = {
-                        'mediaIds': Shopify.Product.Media.get(product_id),
-                        'productId': f'{Shopify.Product.prefix}{product_id}',
-                    }
-                response = Shopify.Query(
-                    document=Shopify.Product.Media.queries, variables=variables, operation_name='productDeleteMedia'
-                )
-                return response.data
+                    # Delete media...
+                    media_ids = Shopify.Product.Media.get(product_id)
+                    delete_list = []
+                    if media_type == 'video':
+                        # Delete all videos
+                        prefix = Shopify.Product.Media.Video.prefix
+                        for i in media_ids:
+                            if i.startswith(prefix):
+                                delete_list.append(i)
+                    elif media_type == 'image':
+                        # Delete all images
+                        prefix = Shopify.Product.Media.Image.prefix
+                        for i in media_ids:
+                            if i.startswith(prefix):
+                                delete_list.append(i)
+                    else:
+                        # Delete all media
+                        delete_list = media_ids
+                    if delete_list:
+                        variables = {'mediaIds': delete_list, 'productId': f'{Shopify.Product.prefix}{product_id}'}
+                        ProcessOutErrorHandler.logger.info(f'Deleting {len(delete_list)} media items')
+                    else:
+                        ProcessOutErrorHandler.logger.info('No media items to delete')
+                        return
+                if variables:
+                    response = Shopify.Query(
+                        document=Shopify.Product.Media.queries,
+                        variables=variables,
+                        operation_name='productDeleteMedia',
+                    )
+                    return response.data
 
             class Image:
                 prefix = 'gid://shopify/MediaImage/'
@@ -1111,6 +1141,11 @@ class Shopify:
 
             class Video:
                 prefix = 'gid://shopify/ExternalVideo/'
+
+                def delete(product_id: int):
+                    # Get all Media for product
+                    media_ids = Shopify.Product.Media.get(product_id, id_list=False)
+                    print(media_ids)
 
         class Option:
             queries = './integration/queries/productOptions.graphql'
@@ -1732,10 +1767,5 @@ class Shopify:
 
 
 if __name__ == '__main__':
-    # mums = Database.Shopify.Product.get_by_category(cp_subcategory='MUM')
-    # for mum in mums[0:1]:
-    #     description = Shopify.Product.SEO.get(mum)['description']
-    #     if description:
-    #         Shopify.Product.SEO.update(product_id=mum, description=description)
-
-    Shopify.Product.Media.reorder()
+    Shopify.Product.Media.delete(product_id=8314742014119, media_type='image')
+    Database.Shopify.Product.Media.delete

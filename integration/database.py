@@ -260,7 +260,6 @@ class Database:
 
                 query += f" WHERE ITEM_NO = '{payload['item_no']}'"
 
-                print(f'\n\n\n{query}\n\n\n')
                 response = Database.db.query(query)
                 if response['code'] == 200:
                     Database.logger.success(f'Product {payload["item_no"]} updated in Middleware.')
@@ -462,7 +461,6 @@ class Database:
                                             FILE_PATH nvarchar(255),
                                             PRODUCT_ID bigint,
                                             VIDEO_ID bigint,
-                                            VIDEO_NUMBER int DEFAULT(1),
                                             SORT_ORDER int,
                                             BINDING_ID varchar(50),
                                             DESCR nvarchar(255),
@@ -751,7 +749,6 @@ class Database:
                         """
                 response = Database.db.query(query)
                 if response['code'] != 200:
-                    print(query)
                     raise Exception(response['message'])
 
         class Product:
@@ -779,22 +776,27 @@ class Database:
                         product_list.append(Database.Shopify.Product.get_id(item_no=sku))
                     return product_list
 
-            def get_id(item_no=None, binding_id=None, image_id=None):
+            def get_id(item_no=None, binding_id=None, image_id=None, video_id=None):
                 """Get product ID from SQL using image ID. If not found, return None."""
+                product_query = None
                 if item_no:
                     product_query = (
                         f"SELECT PRODUCT_ID FROM {Database.Shopify.Product.table} WHERE ITEM_NO = '{item_no}'"
                     )
                 if image_id:
                     product_query = (
-                        f"SELECT PRODUCT_ID FROM {creds.shopify_image_table} WHERE IMAGE_ID = '{image_id}'"
+                        f'SELECT PRODUCT_ID FROM {creds.shopify_image_table} WHERE IMAGE_ID = {image_id}'
+                    )
+                if video_id:
+                    product_query = (
+                        f'SELECT PRODUCT_ID FROM {creds.shopify_video_table} WHERE VIDEO_ID = {video_id}'
                     )
                 if binding_id:
                     product_query = (
                         f"SELECT PRODUCT_ID FROM {Database.Shopify.Product.table} WHERE BINDING_ID = '{binding_id}'"
                     )
 
-                if item_no or image_id or binding_id:
+                if product_query:
                     prod_id_res = Database.db.query(product_query)
                     if prod_id_res is not None:
                         return prod_id_res[0][0]
@@ -814,10 +816,6 @@ class Database:
                         Database.Shopify.Product.Variant.update(product=product, variant=variant)
                     else:
                         Database.Shopify.Product.Variant.insert(product=product, variant=variant)
-
-                print('FINAL MEDIA PRINT')
-                for m in product.media:
-                    print(m)
 
                 for m in product.media:
                     if m.db_id is None:
@@ -1081,7 +1079,6 @@ class Database:
                             Database.logger.warn('No image or image_id provided for deletion.')
                             return
                         res = Database.db.query(q)
-                        print(res['code'])
                         if res['code'] == 200:
                             Database.logger.success(f'Query: {q}\nSQL DELETE Image')
                         elif res['code'] == 201:
@@ -1101,17 +1098,35 @@ class Database:
                 class Video:
                     table = creds.shopify_video_table
 
-                    def get(product_id):
+                    def get(product_id=None, video_id=None, url=None, sku=None, column=None):
+                        if column is None:
+                            column = '*'
+
+                        if product_id:
+                            where_filter = f'WHERE PRODUCT_ID = {product_id}'
+                        elif video_id:
+                            where_filter = f'WHERE VIDEO_ID = {video_id}'
+                        elif url and sku:
+                            where_filter = f"WHERE URL = '{url}' AND ITEM_NO = '{sku}'"
+
                         query = f"""
-                        SELECT * FROM {Database.Shopify.Product.Media.Video.table}
-                        WHERE PRODUCT_ID = {product_id}
+                        SELECT {column} FROM {Database.Shopify.Product.Media.Video.table}
+                        {where_filter}
                         """
-                        return Database.db.query(query)
+
+                        response = Database.db.query(query)
+                        if product_id:
+                            return response
+                        else:
+                            try:
+                                return response[0][0]
+                            except:
+                                return None
 
                     def insert(video):
                         query = f"""
                         INSERT INTO {Database.Shopify.Product.Media.Video.table} (ITEM_NO, URL, VIDEO_NAME, FILE_PATH, 
-                        PRODUCT_ID, VIDEO_ID, VIDEO_NUMBER, SORT_ORDER, BINDING_ID, DESCR, SIZE)
+                        PRODUCT_ID, VIDEO_ID, SORT_ORDER, BINDING_ID, DESCR, SIZE)
                         VALUES (
                         {f"'{video.sku}'" if video.sku else 'NULL'},
                         {f"'{video.url}'" if video.url else 'NULL'},
@@ -1119,7 +1134,6 @@ class Database:
                         {f"'{video.file_path}'" if video.file_path else 'NULL'}, 
                         {video.product_id}, 
                         {video.shopify_id}, 
-                        {video.number}, 
                         {video.sort_order}, {f"'{video.binding_id}'" if video.binding_id else 'NULL'}, 
                         {f"'{video.description}'" if video.description else 'NULL'}, {video.size if video.size else 'NULL'})
                         """
@@ -1132,8 +1146,6 @@ class Database:
                             raise Exception(error)
 
                     def update(video):
-                        print(f'UPDATING VIDEO {video.shopify_id}')
-                        print(video)
                         query = f"""
                         UPDATE {Database.Shopify.Product.Media.Video.table}
                         SET 
@@ -1143,16 +1155,12 @@ class Database:
                         FILE_PATH = {f"'{video.file_path}'" if video.file_path else 'NULL'}, 
                         PRODUCT_ID = {video.product_id}, 
                         VIDEO_ID = {video.shopify_id}, 
-                        VIDEO_NUMBER = {video.number}, 
                         SORT_ORDER = {video.sort_order}, 
                         BINDING_ID = {f"'{video.binding_id}'" if video.binding_id else 'NULL'}, 
                         DESCR = {f"'{video.description}'" if video.description else 'NULL'}, 
                         SIZE = {video.size if video.size else 'NULL'}
                         WHERE ID = {video.db_id}
                         """
-                        print()
-                        print(query)
-                        print()
                         response = Database.db.query(query)
                         if response['code'] == 200:
                             Database.logger.success(f'Video {video.shopify_id} updated in Middleware.')
@@ -1163,26 +1171,57 @@ class Database:
                             Database.error_handler.add_error_v(error=error)
                             raise Exception(error)
 
-                    def delete(video=None, video_id=None, product_id=None, url=None, sku=None):
+                    def delete(video=None, video_id=None, url=None, sku=None):
+                        """Delete video from Middleware and decrement the sort order of remaining item videos."""
                         if video:  # Video Object
+                            sort_order = video.sort_order
+                            product_id = video.product_id
                             where_filter = f'WHERE VIDEO_ID = {video.shopify_id}'
-                        elif video_id:
-                            where_filter = f'WHERE VIDEO_ID = {video_id}'
-                        elif product_id:
-                            where_filter = f'WHERE PRODUCT_ID = {product_id}'
-                        elif url and sku:
-                            where_filter = f"WHERE URL = '{url}' AND ITEM_NO = '{sku}'"
                         else:
-                            raise Exception('No video_id or product_id provided for deletion.')
+                            if video_id:
+                                product_id = Database.Shopify.Product.get_id(video_id=video_id)
+                                sort_order = Database.Shopify.Product.Media.Video.get(
+                                    video_id=video_id, column='SORT_ORDER'
+                                )
+                                where_filter = f'WHERE VIDEO_ID = {video_id}'
+                            elif url and sku:
+                                product_id = Database.Shopify.Product.get_id(item_no=sku)
+                                sort_order = Database.Shopify.Product.Media.Video.get(
+                                    url=url, sku=sku, column='SORT_ORDER'
+                                )
+                                where_filter = f"WHERE URL = '{url}' AND ITEM_NO = '{sku}'"
+                            else:
+                                raise Exception('No video_id or product_id provided for deletion.')
+
                         query = f'DELETE FROM {Database.Shopify.Product.Media.Video.table} {where_filter}'
                         response = Database.db.query(query)
                         if response['code'] == 200:
                             if video_id:
                                 Database.logger.success(f'Video {video_id} deleted from Middleware.')
-                            elif product_id:
-                                Database.logger.success(f'Videos for product {product_id} deleted from Middleware.')
                             elif url and sku:
                                 Database.logger.success(f'Video {url} for product {sku} deleted from Middleware.')
+
+                            # Decrement sort order of remaining videos
+                            query = f"""
+                            UPDATE {Database.Shopify.Product.Media.Video.table}
+                            SET SORT_ORDER = SORT_ORDER - 1
+                            WHERE PRODUCT_ID = {product_id} AND SORT_ORDER > {sort_order}
+                            """
+                            if product_id and sort_order:
+                                decrement_response = Database.db.query(query)
+                                if decrement_response['code'] == 200:
+                                    Database.logger.success(f'Sort order decremented for remaining videos.')
+                                elif decrement_response['code'] == 201:
+                                    Database.logger.warn(f'No rows affected for sort order decrement.')
+                                else:
+                                    error = f'Error decrementing sort order for remaining videos. \nQuery: {query}\nResponse: {decrement_response}'
+                                    Database.error_handler.add_error_v(error=error)
+                                    raise Exception(error)
+                            else:
+                                error = f'Could Not Decrement Video Sort Order. Product ID: {product_id}, Sort Order: {sort_order}'
+                                Database.error_handler.add_error_v(error=error)
+                                raise Exception(error)
+
                         elif response['code'] == 201:
                             if video_id:
                                 Database.logger.warn(f'DELETE: Video {video_id} not found.')
@@ -1255,7 +1294,6 @@ class Database:
                     return result
 
             def insert(values):
-                print(values)
                 number_of_validations = len(values['VALIDATIONS'])
                 if number_of_validations > 0:
                     validation_columns = ', ' + ', '.join(
@@ -1381,6 +1419,4 @@ class Database:
 
 
 if __name__ == '__main__':
-    video_list = Database.Counterpoint.Product.Media.Video.get()
-    for x in video_list:
-        print(x)
+    print(Database.Shopify.Product.get_id(video_id=29765716443303))
