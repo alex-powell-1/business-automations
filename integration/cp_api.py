@@ -2081,11 +2081,11 @@ class HoldOrder(DocumentAPI):
         def get(self):
             sku = self.item_no
 
-            if self.name.lower() == 'delivery':
-                sku = 'DELIVERY'
-
             if self.name.lower() == 'service':
                 sku = 'SERVICE'
+
+            if self.name.lower() == 'delivery':
+                return None
 
             return {
                 'LIN_TYP': 'O',
@@ -2107,7 +2107,8 @@ class HoldOrder(DocumentAPI):
                 name=item['name'], item_no=item['item_no'], qty=item['qty'], price=item['price']
             )
             data = itemPayload.get()
-            self.line_items.append(data)
+            if data is not None:
+                self.line_items.append(data)
 
     class DocumentPayload:
         def __init__(self, cust_no: str | int):

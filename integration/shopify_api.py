@@ -451,7 +451,7 @@ class Shopify:
                 try:
                     shopify_order = Shopify.Order.Draft.get(order_id)
                     snode = shopify_order['node']
-                    shipping = snode['shippingLine']['discountedPriceSet']['presentmentMoney']['amount']
+                    shipping = float(snode['shippingLine']['discountedPriceSet']['presentmentMoney']['amount'])
 
                     for _item in snode['lineItems']['edges']:
                         item = _item['node']
