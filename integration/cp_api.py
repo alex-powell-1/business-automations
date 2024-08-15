@@ -337,6 +337,8 @@ class OrderAPI(DocumentAPI):
     def write_one_lin_loy(self, doc_id, line_item: dict, lin_seq_no: int):
         if line_item['sku'] == 'SERVICE':
             return 0
+        if line_item['sku'] == 'DELIVERY':
+            return 0
 
         points_earned = (float(line_item['EXT_PRC'] or 0) / 20) or 0
 
@@ -2157,9 +2159,7 @@ class HoldOrder(DocumentAPI):
 
     @staticmethod
     def apply_total(doc_id: str, sub_tot: float, total_discount: float):
-        tot = float(sub_tot)
-
-        sub_tot = tot + float(total_discount)
+        tot = float(sub_tot) - float(total_discount)
 
         query = f"""
         INSERT INTO PS_DOC_HDR_TOT

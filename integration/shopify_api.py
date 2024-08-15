@@ -262,7 +262,7 @@ class Shopify:
 
             hdsc = float(get_money(snode['totalDiscountsSet']))
 
-            subtotal = float(get_money(snode['currentSubtotalPriceSet'])) + hdsc - shippingCost
+            subtotal = float(get_money(snode['currentSubtotalPriceSet'])) - hdsc + shippingCost
             total = float(get_money(snode['currentTotalPriceSet']))
 
             if len(snode['refunds']) > 0:
