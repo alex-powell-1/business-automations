@@ -1237,7 +1237,7 @@ class Catalog:
                 return []
 
         def get_collections_to_leave(self):
-            collections = []
+            collections = self.get_current_collections()
             for collection in self.shopify_collections:
                 if collection in collections:
                     collections.remove(collection)
