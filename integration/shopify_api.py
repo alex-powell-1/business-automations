@@ -8,7 +8,7 @@ from shortuuid import ShortUUID
 from setup.email_engine import Email
 from customer_tools.customers import lookup_customer
 
-verbose_print = False
+verbose_print = True
 
 
 class Shopify:
@@ -971,11 +971,14 @@ class Shopify:
                 print(result)
                 return result
 
-            def delete(variant_id: int):
+            def delete(product_id, variant_id: int):
                 response = Shopify.Query(
                     document=Shopify.Product.Variant.queries,
-                    variables={'id': f'{Shopify.Product.Variant.prefix}{variant_id}'},
-                    operation_name='productVariantDelete',
+                    variables={
+                        'productId': f'{Shopify.Product.prefix}{product_id}',
+                        'variantsIds': [f'{Shopify.Product.Variant.prefix}{variant_id}'],
+                    },
+                    operation_name='bulkDeleteProductVariants',
                 )
                 return response.data
 
@@ -983,7 +986,7 @@ class Shopify:
                 queries = './integration/queries/media.graphql'
                 prefix = 'gid://shopify/MediaImage/'
 
-                def get(variant_id: int = None, product_id: int = None):
+                def get(variant_id, product_id):
                     if product_id:
                         # Get all variant images for a product
                         return
@@ -1018,6 +1021,18 @@ class Shopify:
                         operation_name='productVariantDetachMedia',
                     )
                     return response.data
+
+                def delete_all(sku, product_id=None):
+                    """Delete all Media Associated with Variant from shopify."""
+                    if not product_id:
+                        product_id = Database.Shopify.Product.get_id(sku=sku)
+
+                    media_ids = Database.Shopify.Product.Variant.Media.Image.get(item_no=sku)
+
+                    if media_ids:
+                        Shopify.Product.Media.delete(product_id=product_id, media_type='image', media_ids=media_ids)
+                        for i in media_ids:
+                            Database.Shopify.Product.Media.Image.delete(product_id=product_id, image_id=i)
 
         class Media:
             queries = './integration/queries/media.graphql'
@@ -1236,7 +1251,7 @@ class Shopify:
                     variables['optionValuesToAdd'] = add_list
 
                 if option_values_to_update:
-                    update_list = [f'gid://shopify/ProductOptionValue/{x}' for x in option_values_to_update]
+                    update_list = [option_values_to_update]
                     variables['optionValuesToUpdate'] = update_list
 
                 if option_values_to_delete:
@@ -1544,17 +1559,7 @@ class Shopify:
                 return response.data
             elif product_id:
                 response = Shopify.Product.get(product_id)
-                variables = {
-                    'metafields': [
-                        # {
-                        #     'ownerId': x['node']['id'],
-                        #     'namespace': x['node']['namespace'],
-                        #     'key': x['node']['key'],
-                        # }
-                        x['node']['id']
-                        for x in response['product']['metafields']['edges']
-                    ]
-                }
+                variables = {'metafields': [x['node']['id'] for x in response['product']['metafields']['edges']]}
                 for i in variables['metafields']:
                     Shopify.Metafield.delete(metafield_id=i.split('/')[-1])
 
@@ -1831,9 +1836,7 @@ class Shopify:
 
 
 if __name__ == '__main__':
-    response = Shopify.Product.Metafield.get(8308197163175)
-    for i in response['product_specifications']:
-        print(i)
-    print('\n\n')
-    for i in response['product_status']:
-        print(i)
+    # Shopify.Product.Variant.delete(product_id=8325378670759, variant_id=45937990697127)
+    product_id = Database.Shopify.Product.get_id(item_no='APTEST')
+    variant_id = Database.Shopify.Product.Variant.get_variant_id(sku='APTEST')
+    print(Database.Shopify.Product.Variant.Media.Image.get(item_no='APTEST'))

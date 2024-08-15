@@ -241,23 +241,6 @@ class Database:
 
             def update(payload):
                 """FOR PRODUCTS_UPDATE WEBHOOK ONLY. Normal updates from shopify_catalog.py use sync()"""
-                # if botanical_name:
-                #     update_payload['botanical_name'] = botanical_name
-                # if plant_type:
-                #     update_payload['plant_type'] = plant_type
-                # if light_requirements:
-                #     update_payload['light_requirements'] = light_requirements
-                # if size:
-                #     update_payload['size'] = size
-                # if features:
-                #     update_payload['features'] = features
-                # if bloom_season:
-                #     update_payload['bloom_season'] = bloom_season
-                # if bloom_color:
-                #     update_payload['bloom_color'] = bloom_color
-                # if color:
-                #     update_payload['color'] = color
-
                 query = f'UPDATE {Database.Counterpoint.Product.table} SET '
                 # Item Status
                 if 'status' in payload:
@@ -292,26 +275,51 @@ class Database:
                     alt_text_4 = payload['alt_text_4'].replace("'", "''")[:160]  # 160 char limit
                     query += f"{Database.Counterpoint.Product.columns['alt_text_4']} = '{alt_text_4}', "
 
+                # The following Metafields require an ID to be maintained in the middleware.
+                # Check for ID in the respective column. If exists, just update the CP product table.
+                # If not, insert the metafield ID into the Middleware and then update the CP product table.
+
                 # Product Status Metafields
-                if 'featured' in payload:
-                    query += f"{Database.Counterpoint.Product.columns['featured']} = {'Y' if payload['featured'] else 'N'}, "
+                # if 'featured' in payload:
+                #     query += f"{Database.Counterpoint.Product.columns['featured']} = {'Y' if payload['featured'] else 'N'}, "
 
-                if 'in_store_only' in payload:
-                    query += f"{Database.Counterpoint.Product.columns['in_store_only']} = {'Y' if payload['in_store_only'] else 'N'}, "
+                # if 'in_store_only' in payload:
+                #     query += f"{Database.Counterpoint.Product.columns['in_store_only']} = {'Y' if payload['in_store_only'] else 'N'}, "
 
-                if 'is_preorder_item' in payload:
-                    query += f"{Database.Counterpoint.Product.columns['is_preorder_item']} = {'Y' if payload['is_preorder_item'] else 'N'}, "
+                # if 'is_preorder_item' in payload:
+                #     query += f"{Database.Counterpoint.Product.columns['is_preorder_item']} = {'Y' if payload['is_preorder_item'] else 'N'}, "
 
-                if 'preorder_message' in payload:
-                    preorder_message = payload['preorder_message'].replace("'", "''")[:160]
-                    query += f"{Database.Counterpoint.Product.columns['preorder_message']} = '{preorder_message}', "
+                # if 'preorder_message' in payload:
+                #     preorder_message = payload['preorder_message'].replace("'", "''")[:160]
+                #     query += f"{Database.Counterpoint.Product.columns['preorder_message']} = '{preorder_message}', "
 
-                if 'preorder_release_date' in payload:
-                    query += f"{Database.Counterpoint.Product.columns['preorder_release_date']} = '{payload['preorder_release_date']}', "
+                # if 'preorder_release_date' in payload:
+                #     query += f"{Database.Counterpoint.Product.columns['preorder_release_date']} = '{payload['preorder_release_date']}', "
 
-                # Product Specification Metafields
-                if 'botanical_name' in payload:
-                    query += f"CF_BOTAN_NAM = '{payload['botanical_name']}', "
+                # # Product Specification Metafields
+                # if 'botanical_name' in payload:
+                #     query += f"CF_BOTAN_NAM = '{payload['botanical_name']}', "
+
+                # if 'plant_type' in payload:
+                #     query += f"CF_PLANT_TYP = '{payload['plant_type']}', "
+
+                # if 'light_requirements' in payload:
+                #     query += f"CF_LIGHT_REQ = '{payload['light_requirements']}', "
+
+                # if 'size' in payload:
+                #     query += f"CF_SIZE = '{payload['size']}', "
+
+                # if 'features' in payload:
+                #     query += f"CF_FEATURES = '{payload['features']}', "
+
+                # if 'bloom_season' in payload:
+                #     query += f"CF_BLOOM_SEASON = '{payload['bloom_season']}', "
+
+                # if 'bloom_color' in payload:
+                #     query += f"CF_BLOOM_COLOR = '{payload['bloom_color']}', "
+
+                # if 'color' in payload:
+                #     query += f"CF_COLOR = '{payload['color']}', "
 
                 if query[-2:] == ', ':
                     query = query[:-2]
@@ -837,11 +845,13 @@ class Database:
             def get_id(item_no=None, binding_id=None, image_id=None, video_id=None, all=False):
                 """Get product ID from SQL using image ID. If not found, return None."""
                 if all:
-                    query = f"""SELECT PRODUCT_ID FROM {Database.Shopify.Product.table} WHERE LST_MAINT_DT < '2024-08-14 16:30:19.297'"""
+                    query = f"""SELECT PRODUCT_ID FROM {Database.Shopify.Product.table} """
                     prod_id_res = Database.db.query(query)
                     if prod_id_res is not None:
                         return [x[0] for x in prod_id_res]
+
                 product_query = None
+
                 if item_no:
                     product_query = (
                         f"SELECT PRODUCT_ID FROM {Database.Shopify.Product.table} WHERE ITEM_NO = '{item_no}'"
@@ -934,7 +944,7 @@ class Database:
                 def get_variant_id(sku):
                     query = f"""
                         SELECT VARIANT_ID FROM {creds.shopify_product_table}
-                        WHERE ITEM_NO = {sku}
+                        WHERE ITEM_NO = '{sku}'
                         """
                     response = Database.db.query(query)
                     if response is not None:
@@ -1075,6 +1085,19 @@ class Database:
                         error = f'Error deleting variant {variant_id} from Middleware. \n Query: {query}\nResponse: {response}'
                         Database.error_handler.add_error_v(error=error)
                         raise Exception(error)
+
+                class Media:
+                    class Image:
+                        def get(item_no):
+                            """Return all image ids for a product."""
+
+                            query = f"""
+                            SELECT IMAGE_ID FROM {creds.shopify_image_table}
+                            WHERE ITEM_NO = '{item_no}'
+                            """
+                            response = Database.db.query(query)
+                            if response:
+                                return [x[0] for x in response] if response else None
 
             class Media:
                 def delete(product_id):

@@ -615,7 +615,7 @@ def shopify_product_update():
     with open('product_update.json', 'a') as f:
         json.dump(webhook_data, f)
 
-    if description:
+    if item_no and description:
         Database.Counterpoint.Product.HTMLDescription.update(item_no=item_no, description=description)
 
     # Get SEO data
