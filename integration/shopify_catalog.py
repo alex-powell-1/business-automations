@@ -1223,6 +1223,29 @@ class Catalog:
 
             return True
 
+        def get_current_collections(self):
+            try:
+                query = f"""
+                SELECT CATEG_ID FROM SN_SHOP_PROD
+                WHERE ITEM_NO = '{self.sku}'
+                """
+
+                response = Database.db.query(query)
+
+                try:
+                    return response[0][0].split(',')
+                except:
+                    return []
+            except:
+                return []
+
+        def get_collections_to_leave(self):
+            collections = []
+            for collection in self.shopify_collections:
+                if collection in collections:
+                    collections.remove(collection)
+            return collections
+
         def get_payload(self):
             """Build the payload for creating a product in BigCommerce.
             This will include all variants, images, and custom fields."""
@@ -1654,6 +1677,10 @@ class Catalog:
                     f'gid://shopify/Collection/{x}' for x in self.shopify_collections
                 ]
 
+                product_payload['input']['collectionsToLeave'] = [
+                    f'gid://shopify/Collection/{x}' for x in self.get_collections_to_leave()
+                ]
+
             if self.meta_title:
                 product_payload['input']['seo']['title'] = self.meta_title
 
@@ -1817,7 +1844,7 @@ class Catalog:
             return variant_image_payload
 
         def process(self):
-            """Process Product Creation/Delete/Update in BigCommerce and Middleware."""
+            """Process Product Creation/Delete/Update in Shopify and Middleware."""
 
             def create():
                 """Create new product in Shopify and Middleware."""

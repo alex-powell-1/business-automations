@@ -337,6 +337,8 @@ class OrderAPI(DocumentAPI):
     def write_one_lin_loy(self, doc_id, line_item: dict, lin_seq_no: int):
         if line_item['sku'] == 'SERVICE':
             return 0
+        if line_item['sku'] == 'DELIVERY':
+            return 0
 
         points_earned = (float(line_item['EXT_PRC'] or 0) / 20) or 0
 
@@ -1805,43 +1807,44 @@ class OrderAPI(DocumentAPI):
             except:
                 return None
 
-        if not self.is_refund(bc_order):
-            # query = f"""
-            # UPDATE PS_DOC_HDR_MISC_CHRG
-            # SET DOC_ID = '{doc_id}',
-            # TOT_TYP = 'S'
-            # WHERE DOC_ID = '{get_orig_doc_id()}'
-            # """
+        if float(bc_order['base_shipping_cost']) > 0:
+            if not self.is_refund(bc_order):
+                # query = f"""
+                # UPDATE PS_DOC_HDR_MISC_CHRG
+                # SET DOC_ID = '{doc_id}',
+                # TOT_TYP = 'S'
+                # WHERE DOC_ID = '{get_orig_doc_id()}'
+                # """
 
-            query = f"""
-            INSERT INTO PS_DOC_HDR_MISC_CHRG
-            (DOC_ID, TOT_TYP, MISC_CHRG_NO, MISC_TYP, MISC_AMT, MISC_PCT, MISC_TAX_AMT_ALLOC, MISC_NORM_TAX_AMT_ALLOC)
-            VALUES
-            ('{doc_id}', 'S', '1', 'A', {(float(bc_order["base_shipping_cost"] or 0))}, 0, 0, 0)
-            """
-        else:
-            # query = f"""
-            # UPDATE PS_DOC_HDR_MISC_CHRG
-            # SET DOC_ID = '{doc_id}',
-            # TOT_TYP = 'S',
-            # MISC_AMT = {-(float(bc_order["base_shipping_cost"] or 0))}
-            # WHERE DOC_ID = '{get_orig_doc_id()}'
-            # """
+                query = f"""
+                INSERT INTO PS_DOC_HDR_MISC_CHRG
+                (DOC_ID, TOT_TYP, MISC_CHRG_NO, MISC_TYP, MISC_AMT, MISC_PCT, MISC_TAX_AMT_ALLOC, MISC_NORM_TAX_AMT_ALLOC)
+                VALUES
+                ('{doc_id}', 'S', '1', 'A', {(float(bc_order["base_shipping_cost"] or 0))}, 0, 0, 0)
+                """
+            else:
+                # query = f"""
+                # UPDATE PS_DOC_HDR_MISC_CHRG
+                # SET DOC_ID = '{doc_id}',
+                # TOT_TYP = 'S',
+                # MISC_AMT = {-(float(bc_order["base_shipping_cost"] or 0))}
+                # WHERE DOC_ID = '{get_orig_doc_id()}'
+                # """
 
-            query = f"""
-            INSERT INTO PS_DOC_HDR_MISC_CHRG
-            (DOC_ID, TOT_TYP, MISC_CHRG_NO, MISC_TYP, MISC_AMT, MISC_PCT, MISC_TAX_AMT_ALLOC, MISC_NORM_TAX_AMT_ALLOC)
-            VALUES
-            ('{doc_id}', 'S', '1', 'A', {-(float(bc_order["base_shipping_cost"] or 0))}, 0, 0, 0)
-            """
+                query = f"""
+                INSERT INTO PS_DOC_HDR_MISC_CHRG
+                (DOC_ID, TOT_TYP, MISC_CHRG_NO, MISC_TYP, MISC_AMT, MISC_PCT, MISC_TAX_AMT_ALLOC, MISC_NORM_TAX_AMT_ALLOC)
+                VALUES
+                ('{doc_id}', 'S', '1', 'A', {-(float(bc_order["base_shipping_cost"] or 0))}, 0, 0, 0)
+                """
 
-        response = Database.db.query(query)
+            response = Database.db.query(query)
 
-        if response['code'] == 200:
-            self.logger.success('Applied shipping charge')
-        else:
-            self.error_handler.add_error_v('Shipping charge could not be applied')
-            self.error_handler.add_error_v(response)
+            if response['code'] == 200:
+                self.logger.success('Applied shipping charge')
+            else:
+                self.error_handler.add_error_v('Shipping charge could not be applied')
+                self.error_handler.add_error_v(response)
 
         if not self.is_refund(bc_order):
 
@@ -2085,10 +2088,10 @@ class HoldOrder(DocumentAPI):
                 sku = 'SERVICE'
 
             if self.name.lower() == 'delivery':
-                return None
+                sku = 'DELIVERY'
 
             return {
-                'LIN_TYP': 'O',
+                'LIN_TYP': 'S',
                 'ITEM_NO': sku,
                 'QTY_SOLD': float(self.qty),
                 'PRC': float(self.price),
@@ -2138,11 +2141,6 @@ class HoldOrder(DocumentAPI):
                 }
             }
 
-            if self.shipping > 0:
-                pl['PS_DOC_HDR']['PS_DOC_HDR_MISC_CHRG'] = [
-                    {'TOT_TYP': 'O', 'MISC_CHRG_NO': '1', 'MISC_TYP': 'A', 'MISC_AMT': self.shipping}
-                ]
-
             return pl
 
         def add_note(self, note, note_id='ADMIN NOTE'):
@@ -2156,16 +2154,14 @@ class HoldOrder(DocumentAPI):
                 self.line_items.add(line)
 
     @staticmethod
-    def apply_total(doc_id: str, shipping: float, sub_tot: float, total_discount: float):
-        tot = float(sub_tot) + float(shipping)
-
-        sub_tot = tot + float(total_discount) - float(shipping)
+    def apply_total(doc_id: str, sub_tot: float, total_discount: float):
+        tot = float(sub_tot) - float(total_discount)
 
         query = f"""
         INSERT INTO PS_DOC_HDR_TOT
         (DOC_ID, TOT_TYP, INITIAL_MIN_DUE, HAS_TAX_OVRD, TAX_AMT_SHIPPED, LINS, TOT_GFC_AMT, TOT_SVC_AMT, SUB_TOT, TAX_OVRD_LINS, TOT_EXT_COST, TOT_MISC, TAX_AMT, NORM_TAX_AMT, TOT_TND, TOT_CHNG, TOT_WEIGHT, TOT_CUBE, TOT, AMT_DUE, TOT_HDR_DISC, TOT_LIN_DISC, TOT_HDR_DISCNTBL_AMT, TOT_TIP_AMT)
         VALUES
-        ('{doc_id}', 'O', 0, '!', 0, 0, 0, 0, {sub_tot}, 0, 0, {shipping}, 0, 0, 0, 0, 0, 0, {tot}, 0, {total_discount}, 0, {sub_tot}, 0)
+        ('{doc_id}', 'S', 0, '!', 0, 0, 0, 0, {sub_tot}, 0, 0, 0, 0, 0, 0, 0, 0, 0, {tot}, 0, {total_discount}, 0, {sub_tot}, 0)
         """
 
         return Database.db.query(query)
@@ -2182,7 +2178,7 @@ class HoldOrder(DocumentAPI):
         return Database.db.query(query)
 
     @staticmethod
-    def post_pl(payload: dict, discount: float = 0, shipping: float = 0, sub_tot: float = 0):
+    def post_pl(payload: dict, discount: float = 0, sub_tot: float = 0):
         ho = HoldOrder()
         data = ho.post_document(payload=payload)
 
@@ -2198,7 +2194,7 @@ class HoldOrder(DocumentAPI):
 
         HoldOrder.apply_discount(doc_id=doc_id, amount=discount)
 
-        HoldOrder.apply_total(doc_id=doc_id, shipping=shipping, sub_tot=sub_tot, total_discount=discount)
+        HoldOrder.apply_total(doc_id=doc_id, sub_tot=sub_tot, total_discount=discount)
 
         return data
 

@@ -178,6 +178,13 @@ class Shopify:
                 if item['name'].lower() == 'delivery':
                     delivery_from_lines += price * float(item['quantity'])
                     continue
+                    # item['sku'] = 'DELIVERY'
+
+                if item['name'].lower() == 'service':
+                    item['sku'] = 'SERVICE'
+
+                if item['sku'] is None:
+                    continue
 
                 item['isGiftCard'] = False
 
@@ -186,7 +193,7 @@ class Shopify:
 
                 pl = {
                     'id': item['id'],
-                    'sku': 'SERVICE' if item['name'].lower() == 'service' else item['sku'],
+                    'sku': item['sku'],
                     'type': 'giftcertificate' if item['isGiftCard'] else 'physical',
                     'base_price': price,
                     'price_ex_tax': price,
@@ -271,11 +278,38 @@ class Shopify:
 
             hdsc = float(get_money(snode['totalDiscountsSet']))
 
-            subtotal = float(get_money(snode['currentSubtotalPriceSet'])) + hdsc - shippingCost
+            subtotal = float(get_money(snode['currentSubtotalPriceSet'])) - hdsc + shippingCost
             total = float(get_money(snode['currentTotalPriceSet']))
 
             if len(snode['refunds']) > 0:
                 status = 'Partially Refunded'
+
+            def create_shipping_item():
+                return {
+                    'id': '',
+                    'sku': 'DLEIVERY',
+                    'type': 'physical',
+                    'base_price': shippingCost,
+                    'price_ex_tax': shippingCost,
+                    'price_inc_tax': shippingCost,
+                    'price_tax': 0,
+                    'base_total': shippingCost,
+                    'total_ex_tax': shippingCost,
+                    'total_inc_tax': shippingCost,
+                    'total_tax': 0,
+                    'quantity': 1,
+                    'is_refunded': False,
+                    'quantity_refunded': 0,
+                    'refund_amount': 0,
+                    'return_id': 0,
+                    'fixed_shipping_cost': 0,
+                    'gift_certificate_id': None,
+                    'discounted_total_inc_tax': shippingCost,
+                    'applied_discounts': [],
+                }
+
+            if shippingCost > 0:
+                shopify_products.append(create_shipping_item())
 
             bc_order = {
                 'id': snode['name'],

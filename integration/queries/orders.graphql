@@ -70,17 +70,9 @@ query order($id: ID!) {
                 shopMoney {
                     amount
                 }
-
-                shopMoney {
-                    amount
-                }
             }
 
             currentTotalPriceSet {
-                shopMoney {
-                    amount
-                }
-
                 shopMoney {
                     amount
                 }
@@ -101,17 +93,9 @@ query order($id: ID!) {
                             shopMoney {
                                 amount
                             }
-
-                            shopMoney {
-                                amount
-                            }
                         }
 
                         originalUnitPriceSet {
-                            shopMoney {
-                                amount
-                            }
-
                             shopMoney {
                                 amount
                             }
@@ -121,17 +105,9 @@ query order($id: ID!) {
                             shopMoney {
                                 amount
                             }
-
-                            shopMoney {
-                                amount
-                            }
                         }
 
                         discountedTotalSet {
-                            shopMoney {
-                                amount
-                            }
-
                             shopMoney {
                                 amount
                             }
@@ -154,16 +130,8 @@ query order($id: ID!) {
                 shopMoney {
                     amount
                 }
-
-                shopMoney {
-                    amount
-                }
             }
             currentCartDiscountAmountSet {
-                shopMoney {
-                    amount
-                }
-
                 shopMoney {
                     amount
                 }
@@ -180,18 +148,10 @@ query order($id: ID!) {
                     shopMoney {
                         amount
                     }
-
-                    shopMoney {
-                        amount
-                    }
                 }
             }
 
             currentTotalAdditionalFeesSet {
-                shopMoney {
-                    amount
-                }
-
                 shopMoney {
                     amount
                 }
@@ -201,17 +161,9 @@ query order($id: ID!) {
                 shopMoney {
                     amount
                 }
-
-                shopMoney {
-                    amount
-                }
             }
 
             totalDiscountsSet {
-                shopMoney {
-                    amount
-                }
-
                 shopMoney {
                     amount
                 }
@@ -221,10 +173,6 @@ query order($id: ID!) {
 
             transactions(first: 10) {
                 amountSet {
-                    shopMoney {
-                        amount
-                    }
-
                     shopMoney {
                         amount
                     }
@@ -243,10 +191,6 @@ query order($id: ID!) {
                 shopMoney {
                     amount
                 }
-
-                shopMoney {
-                    amount
-                }
             }
 
             discountCode
@@ -262,10 +206,6 @@ query order($id: ID!) {
                             }
                             quantity
                             subtotalSet {
-                                shopMoney {
-                                    amount
-                                }
-
                                 shopMoney {
                                     amount
                                 }
