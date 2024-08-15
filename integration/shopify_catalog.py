@@ -1237,8 +1237,12 @@ class Catalog:
                 return []
 
         def get_collections_to_leave(self):
-            # This assumes that shopify_collections is a list of collections we want the product to be in.
-            # Also assuming that the current collections in SN_SHOP_PROD are the collections that we are currently in.
+            """
+            - This assumes that shopify_collections is a
+              list of collections we want the product to be in.
+            - Also assuming that the current collections in
+              SN_SHOP_PROD are the collections that the product is currently in.
+            """
 
             collections_to_leave = self.get_current_collections()
             for collection in self.shopify_collections:
