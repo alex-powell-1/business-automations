@@ -231,12 +231,12 @@ class Database:
                 # Product Specification Metafields
                 'botanical_name': creds.column_product_botanical_name,
                 'plant_type': creds.column_product_plant_type,
-                'light_requirements': creds.column_product_light_requirements,
-                'size': creds.column_product_size,
-                'features': creds.column_product_features,
-                'bloom_season': creds.column_product_bloom_season,
-                'bloom_color': creds.column_product_bloom_color,
-                'color': creds.column_product_color,
+                # 'light_requirements': creds.column_product_light_requirements,
+                # 'size': creds.column_product_size,
+                # 'features': creds.column_product_features,
+                # 'bloom_season': creds.column_product_bloom_season,
+                # 'bloom_color': creds.column_product_bloom_color,
+                # 'color': creds.column_product_color,
             }
 
             def update(payload):
