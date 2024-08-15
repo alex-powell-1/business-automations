@@ -222,26 +222,63 @@ class Database:
                 'alt_text_3': creds.column_product_alt_text_3,
                 'alt_text_4': creds.column_product_alt_text_4,
                 'videos': creds.column_product_videos,
+                # Product Status Metafields
                 'featured': creds.column_product_featured,
+                'in_store_only': creds.column_product_in_store_only,
+                'is_preorder_item': creds.column_product_is_preorder_item,
+                'preorder_message': creds.column_product_preorder_message,
+                'preorder_release_date': creds.column_product_preorder_release_date,
+                # Product Specification Metafields
+                'botanical_name': creds.column_product_botanical_name,
+                'plant_type': creds.column_product_plant_type,
+                'light_requirements': creds.column_product_light_requirements,
+                'size': creds.column_product_size,
+                'features': creds.column_product_features,
+                'bloom_season': creds.column_product_bloom_season,
+                'bloom_color': creds.column_product_bloom_color,
+                'color': creds.column_product_color,
             }
 
             def update(payload):
                 """FOR PRODUCTS_UPDATE WEBHOOK ONLY. Normal updates from shopify_catalog.py use sync()"""
+                # if botanical_name:
+                #     update_payload['botanical_name'] = botanical_name
+                # if plant_type:
+                #     update_payload['plant_type'] = plant_type
+                # if light_requirements:
+                #     update_payload['light_requirements'] = light_requirements
+                # if size:
+                #     update_payload['size'] = size
+                # if features:
+                #     update_payload['features'] = features
+                # if bloom_season:
+                #     update_payload['bloom_season'] = bloom_season
+                # if bloom_color:
+                #     update_payload['bloom_color'] = bloom_color
+                # if color:
+                #     update_payload['color'] = color
+
                 query = f'UPDATE {Database.Counterpoint.Product.table} SET '
+                # Item Status
                 if 'status' in payload:
                     if payload['status'] == 'active':
                         query += f"{Database.Counterpoint.Product.columns['web_visible']} = 'Y', "
                     else:
                         query += f"{Database.Counterpoint.Product.columns['web_visible']} = 'N', "
+                # Web Title
                 if 'title' in payload:
                     title = payload['title'].replace("'", "''")[:80]  # 80 char limit
                     query += f"{Database.Counterpoint.Product.columns['web_title']} = '{title}', "
+
+                # SEO Data
                 if 'meta_title' in payload:
                     meta_title = payload['meta_title'].replace("'", "''")[:80]  # 80 char limit
                     query += f"{Database.Counterpoint.Product.columns['meta_title']} = '{meta_title}', "
                 if 'meta_description' in payload:
                     meta_description = payload['meta_description'].replace("'", "''")[:160]  # 160 char limit
                     query += f"{Database.Counterpoint.Product.columns['meta_description']} = '{meta_description}', "
+
+                # Image Alt Text
                 if 'alt_text_1' in payload:
                     alt_text_1 = payload['alt_text_1'].replace("'", "''")[:160]  # 160 char limit
                     query += f"{Database.Counterpoint.Product.columns['alt_text_1']} = '{alt_text_1}', "
@@ -254,6 +291,27 @@ class Database:
                 if 'alt_text_4' in payload:
                     alt_text_4 = payload['alt_text_4'].replace("'", "''")[:160]  # 160 char limit
                     query += f"{Database.Counterpoint.Product.columns['alt_text_4']} = '{alt_text_4}', "
+
+                # Product Status Metafields
+                if 'featured' in payload:
+                    query += f"{Database.Counterpoint.Product.columns['featured']} = {'Y' if payload['featured'] else 'N'}, "
+
+                if 'in_store_only' in payload:
+                    query += f"{Database.Counterpoint.Product.columns['in_store_only']} = {'Y' if payload['in_store_only'] else 'N'}, "
+
+                if 'is_preorder_item' in payload:
+                    query += f"{Database.Counterpoint.Product.columns['is_preorder_item']} = {'Y' if payload['is_preorder_item'] else 'N'}, "
+
+                if 'preorder_message' in payload:
+                    preorder_message = payload['preorder_message'].replace("'", "''")[:160]
+                    query += f"{Database.Counterpoint.Product.columns['preorder_message']} = '{preorder_message}', "
+
+                if 'preorder_release_date' in payload:
+                    query += f"{Database.Counterpoint.Product.columns['preorder_release_date']} = '{payload['preorder_release_date']}', "
+
+                # Product Specification Metafields
+                if 'botanical_name' in payload:
+                    query += f"CF_BOTAN_NAM = '{payload['botanical_name']}', "
 
                 if query[-2:] == ', ':
                     query = query[:-2]
@@ -284,7 +342,7 @@ class Database:
                     description = description.replace("'", "''")
                     query = f"""
                     UPDATE {Database.Counterpoint.Product.HTMLDescription.table}
-                    SET HTML_DESCR = '{description}', LST_MAINT_DT = GETDATE()
+                    SET HTML_DESCR = '{description}'
                     WHERE ITEM_NO = '{item_no}'
                     """
                     response = Database.db.query(query)
@@ -776,8 +834,13 @@ class Database:
                         product_list.append(Database.Shopify.Product.get_id(item_no=sku))
                     return product_list
 
-            def get_id(item_no=None, binding_id=None, image_id=None, video_id=None):
+            def get_id(item_no=None, binding_id=None, image_id=None, video_id=None, all=False):
                 """Get product ID from SQL using image ID. If not found, return None."""
+                if all:
+                    query = f"""SELECT PRODUCT_ID FROM {Database.Shopify.Product.table} WHERE LST_MAINT_DT < '2024-08-14 16:30:19.297'"""
+                    prod_id_res = Database.db.query(query)
+                    if prod_id_res is not None:
+                        return [x[0] for x in prod_id_res]
                 product_query = None
                 if item_no:
                     product_query = (
@@ -805,6 +868,24 @@ class Database:
                 query = f"""
                         SELECT ITEM_NO FROM {Database.Shopify.Product.table}
                         WHERE PRODUCT_ID = {product_id} AND (BINDING_ID IS NULL OR IS_PARENT = 1)
+                        """
+                response = Database.db.query(query)
+                if response is not None:
+                    return response[0][0]
+
+            def get_sku(product_id):
+                query = f"""
+                        SELECT ITEM_NO FROM {Database.Shopify.Product.table}
+                        WHERE PRODUCT_ID = {product_id}
+                        """
+                response = Database.db.query(query)
+                if response is not None:
+                    return response[0][0]
+
+            def get_binding_id(product_id):
+                query = f"""
+                        SELECT BINDING_ID FROM {Database.Shopify.Product.table}
+                        WHERE PRODUCT_ID = {product_id}
                         """
                 response = Database.db.query(query)
                 if response is not None:
@@ -1003,6 +1084,27 @@ class Database:
                 class Image:
                     table = creds.shopify_image_table
 
+                    def get(image_id, column=None):
+                        if column is None:
+                            column = '*'
+
+                        elif image_id:
+                            where_filter = f'WHERE IMAGE_ID = {image_id}'
+
+                        query = f"""
+                        SELECT {column} FROM {Database.Shopify.Product.Media.Image.table}
+                        {where_filter}
+                        """
+                        print(query)
+                        response = Database.db.query(query)
+                        if column == '*':
+                            return response
+                        else:
+                            try:
+                                return response[0][0]
+                            except:
+                                return None
+
                     def get_image_id(file_name):
                         img_id_res = Database.db.query(
                             f"SELECT IMAGE_ID FROM {creds.shopify_image_table} WHERE IMAGE_NAME = '{file_name}'"
@@ -1062,25 +1164,57 @@ class Database:
                             raise Exception(error)
 
                     def delete(image=None, image_id=None, product_id=None):
+                        prod_id = None
                         if image_id:
                             # Delete Single Image from Image ID
+                            prod_id = Database.Shopify.Product.Media.Image.get(
+                                image_id=image_id, column='PRODUCT_ID'
+                            )
+                            sort_order = Database.Shopify.Product.Media.Image.get(
+                                image_id=image_id, column='SORT_ORDER'
+                            )
                             q = f"DELETE FROM {creds.shopify_image_table} WHERE IMAGE_ID = '{image_id}'"
+
                         elif image:
                             # Delete Single Image from Image Object
+                            prod_id = image.product_id
+                            sort_order = image.sort_order
                             if image.shopify_id is None:
                                 image.shopify_id = Database.Shopify.Product.Media.Image.get_image_id(
                                     filename=image.name
                                 )
                             q = f"DELETE FROM {creds.shopify_image_table} WHERE IMAGE_ID = '{image.shopify_id}'"
+
                         elif product_id:
                             # Delete All Images from Product ID
                             q = f"DELETE FROM {creds.shopify_image_table} WHERE PRODUCT_ID = '{product_id}'"
+
                         else:
                             Database.logger.warn('No image or image_id provided for deletion.')
                             return
+
                         res = Database.db.query(q)
                         if res['code'] == 200:
                             Database.logger.success(f'Query: {q}\nSQL DELETE Image')
+                            if (image_id or image) and prod_id:
+                                # Decrement sort order of remaining images
+                                query = f"""
+                                UPDATE {creds.shopify_image_table}
+                                SET SORT_ORDER = SORT_ORDER - 1
+                                WHERE PRODUCT_ID = {prod_id} AND SORT_ORDER > {sort_order}
+                                """
+                                response = Database.db.query(query)
+                                if response['code'] == 200:
+                                    Database.logger.success(f'Decrement Photos: Success')
+                                elif response['code'] == 201:
+                                    Database.logger.warn(f'Decrement Photos: No Rows Affected')
+                                else:
+                                    error = f'Error decrementing sort order of images in Middleware. \nQuery: {query}\nResponse: {response}'
+                                    Database.error_handler.add_error_v(
+                                        error=error,
+                                        origin=f'Database.Shopify.Product.Media.Image.delete(query:\n{q})',
+                                    )
+                                    raise Exception(error)
                         elif res['code'] == 201:
                             Database.logger.warn(f'IMAGE DELETE: Not found\n\nQuery: {q}\n')
                         else:
@@ -1171,8 +1305,9 @@ class Database:
                             Database.error_handler.add_error_v(error=error)
                             raise Exception(error)
 
-                    def delete(video=None, video_id=None, url=None, sku=None):
+                    def delete(video=None, video_id=None, url=None, sku=None, product_id=None):
                         """Delete video from Middleware and decrement the sort order of remaining item videos."""
+                        sort_order = None
                         if video:  # Video Object
                             sort_order = video.sort_order
                             product_id = video.product_id
@@ -1190,6 +1325,8 @@ class Database:
                                     url=url, sku=sku, column='SORT_ORDER'
                                 )
                                 where_filter = f"WHERE URL = '{url}' AND ITEM_NO = '{sku}'"
+                            elif product_id:
+                                where_filter = f'WHERE PRODUCT_ID = {product_id}'
                             else:
                                 raise Exception('No video_id or product_id provided for deletion.')
 
@@ -1201,26 +1338,22 @@ class Database:
                             elif url and sku:
                                 Database.logger.success(f'Video {url} for product {sku} deleted from Middleware.')
 
-                            # Decrement sort order of remaining videos
-                            query = f"""
-                            UPDATE {Database.Shopify.Product.Media.Video.table}
-                            SET SORT_ORDER = SORT_ORDER - 1
-                            WHERE PRODUCT_ID = {product_id} AND SORT_ORDER > {sort_order}
-                            """
                             if product_id and sort_order:
+                                # Decrement sort order of remaining videos
+                                query = f"""
+                                UPDATE {Database.Shopify.Product.Media.Video.table}
+                                SET SORT_ORDER = SORT_ORDER - 1
+                                WHERE PRODUCT_ID = {product_id} AND SORT_ORDER > {sort_order}
+                                """
                                 decrement_response = Database.db.query(query)
                                 if decrement_response['code'] == 200:
-                                    Database.logger.success(f'Sort order decremented for remaining videos.')
+                                    Database.logger.success('Sort order decremented for remaining videos.')
                                 elif decrement_response['code'] == 201:
-                                    Database.logger.warn(f'No rows affected for sort order decrement.')
+                                    Database.logger.warn('No rows affected for sort order decrement.')
                                 else:
                                     error = f'Error decrementing sort order for remaining videos. \nQuery: {query}\nResponse: {decrement_response}'
                                     Database.error_handler.add_error_v(error=error)
                                     raise Exception(error)
-                            else:
-                                error = f'Could Not Decrement Video Sort Order. Product ID: {product_id}, Sort Order: {sort_order}'
-                                Database.error_handler.add_error_v(error=error)
-                                raise Exception(error)
 
                         elif response['code'] == 201:
                             if video_id:
@@ -1419,4 +1552,4 @@ class Database:
 
 
 if __name__ == '__main__':
-    print(Database.Shopify.Product.get_id(video_id=29765716443303))
+    print(Database.Shopify.Product.get_sku(8308139983015))

@@ -31,7 +31,7 @@ class Catalog:
         self.verbose = verbose
         self.test_mode = test_mode
         self.test_queue = test_queue
-        if not self.inventory_only:
+        if not self.inventory_only and not self.test_mode:
             self.category_tree = self.CategoryTree(last_sync=last_sync)
             self.product_images = get_product_images()
             self.product_videos = Database.Counterpoint.Product.Media.Video.get()
@@ -248,7 +248,10 @@ class Catalog:
                         where_filter = f" or {creds.cp_field_binding_id} = '{binding_list[0]}'"
                 else:
                     where_filter = ''
-
+                print('SKU LIST')
+                print(sku_list)
+                print('201664' in sku_list)
+                print()
                 query = (
                     'UPDATE IM_ITEM '
                     'SET LST_MAINT_DT = GETDATE() '
@@ -288,9 +291,9 @@ class Catalog:
 
     def sync(self, initial=False):
         # Sync Category Tree
-        self.category_tree.sync()
+        # self.category_tree.sync()
 
-        if not initial and not self.inventory_only:
+        if not initial and not self.inventory_only and not self.test_mode:
             self.process_product_deletes()
             self.process_media()
 
@@ -1685,7 +1688,6 @@ class Catalog:
                     },
                     'inventoryPolicy': 'DENY',  # Prevents overselling,
                     'price': child.price_1,  # May be overwritten by price_2 (below)
-                    'compareAtPrice': child.price_1,  # Retail price before sales
                     'optionValues': {'optionName': 'Option'},
                     'taxable': True if self.taxable else False,
                 }
@@ -1702,6 +1704,7 @@ class Catalog:
                 if child.price_2:
                     # If price_2 is set, use the lower of the two prices for sale price
                     variant_payload['price'] = min(child.price_1, child.price_2)
+                    variant_payload['compareAtPrice'] = max(child.price_1, child.price_2)
 
                 if self.is_bound:
                     variant_payload['optionValues']['name'] = child.variant_name
@@ -1747,7 +1750,6 @@ class Catalog:
         def get_single_variant_payload(self):
             payload = {
                 'input': {
-                    'compareAtPrice': self.default_price,
                     'id': f'gid://shopify/ProductVariant/{self.variants[0].variant_id}',
                     'inventoryItem': {
                         'cost': self.cost,
@@ -1773,6 +1775,7 @@ class Catalog:
                 }
             if self.sale_price:
                 payload['input']['price'] = min(self.sale_price, self.default_price)
+                payload['input']['compareAtPrice'] = max(self.sale_price, self.default_price)
 
             return payload
 
@@ -3165,7 +3168,7 @@ class Catalog:
                 if is_variant:
                     print('This is a variant image. Delete from Shopify.')
                     Shopify.Product.Variant.Image.delete(
-                        product_id=product_id, variant_id=variant_id, image_id=image_id
+                        product_id=product_id, variant_id=variant_id, shopify_id=image_id
                     )
 
                 Shopify.Product.Media.Image.delete(
@@ -3281,8 +3284,34 @@ class Catalog:
 
 
 if __name__ == '__main__':
-    cat = Catalog(test_mode=True, test_queue=[{'sku': '10338', 'binding_id': 'B0006'}])
+    from datetime import datetime
+
+    cat = Catalog(last_sync=datetime(2024, 8, 14, 15, 20, 0), test_mode=True, test_queue=[{'sku': '202923'}])
     cat.sync()
     # response = requests.get('https://vimeo.com/channels/staffpicks/986306345634563456956')
     # print(response.status_code)
     # print('sorry, this url is unavailable' in response.text.lower())
+
+    # # Get all e-commerce products
+    # product_ids = Database.Shopify.Product.get_id(all=True)
+    # # REMEMBER TO CHANGE THE DATESTAMP BACK FOF THE GET SKU FUNCTION
+    # errors = []
+    # for product_id in product_ids:
+    #     try:
+    #         print('Processing', product_id)
+    #         # Get Sku from product Id
+    #         sku = Database.Shopify.Product.get_sku(product_id=product_id)
+    #         item = {'sku': sku}
+    #         binding_id = Database.Shopify.Product.get_binding_id(product_id=product_id)
+    #         if binding_id:
+    #             item['binding_id'] = binding_id
+    #         Shopify.Product.Media.delete(product_id=product_id, media_type='all')
+    #         Database.Shopify.Product.Media.delete(product_id=product_id)
+    #         print('Deleted media for', sku)
+    #         print('Syncing', sku)
+    #         cat = Catalog(last_sync=datetime(2024, 8, 14, 15, 20, 0), test_mode=True, test_queue=[item])
+    #         cat.sync()
+    #     except Exception as e:
+    #         Catalog.error_handler.add_error_v(f'Error processing {product_id}: {e}', origin='Catalog Sync', traceback=tb())
+
+    # print(errors)

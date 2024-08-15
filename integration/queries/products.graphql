@@ -178,6 +178,21 @@ query SEO($id: ID!) {
   }
 }
 
+query productMeta($id: ID!) {
+  product(id: $id) {
+    metafields(first: 50) {
+      edges {
+        node {
+          id
+          namespace
+          key
+          value
+        }
+      }
+    }
+  }
+}
+
 query product($id: ID!) {
   product(id: $id) {
     collections(first: 5) {
