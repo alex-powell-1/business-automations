@@ -167,7 +167,14 @@ class Shopify:
                     item['name'] = ''
 
                 if item['name'].lower() == 'delivery':
-                    delivery_from_lines += price * float(item['quantity'])
+                    # delivery_from_lines += price * float(item['quantity'])
+                    # continue
+                    item['sku'] = 'DELIVERY'
+
+                if item['name'].lower() == 'service':
+                    item['sku'] = 'SERVICE'
+
+                if item['sku'] is None:
                     continue
 
                 item['isGiftCard'] = False
@@ -177,7 +184,7 @@ class Shopify:
 
                 pl = {
                     'id': item['id'],
-                    'sku': 'SERVICE' if item['name'].lower() == 'service' else item['sku'],
+                    'sku': item['sku'],
                     'type': 'giftcertificate' if item['isGiftCard'] else 'physical',
                     'base_price': price,
                     'price_ex_tax': price,
