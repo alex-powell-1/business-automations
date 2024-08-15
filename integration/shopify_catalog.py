@@ -16,6 +16,8 @@ from setup.utilities import get_all_binding_ids, get_product_images, convert_to_
 
 from setup.error_handler import Logger, ErrorHandler
 
+from traceback import format_exc as tb
+
 
 class Catalog:
     all_binding_ids = get_all_binding_ids()
@@ -1232,8 +1234,12 @@ class Catalog:
                 try:
                     return response[0][0].split(',')
                 except:
+                    Catalog.logger.warn(f'Error getting current collections for {self.sku}')
                     return []
             except:
+                Catalog.error_handler.add_error_v(
+                    error='Error getting current collections', origin='Input Validation', traceback=tb()
+                )
                 return []
 
         def get_collections_to_leave(self):
@@ -1244,11 +1250,14 @@ class Catalog:
               SN_SHOP_PROD are the collections that the product is currently in.
             """
 
-            collections_to_leave = self.get_current_collections()
-            for collection in self.shopify_collections:
-                if collection in collections_to_leave:
-                    collections_to_leave.remove(collection)
-            return collections_to_leave
+            try:
+                collections_to_leave = self.get_current_collections()
+                for collection in self.shopify_collections:
+                    if collection in collections_to_leave:
+                        collections_to_leave.remove(collection)
+                return collections_to_leave
+            except:
+                return []
 
         def get_payload(self):
             """Build the payload for creating a product in BigCommerce.
