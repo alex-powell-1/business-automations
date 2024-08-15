@@ -109,6 +109,41 @@ def convert_to_utc(date: datetime):
     return date.astimezone().isoformat()
 
 
+from datetime import datetime
+import pytz
+
+
+def convert_utc_to_local(utc_dt):
+    """
+    Convert a UTC datetime to local time.
+
+    :param utc_dt: The UTC datetime object.
+    :param local_tz: The local timezone as a string (e.g., 'America/New_York').
+    :return: The local datetime object.
+    """
+    try:
+        # Define the UTC timezone
+        utc = pytz.utc
+
+        # Convert the datetime to UTC
+        utc_dt = datetime.strptime(utc_dt, '%Y-%m-%dT%H:%M:%SZ')
+        utc_dt = utc.localize(utc_dt)
+
+        # Define the local timezone
+        local_timezone = pytz.timezone('America/New_York')
+
+        # Convert the datetime to the local timezone
+        local_dt = utc_dt.astimezone(local_timezone)
+
+        # Remove the timezone information
+        local_naive_dt = local_dt.replace(tzinfo=None)
+
+        return local_naive_dt
+
+    except:
+        return None
+
+
 def make_datetime(date_string):
     return datetime.strptime(date_string, '%Y-%m-%d %H:%M:%S')
 
@@ -240,3 +275,8 @@ class VirtualRateLimiter:
             time.sleep(sleep2)
         elif len(VirtualRateLimiter.requests) > VirtualRateLimiter.request_quota * 0.15:
             time.sleep(sleep3)
+
+
+if '__main__' == __name__:
+    # Example usage
+    print(convert_utc_to_local('2024-08-14T14:30:00Z'))

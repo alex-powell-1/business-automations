@@ -285,7 +285,7 @@ class Customers:
                 payload['email'] = self.email
                 payload['store_credit_amounts'] = [{'amount': self.loyalty_points}]
 
-                if self.has_phone():
+                if self.phone:
                     payload['phone'] = self.phone
 
                 if self.has_address():

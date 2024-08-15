@@ -52,6 +52,8 @@ class Customers:
 
     def sync(self):
         if self.customers:
+            success_count = 0
+            fail_count = {'number': 0, 'customer': []}
             Customers.logger.header(f'Syncing Customers: {len(self.customers)}')
             for customer in self.customers:
                 try:
@@ -63,6 +65,17 @@ class Customers:
                         origin='Customers.sync',
                         traceback=tb(),
                     )
+                    fail_count['number'] += 1
+                    fail_count['customer'].append(customer.cp_cust_no)
+                else:
+                    success_count += 1
+
+            if fail_count['number'] > 0:
+                Customers.logger.warn(f'Customers failed to sync: {fail_count["number"]}')
+                Customers.logger.warn(f'Failed Customers: {fail_count["customer"]}')
+            if success_count > 0:
+                Customers.logger.success(f'Customers synced: {success_count}')
+
         else:
             Customers.logger.warn('No customers to sync.')
 
@@ -74,6 +87,7 @@ class Customers:
             self.lst_nam = str(cust_result[2]).title()
             self.email = cust_result[3] if cust_result[3] else f'{self.cp_cust_no}@store.com'
             self.phone = cust_result[4]
+            print(self.phone, type(self.phone))
             self.loyalty_points = float(cust_result[5])
             self.loyalty_point_id = cust_result[6]
             self.address_line_1: str = cust_result[7]

@@ -8,7 +8,7 @@ from shortuuid import ShortUUID
 from setup.email_engine import Email
 from customer_tools.customers import lookup_customer
 
-verbose_print = True
+verbose_print = False
 
 
 class Shopify:
@@ -78,8 +78,17 @@ class Shopify:
                             with open('./duplicate_emails.txt', 'a') as f:
                                 print(f"Duplicate email: {variables['input']['email']}", file=f)
                             # Remove email from variables
-                            variables['input']['email'] = None
-                            variables['input']['emailMarketingConsent'] = None
+                            del ['input']['email']
+                            del variables['input']['emailMarketingConsent']
+                            self.user_errors.remove(i)
+                            self.__init__(document, variables, operation_name)
+
+                        elif i == 'Phone has already been taken':
+                            with open('./duplicate_phones.txt', 'a') as f:
+                                print(f"Duplicate phone: {variables['input']['phone']}", file=f)
+                            # Remove phone from variables
+                            del variables['input']['phone']
+                            del variables['input']['smsMarketingConsent']
                             self.user_errors.remove(i)
                             self.__init__(document, variables, operation_name)
 
@@ -1047,6 +1056,7 @@ class Shopify:
 
             def delete(product_id: int, media_type, media_ids: list = None, media_id: int = None):
                 variables = None
+
                 if media_type == 'video':
                     prefix = Shopify.Product.Media.Video.prefix
                 elif media_type == 'image':
@@ -1180,6 +1190,26 @@ class Shopify:
                     # Get all Media for product
                     media_ids = Shopify.Product.Media.get(product_id, id_list=False)
                     print(media_ids)
+
+        class Metafield:
+            def get(product_id):
+                response = Shopify.Query(
+                    document=Shopify.Product.queries,
+                    variables={'id': f'{Shopify.Product.prefix}{product_id}'},
+                    operation_name='productMeta',
+                )
+                metafields = [x['node'] for x in response.data['product']['metafields']['edges']]
+                product_specifications = []
+                for x in metafields:
+                    if x['namespace'] == creds.meta_namespace_product_specs:
+                        product_specifications.append(
+                            {'id': x['id'].split('/')[-1], 'key': x['key'], 'value': x['value']}
+                        )
+                product_status = []
+                for x in metafields:
+                    if x['namespace'] == creds.meta_namespace_product_status:
+                        product_status.append({'id': x['id'].split('/')[-1], 'key': x['key'], 'value': x['value']})
+                return {'product_specifications': product_specifications, 'product_status': product_status}
 
         class Option:
             queries = './integration/queries/productOptions.graphql'
@@ -1801,5 +1831,9 @@ class Shopify:
 
 
 if __name__ == '__main__':
-    Shopify.Product.Media.delete(product_id=8314742014119, media_type='image')
-    Database.Shopify.Product.Media.delete
+    response = Shopify.Product.Metafield.get(8308197163175)
+    for i in response['product_specifications']:
+        print(i)
+    print('\n\n')
+    for i in response['product_status']:
+        print(i)

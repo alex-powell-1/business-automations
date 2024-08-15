@@ -16,6 +16,7 @@ from jinja2 import Template
 from jsonschema import validate, ValidationError
 from twilio.twiml.messaging_response import MessagingResponse
 from waitress import serve
+from setup.utilities import convert_utc_to_local
 
 from setup import creds, authorization
 from setup.email_engine import Email
@@ -607,6 +608,13 @@ def shopify_product_update():
     description = webhook_data['body_html']
     status = webhook_data['status']
     item_no = Database.Shopify.Product.get_parent_item_no(product_id)
+
+    with open('product_update.txt', 'a') as f:
+        print(item_no, title, file=f)
+
+    with open('product_update.json', 'a') as f:
+        json.dump(webhook_data, f)
+
     if description:
         Database.Counterpoint.Product.HTMLDescription.update(item_no=item_no, description=description)
 
@@ -614,6 +622,64 @@ def shopify_product_update():
     seo_data = Shopify.Product.SEO.get(product_id)
     meta_title = seo_data['title']
     meta_description = seo_data['description']
+
+    # Get product Metafields
+    metafields = Shopify.Product.Metafield.get(product_id)
+    features = None
+    botanical_name = None
+    plant_type = None
+    light_requirements = None
+    size = None
+    features = None
+    bloom_season = None
+    bloom_color = None
+    color = None
+    is_featured = None
+    in_store_only = None
+    is_preorder_item = None
+    preorder_message = None
+    preorder_release_date = None
+
+    for i in metafields['product_specifications']:
+        if i['key'] == 'botanical_name':
+            botanical_name = i['value']
+
+        if i['key'] == 'plant_type':
+            plant_type = i['value']
+
+        if i['key'] == 'light_requirements':
+            light_requirements = i['value']
+
+        if i['key'] == 'size':
+            size = i['value']
+
+        if i['key'] == 'features':
+            features = i['value']
+
+        if i['key'] == 'bloom_season':
+            bloom_season = i['value']
+
+        if i['key'] == 'bloom_color':
+            bloom_color = i['value']
+
+        if i['key'] == 'color':
+            color = i['value']
+
+    for i in metafields['product_status']:
+        if i['key'] == 'featured':
+            is_featured = True if i['value'] == 'true' else False
+
+        if i['key'] == 'in_store_only':
+            in_store_only = True if i['value'] == 'true' else False
+
+        if i['key'] == 'preorder_item':
+            is_preorder_item = True if i['value'] == 'true' else False
+
+        if i['key'] == 'preorder_message':
+            preorder_message = i['value']
+
+        if i['key'] == 'preorder_release_date':
+            preorder_release_date = convert_utc_to_local(i['value'])
 
     # Get media data
     media_payload = []
@@ -638,6 +704,33 @@ def shopify_product_update():
             update_payload['meta_title'] = meta_title
         if meta_description:
             update_payload['meta_description'] = meta_description
+
+        if botanical_name:
+            update_payload['botanical_name'] = botanical_name
+        if plant_type:
+            update_payload['plant_type'] = plant_type
+        if light_requirements:
+            update_payload['light_requirements'] = light_requirements
+        if size:
+            update_payload['size'] = size
+        if features:
+            update_payload['features'] = features
+        if bloom_season:
+            update_payload['bloom_season'] = bloom_season
+        if bloom_color:
+            update_payload['bloom_color'] = bloom_color
+        if color:
+            update_payload['color'] = color
+        if is_featured:
+            update_payload['is_featured'] = is_featured
+        if in_store_only:
+            update_payload['in_store_only'] = in_store_only
+        if is_preorder_item:
+            update_payload['is_preorder_item'] = is_preorder_item
+        if preorder_message:
+            update_payload['preorder_message'] = preorder_message
+        if preorder_release_date:
+            update_payload['preorder_release_date'] = preorder_release_date
 
         if media_payload:
             for m in media_payload:
