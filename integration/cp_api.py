@@ -2090,7 +2090,7 @@ class HoldOrder(DocumentAPI):
                 sku = 'DELIVERY'
 
             return {
-                'LIN_TYP': 'O',
+                'LIN_TYP': 'S',
                 'ITEM_NO': sku,
                 'QTY_SOLD': float(self.qty),
                 'PRC': float(self.price),
@@ -2140,11 +2140,6 @@ class HoldOrder(DocumentAPI):
                 }
             }
 
-            if self.shipping > 0:
-                pl['PS_DOC_HDR']['PS_DOC_HDR_MISC_CHRG'] = [
-                    {'TOT_TYP': 'O', 'MISC_CHRG_NO': '1', 'MISC_TYP': 'A', 'MISC_AMT': self.shipping}
-                ]
-
             return pl
 
         def add_note(self, note, note_id='ADMIN NOTE'):
@@ -2165,7 +2160,7 @@ class HoldOrder(DocumentAPI):
         INSERT INTO PS_DOC_HDR_TOT
         (DOC_ID, TOT_TYP, INITIAL_MIN_DUE, HAS_TAX_OVRD, TAX_AMT_SHIPPED, LINS, TOT_GFC_AMT, TOT_SVC_AMT, SUB_TOT, TAX_OVRD_LINS, TOT_EXT_COST, TOT_MISC, TAX_AMT, NORM_TAX_AMT, TOT_TND, TOT_CHNG, TOT_WEIGHT, TOT_CUBE, TOT, AMT_DUE, TOT_HDR_DISC, TOT_LIN_DISC, TOT_HDR_DISCNTBL_AMT, TOT_TIP_AMT)
         VALUES
-        ('{doc_id}', 'O', 0, '!', 0, 0, 0, 0, {sub_tot}, 0, 0, 0, 0, 0, 0, 0, 0, 0, {tot}, 0, {total_discount}, 0, {sub_tot}, 0)
+        ('{doc_id}', 'S', 0, '!', 0, 0, 0, 0, {sub_tot}, 0, 0, 0, 0, 0, 0, 0, 0, 0, {tot}, 0, {total_discount}, 0, {sub_tot}, 0)
         """
 
         return Database.db.query(query)
