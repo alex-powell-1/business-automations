@@ -157,6 +157,10 @@ class OrderAPI(DocumentAPI):
 
                 ext_prc = float(product['base_price']) * qty - total_discount
 
+                print(product['sku'])
+                print(ext_prc)
+                print(qty)
+
                 line_item = {
                     'LIN_TYP': 'O',
                     'ITEM_NO': product['sku'],
@@ -278,7 +282,7 @@ class OrderAPI(DocumentAPI):
         disc_pct = 0
         disc_amt_shipped = 0
 
-        if self.is_refund() and apply_to == 'L':
+        if self.is_refund():
             disc_amt = -disc_amt
 
         if apply_to == 'H':
@@ -1076,15 +1080,12 @@ class OrderAPI(DocumentAPI):
             for line_item in payload['PS_DOC_HDR']['PS_DOC_LIN']:
                 sub_tot += float(line_item['EXT_PRC'])
 
-            bc_order['subtotal_ex_tax'] = float(bc_order['refunded_amount'] or 0) + float(
-                self.total_discount_amount or 0
-            ) / float(bc_order['items_total'] or 1)
-            bc_order['subtotal_inc_tax'] = float(bc_order['refunded_amount'] or 0) + float(
-                self.total_discount_amount or 0
-            ) / float(bc_order['items_total'] or 1)
-
-            bc_order['total_ex_tax'] = float(bc_order['refunded_amount'] or 0)
-            bc_order['total_inc_tax'] = float(bc_order['refunded_amount'] or 0)
+            # bc_order['subtotal_ex_tax'] = float(bc_order['refunded_amount'] or 0) + float(
+            #     self.total_discount_amount or 0
+            # ) / float(bc_order['items_total'] or 1)
+            # bc_order['subtotal_inc_tax'] = float(bc_order['refunded_amount'] or 0) + float(
+            #     self.total_discount_amount or 0
+            # ) / float(bc_order['items_total'] or 1)
 
         def commit_query(query):
             response = Database.db.query(query)
@@ -1359,8 +1360,8 @@ class OrderAPI(DocumentAPI):
                     self.error_handler.add_error_v('Payment could not be applied')
                     self.error_handler.add_error_v(r['message'])
 
-            total = get_total()
-            total = total + abs(self.get_shipping_cost(bc_order)) - abs(self.total_discount_amount or 0)
+            # total = get_total()
+            total = bc_order['total_inc_tax'] or 0
 
             big_payment = get_big_payment()
 
@@ -1635,7 +1636,7 @@ class OrderAPI(DocumentAPI):
 
             return total
 
-        tot_tndr = 0 if self.is_refund() else get_tndr()
+        tot_tndr = float(bc_order['total_inc_tax'] or 0) if self.is_refund() else get_tndr()
 
         query = f"""
         DELETE FROM PS_DOC_HDR_TOT
@@ -1665,6 +1666,7 @@ class OrderAPI(DocumentAPI):
             self.error_handler.add_error_v(response['message'])
 
         sub_tot = float(bc_order['subtotal_ex_tax'] or 0)
+        tot = float(bc_order['total_inc_tax'] or 0)
         document_discount = float(self.total_discount_amount or 0)
         gfc_amount = float(self.total_gfc_amount)
         shipping_amt = float(bc_order['base_shipping_cost'] or 0)
@@ -1693,7 +1695,7 @@ class OrderAPI(DocumentAPI):
             INSERT INTO PS_DOC_HDR_TOT
             (DOC_ID, TOT_TYP, INITIAL_MIN_DUE, HAS_TAX_OVRD, TAX_AMT_SHIPPED, LINS, TOT_GFC_AMT, TOT_SVC_AMT, SUB_TOT, TAX_OVRD_LINS, TOT_EXT_COST, TOT_MISC, TAX_AMT, NORM_TAX_AMT, TOT_TND, TOT_CHNG, TOT_WEIGHT, TOT_CUBE, TOT, AMT_DUE, TOT_HDR_DISC, TOT_LIN_DISC, TOT_HDR_DISCNTBL_AMT, TOT_TIP_AMT)
             VALUES
-            ('{doc_id}', 'S', 0, '!', 0, {len(payload["PS_DOC_HDR"]["PS_DOC_LIN"])}, 0, 0, {-(sub_tot - self.total_discount_amount / float(bc_order["items_total"])) if self.is_partial_refund() else -(sub_tot - document_discount)}, 0, {-tot_ext_cost}, 0, 0, 0, {tot_tndr}, {(sub_tot - self.total_discount_amount / float(bc_order["items_total"])) if self.is_partial_refund() else (sub_tot - self.total_discount_amount)}, 0, 0, {(-(sub_tot - (self.total_discount_amount / float(bc_order["items_total"])))) if self.is_partial_refund() else -(sub_tot - self.total_discount_amount)}, 0, {0 if self.is_partial_refund() else -self.total_hdr_disc}, {self.total_lin_disc + self.total_hdr_disc if self.is_partial_refund() else self.total_lin_disc}, 0, 0)
+            ('{doc_id}', 'S', 0, '!', 0, {len(payload["PS_DOC_HDR"]["PS_DOC_LIN"])}, 0, 0, {-(sub_tot)}, 0, {-tot_ext_cost}, 0, 0, 0, {tot_tndr}, {0}, 0, 0, {-tot}, 0, {self.total_hdr_disc}, {self.total_lin_disc}, 0, 0)
             """
         else:
             query = f"""
@@ -1786,13 +1788,13 @@ class OrderAPI(DocumentAPI):
         if self.is_refund(bc_order):
             query = f"""
             UPDATE PS_DOC_HDR
-            SET RET_LIN_TOT = {-(float(bc_order["subtotal_ex_tax"] or 0) - float(self.total_discount_amount or 0))}
+            SET RET_LIN_TOT = {(float(bc_order["total_inc_tax"] or 0))}
             WHERE DOC_ID = '{doc_id}'
             """
         else:
             query = f"""
             UPDATE PS_DOC_HDR
-            SET SAL_LIN_TOT = {float(bc_order["subtotal_ex_tax"] or 0) - float(self.total_discount_amount or 0)}
+            SET SAL_LIN_TOT = {float(bc_order["total_inc_tax"] or 0)}
             WHERE DOC_ID = '{doc_id}'
             """
 

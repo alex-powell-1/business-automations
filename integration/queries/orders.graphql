@@ -214,6 +214,18 @@ query order($id: ID!) {
                     }
                 }
             }
+
+            totalRefundedSet {
+                shopMoney {
+                    amount
+                }
+            }
+
+            totalRefundedShippingSet {
+                shopMoney {
+                    amount
+                }
+            }
         }
     }
 }

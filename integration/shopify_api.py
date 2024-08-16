@@ -166,6 +166,8 @@ class Shopify:
 
             delivery_from_lines = 0
 
+            refunded_subtotal = 0
+
             for _item in shopify_order['node']['lineItems']['edges']:
                 item = _item['node']
 
@@ -174,10 +176,25 @@ class Shopify:
 
                 price = float(get_money(item['originalUnitPriceSet']))  # Fixed
 
+                is_refunded = False
+                quantity_refunded = 0
+
+                if len(snode['refunds']) > 0:
+                    for refunds in snode['refunds']:
+                        for refund in refunds['refundLineItems']['edges']:
+                            if refund['node']['lineItem']['id'] == item['id']:
+                                is_refunded = True
+                                quantity_refunded = int(refund['node']['quantity'])
+
+                                refunded_subtotal += price * float(quantity_refunded)
+
                 if item['name'] is None:
                     item['name'] = ''
 
                 if item['name'].lower() == 'delivery':
+                    if is_refunded:
+                        item['quantity'] = quantity_refunded
+
                     delivery_from_lines += price * float(item['quantity'])
                     continue
                     # item['sku'] = 'DELIVERY'
@@ -206,8 +223,8 @@ class Shopify:
                     'total_inc_tax': price,
                     'total_tax': 0,
                     'quantity': item['quantity'],
-                    'is_refunded': False,
-                    'quantity_refunded': 0,
+                    'is_refunded': is_refunded,
+                    'quantity_refunded': quantity_refunded,
                     'refund_amount': 0,
                     'return_id': 0,
                     'fixed_shipping_cost': 0,
@@ -215,19 +232,6 @@ class Shopify:
                     'discounted_total_inc_tax': get_money(item['discountedTotalSet']),
                     'applied_discounts': [],
                 }
-
-                is_refunded = False
-                quantity_refunded = 0
-
-                if len(snode['refunds']) > 0:
-                    for refunds in snode['refunds']:
-                        for refund in refunds['refundLineItems']['edges']:
-                            if refund['node']['lineItem']['id'] == item['id']:
-                                is_refunded = True
-                                quantity_refunded = int(refund['node']['quantity'])
-
-                pl['is_refunded'] = is_refunded
-                pl['quantity_refunded'] = quantity_refunded
 
                 if item['isGiftCard'] and status == 'UNFULFILLED' and send and not is_refunded:
 
@@ -282,11 +286,14 @@ class Shopify:
             subtotal = float(get_money(snode['currentSubtotalPriceSet'])) + header_discount + shippingCost
             total = float(get_money(snode['currentTotalPriceSet']))
 
-            # Delivery from lines is total from Dummy Delivery Item
-            shippingCost += delivery_from_lines
-
             if len(snode['refunds']) > 0:
                 status = 'Partially Refunded'
+                subtotal = refunded_subtotal
+                total = float(get_money(snode['totalRefundedSet']))
+                shippingCost = float(get_money(snode['totalRefundedShippingSet']))
+
+            # Delivery from lines is total from Dummy Delivery Item
+            shippingCost += delivery_from_lines
 
             def create_shipping_item():
                 return {
@@ -302,8 +309,8 @@ class Shopify:
                     'total_inc_tax': shippingCost,
                     'total_tax': 0,
                     'quantity': 1,
-                    'is_refunded': False,
-                    'quantity_refunded': 0,
+                    'is_refunded': True if status == 'Partially Refunded' else False,
+                    'quantity_refunded': 1 if status == 'Partially Refunded' else 0,
                     'refund_amount': 0,
                     'return_id': 0,
                     'fixed_shipping_cost': 0,
@@ -384,6 +391,7 @@ class Shopify:
         def get_orders_not_in_cp():
             query = """
             SELECT TKT_NO, TKT_DT FROM PS_DOC_HDR
+            WHERE STR_ID = 'WEB' OR STA_ID = 'POS'
             UNION
             SELECT TKT_NO, TKT_DT FROM PS_TKT_HIST
             WHERE STR_ID = 'WEB' OR STA_ID = 'POS'
