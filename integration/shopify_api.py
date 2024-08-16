@@ -271,16 +271,18 @@ class Shopify:
                 return money['shopMoney']['amount']
 
             try:
+                # Shipping Line Amount from Shopify
                 shippingCost = float(get_money(snode['shippingLine']['discountedPriceSet']))
             except:
                 shippingCost = 0
 
-            shippingCost += delivery_from_lines
-
             header_discount = float(get_money(snode['totalDiscountsSet']))
 
-            subtotal = float(get_money(snode['currentSubtotalPriceSet'])) + header_discount
+            subtotal = float(get_money(snode['currentSubtotalPriceSet'])) + header_discount + shippingCost
             total = float(get_money(snode['currentTotalPriceSet']))
+
+            # Delivery from lines is total from Dummy Delivery Item
+            shippingCost += delivery_from_lines
 
             if len(snode['refunds']) > 0:
                 status = 'Partially Refunded'
@@ -1882,7 +1884,8 @@ if __name__ == '__main__':
     # shopify_order.post_shopify_order()
 
     # Shopify.Order.get(5633184661671)
-    refresh_order('S1034')
+    refresh_order('S1040')
+    # Shopify.Refund.create('S1040')
 
     # res = Shopify.Order.get_orders_not_in_cp()
     # order_list = [res['name'] for res in res]
