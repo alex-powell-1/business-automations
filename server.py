@@ -1,5 +1,8 @@
 import json
 import time
+import hmac
+import base64
+import hashlib
 import urllib.parse
 from datetime import datetime
 import bleach
@@ -57,6 +60,15 @@ def handle_exception(e):
         error=f'An error occurred: {e}', origin=f'exception - {url}', traceback=tb()
     )
     return jsonify({'error': f'An error occurred {e}'}), 500
+
+
+def verify_webhook(data, hmac_header):
+    """
+    Compare the computed HMAC digest based on the client secret and the request contents
+    to the reported HMAC in the headers.
+    """
+    calculated_hmac = base64.b64encode(hmac.new(creds.shopify_secret_key.encode(), data, hashlib.sha256).digest())
+    return hmac.compare_digest(calculated_hmac, hmac_header.encode())
 
 
 @app.route('/design', methods=['POST'])
@@ -492,11 +504,23 @@ def bc_orders():
 def shopify():
     """Webhook route for incoming orders. Sends to RabbitMQ queue for asynchronous processing"""
     webhook_data = request.json
+    headers = request.headers
+    data = request.get_data()
+    hmac_header = headers.get('X-Shopify-Hmac-Sha256')
+    if not hmac_header:
+        return jsonify({'error': 'Unauthorized'}), 401
+    verified = verify_webhook(data, hmac_header)
+    if not verified:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    if 'refund_line_items' in webhook_data:
+        webhook_data['id'] = webhook_data['order_id']
 
     with open('order_create.json', 'a') as f:
         json.dump(webhook_data, f)
 
     order_id = webhook_data['id']
+
     try:
         connection = pika.BlockingConnection(pika.ConnectionParameters('localhost'))
         channel = connection.channel()
@@ -523,7 +547,16 @@ def shopify():
 def shopify_draft_create():
     """Webhook route for newly created draft orders. Sends to RabbitMQ queue for asynchronous processing"""
     webhook_data = request.json
+    headers = request.headers
+    data = request.get_data()
+    hmac_header = headers.get('X-Shopify-Hmac-Sha256')
+    if not hmac_header:
+        return jsonify({'error': 'Unauthorized'}), 401
+    verified = verify_webhook(data, hmac_header)
+    if not verified:
+        return jsonify({'error': 'Unauthorized'}), 401
     order_id = webhook_data['id']
+
     try:
         connection = pika.BlockingConnection(pika.ConnectionParameters('localhost'))
         channel = connection.channel()
@@ -550,7 +583,16 @@ def shopify_draft_create():
 def shopify_draft_update():
     """Webhook route for updated draft orders. Sends to RabbitMQ queue for asynchronous processing"""
     webhook_data = request.json
+    headers = request.headers
+    data = request.get_data()
+    hmac_header = headers.get('X-Shopify-Hmac-Sha256')
+    if not hmac_header:
+        return jsonify({'error': 'Unauthorized'}), 401
+    verified = verify_webhook(data, hmac_header)
+    if not verified:
+        return jsonify({'error': 'Unauthorized'}), 401
     order_id = webhook_data['id']
+
     try:
         connection = pika.BlockingConnection(pika.ConnectionParameters('localhost'))
         channel = connection.channel()
@@ -577,6 +619,16 @@ def shopify_draft_update():
 def shopify_customer_update():
     """Webhook route for updated customers. Sends to RabbitMQ queue for asynchronous processing"""
     webhook_data = request.json
+    headers = request.headers
+    data = request.get_data()
+    hmac_header = headers.get('X-Shopify-Hmac-Sha256')
+
+    if not hmac_header:
+        return jsonify({'error': 'Unauthorized'}), 401
+    verified = verify_webhook(data, hmac_header)
+    if not verified:
+        return jsonify({'error': 'Unauthorized'}), 401
+
     with open('customer_update.json', 'a') as f:
         json.dump(webhook_data, f)
     # customer_id = webhook_data['id']
@@ -606,6 +658,15 @@ def shopify_customer_update():
 def shopify_product_update():
     """Webhook route for updated products. Sends to RabbitMQ queue for asynchronous processing"""
     webhook_data = request.json
+    headers = request.headers
+    data = request.get_data()
+    hmac_header = headers.get('X-Shopify-Hmac-Sha256')
+    if not hmac_header:
+        return jsonify({'error': 'Unauthorized'}), 401
+    verified = verify_webhook(data, hmac_header)
+    if not verified:
+        return jsonify({'error': 'Unauthorized'}), 401
+
     # Get product data
     product_id = webhook_data['id']
     title = webhook_data['title']

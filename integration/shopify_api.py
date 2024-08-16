@@ -1,15 +1,16 @@
 from setup import creds
 import requests
 import json
-from setup.error_handler import ProcessOutErrorHandler, ProcessInErrorHandler
+from setup.error_handler import ProcessOutErrorHandler
 from pathlib import Path
 from integration.database import Database
 from shortuuid import ShortUUID
 from setup.email_engine import Email
 from customer_tools.customers import lookup_customer
+from traceback import print_exc as tb
 
 
-verbose_print = True
+verbose_print = False
 
 
 class Shopify:
@@ -1063,7 +1064,15 @@ class Shopify:
                     if not product_id:
                         product_id = Database.Shopify.Product.get_id(sku=sku)
 
-                    media_ids = Database.Shopify.Product.Variant.Media.Image.get(item_no=sku)
+                    if product_id and sku:
+                        media_ids = Database.Shopify.Product.Variant.Media.Image.get(item_no=sku)
+                    else:
+                        Shopify.error_handler.add_error_v(
+                            error='Product ID or SKU not provided',
+                            origin='Shopify.Product.Variant.Image.delete_all',
+                            traceback=tb(),
+                        )
+                        return
 
                     if media_ids:
                         Shopify.Product.Media.delete(product_id=product_id, media_type='image', media_ids=media_ids)
@@ -1273,14 +1282,17 @@ class Shopify:
                 option_values_to_update: list = None,
                 option_values_to_delete: list = None,
             ):
-                variables = {
-                    'productId': f'{Shopify.Product.prefix}{product_id}',
-                    'option': {'id': f'{Shopify.Product.Option.prefix}{option_id}'},
-                    'variantStrategy': 'MANAGE',
-                    'optionValuesToDelete': [],
-                    'optionValuesToUpdate': [],
-                    'optionValuesToAdd': [],
-                }
+                if product_id and option_id:
+                    variables = {
+                        'productId': f'{Shopify.Product.prefix}{product_id}',
+                        'option': {'id': f'{Shopify.Product.Option.prefix}{option_id}'},
+                        'variantStrategy': 'MANAGE',
+                        'optionValuesToDelete': [],
+                        'optionValuesToUpdate': [],
+                        'optionValuesToAdd': [],
+                    }
+                else:
+                    raise Exception('Product ID and Option ID are required')
 
                 if option_values_to_add:
                     add_list = [f'gid://shopify/ProductOptionValue/{x}' for x in option_values_to_add]
@@ -1294,11 +1306,14 @@ class Shopify:
                     delete_list = [f'gid://shopify/ProductOptionValue/{x}' for x in option_values_to_delete]
                     variables['optionValuesToDelete'] = delete_list
 
-                response = Shopify.Query(
-                    document=Shopify.Product.Option.queries, variables=variables, operation_name='updateOption'
-                )
+                if option_values_to_add or option_values_to_update or option_values_to_delete:
+                    response = Shopify.Query(
+                        document=Shopify.Product.Option.queries, variables=variables, operation_name='updateOption'
+                    )
 
-                return response.data
+                    return response.data
+                else:
+                    return
 
             def delete(product_id: str, option_ids: list):
                 response = Shopify.Query(
@@ -1872,6 +1887,7 @@ class Shopify:
 
 
 def refresh_order(tkt_no):
+    """Delete order from PS_DOC_HDR and associated tables and rebuild from Shopify Data"""
     Database.Counterpoint.Order.delete(tkt_no=tkt_no)
 
     from integration.orders import Order as ShopifyOrder
@@ -1883,20 +1899,4 @@ def refresh_order(tkt_no):
 
 
 if __name__ == '__main__':
-    # Shopify.Product.Variant.delete(product_id=8325378670759, variant_id=45937990697127)
-    # product_id = Database.Shopify.Product.get_id(item_no='APTEST')
-    # variant_id = Database.Shopify.Product.Variant.get_variant_id(sku='APTEST')
-    # print(Database.Shopify.Product.Variant.Media.Image.get(item_no='APTEST'))
-    # from integration.orders import Order as ShopifyOrder
-    # shopify_order = ShopifyOrder(5633150451879)
-    # shopify_order.post_shopify_order()
-
-    # Shopify.Order.get(5633184661671)
-    refresh_order('S1040')
-    # Shopify.Refund.create('S1040')
-
-    # res = Shopify.Order.get_orders_not_in_cp()
-    # order_list = [res['name'] for res in res]
-    # # sort by order number
-    # order_list.sort()
-    # print(order_list)
+    Shopify.Webhook.get()

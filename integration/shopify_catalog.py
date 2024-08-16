@@ -321,24 +321,32 @@ class Catalog:
                 Catalog.logger.info(f'Syncing {queue_length} products.')
             while len(self.sync_queue) > 0:
                 start_time = time.time()
-                target = self.sync_queue.pop()
-                prod = self.Product(target, last_sync=self.last_sync, inventory_only=self.inventory_only)
-                prod.get(last_sync=self.last_sync)
-                if not self.inventory_only or self.verbose:
-                    Catalog.logger.info(
-                        f'Processing Product: {prod.sku}, Binding: {prod.binding_id}, Title: {prod.web_title}'
-                    )
-                if prod.validate():
-                    prod.process()
-                    success_count += 1
-                else:
-                    fail_count['number'] += 1
+                try:
+                    target = self.sync_queue.pop()
+                    prod = self.Product(target, last_sync=self.last_sync, inventory_only=self.inventory_only)
+                    prod.get(last_sync=self.last_sync)
+                    if not self.inventory_only or self.verbose:
+                        Catalog.logger.info(
+                            f'Processing Product: {prod.sku}, Binding: {prod.binding_id}, Title: {prod.web_title}'
+                        )
+                    if prod.validate():
+                        prod.process()
+                        success_count += 1
+                    else:
+                        fail_count['number'] += 1
 
-                queue_length -= 1
-                if not self.inventory_only or self.verbose:
-                    Catalog.logger.info(
-                        f'Product {prod.sku} processed in {time.time() - start_time} seconds. Products Remaining: {queue_length}\n\n'
+                    queue_length -= 1
+                    if not self.inventory_only or self.verbose:
+                        Catalog.logger.info(
+                            f'Product {prod.sku} processed in {time.time() - start_time} seconds. Products Remaining: {queue_length}\n\n'
+                        )
+                except Exception as e:
+                    fail_count['number'] += 1
+                    fail_count['items'].append(target)
+                    Catalog.error_handler.add_error_v(
+                        error=f'Error processing {target}. {e}', origin='Catalog Sync', traceback=tb()
                     )
+
             if not self.inventory_only or self.verbose:
                 Catalog.logger.info(
                     '-----------------------\n'
@@ -1010,7 +1018,7 @@ class Catalog:
                 # Set the product last maintained date to the latest of the variants. This will be used in the validation process.
                 # If the product has been updated since the last sync, it will go through full validation. Otherwise, it will be skipped.
 
-                self.lst_maint_dt = max(lst_maint_dt_list)
+                self.lst_maint_dt = max(lst_maint_dt_list) if lst_maint_dt_list else datetime(1970, 1, 1)
 
             def get_single_product_details():
                 self.variants.append(
@@ -1127,6 +1135,12 @@ class Catalog:
                     message = f'Product {self.binding_id} has duplicate variant names. Validation failed.'
                     Catalog.error_handler.add_error_v(error=message, origin='Input Validation')
                     return False
+
+                # Check for single item with binding
+                if len(self.variants) == 1:
+                    message = f'Product {self.binding_id} has only one variant. self.is_bound=False.'
+                    Catalog.logger.warn(message)
+                    self.is_bound = False
 
             # ALL PRODUCTS
             if check_web_title:
@@ -1276,7 +1290,7 @@ class Catalog:
                 try:
                     return [int(x) for x in response[0][0].split(',')]
                 except:
-                    Catalog.logger.warn(f'Error getting current collections for {self.sku}')
+                    Catalog.logger.warn(f'Error getting current collections for {self.sku}, Query: {query}')
                     return []
             except:
                 Catalog.error_handler.add_error_v(
@@ -2147,39 +2161,44 @@ class Catalog:
                 if sku and update_timestamp:
                     Catalog.Product.update_timestamp(sku)
 
+            # Basic Delete Payload
             delete_payload = {'sku': sku}
 
+            # Get Product ID
             product_id = Database.Shopify.Product.get_id(item_no=sku)
-            binding_id = Database.Shopify.Product.get_binding_id(product_id=product_id)
+            print(f'Product ID: {product_id}')
 
+            # Add Binding ID to Payload if it exists
+            binding_id = Database.Shopify.Product.get_binding_id(product_id=product_id)
             if binding_id is not None:
                 delete_payload['binding_id'] = binding_id
 
-            product = Catalog.Product(product_data=delete_payload)
-
-            number_of_variants = len(product.variants)
-            print(f'Number of Variants: {number_of_variants}')
-
             if binding_id:
-                if number_of_variants < 3:
-                    print('Must have 3 Products before deletion to remain a bound product. Will delete product.')
-                    product.mw_db_id = None
+                print('Delete: Binding ID Exists')
+                total_variants_in_mw = Catalog.Product.get_family_members(binding_id=binding_id, count=True)
+                # Delete Single Product/Variants
+                if total_variants_in_mw < 3:
+                    print('Case 1')
+                    # Must have at least 3 Products before deletion to remain a bound product. Will delete product.
                     delete_product(sku=sku, product_id=product_id, update_timestamp=update_timestamp)
 
                 elif Catalog.Product.is_parent(sku):
+                    print('Case 2')
                     print('Parent Product. Will delete product.')
-                    product.mw_db_id = None
                     delete_product(sku=sku, product_id=product_id, update_timestamp=update_timestamp)
 
                 else:
+                    print('Case 3')
                     # This is a child variant. Do not delete product. Only variant.
-                    for variant in product.variants:
-                        if variant.sku == sku:
-                            variant_id = variant.variant_id
-                            opt_val_id = variant.option_value_id
+                    option_id = Database.Shopify.Product.Variant.get_option_id(sku=sku)
+                    opt_val_id = Database.Shopify.Product.Variant.get_option_value_id(sku=sku)
+                    variant_id = Database.Shopify.Product.Variant.get_id(sku=sku)
+                    print(f'Option ID: {option_id}')
+                    print(f'Option Value ID: {opt_val_id}')
+                    print(f'Variant ID: {variant_id}')
 
                     Shopify.Product.Option.update(
-                        product_id=product_id, option_id=product.option_id, option_values_to_delete=[opt_val_id]
+                        product_id=product_id, option_id=option_id, option_values_to_delete=[opt_val_id]
                     )
 
                     # Delete Media Associated with Variant
@@ -2189,6 +2208,8 @@ class Catalog:
                     Database.Shopify.Product.Variant.delete(variant_id)
 
             else:
+                print('No Binding ID')
+                # Delete Single Product
                 Catalog.logger.info(f'Deleting Product: {sku}')
                 delete_product(sku=sku, product_id=product_id, update_timestamp=update_timestamp)
 
@@ -2320,11 +2341,19 @@ class Catalog:
                 query = f"""
                 SELECT COUNT(ITEM_NO)
                 FROM {creds.shopify_product_table}
-                WHERE BINDING_ID = '{binding_id}' AND 
-                {Column.CP.Product.web_enabled} = 'Y'
+                WHERE BINDING_ID = '{binding_id}'
                 """
                 response = db.query(query)
-                return response[0][0]
+                if response:
+                    try:
+                        return response[0][0]
+                    except:
+                        Catalog.error_handler.add_error_v(
+                            error=f'Error getting family member count for {binding_id}. Response: {response}'
+                        )
+                        return 0
+                else:
+                    return 0
 
             else:
                 if price:
@@ -3387,4 +3416,4 @@ if __name__ == '__main__':
     # cat = Catalog(last_sync=datetime(2024, 8, 14, 15, 20, 0), test_mode=True, test_queue=[{'sku': '202923'}])
     # cat.sync()
 
-    Catalog.Product.get_pa
+    print(Catalog.Product.get_family_members(binding_id='B0400', count=True))
