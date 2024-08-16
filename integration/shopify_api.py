@@ -1885,6 +1885,7 @@ if __name__ == '__main__':
 
     # Shopify.Order.get(5633184661671)
     refresh_order('S1040')
+    # Shopify.Refund.create('S1040')
 
     # res = Shopify.Order.get_orders_not_in_cp()
     # order_list = [res['name'] for res in res]
