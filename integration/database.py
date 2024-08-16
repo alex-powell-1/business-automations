@@ -253,7 +253,7 @@ class Database:
                     query += f"{Column.CP.Product.meta_title} = '{meta_title}', "
                 if 'meta_description' in payload:
                     meta_description = payload['meta_description'].replace("'", "''")[:160]  # 160 char limit
-                    query += f"{Column.CP.Product.meta_title} = '{meta_description}', "
+                    query += f"{Column.CP.Product.meta_description} = '{meta_description}', "
 
                 # Image Alt Text
                 if 'alt_text_1' in payload:
@@ -828,7 +828,11 @@ class Database:
                     if cp_subcategory:
                         query += f" SUBCAT_COD = '{cp_subcategory}'"
 
-                sku_list = [x[0] for x in Database.db.query(query)] if Database.db.query(query) else None
+                response = Database.db.query(query)
+                try:
+                    sku_list = [x[0] for x in response] if response else None
+                except:
+                    sku_list = None
 
                 if sku_list:
                     product_list = []
@@ -868,32 +872,57 @@ class Database:
                     if prod_id_res is not None:
                         return prod_id_res[0][0]
 
+                else:
+                    Database.logger.warn('No product ID found for the given parameters.')
+                    return None
+
             def get_parent_item_no(product_id):
-                query = f"""
-                        SELECT ITEM_NO FROM {Database.Shopify.Product.table}
-                        WHERE PRODUCT_ID = {product_id} AND (BINDING_ID IS NULL OR IS_PARENT = 1)
-                        """
+                if product_id:
+                    query = f"""
+                            SELECT ITEM_NO FROM {Database.Shopify.Product.table}
+                            WHERE PRODUCT_ID = {product_id} AND (BINDING_ID IS NULL OR IS_PARENT = 1)
+                            """
+                else:
+                    Database.logger.warn('No product ID provided for parent item number lookup.')
+                    return
                 response = Database.db.query(query)
                 if response is not None:
-                    return response[0][0]
+                    try:
+                        return response[0][0]
+                    except:
+                        return None
 
             def get_sku(product_id):
-                query = f"""
-                        SELECT ITEM_NO FROM {Database.Shopify.Product.table}
-                        WHERE PRODUCT_ID = {product_id}
-                        """
+                if product_id:
+                    query = f"""
+                            SELECT ITEM_NO FROM {Database.Shopify.Product.table}
+                            WHERE PRODUCT_ID = {product_id}
+                            """
+                else:
+                    Database.logger.warn('No product ID provided for SKU lookup.')
+                    return
                 response = Database.db.query(query)
                 if response is not None:
-                    return response[0][0]
+                    try:
+                        return response[0][0]
+                    except:
+                        return None
 
             def get_binding_id(product_id):
-                query = f"""
-                        SELECT BINDING_ID FROM {Database.Shopify.Product.table}
-                        WHERE PRODUCT_ID = {product_id}
-                        """
+                if product_id:
+                    query = f"""
+                            SELECT BINDING_ID FROM {Database.Shopify.Product.table}
+                            WHERE PRODUCT_ID = {product_id}
+                            """
+                else:
+                    Database.logger.warn('No product ID provided for binding ID lookup.')
+                    return
                 response = Database.db.query(query)
                 if response is not None:
-                    return response[0][0]
+                    try:
+                        return response[0][0]
+                    except KeyError:
+                        return None
 
             def sync(product):
                 for variant in product.variants:
@@ -902,24 +931,30 @@ class Database:
                     else:
                         Database.Shopify.Product.Variant.insert(product=product, variant=variant)
 
-                for m in product.media:
-                    if m.db_id is None:
-                        if m.type == 'IMAGE':
-                            Database.Shopify.Product.Media.Image.insert(m)
-                        elif m.type == 'EXTERNAL_VIDEO':
-                            Database.Shopify.Product.Media.Video.insert(m)
-                    else:
-                        if m.type == 'IMAGE':
-                            Database.Shopify.Product.Media.Image.update(m)
-                        elif m.type == 'EXTERNAL_VIDEO':
-                            Database.Shopify.Product.Media.Video.update(m)
+                if product.media:
+                    for m in product.media:
+                        if m.db_id is None:
+                            if m.type == 'IMAGE':
+                                Database.Shopify.Product.Media.Image.insert(m)
+                            elif m.type == 'EXTERNAL_VIDEO':
+                                Database.Shopify.Product.Media.Video.insert(m)
+                        else:
+                            if m.type == 'IMAGE':
+                                Database.Shopify.Product.Media.Image.update(m)
+                            elif m.type == 'EXTERNAL_VIDEO':
+                                Database.Shopify.Product.Media.Video.update(m)
 
             def insert(product):
                 for variant in product.variants:
                     Database.Shopify.Product.Variant.insert(product, variant)
 
             def delete(product_id):
-                query = f'DELETE FROM {Database.Shopify.Product.table} WHERE PRODUCT_ID = {product_id}'
+                if product_id:
+                    query = f'DELETE FROM {Database.Shopify.Product.table} WHERE PRODUCT_ID = {product_id}'
+                else:
+                    Database.logger.warn('No product ID provided for deletion.')
+                    return
+
                 response = Database.db.query(query)
 
                 if response['code'] == 200:
@@ -935,29 +970,41 @@ class Database:
                 Database.Shopify.Product.Media.Video.delete(product_id=product_id)
 
             class Variant:
-                def get_variant_id(sku):
-                    query = f"""
-                        SELECT VARIANT_ID FROM {creds.shopify_product_table}
-                        WHERE ITEM_NO = '{sku}'
-                        """
+                def get_id(sku):
+                    if sku:
+                        query = f"""
+                            SELECT VARIANT_ID FROM {creds.shopify_product_table}
+                            WHERE ITEM_NO = '{sku}'
+                            """
+                    else:
+                        Database.logger.warn('No SKU provided for variant ID lookup.')
+                        return
                     response = Database.db.query(query)
                     if response is not None:
                         return response[0][0]
 
                 def get_option_id(sku):
-                    query = f"""
-                        SELECT OPTION_ID FROM {creds.shopify_product_table}
-                        WHERE ITEM_NO = {sku}
-                        """
+                    if sku:
+                        query = f"""
+                            SELECT OPTION_ID FROM {creds.shopify_product_table}
+                            WHERE ITEM_NO = '{sku}'
+                            """
+                    else:
+                        Database.logger.warn('No SKU provided for option ID lookup.')
+                        return
                     response = Database.db.query(query)
                     if response is not None:
                         return response[0][0]
 
                 def get_option_value_id(sku):
-                    query = f"""
-                        SELECT OPTION_VALUE_ID FROM {creds.shopify_product_table}
-                        WHERE ITEM_NO = {sku}
-                        """
+                    if sku:
+                        query = f"""
+                            SELECT OPTION_VALUE_ID FROM {creds.shopify_product_table}
+                            WHERE ITEM_NO = '{sku}'
+                            """
+                    else:
+                        Database.logger.warn('No SKU provided for option value ID lookup.')
+                        return
                     response = Database.db.query(query)
                     if response is not None:
                         return response[0][0]
@@ -1070,7 +1117,11 @@ class Database:
                         raise Exception(error)
 
                 def delete(variant_id):
-                    query = f'DELETE FROM {Database.Shopify.Product.table} WHERE VARIANT_ID = {variant_id}'
+                    if variant_id:
+                        query = f'DELETE FROM {Database.Shopify.Product.table} WHERE VARIANT_ID = {variant_id}'
+                    else:
+                        Database.logger.warn('No variant ID provided for deletion.')
+                        return
                     response = Database.db.query(query)
 
                     if response['code'] == 200:
@@ -1084,11 +1135,14 @@ class Database:
                     class Image:
                         def get(item_no):
                             """Return all image ids for a product."""
-
-                            query = f"""
-                            SELECT IMAGE_ID FROM {creds.shopify_image_table}
-                            WHERE ITEM_NO = '{item_no}'
-                            """
+                            if item_no:
+                                query = f"""
+                                SELECT IMAGE_ID FROM {creds.shopify_image_table}
+                                WHERE ITEM_NO = '{item_no}'
+                                """
+                            else:
+                                Database.logger.warn('No SKU provided for image ID lookup.')
+                                return
                             response = Database.db.query(query)
                             if response:
                                 return [x[0] for x in response] if response else None
@@ -1105,14 +1159,13 @@ class Database:
                         if column is None:
                             column = '*'
 
-                        elif image_id:
+                        if image_id:
                             where_filter = f'WHERE IMAGE_ID = {image_id}'
 
                         query = f"""
                         SELECT {column} FROM {Database.Shopify.Product.Media.Image.table}
                         {where_filter}
                         """
-                        print(query)
                         response = Database.db.query(query)
                         if column == '*':
                             return response
@@ -1123,10 +1176,15 @@ class Database:
                                 return None
 
                     def get_image_id(file_name):
-                        img_id_res = Database.db.query(
-                            f"SELECT IMAGE_ID FROM {creds.shopify_image_table} WHERE IMAGE_NAME = '{file_name}'"
-                        )
+                        if file_name:
+                            query = (
+                                f"SELECT IMAGE_ID FROM {creds.shopify_image_table} WHERE IMAGE_NAME = '{file_name}'"
+                            )
+                        else:
+                            Database.logger.warn('No file name provided for image ID lookup.')
+                            return
                         try:
+                            img_id_res = Database.db.query(query)
                             return img_id_res[0][0]
                         except:
                             return None
