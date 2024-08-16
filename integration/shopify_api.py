@@ -390,6 +390,7 @@ class Shopify:
         def get_orders_not_in_cp():
             query = """
             SELECT TKT_NO, TKT_DT FROM PS_DOC_HDR
+            WHERE STR_ID = 'WEB' OR STA_ID = 'POS'
             UNION
             SELECT TKT_NO, TKT_DT FROM PS_TKT_HIST
             WHERE STR_ID = 'WEB' OR STA_ID = 'POS'
