@@ -1695,7 +1695,7 @@ class OrderAPI(DocumentAPI):
             INSERT INTO PS_DOC_HDR_TOT
             (DOC_ID, TOT_TYP, INITIAL_MIN_DUE, HAS_TAX_OVRD, TAX_AMT_SHIPPED, LINS, TOT_GFC_AMT, TOT_SVC_AMT, SUB_TOT, TAX_OVRD_LINS, TOT_EXT_COST, TOT_MISC, TAX_AMT, NORM_TAX_AMT, TOT_TND, TOT_CHNG, TOT_WEIGHT, TOT_CUBE, TOT, AMT_DUE, TOT_HDR_DISC, TOT_LIN_DISC, TOT_HDR_DISCNTBL_AMT, TOT_TIP_AMT)
             VALUES
-            ('{doc_id}', 'S', 0, '!', 0, {len(payload["PS_DOC_HDR"]["PS_DOC_LIN"])}, 0, 0, {-(sub_tot + shipping_amt)}, 0, {-tot_ext_cost}, 0, 0, 0, {tot_tndr}, {0}, 0, 0, {-tot}, 0, {self.total_hdr_disc}, {self.total_lin_disc}, 0, 0)
+            ('{doc_id}', 'S', 0, '!', 0, {len(payload["PS_DOC_HDR"]["PS_DOC_LIN"])}, 0, 0, {-(sub_tot)}, 0, {-tot_ext_cost}, 0, 0, 0, {tot_tndr}, {0}, 0, 0, {-tot}, 0, {self.total_hdr_disc}, {self.total_lin_disc}, 0, 0)
             """
         else:
             query = f"""
