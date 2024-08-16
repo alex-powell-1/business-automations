@@ -1,4 +1,5 @@
 from setup import creds
+from setup.creds import Column
 from setup import query_engine
 from setup.error_handler import ProcessOutErrorHandler
 from datetime import datetime, timedelta
@@ -203,41 +204,34 @@ class Database:
                 Database.error_handler.add_error_v(error=error, origin='insert_sms')
 
     class Counterpoint:
+        class Order:
+            table = 'PS_DOC_HDR'
+
+            def delete(doc_id=None, tkt_no=None):
+                if doc_id:
+                    query = f"""
+                    DELETE FROM {Database.Counterpoint.Order.table}
+                    WHERE DOC_ID = {doc_id}"""
+                elif tkt_no:
+                    query = f"""
+                    DELETE FROM {Database.Counterpoint.Order.table}
+                    WHERE TKT_NO = '{tkt_no}'"""
+
+                else:
+                    return
+
+                response = Database.db.query(query)
+                if response['code'] == 200:
+                    Database.logger.success(f'Order {doc_id or tkt_no} deleted from PS_DOC_HDR.')
+                elif response['code'] == 201:
+                    Database.logger.warn(f'Order {doc_id or tkt_no} not found in PS_DOC_HDR.')
+                else:
+                    error = f'Error deleting order {doc_id or tkt_no} from PS_DOC_HDR. \n Query: {query}\nResponse: {response}'
+                    Database.error_handler.add_error_v(error=error)
+                    raise Exception(error)
+
         class Product:
             table = creds.cp_item_table
-            columns = {
-                'item_no': creds.column_product_item_no,
-                'web_enabled': creds.column_product_web_enabled,
-                'web_visible': creds.column_product_web_visible,
-                'binding_id': creds.column_product_binding_id,
-                'is_parent': creds.column_product_is_parent,
-                'variant_name': creds.column_product_variant_name,
-                'weight': creds.column_product_weight,
-                'brand': creds.column_product_brand,
-                'web_title': creds.column_product_web_title,
-                'meta_title': creds.column_product_meta_title,
-                'meta_description': creds.column_product_meta_description,
-                'alt_text_1': creds.column_product_alt_text_1,
-                'alt_text_2': creds.column_product_alt_text_2,
-                'alt_text_3': creds.column_product_alt_text_3,
-                'alt_text_4': creds.column_product_alt_text_4,
-                'videos': creds.column_product_videos,
-                # Product Status Metafields
-                'featured': creds.column_product_featured,
-                'in_store_only': creds.column_product_in_store_only,
-                'is_preorder_item': creds.column_product_is_preorder_item,
-                'preorder_message': creds.column_product_preorder_message,
-                'preorder_release_date': creds.column_product_preorder_release_date,
-                # Product Specification Metafields
-                'botanical_name': creds.column_product_botanical_name,
-                'plant_type': creds.column_product_plant_type,
-                # 'light_requirements': creds.column_product_light_requirements,
-                # 'size': creds.column_product_size,
-                # 'features': creds.column_product_features,
-                # 'bloom_season': creds.column_product_bloom_season,
-                # 'bloom_color': creds.column_product_bloom_color,
-                # 'color': creds.column_product_color,
-            }
 
             def update(payload):
                 """FOR PRODUCTS_UPDATE WEBHOOK ONLY. Normal updates from shopify_catalog.py use sync()"""
@@ -245,35 +239,35 @@ class Database:
                 # Item Status
                 if 'status' in payload:
                     if payload['status'] == 'active':
-                        query += f"{Database.Counterpoint.Product.columns['web_visible']} = 'Y', "
+                        query += f"{Column.CP.Product.web_visible} = 'Y', "
                     else:
-                        query += f"{Database.Counterpoint.Product.columns['web_visible']} = 'N', "
+                        query += f"{Column.CP.Product.web_visible} = 'N', "
                 # Web Title
                 if 'title' in payload:
                     title = payload['title'].replace("'", "''")[:80]  # 80 char limit
-                    query += f"{Database.Counterpoint.Product.columns['web_title']} = '{title}', "
+                    query += f"{Column.CP.Product.web_title} = '{title}', "
 
                 # SEO Data
                 if 'meta_title' in payload:
                     meta_title = payload['meta_title'].replace("'", "''")[:80]  # 80 char limit
-                    query += f"{Database.Counterpoint.Product.columns['meta_title']} = '{meta_title}', "
+                    query += f"{Column.CP.Product.meta_title} = '{meta_title}', "
                 if 'meta_description' in payload:
                     meta_description = payload['meta_description'].replace("'", "''")[:160]  # 160 char limit
-                    query += f"{Database.Counterpoint.Product.columns['meta_description']} = '{meta_description}', "
+                    query += f"{Column.CP.Product.meta_title} = '{meta_description}', "
 
                 # Image Alt Text
                 if 'alt_text_1' in payload:
                     alt_text_1 = payload['alt_text_1'].replace("'", "''")[:160]  # 160 char limit
-                    query += f"{Database.Counterpoint.Product.columns['alt_text_1']} = '{alt_text_1}', "
+                    query += f"{Column.CP.Product.alt_text_1} = '{alt_text_1}', "
                 if 'alt_text_2' in payload:
                     alt_text_2 = payload['alt_text_2'].replace("'", "''")[:160]  # 160 char limit
-                    query += f"{Database.Counterpoint.Product.columns['alt_text_2']} = '{alt_text_2}', "
+                    query += f"{Column.CP.Product.alt_text_2} = '{alt_text_2}', "
                 if 'alt_text_3' in payload:
                     alt_text_3 = payload['alt_text_3'].replace("'", "''")[:160]  # 160 char limit
-                    query += f"{Database.Counterpoint.Product.columns['alt_text_3']} = '{alt_text_3}', "
+                    query += f"{Column.CP.Product.alt_text_3} = '{alt_text_3}', "
                 if 'alt_text_4' in payload:
                     alt_text_4 = payload['alt_text_4'].replace("'", "''")[:160]  # 160 char limit
-                    query += f"{Database.Counterpoint.Product.columns['alt_text_4']} = '{alt_text_4}', "
+                    query += f"{Column.CP.Product.alt_text_4} = '{alt_text_4}', "
 
                 # The following Metafields require an ID to be maintained in the middleware.
                 # Check for ID in the respective column. If exists, just update the CP product table.
@@ -383,10 +377,10 @@ class Database:
                 class Video:
                     def get():
                         query = f"""
-                        SELECT ITEM_NO, {Database.Counterpoint.Product.columns['videos']} 
+                        SELECT ITEM_NO, {Column.CP.Product.videos} 
                         FROM {Database.Counterpoint.Product.table}
-                        WHERE {Database.Counterpoint.Product.columns['videos']} IS NOT NULL AND
-                        {Database.Counterpoint.Product.columns['web_enabled']} = 'Y'
+                        WHERE {Column.CP.Product.videos} IS NOT NULL AND
+                        {Column.CP.Product.web_enabled} = 'Y'
                         """
                         response = Database.db.query(query)
                         all_videos = [[x[0], x[1]] for x in response] if response else []
@@ -822,9 +816,9 @@ class Database:
 
             def get_by_category(cp_category=None, cp_subcategory=None):
                 query = f"""SELECT ITEM_NO FROM {Database.Counterpoint.Product.table} 
-                WHERE {Database.Counterpoint.Product.columns['web_enabled']} = 'Y' AND 
-                ({Database.Counterpoint.Product.columns['binding_id']} IS NULL OR
-                {Database.Counterpoint.Product.columns['is_parent']} = 'Y') AND 
+                WHERE {Column.CP.Product.web_enabled} = 'Y' AND 
+                ({Column.CP.Product.binding_id} IS NULL OR
+                {Column.CP.Product.is_parent} = 'Y') AND 
                 """
                 if cp_category and cp_subcategory:
                     query += f" CATEG_COD = '{cp_category}' AND SUBCAT_COD = '{cp_subcategory}'"

@@ -11,6 +11,7 @@ from PIL import Image, ImageOps
 from integration.database import Database
 
 from setup import creds
+from setup.creds import Column
 from setup.query_engine import QueryEngine as db
 from setup.utilities import get_all_binding_ids, get_product_images, convert_to_utc, parse_custom_url, get_filesize
 
@@ -62,19 +63,19 @@ class Catalog:
         # Get all products that have been updated since the last sync
         if self.inventory_only:
             query = f"""
-            SELECT ITEM.ITEM_NO, ITEM.{creds.cp_field_binding_id} as 'Binding ID'
+            SELECT ITEM.ITEM_NO, ITEM.{Column.CP.Product.binding_id} as 'Binding ID'
             FROM {Database.Counterpoint.Product.table} ITEM
             INNER JOIN IM_INV INV on ITEM.ITEM_NO = INV.ITEM_NO
             WHERE INV.LST_MAINT_DT > '{self.last_sync: %Y-%m-%d %H:%M:%S}' and
-            ITEM.{Database.Counterpoint.Product.columns['web_enabled']} = 'Y'
-            ORDER BY {creds.cp_field_binding_id} DESC"""
+            ITEM.{Column.CP.Product.web_enabled} = 'Y'
+            ORDER BY {Column.CP.Product.binding_id} DESC"""
         else:
             query = f"""
-            SELECT ITEM_NO, ITEM.{creds.cp_field_binding_id} as 'Binding ID'
+            SELECT ITEM_NO, ITEM.{Column.CP.Product.binding_id} as 'Binding ID'
             FROM {Database.Counterpoint.Product.table} ITEM
             WHERE ITEM.LST_MAINT_DT > '{self.last_sync: %Y-%m-%d %H:%M:%S}' and
-            ITEM.{Database.Counterpoint.Product.columns['web_enabled']} = 'Y'
-            ORDER BY {creds.cp_field_binding_id} DESC
+            ITEM.{Column.CP.Product.web_enabled} = 'Y'
+            ORDER BY {Column.CP.Product.binding_id} DESC
             """
         response = db.query(query)
         if response is not None:
@@ -97,9 +98,9 @@ class Catalog:
                         query = f"""
                         SELECT ITEM_NO
                         FROM {Database.Counterpoint.Product.table}
-                        WHERE {creds.cp_field_binding_id} = '{binding_id}' AND 
-                        {Database.Counterpoint.Product.columns['web_enabled']} = 'Y' 
-                        AND {Database.Counterpoint.Product.columns['is_parent']} = 'Y'"""
+                        WHERE {Column.CP.Product.binding_id} = '{binding_id}' AND 
+                        {Column.CP.Product.web_enabled} = 'Y' 
+                        AND {Column.CP.Product.is_parent} = 'Y'"""
 
                         get_parent_response = db.query(query)
 
@@ -253,16 +254,16 @@ class Catalog:
                 if binding_list:
                     if len(binding_list) > 1:
                         binding_list = tuple(binding_list)
-                        where_filter = f' or {creds.cp_field_binding_id} in {binding_list}'
+                        where_filter = f' or {Column.CP.Product.binding_id} in {binding_list}'
                     else:
-                        where_filter = f" or {creds.cp_field_binding_id} = '{binding_list[0]}'"
+                        where_filter = f" or {Column.CP.Product.binding_id} = '{binding_list[0]}'"
                 else:
                     where_filter = ''
                 query = f"""
                     UPDATE {Database.Counterpoint.Product.table}
                     SET LST_MAINT_DT = GETDATE()
                     WHERE (ITEM_NO in {sku_list} {where_filter}) AND 
-                    {Database.Counterpoint.Product.columns['web_enabled']} = 'Y'"""
+                    {Column.CP.Product.web_enabled} = 'Y'"""
 
                 db.query(query)
 
@@ -331,7 +332,7 @@ class Catalog:
                     prod.process()
                     success_count += 1
                 else:
-                    fail_count += 1
+                    fail_count['number'] += 1
 
                 queue_length -= 1
                 if not self.inventory_only or self.verbose:
@@ -870,7 +871,7 @@ class Catalog:
                 query = f"""
                 SELECT ITEM_NO
                 FROM {Database.Counterpoint.Product.table}
-                WHERE {creds.cp_field_binding_id} = '{self.binding_id}' and IS_ECOMM_ITEM = 'Y'
+                WHERE {Column.CP.Product.binding_id} = '{self.binding_id}' and IS_ECOMM_ITEM = 'Y'
                 ORDER BY PRC_1
                 """
                 # Get children and append to child list in order of price
@@ -1105,7 +1106,7 @@ class Catalog:
 
                 query = f"""
                 UPDATE {Database.Counterpoint.Product.table}
-                SET {Database.Counterpoint.Product.columns['is_parent']} = '{flag}', LST_MAINT_DT = GETDATE()
+                SET {Column.CP.Product.is_parent} = '{flag}', LST_MAINT_DT = GETDATE()
                 WHERE ITEM_NO = '{target_item}'
                 """
                 db.query(query)
@@ -1143,14 +1144,14 @@ class Catalog:
                             # Bound product: use binding key and parent variant
                             query = f"""
                             UPDATE {Database.Counterpoint.Product.table}
-                            SET {Database.Counterpoint.Product.columns['web_title']} = '{self.long_descr}'
-                            WHERE {creds.cp_field_binding_id} = '{self.binding_id}' and {Database.Counterpoint.Product.columns['is_parent']} = 'Y'"""
+                            SET {Column.CP.Product.web_title} = '{self.long_descr}'
+                            WHERE {Column.CP.Product.binding_id} = '{self.binding_id}' and {Column.CP.Product.is_parent} = 'Y'"""
 
                         # Single Product use sku
                         else:
                             query = f"""
                             UPDATE {Database.Counterpoint.Product.table}
-                            SET {Database.Counterpoint.Product.columns['web_title']} = '{self.long_descr}'
+                            SET {Column.CP.Product.web_title} = '{self.long_descr}'
                             WHERE ITEM_NO = '{self.sku}'"""
 
                             db.query(query)
@@ -1164,13 +1165,13 @@ class Catalog:
                         query = f"""
                         SELECT COUNT(ITEM_NO)
                         FROM {Database.Counterpoint.Product.table}
-                        WHERE {Database.Counterpoint.Product.columns['web_title']} = '{self.web_title.replace("'", "''")}' AND {creds.cp_field_binding_id} != '{self.binding_id}' AND IS_ECOMM_ITEM = 'Y'"""
+                        WHERE {Column.CP.Product.web_title} = '{self.web_title.replace("'", "''")}' AND {Column.CP.Product.binding_id} != '{self.binding_id}' AND IS_ECOMM_ITEM = 'Y'"""
 
                     else:
                         query = f"""
                         SELECT COUNT(ITEM_NO)
                         FROM {Database.Counterpoint.Product.table}
-                        WHERE {Database.Counterpoint.Product.columns['web_title']} = '{self.web_title.replace("'", "''")}' AND IS_ECOMM_ITEM = 'Y'"""
+                        WHERE {Column.CP.Product.web_title} = '{self.web_title.replace("'", "''")}' AND IS_ECOMM_ITEM = 'Y'"""
 
                     response = db.query(query)
 
@@ -1192,15 +1193,15 @@ class Catalog:
                                 # Update Parent Variant
                                 query = f"""
                                 UPDATE {Database.Counterpoint.Product.table}
-                                SET {Database.Counterpoint.Product.columns['web_title']} = '{self.web_title.replace("'", "''")}'
-                                WHERE {creds.cp_field_binding_id} = '{self.binding_id}' and {Database.Counterpoint.Product.columns['is_parent']} = 'Y'
+                                SET {Column.CP.Product.web_title} = '{self.web_title.replace("'", "''")}'
+                                WHERE {Column.CP.Product.binding_id} = '{self.binding_id}' and {Column.CP.Product.is_parent} = 'Y'
                                 
                                 """
                             else:
                                 # Update Single Product
                                 query = f"""
                                 UPDATE {Database.Counterpoint.Product.table}
-                                SET {Database.Counterpoint.Product.columns['web_title']} = '{self.web_title.replace("'", "''")}'
+                                SET {Column.CP.Product.web_title} = '{self.web_title.replace("'", "''")}'
                                 WHERE ITEM_NO = '{self.sku}'"""
                             db.query(query)
 
@@ -1257,7 +1258,7 @@ class Catalog:
                                 child.web_title = ''
                                 query = f"""
                                 UPDATE {Database.Counterpoint.Product.table}
-                                SET {Database.Counterpoint.Product.columns['web_title']} = NULL
+                                SET {Column.CP.Product.web_title} = NULL
                                 WHERE ITEM_NO = '{child.sku}'"""
                                 db.query(query)
 
@@ -1791,10 +1792,10 @@ class Catalog:
                     variant_payload['optionValues']['name'] = child.variant_name
 
                 else:
-                    if child.custom_size:
-                        variant_payload['optionValues']['name'] = child.custom_size
-                    else:
-                        variant_payload['optionValues']['name'] = 'Default Title'
+                    # if child.custom_size:
+                    #     variant_payload['optionValues']['name'] = child.variant_name
+                    # else:
+                    variant_payload['optionValues']['name'] = 'Default Title'
 
                 if child.weight:
                     variant_payload['inventoryItem']['measurement'] = {
@@ -2213,8 +2214,8 @@ class Catalog:
             """Remove parent status from all children"""
             query = f"""
                     UPDATE {Database.Counterpoint.Product.table} 
-                    SET {Database.Counterpoint.Product.columns['is_parent']} = 'N', LST_MAINT_DT = GETDATE()
-                    WHERE {creds.cp_field_binding_id} = '{self.binding_id}'
+                    SET {Column.CP.Product.is_parent} = 'N', LST_MAINT_DT = GETDATE()
+                    WHERE {Column.CP.Product.binding_id} = '{self.binding_id}'
                     """
             db.query(query)
             print('Parent status removed from all children.')
@@ -2234,9 +2235,9 @@ class Catalog:
         def get_all_binding_ids():
             binding_ids = set()
             query = f"""
-            SELECT {creds.cp_field_binding_id}
+            SELECT {Column.CP.Product.binding_id}
             FROM {Database.Counterpoint.Product.table}
-            WHERE {creds.cp_field_binding_id} IS NOT NULL
+            WHERE {Column.CP.Product.binding_id} IS NOT NULL
             """
             response = db.query(query)
             if response is not None:
@@ -2260,7 +2261,7 @@ class Catalog:
                 """
             else:
                 query = f"""
-                SELECT {creds.cp_field_binding_id}
+                SELECT {Column.CP.Product.binding_id}
                 FROM {Database.Counterpoint.Product.table}
                 WHERE ITEM_NO = '{sku}'
                 """
@@ -2282,9 +2283,9 @@ class Catalog:
                 # Remove Parent Status from all children.
                 remove_parent_query = f"""
                         UPDATE {Database.Counterpoint.Product.table} 
-                        SET {Database.Counterpoint.Product.columns['is_parent']} = 'N', 
+                        SET {Column.CP.Product.is_parent} = 'N', 
                         LST_MAINT_DT = GETDATE()
-                        WHERE {creds.cp_field_binding_id} = '{binding_id}'
+                        WHERE {Column.CP.Product.binding_id} = '{binding_id}'
                         """
                 remove_parent_response = db.query(remove_parent_query)
                 if remove_parent_response['code'] == 200:
@@ -2297,7 +2298,7 @@ class Catalog:
             # Set Parent Status for new parent.
             query = f"""
             UPDATE {Database.Counterpoint.Product.table}
-            SET {Database.Counterpoint.Product.columns['is_parent']} = 'Y'
+            SET {Column.CP.Product.is_parent} = 'Y'
             WHERE ITEM_NO = '{parent_sku}'
             """
             set_parent_response = db.query(query)
@@ -2320,7 +2321,7 @@ class Catalog:
                 SELECT COUNT(ITEM_NO)
                 FROM {creds.shopify_product_table}
                 WHERE BINDING_ID = '{binding_id}' AND 
-                {Database.Counterpoint.Product.columns['web_enabled']} = 'Y'
+                {Column.CP.Product.web_enabled} = 'Y'
                 """
                 response = db.query(query)
                 return response[0][0]
@@ -2331,8 +2332,8 @@ class Catalog:
                     query = f"""
                     SELECT ITEM_NO, PRC_1
                     FROM {Database.Counterpoint.Product.table}
-                    WHERE {creds.cp_field_binding_id} = '{binding_id}' AND 
-                    {Database.Counterpoint.Product.columns['web_enabled']} = 'Y'
+                    WHERE {Column.CP.Product.binding_id} = '{binding_id}' AND 
+                    {Column.CP.Product.web_enabled} = 'Y'
                     """
                     response = db.query(query)
                     if response is not None:
@@ -2342,8 +2343,8 @@ class Catalog:
                     query = f"""
                     SELECT ITEM_NO
                     FROM {Database.Counterpoint.Product.table}
-                    WHERE {creds.cp_field_binding_id} = '{binding_id}' AND
-                    {Database.Counterpoint.Product.columns['web_enabled']} = 'Y'
+                    WHERE {Column.CP.Product.binding_id} = '{binding_id}' AND
+                    {Column.CP.Product.web_enabled} = 'Y'
                     """
                     response = db.query(query)
                     if response is not None:
@@ -2680,7 +2681,7 @@ class Catalog:
                 
                 SELECT MW.ID as 'mw_db_id(0)', 
                 ITEM.USR_PROF_ALPHA_16 as 'Binding ID(1)', 
-                ISNULL(ITEM.{Database.Counterpoint.Product.columns['is_parent']}, 'N') as 'Is Parent(2)', 
+                ISNULL(ITEM.{Column.CP.Product.is_parent}, 'N') as 'Is Parent(2)', 
                 MW.PRODUCT_ID as 'Product ID (3)', 
                 MW.VARIANT_ID as 'Variant ID(4)', 
                 ITEM.USR_PROF_ALPHA_17 as 'VARIANT NAME(5)', 
@@ -2698,7 +2699,7 @@ class Catalog:
                                 
                 ITEM.USR_PROF_ALPHA_27 as 'SORT ORDER(13)', 
                                 
-                ITEM.{Database.Counterpoint.Product.columns['web_title']} as 'WEB_TITLE(14)', 
+                ITEM.{Column.CP.Product.web_title} as 'WEB_TITLE(14)', 
                 ITEM.ADDL_DESCR_2 as 'META_TITLE(15)', 
                 USR_PROF_ALPHA_21 as 'META_DESCRIPTION(16)', 
                 EC_ITEM_DESCR.HTML_DESCR as 'HTML_DESCRIPTION(17)', 
@@ -2720,12 +2721,12 @@ class Catalog:
                 ITEM.LONG_DESCR as 'LONG_DESCR(28)', 
                 USR_PROF_ALPHA_26 as 'TAGS(29)', 
                                 
-                {Database.Counterpoint.Product.columns['alt_text_1']} as 'ALT_TEXT_1(30)', 
-                {Database.Counterpoint.Product.columns['alt_text_2']} as 'ALT_TEXT_2(31)', 
-                {Database.Counterpoint.Product.columns['alt_text_3']} as 'ALT_TEXT_3(32)', 
-                {Database.Counterpoint.Product.columns['alt_text_4']} as 'ALT_TEXT_4(33)', 
+                {Column.CP.Product.alt_text_1} as 'ALT_TEXT_1(30)', 
+                {Column.CP.Product.alt_text_2} as 'ALT_TEXT_2(31)', 
+                {Column.CP.Product.alt_text_3} as 'ALT_TEXT_3(32)', 
+                {Column.CP.Product.alt_text_4} as 'ALT_TEXT_4(33)', 
                                 
-                BOTAN_NAM as 'BOTANICAL_NAM(34)', 
+                {Column.CP.Product.botanical_name} as 'BOTANICAL_NAM(34)', 
                 ZONE_MIN as 'CLIMATE_ZONE MIN(35)',
                 ZONE_MAX as 'CLIMATE_ZONE MAX(36)',
                 PROF_ALPHA_3 as 'PLANT_TYPE(37)', 
@@ -3172,7 +3173,7 @@ class Catalog:
                 def get_item_no_from_image_name(image_name):
                     def get_binding_id(item_no):
                         query = f"""
-                               SELECT {creds.cp_field_binding_id} FROM {Database.Counterpoint.Product.table}
+                               SELECT {Column.CP.Product.binding_id} FROM {Database.Counterpoint.Product.table}
                                WHERE ITEM_NO = '{item_no}'
                                """
                         response = db.query(query)

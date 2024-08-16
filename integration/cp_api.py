@@ -107,7 +107,7 @@ class OrderAPI(DocumentAPI):
     # Return self.pr if it is not None, set self.pr to set if set is not None, or return False
     # This is used to determine if the order is a partial refund
     # I'm not using the setter here because I am manually setting the self.pr value later.
-    def is_pr(self, set: bool = None):
+    def is_partial_refund(self, set: bool = None):
         if self.pr is not None:
             return self.pr
         elif set is not None:
@@ -147,7 +147,11 @@ class OrderAPI(DocumentAPI):
                     pass
 
                 try:
-                    qty = float(product['quantity_refunded']) if self.is_pr() else float(product['quantity'])
+                    qty = (
+                        float(product['quantity_refunded'])
+                        if self.is_partial_refund()
+                        else float(product['quantity'])
+                    )
                 except:
                     qty = float(product['quantity'])
 
@@ -176,7 +180,7 @@ class OrderAPI(DocumentAPI):
         gift_cards = []
 
         for i, product in enumerate(products, start=1):
-            if self.is_pr() and float(product['quantity_refunded']) == 0:
+            if self.is_partial_refund() and float(product['quantity_refunded']) == 0:
                 continue
 
             if product['type'] == 'giftcertificate':
@@ -557,7 +561,7 @@ class OrderAPI(DocumentAPI):
 
     # Create a new customer from a BigCommerce order.
     def create_new_customer(self, bc_order: dict):
-        def bos(key: str):
+        def billing_or_shipping(key: str):
             return self.billing_or_shipping(bc_order, key)
 
         def b(key: str):
@@ -566,10 +570,10 @@ class OrderAPI(DocumentAPI):
         def s(key: str):
             return self.shipping(bc_order, key)
 
-        first_name = bos('first_name')
-        last_name = bos('last_name')
-        phone_number = bos('phone')
-        email_address = bos('email')
+        first_name = billing_or_shipping('first_name')
+        last_name = billing_or_shipping('last_name')
+        phone_number = billing_or_shipping('phone')
+        email_address = billing_or_shipping('email')
         street_address = b('street_1')
         city = b('city')
         state = b('state')
@@ -585,6 +589,10 @@ class OrderAPI(DocumentAPI):
             state=state,
             zip_code=zip_code,
         )
+
+        shopify_cust_no = bc_order['customer_id'].split('/')[-1]
+
+        Database.Shopify.Customer.insert(cp_cust_no=cust_no, shopify_cust_no=shopify_cust_no)
 
         def write_shipping_adr():
             first_name = s('first_name')
@@ -923,7 +931,7 @@ class OrderAPI(DocumentAPI):
             self.logger.success(f"Order {response['Documents'][0]['DOC_ID']} created")
         else:
             self.error_handler.add_error_v('Order could not be created')
-            raise Exception(response.content)
+            raise Exception(response)
 
         try:
             doc_id = response['Documents'][0]['DOC_ID']
@@ -1062,7 +1070,7 @@ class OrderAPI(DocumentAPI):
     def refund_writes(self, doc_id, payload, bc_order):
         self.logger.info('Writing refund data')
 
-        if self.is_pr():
+        if self.is_partial_refund():
             sub_tot = 0
 
             for line_item in payload['PS_DOC_HDR']['PS_DOC_LIN']:
@@ -1121,7 +1129,7 @@ class OrderAPI(DocumentAPI):
 
                     tkt_no = payload['PS_DOC_HDR']['TKT_NUM']
 
-                    if self.is_pr():
+                    if self.is_partial_refund():
                         refund_index = int(
                             self.get_refund_index(
                                 tkt_num=payload['PS_DOC_HDR']['TKT_NUM'], suffix=PARTIAL_REFUND_SUFFIX
@@ -1183,7 +1191,7 @@ class OrderAPI(DocumentAPI):
         total_paid = -(float(bc_order['total_inc_tax'] or 0))
 
         # PARTIAL REFUND PAYMENT WRITES
-        if self.is_pr():
+        if self.is_partial_refund():
 
             def get_ps_doc_pmt_index(pay_cod: str):
                 index = 0
@@ -1382,7 +1390,7 @@ class OrderAPI(DocumentAPI):
 
                 tkt_no = payload['PS_DOC_HDR']['TKT_NUM']
 
-                if self.is_pr():
+                if self.is_partial_refund():
                     refund_index = int(
                         self.get_refund_index(
                             tkt_num=payload['PS_DOC_HDR']['TKT_NUM'], suffix=PARTIAL_REFUND_SUFFIX
@@ -1453,7 +1461,7 @@ class OrderAPI(DocumentAPI):
                     self.error_handler.add_error_v(response['message'])
 
         # PAYMENT APPLY REFUND
-        if not self.is_pr():
+        if not self.is_partial_refund():
             r = commit_query(
                 f"""
                 UPDATE PS_DOC_PMT_APPLY
@@ -1685,14 +1693,14 @@ class OrderAPI(DocumentAPI):
             INSERT INTO PS_DOC_HDR_TOT
             (DOC_ID, TOT_TYP, INITIAL_MIN_DUE, HAS_TAX_OVRD, TAX_AMT_SHIPPED, LINS, TOT_GFC_AMT, TOT_SVC_AMT, SUB_TOT, TAX_OVRD_LINS, TOT_EXT_COST, TOT_MISC, TAX_AMT, NORM_TAX_AMT, TOT_TND, TOT_CHNG, TOT_WEIGHT, TOT_CUBE, TOT, AMT_DUE, TOT_HDR_DISC, TOT_LIN_DISC, TOT_HDR_DISCNTBL_AMT, TOT_TIP_AMT)
             VALUES
-            ('{doc_id}', 'S', 0, '!', 0, {len(payload["PS_DOC_HDR"]["PS_DOC_LIN"])}, 0, 0, {-(sub_tot - self.total_discount_amount / float(bc_order["items_total"])) if self.is_pr() else -(sub_tot - document_discount)}, 0, {-tot_ext_cost}, {shipping_amt}, 0, 0, {tot_tndr}, {(sub_tot - self.total_discount_amount / float(bc_order["items_total"])) if self.is_pr() else (sub_tot - self.total_discount_amount)}, 0, 0, {(-(sub_tot - (self.total_discount_amount / float(bc_order["items_total"])))) if self.is_pr() else -(sub_tot - self.total_discount_amount)}, 0, {0 if self.is_pr() else -self.total_hdr_disc}, {self.total_lin_disc + self.total_hdr_disc if self.is_pr() else self.total_lin_disc}, 0, 0)
+            ('{doc_id}', 'S', 0, '!', 0, {len(payload["PS_DOC_HDR"]["PS_DOC_LIN"])}, 0, 0, {-(sub_tot - self.total_discount_amount / float(bc_order["items_total"])) if self.is_partial_refund() else -(sub_tot - document_discount)}, 0, {-tot_ext_cost}, 0, 0, 0, {tot_tndr}, {(sub_tot - self.total_discount_amount / float(bc_order["items_total"])) if self.is_partial_refund() else (sub_tot - self.total_discount_amount)}, 0, 0, {(-(sub_tot - (self.total_discount_amount / float(bc_order["items_total"])))) if self.is_partial_refund() else -(sub_tot - self.total_discount_amount)}, 0, {0 if self.is_partial_refund() else -self.total_hdr_disc}, {self.total_lin_disc + self.total_hdr_disc if self.is_partial_refund() else self.total_lin_disc}, 0, 0)
             """
         else:
             query = f"""
             INSERT INTO PS_DOC_HDR_TOT
             (DOC_ID, TOT_TYP, INITIAL_MIN_DUE, HAS_TAX_OVRD, TAX_AMT_SHIPPED, LINS, TOT_GFC_AMT, TOT_SVC_AMT, SUB_TOT, TAX_OVRD_LINS, TOT_EXT_COST, TOT_MISC, TAX_AMT, NORM_TAX_AMT, TOT_TND, TOT_CHNG, TOT_WEIGHT, TOT_CUBE, TOT, AMT_DUE, TOT_HDR_DISC, TOT_LIN_DISC, TOT_HDR_DISCNTBL_AMT, TOT_TIP_AMT)
             VALUES
-            ('{doc_id}', 'S', 0, '!', 0, {len(payload["PS_DOC_HDR"]["PS_DOC_LIN"])}, {gfc_amount}, 0, {sub_tot - document_discount}, 0, {tot_ext_cost}, {shipping_amt}, 0, 0, {tot_tndr}, 0, 0, 0, {tot_tndr}, 0, {self.total_hdr_disc}, {self.total_lin_disc}, {sub_tot}, 0)
+            ('{doc_id}', 'S', 0, '!', 0, {len(payload["PS_DOC_HDR"]["PS_DOC_LIN"])}, {gfc_amount}, 0, {sub_tot - document_discount}, 0, {tot_ext_cost}, 0, 0, 0, {tot_tndr}, 0, 0, 0, {tot_tndr}, 0, {self.total_hdr_disc}, {self.total_lin_disc}, {sub_tot}, 0)
             """
 
         response = Database.db.query(query)
