@@ -492,6 +492,10 @@ def bc_orders():
 def shopify():
     """Webhook route for incoming orders. Sends to RabbitMQ queue for asynchronous processing"""
     webhook_data = request.json
+
+    with open('order_create.json', 'a') as f:
+        json.dump(webhook_data, f)
+
     order_id = webhook_data['id']
     try:
         connection = pika.BlockingConnection(pika.ConnectionParameters('localhost'))
