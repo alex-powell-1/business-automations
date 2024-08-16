@@ -308,7 +308,7 @@ class Shopify:
                     'total_inc_tax': shippingCost,
                     'total_tax': 0,
                     'quantity': 1,
-                    'is_refunded': False,
+                    'is_refunded': True if status == 'Partially Refunded' else False,
                     'quantity_refunded': 1 if status == 'Partially Refunded' else 0,
                     'refund_amount': 0,
                     'return_id': 0,
