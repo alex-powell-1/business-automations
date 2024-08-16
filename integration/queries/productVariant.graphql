@@ -64,6 +64,10 @@ mutation productVariantsBulkCreate(
 
 mutation productVariantUpdate($input: ProductVariantInput!) {
   productVariantUpdate(input: $input) {
+    product {
+      id
+      title
+    }
     productVariant {
       id
       title
@@ -148,6 +152,19 @@ mutation productVariantAppendMedia($productId: ID!, $variantMedia: [ProductVaria
   }
 }
 
+mutation bulkDeleteProductVariants($productId: ID!, $variantsIds: [ID!]!) {
+  productVariantsBulkDelete(productId: $productId, variantsIds: $variantsIds) {
+    product {
+      id
+      title
+      productType
+    }
+    userErrors {
+      field
+      message
+    }
+  }
+}
 
 # query productVariants($id: ID!) {
 #   productVariants(query:gid://shopify/Product/8308343963815) {

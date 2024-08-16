@@ -439,7 +439,13 @@ def add_new_customer(first_name, last_name, phone_number, email_address, street_
 
         payload = {
             'Workgroup': '1',
-            'AR_CUST': {'FST_NAM': first_name, 'LST_NAM': last_name, 'STR_ID': '1', 'EMAIL_ADRS_1': email_address},
+            'AR_CUST': {
+                'FST_NAM': first_name,
+                'LST_NAM': last_name,
+                'STR_ID': '1',
+                'EMAIL_ADRS_1': email_address,
+                'LST_MAINT_DT': 'GETDATE()',
+            },
         }
 
         if phone_number is not None:
@@ -534,7 +540,13 @@ def update_customer(
     }
 
     if state is not None:
-        state = states[state]
+        try:
+            state = states[state]
+        except KeyError:
+            try:
+                state = state[0:10]
+            except:
+                state = None
 
     if phone_number is not None:
         phone_number = format_phone_number(phone_number)
@@ -554,7 +566,8 @@ def update_customer(
     NAM_UPR = '{NAM_UPR}',
     FST_NAM_UPR = '{FST_NAM_UPR}',
     LST_NAM_UPR = '{LST_NAM_UPR}',
-    CONTCT_1 = '{NAM}'
+    CONTCT_1 = '{NAM}', 
+    LST_MAINT_DT = GETDATE()
     """
 
     # PHONE_1 = '{phone_number}',
@@ -582,7 +595,7 @@ def update_customer(
     if zip_code is not None:
         query += f", ZIP_COD = '{zip_code}'"
 
-    query += f"WHERE CUST_NO = '{cust_no}'"
+    query += f" WHERE CUST_NO = '{cust_no}'"
 
     response = db.query(query)
 

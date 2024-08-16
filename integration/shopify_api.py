@@ -8,7 +8,8 @@ from shortuuid import ShortUUID
 from setup.email_engine import Email
 from customer_tools.customers import lookup_customer
 
-verbose_print = False
+
+verbose_print = True
 
 
 class Shopify:
@@ -276,9 +277,9 @@ class Shopify:
 
             shippingCost += delivery_from_lines
 
-            hdsc = float(get_money(snode['totalDiscountsSet']))
+            header_discount = float(get_money(snode['totalDiscountsSet']))
 
-            subtotal = float(get_money(snode['currentSubtotalPriceSet'])) - hdsc + shippingCost
+            subtotal = float(get_money(snode['currentSubtotalPriceSet'])) + header_discount
             total = float(get_money(snode['currentTotalPriceSet']))
 
             if len(snode['refunds']) > 0:
@@ -287,7 +288,7 @@ class Shopify:
             def create_shipping_item():
                 return {
                     'id': '',
-                    'sku': 'DLEIVERY',
+                    'sku': 'DELIVERY',
                     'type': 'physical',
                     'base_price': shippingCost,
                     'price_ex_tax': shippingCost,
@@ -372,8 +373,8 @@ class Shopify:
                 else 'EMPTY',
             }
 
-            if hdsc > 0:
-                bc_order['coupons']['url'] = [{'amount': hdsc}]
+            if header_discount > 0:
+                bc_order['coupons']['url'] = [{'amount': header_discount}]
 
             return bc_order
 
@@ -382,10 +383,10 @@ class Shopify:
             SELECT TKT_NO, TKT_DT FROM PS_DOC_HDR
             UNION
             SELECT TKT_NO, TKT_DT FROM PS_TKT_HIST
-            WHERE STR_ID = 'WEB'
+            WHERE STR_ID = 'WEB' OR STA_ID = 'POS'
             ORDER BY TKT_DT DESC
             OFFSET 0 ROWS
-            FETCH NEXT 30 ROWS ONLY
+            FETCH NEXT 300 ROWS ONLY
             """
 
             response = Database.db.query(query)
@@ -407,6 +408,13 @@ class Shopify:
 
             except:
                 return []
+
+        def get_id_from_tkt_no(tkt_no):
+            orders = Shopify.Order.get_all()
+            for _order in orders['orders']['edges']:
+                order = _order['node']
+                if order['name'] == tkt_no:
+                    return order['id'].split('/')[-1]
 
         class Draft:
             queries = './integration/queries/draft_orders.graphql'
@@ -536,16 +544,24 @@ class Shopify:
             response = Shopify.Query(
                 document=Shopify.Customer.queries, variables=variables, operation_name='customers'
             )
-            id_list += [x['node']['id'].split('/')[-1] for x in response.data['customers']['edges']]
+            id_list += [int(x['node']['id'].split('/')[-1]) for x in response.data['customers']['edges']]
 
             while response.data['customers']['pageInfo']['hasNextPage']:
                 variables['after'] = response.data['customers']['pageInfo']['endCursor']
                 response = Shopify.Query(
                     document=Shopify.Customer.queries, variables=variables, operation_name='customers'
                 )
-                id_list += [x['node']['id'].split('/')[-1] for x in response.data['customers']['edges']]
+                id_list += [int(x['node']['id'].split('/')[-1]) for x in response.data['customers']['edges']]
 
             return id_list
+
+        def get_customer_ids_not_in_mw():
+            all_shopify_cust_ids = Shopify.Customer.get()
+            all_mw_cust_data = Database.Shopify.Customer.get()
+            all_mw_cust_ids = []
+            for x in all_mw_cust_data:
+                all_mw_cust_ids.append(x[2])
+            return [x for x in all_shopify_cust_ids if x not in all_mw_cust_ids]
 
         def get_customer_metafields(metafields: list):
             result = {}
@@ -599,64 +615,74 @@ class Shopify:
                         operation_name='customerDelete',
                     )
 
-        def backfill():
-            cust_ids = Shopify.Customer.get()
+        def backfill(all=False):
+            if all:
+                cust_ids = Shopify.Customer.get()
 
-            for shop_cust_id in cust_ids:
-                response = Shopify.Customer.get(shop_cust_id)
-                email = response['customer']['email']
-                phone = response['customer']['phone']
-                metafields = response['customer']['metafields']['edges']
-                meta_cust_id = None
-                meta_category = None
-                meta_birth_month = None
-                meta_birth_month_spouse = None
-                meta_wholesale_tier = None
-                for meta in metafields:
-                    if meta['node']['namespace'] == 'customer' and meta['node']['key'] == 'number':
-                        meta_cust_id = meta['node']['id'].split('/')[-1]
-                        print(f'Meta Cust ID: {meta_cust_id}')
-                    elif meta['node']['namespace'] == 'customer' and meta['node']['key'] == 'category':
-                        meta_category = meta['node']['id'].split('/')[-1]
-                        print(f'Meta Category: {meta_category}')
-                    elif meta['node']['namespace'] == 'customer' and meta['node']['key'] == 'birth_month':
-                        meta_birth_month = meta['node']['id'].split('/')[-1]
-                        print(f'Meta Birth Month: {meta_birth_month}')
-                    elif meta['node']['namespace'] == 'customer' and meta['node']['key'] == 'birth_month_spouse':
-                        meta_birth_month_spouse = meta['node']['id'].split('/')[-1]
-                        print(f'Meta Birth Month Spouse: {meta_birth_month_spouse}')
-                    elif meta['node']['namespace'] == 'customer' and meta['node']['key'] == 'wholesale_price_tier':
-                        meta_wholesale_tier = meta['node']['id'].split('/')[-1]
-                        print(f'Meta Wholesale Tier: {meta_wholesale_tier}')
+            else:
+                cust_ids = Shopify.Customer.get_customer_ids_not_in_mw()
 
-                loyalty_id = Shopify.Customer.StoreCredit.add_store_credit(shop_cust_id, 1)
-                Shopify.Customer.StoreCredit.remove_store_credit(shop_cust_id, 1)
-                print(f'Loyalty ID: {loyalty_id}')
+            if cust_ids:
+                for shop_cust_id in cust_ids:
+                    response = Shopify.Customer.get(shop_cust_id)
+                    email = response['customer']['email']
+                    phone = response['customer']['phone']
+                    metafields = response['customer']['metafields']['edges']
+                    meta_cust_id = None
+                    meta_category = None
+                    meta_birth_month = None
+                    meta_birth_month_spouse = None
+                    meta_wholesale_tier = None
+                    for meta in metafields:
+                        if meta['node']['namespace'] == 'customer' and meta['node']['key'] == 'number':
+                            meta_cust_id = meta['node']['id'].split('/')[-1]
+                            print(f'Meta Cust ID: {meta_cust_id}')
+                        elif meta['node']['namespace'] == 'customer' and meta['node']['key'] == 'category':
+                            meta_category = meta['node']['id'].split('/')[-1]
+                            print(f'Meta Category: {meta_category}')
+                        elif meta['node']['namespace'] == 'customer' and meta['node']['key'] == 'birth_month':
+                            meta_birth_month = meta['node']['id'].split('/')[-1]
+                            print(f'Meta Birth Month: {meta_birth_month}')
+                        elif (
+                            meta['node']['namespace'] == 'customer' and meta['node']['key'] == 'birth_month_spouse'
+                        ):
+                            meta_birth_month_spouse = meta['node']['id'].split('/')[-1]
+                            print(f'Meta Birth Month Spouse: {meta_birth_month_spouse}')
+                        elif (
+                            meta['node']['namespace'] == 'customer'
+                            and meta['node']['key'] == 'wholesale_price_tier'
+                        ):
+                            meta_wholesale_tier = meta['node']['id'].split('/')[-1]
+                            print(f'Meta Wholesale Tier: {meta_wholesale_tier}')
 
-                cust_number = lookup_customer(email, phone)
-                if cust_number:
-                    if not Database.Shopify.Customer.exists(shopify_cust_no=shop_cust_id):
-                        Database.Shopify.Customer.insert(
-                            cp_cust_no=cust_number,
-                            shopify_cust_no=shop_cust_id,
-                            loyalty_point_id=loyalty_id,
-                            meta_cust_no_id=meta_cust_id,
-                            meta_category_id=meta_category,
-                            meta_birth_month_id=meta_birth_month,
-                            meta_spouse_birth_month_id=meta_birth_month_spouse,
-                            meta_wholesale_price_tier_id=meta_wholesale_tier,
-                        )
-                    else:
-                        Database.Shopify.Customer.update(
-                            cp_cust_no=cust_number,
-                            shopify_cust_no=shop_cust_id,
-                            loyalty_point_id=loyalty_id,
-                            meta_cust_no_id=meta_cust_id,
-                            meta_category_id=meta_category,
-                            meta_birth_month_id=meta_birth_month,
-                            meta_spouse_birth_month_id=meta_birth_month_spouse,
-                            meta_wholesale_price_tier_id=meta_wholesale_tier,
-                        )
+                    loyalty_id = Shopify.Customer.StoreCredit.add_store_credit(shop_cust_id, 1)
+                    Shopify.Customer.StoreCredit.remove_store_credit(shop_cust_id, 1)
+                    print(f'Loyalty ID: {loyalty_id}')
+
+                    cust_number = lookup_customer(email, phone)
+                    if cust_number:
+                        if not Database.Shopify.Customer.exists(shopify_cust_no=shop_cust_id):
+                            Database.Shopify.Customer.insert(
+                                cp_cust_no=cust_number,
+                                shopify_cust_no=shop_cust_id,
+                                loyalty_point_id=loyalty_id,
+                                meta_cust_no_id=meta_cust_id,
+                                meta_category_id=meta_category,
+                                meta_birth_month_id=meta_birth_month,
+                                meta_spouse_birth_month_id=meta_birth_month_spouse,
+                                meta_wholesale_price_tier_id=meta_wholesale_tier,
+                            )
+                        else:
+                            Database.Shopify.Customer.update(
+                                cp_cust_no=cust_number,
+                                shopify_cust_no=shop_cust_id,
+                                loyalty_point_id=loyalty_id,
+                                meta_cust_no_id=meta_cust_id,
+                                meta_category_id=meta_category,
+                                meta_birth_month_id=meta_birth_month,
+                                meta_spouse_birth_month_id=meta_birth_month_spouse,
+                                meta_wholesale_price_tier_id=meta_wholesale_tier,
+                            )
 
         class StoreCredit:
             queries = './integration/queries/storeCredit.graphql'
@@ -971,11 +997,14 @@ class Shopify:
                 print(result)
                 return result
 
-            def delete(variant_id: int):
+            def delete(product_id, variant_id: int):
                 response = Shopify.Query(
                     document=Shopify.Product.Variant.queries,
-                    variables={'id': f'{Shopify.Product.Variant.prefix}{variant_id}'},
-                    operation_name='productVariantDelete',
+                    variables={
+                        'productId': f'{Shopify.Product.prefix}{product_id}',
+                        'variantsIds': [f'{Shopify.Product.Variant.prefix}{variant_id}'],
+                    },
+                    operation_name='bulkDeleteProductVariants',
                 )
                 return response.data
 
@@ -983,7 +1012,7 @@ class Shopify:
                 queries = './integration/queries/media.graphql'
                 prefix = 'gid://shopify/MediaImage/'
 
-                def get(variant_id: int = None, product_id: int = None):
+                def get(variant_id, product_id):
                     if product_id:
                         # Get all variant images for a product
                         return
@@ -1018,6 +1047,18 @@ class Shopify:
                         operation_name='productVariantDetachMedia',
                     )
                     return response.data
+
+                def delete_all(sku, product_id=None):
+                    """Delete all Media Associated with Variant from shopify."""
+                    if not product_id:
+                        product_id = Database.Shopify.Product.get_id(sku=sku)
+
+                    media_ids = Database.Shopify.Product.Variant.Media.Image.get(item_no=sku)
+
+                    if media_ids:
+                        Shopify.Product.Media.delete(product_id=product_id, media_type='image', media_ids=media_ids)
+                        for i in media_ids:
+                            Database.Shopify.Product.Media.Image.delete(product_id=product_id, image_id=i)
 
         class Media:
             queries = './integration/queries/media.graphql'
@@ -1236,7 +1277,7 @@ class Shopify:
                     variables['optionValuesToAdd'] = add_list
 
                 if option_values_to_update:
-                    update_list = [f'gid://shopify/ProductOptionValue/{x}' for x in option_values_to_update]
+                    update_list = [option_values_to_update]
                     variables['optionValuesToUpdate'] = update_list
 
                 if option_values_to_delete:
@@ -1544,17 +1585,7 @@ class Shopify:
                 return response.data
             elif product_id:
                 response = Shopify.Product.get(product_id)
-                variables = {
-                    'metafields': [
-                        # {
-                        #     'ownerId': x['node']['id'],
-                        #     'namespace': x['node']['namespace'],
-                        #     'key': x['node']['key'],
-                        # }
-                        x['node']['id']
-                        for x in response['product']['metafields']['edges']
-                    ]
-                }
+                variables = {'metafields': [x['node']['id'] for x in response['product']['metafields']['edges']]}
                 for i in variables['metafields']:
                     Shopify.Metafield.delete(metafield_id=i.split('/')[-1])
 
@@ -1830,10 +1861,31 @@ class Shopify:
         queries = './integration/queries/promotion.graphql'
 
 
+def refresh_order(tkt_no):
+    Database.Counterpoint.Order.delete(tkt_no=tkt_no)
+
+    from integration.orders import Order as ShopifyOrder
+
+    order_id = Shopify.Order.get_id_from_tkt_no(tkt_no[1:])
+    if order_id:
+        shopify_order = ShopifyOrder(order_id)
+        shopify_order.post_shopify_order()
+
+
 if __name__ == '__main__':
-    response = Shopify.Product.Metafield.get(8308197163175)
-    for i in response['product_specifications']:
-        print(i)
-    print('\n\n')
-    for i in response['product_status']:
-        print(i)
+    # Shopify.Product.Variant.delete(product_id=8325378670759, variant_id=45937990697127)
+    # product_id = Database.Shopify.Product.get_id(item_no='APTEST')
+    # variant_id = Database.Shopify.Product.Variant.get_variant_id(sku='APTEST')
+    # print(Database.Shopify.Product.Variant.Media.Image.get(item_no='APTEST'))
+    # from integration.orders import Order as ShopifyOrder
+    # shopify_order = ShopifyOrder(5633150451879)
+    # shopify_order.post_shopify_order()
+
+    # Shopify.Order.get(5633184661671)
+    refresh_order('S1034')
+
+    # res = Shopify.Order.get_orders_not_in_cp()
+    # order_list = [res['name'] for res in res]
+    # # sort by order number
+    # order_list.sort()
+    # print(order_list)
