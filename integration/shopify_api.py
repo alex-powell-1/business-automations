@@ -8,6 +8,7 @@ from shortuuid import ShortUUID
 from setup.email_engine import Email
 from customer_tools.customers import lookup_customer
 from traceback import print_exc as tb
+from setup.utilities import PhoneNumber
 
 
 verbose_print = False
@@ -319,6 +320,14 @@ class Shopify:
                     'applied_discounts': [],
                 }
 
+            def get_store_credit_amount():
+                store_credit_amount = 0
+                for transaction in snode['transactions']:
+                    if transaction['gateway'] == 'shopify_store_credit':
+                        store_credit_amount = float(transaction['amountSet']['shopMoney']['amount'])
+                        break
+                return store_credit_amount
+
             if shippingCost > 0:
                 shopify_products.append(create_shipping_item())
 
@@ -338,7 +347,7 @@ class Shopify:
                 'payment_method': None,  # TODO: Add payment method
                 'payment_status': snode['displayFinancialStatus'],
                 'refunded_amount': '0.0000',  # TODO: Add refunded amount
-                'store_credit_amount': '0.0000',  # TODO: Add store credit amount
+                'store_credit_amount': get_store_credit_amount(),  # TODO: Add store credit amount
                 'gift_certificate_amount': '0.0000',  # TODO: Add gift certificate amount
                 'customer_message': snode['note'],
                 'discount_amount': '0.0000',  # TODO: Add discount amount
@@ -354,8 +363,8 @@ class Shopify:
                     'state': billing['province'],
                     'zip': billing['zip'],
                     'country': billing['country'],
-                    'phone': billing['phone'],
-                    'email': snode['email'],
+                    'phone': billing['phone'] or PhoneNumber(snode['customer']['phone']).to_cp(),
+                    'email': snode['email'] or snode['customer']['email'],
                 },
                 'products': {'url': shopify_products},
                 'shipping_addresses': {
@@ -405,7 +414,7 @@ class Shopify:
             try:
                 tkt_nos = [x[0].replace('S', '') for x in response]
 
-                print(tkt_nos)
+                # print(tkt_nos)
 
                 orders = []
 
