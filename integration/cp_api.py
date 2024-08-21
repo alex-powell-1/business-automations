@@ -232,7 +232,7 @@ class OrderAPI(DocumentAPI):
 
         payments = [
             {
-                'AMT': float(bc_order['total_inc_tax'] or 0),
+                'AMT': float(bc_order['total_inc_tax'] or 0) - float(bc_order['store_credit_amount'] or 0),
                 'PAY_COD': 'SHOP',
                 'FINAL_PMT': 'N',
                 'PMT_LIN_TYP': 'C' if self.is_refund() else 'T',
