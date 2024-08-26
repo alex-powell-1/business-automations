@@ -339,7 +339,7 @@ class Shopify:
                         or ((snode['shippingAddress'] or {'phone': None})['phone'])
                     ).to_cp()
                 except:
-                    return ''
+                    return None
 
             bc_order = {
                 'id': snode['name'],
@@ -389,7 +389,7 @@ class Shopify:
                             'state': (snode['shippingAddress'] or {'province': None})['province'],
                             'zip': (snode['shippingAddress'] or {'zip': None})['zip'],
                             'country': (snode['shippingAddress'] or {'country': None})['country'],
-                            'phone': (snode['shippingAddress'] or {'phone': None})['phone'],
+                            'phone': (snode['shippingAddress'] or {'phone': None})['phone'] or get_phone(),
                             'email': snode['email'],
                         }
                     ]
