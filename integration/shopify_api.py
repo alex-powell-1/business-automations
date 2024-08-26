@@ -331,6 +331,16 @@ class Shopify:
             if shippingCost > 0:
                 shopify_products.append(create_shipping_item())
 
+            def get_phone():
+                try:
+                    return PhoneNumber(
+                        billing['phone']
+                        or snode['customer']['phone']
+                        or ((snode['shippingAddress'] or {'phone': None})['phone'])
+                    ).to_cp()
+                except:
+                    return ''
+
             bc_order = {
                 'id': snode['name'],
                 'customer_id': snode['customer']['id'],
@@ -363,7 +373,7 @@ class Shopify:
                     'state': billing['province'],
                     'zip': billing['zip'],
                     'country': billing['country'],
-                    'phone': billing['phone'] or PhoneNumber(snode['customer']['phone']).to_cp(),
+                    'phone': get_phone(),
                     'email': snode['email'] or snode['customer']['email'],
                 },
                 'products': {'url': shopify_products},
