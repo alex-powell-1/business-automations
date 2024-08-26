@@ -181,10 +181,6 @@ query order($id: ID!) {
                 gateway
                 formattedGateway
                 kind
-
-                paymentIcon {
-                    url
-                }
             }
 
             originalTotalPriceSet {
