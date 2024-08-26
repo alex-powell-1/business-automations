@@ -36,10 +36,11 @@ class Catalog:
         self.test_queue = test_queue
         if not self.inventory_only and not self.test_mode:
             self.category_tree = self.CategoryTree(last_sync=last_sync)
-            self.product_images = get_product_images()
-            self.product_videos = Database.Counterpoint.Product.Media.Video.get()
+
         self.cp_items = []
         self.mw_items = []
+        self.product_images = []
+        self.product_videos = []
         self.sync_queue = []
         self.queue_binding_ids = set()
         self.get_products()
@@ -185,7 +186,6 @@ class Catalog:
         if delete_targets:
             Catalog.logger.info(f'Product Delete Targets: {delete_targets}')
             for x in delete_targets:
-                print(f'Deleting Product {x}.\n')
                 Catalog.Product.delete(sku=x)
         else:
             Catalog.logger.info('No products to delete.')
@@ -221,6 +221,7 @@ class Catalog:
 
             Catalog.logger.info('Processing Image Updates.')
             start_time = time.time()
+            self.product_images = get_product_images()
             mw_image_list = get_middleware_images()
 
             delete_targets = Catalog.get_deletion_target(
@@ -277,8 +278,8 @@ class Catalog:
 
             Catalog.logger.info('Processing Video Updates.')
             start_time = time.time()
+            self.product_videos = Database.Counterpoint.Product.Media.Video.get()
             mw_video_list = get_middleware_videos()
-
             delete_targets = Catalog.get_deletion_target(
                 primary_source=self.product_videos, secondary_source=mw_video_list
             )
@@ -297,18 +298,20 @@ class Catalog:
         process_videos()
 
     def sync(self, initial=False):
-        # Sync Category Tree
-        self.category_tree.sync()
+        if not self.inventory_only:
+            if not self.test_mode:
+                self.category_tree.sync()
 
-        # Sync Products
+            if not initial:
+                self.process_product_deletes()
+                if not self.test_mode:
+                    self.process_media()
+
+        # Get Sync Queue
         if self.test_mode:
             self.sync_queue = self.test_queue
         else:
             self.get_sync_queue()  # Get all products that have been updated since the last sync
-
-        if not initial and not self.inventory_only:
-            self.process_media()
-            self.process_product_deletes()
 
         if not self.sync_queue:
             if not self.inventory_only or self.verbose:  # don't log this for inventory sync.
@@ -318,7 +321,7 @@ class Catalog:
             success_count = 0
             fail_count = {'number': 0, 'items': []}
             if not self.inventory_only or self.verbose:
-                Catalog.logger.info(f'Syncing {queue_length} products.')
+                Catalog.logger.info(f'Syncing {queue_length} products.\n')
             while len(self.sync_queue) > 0:
                 start_time = time.time()
                 try:
@@ -356,6 +359,20 @@ class Catalog:
                     f'Fail Items: {fail_count["items"]}\n'
                     '-----------------------\n'
                 )
+
+            if fail_count['items']:
+                for item in fail_count['items']:
+                    # Delete the failed item from Shopify and Middleware
+                    Catalog.Product.delete(sku=item['sku'])
+                    # Retry the item
+                    prod = self.Product(target, last_sync=self.last_sync, inventory_only=self.inventory_only)
+                    prod.get(last_sync=self.last_sync)
+                    if not self.inventory_only or self.verbose:
+                        Catalog.logger.info(
+                            f'Processing Product: {prod.sku}, Binding: {prod.binding_id}, Title: {prod.web_title}'
+                        )
+                    if prod.validate():
+                        prod.process()
 
     @staticmethod
     def get_deletion_target(primary_source, secondary_source):
@@ -832,6 +849,8 @@ class Catalog:
             self.meta_preorder_release_date = {'id': None, 'value': None}
             self.meta_is_featured = {'id': None, 'value': None}
             self.meta_in_store_only = {'id': None, 'value': None}
+            self.meta_is_on_sale = {'id': None, 'value': None}
+            self.meta_sale_description = {'id': None, 'value': None}
 
             self.lst_maint_dt = datetime(1970, 1, 1)
 
@@ -969,6 +988,8 @@ class Catalog:
                         self.meta_preorder_release_date = bound.meta_preorder_release_date
                         self.meta_is_featured = bound.meta_is_featured
                         self.meta_in_store_only = bound.meta_in_store_only
+                        self.meta_is_on_sale = bound.meta_is_on_sale
+                        self.meta_sale_description = bound.meta_sale_description
 
                         # Shipping
                         self.weight = bound.weight
@@ -1075,6 +1096,8 @@ class Catalog:
                 self.meta_preorder_release_date = single.meta_preorder_release_date
                 self.meta_is_featured = single.meta_is_featured
                 self.meta_in_store_only = single.meta_in_store_only
+                self.meta_is_on_sale = single.meta_is_on_sale
+                self.meta_sale_description = single.meta_sale_description
                 # Shipping
                 self.weight = single.weight
                 # Last Maintenance Date
@@ -1576,6 +1599,37 @@ class Catalog:
                     Shopify.Metafield.delete(metafield_id=self.meta_preorder_message['id'])
                     self.meta_preorder_message['id'] = None
 
+                # On Sale Status - All products are either on sale or not
+                on_sale_data = {'value': self.meta_is_on_sale['value']}
+                if self.meta_is_on_sale['id']:
+                    on_sale_data['id'] = f'{Shopify.Metafield.prefix}{self.meta_is_on_sale["id"]}'
+                else:
+                    on_sale_data['namespace'] = Catalog.metafields['On Sale']['NAME_SPACE']
+                    on_sale_data['key'] = Catalog.metafields['On Sale']['META_KEY']
+                    on_sale_data['type'] = Catalog.metafields['On Sale']['TYPE']
+                result.append(on_sale_data)
+
+                # On Sale Description
+                if self.meta_sale_description['value']:
+                    on_sale_description_data = {'value': self.meta_sale_description['value']}
+                    if self.meta_sale_description['id']:
+                        on_sale_description_data['id'] = (
+                            f'{Shopify.Metafield.prefix}{self.meta_sale_description["id"]}'
+                        )
+                    else:
+                        on_sale_description_data['namespace'] = Catalog.metafields['On Sale Description'][
+                            'NAME_SPACE'
+                        ]
+                        on_sale_description_data['key'] = Catalog.metafields['On Sale Description']['META_KEY']
+                        on_sale_description_data['type'] = Catalog.metafields['On Sale Description']['TYPE']
+
+                    print(f'On Sale Description Data: {on_sale_description_data}')
+                    result.append(on_sale_description_data)
+
+                elif self.meta_sale_description['id']:
+                    Shopify.Metafield.delete(metafield_id=self.meta_sale_description['id'])
+                    self.meta_sale_description['id'] = None
+
                 # Featured Product Status - All products are either featured or not
                 featured_data = {'value': 'true' if self.featured else 'false'}
                 if self.meta_is_featured['id']:
@@ -1924,6 +1978,9 @@ class Catalog:
                 if 'meta_ids' in response:
                     self.get_metafield_ids(response)
 
+                if 'media_ids' in response:
+                    self.get_media_ids(response)
+
                 # Assign Default Variant Properties
                 self.variants[0].variant_id = response['variant_ids'][0]
                 self.variants[0].option_id = self.option_id
@@ -1933,9 +1990,12 @@ class Catalog:
 
                 self.variants[0].inventory_id = response['inventory_ids'][0]
 
-                for x, image in enumerate(self.images):
-                    image.product_id = self.product_id
-                    image.shopify_id = response['media_ids'][x]
+                # for x, image in enumerate(self.images):
+                #     image.product_id = self.product_id
+                #     image.shopify_id = response['media_ids'][x]
+
+                # for x, video in enumerate(self.videos):
+                #     video.product_id = self.product_id
 
                 if len(self.variants) > 1:
                     # Save Default Option Value ID for Deletion
@@ -1968,10 +2028,6 @@ class Catalog:
                 # Add Product to Online Store Sales Channel
                 Shopify.Product.publish(self.product_id)
 
-                Database.Shopify.Product.insert(self)
-                for image in self.images:
-                    Database.Shopify.Product.Media.Image.insert(image)
-
             def update():
                 """Will update existing product. Will clear out custom field data and reinsert."""
 
@@ -1982,19 +2038,7 @@ class Catalog:
                     self.get_metafield_ids(response)
 
                 if 'media_ids' in response:
-                    for x in self.media:
-                        x.product_id = self.product_id
-                        x.shopify_id = response['media_ids'][x.temp_sort_order]
-                        if x.temp_sort_order > x.sort_order:
-                            # Newly added media will be at the end of the media response list.
-                            # If that expected position is higher than the required position, add to job queue.
-                            self.reorder_media_queue.append(x)
-
-                        elif response['media_ids'].index(x.shopify_id) != self.media.index(x):
-                            # This block accounts for existing media that has changed position.
-                            # Currently, this only applies to videos that are a comma separated list.
-                            x.sort_order = self.media.index(x)
-                            self.reorder_media_queue.append(x)
+                    self.get_media_ids(response)
 
                     if self.reorder_media_queue:
                         Shopify.Product.Media.reorder(self)
@@ -2017,13 +2061,13 @@ class Catalog:
                     variant_payload = self.get_single_variant_payload()
                     response = Shopify.Product.Variant.update_single(variant_payload)
 
-                Database.Shopify.Product.sync(product=self)
-
             if not self.inventory_only:
                 if self.product_id:
                     update()
                 else:
                     create()
+                # Update Middleware (Insert or Update)
+                Database.Shopify.Product.sync(product=self)
 
             # Update Inventory
             if not self.is_preorder:
@@ -2074,6 +2118,25 @@ class Catalog:
                         self.meta_is_featured['id'] = meta_id['id']
                     elif meta_id['key'] == Catalog.metafields['In Store Only']['META_KEY']:
                         self.meta_in_store_only['id'] = meta_id['id']
+                    elif meta_id['key'] == Catalog.metafields['On Sale']['META_KEY']:
+                        self.meta_is_on_sale['id'] = meta_id['id']
+                    elif meta_id['key'] == Catalog.metafields['On Sale Description']['META_KEY']:
+                        self.meta_sale_description['id'] = meta_id['id']
+
+        def get_media_ids(self, response):
+            for x in self.media:
+                x.product_id = self.product_id
+                x.shopify_id = response['media_ids'][x.temp_sort_order]
+                if x.temp_sort_order > x.sort_order:
+                    # Newly added media will be at the end of the media response list.
+                    # If that expected position is higher than the required position, add to job queue.
+                    self.reorder_media_queue.append(x)
+
+                elif response['media_ids'].index(x.shopify_id) != self.media.index(x):
+                    # This block accounts for existing media that has changed position.
+                    # Currently, this only applies to videos that are a comma separated list.
+                    x.sort_order = self.media.index(x)
+                    self.reorder_media_queue.append(x)
 
         def get_shopify_collections(self):
             """Get Shopify Collection IDs from Middleware Category IDs"""
@@ -2150,9 +2213,10 @@ class Catalog:
         @staticmethod
         def delete(sku, update_timestamp=False):
             """Delete Product from BigCommerce and Middleware."""
+            print(f'Deleting Product {sku}.')
 
             def delete_product(sku, product_id, update_timestamp=False):
-                """Delete Product from BigCommerce and Middleware."""
+                """Helper function."""
                 if product_id:
                     Shopify.Product.delete(product_id)
 
@@ -2183,13 +2247,11 @@ class Catalog:
                     delete_product(sku=sku, product_id=product_id, update_timestamp=update_timestamp)
 
                 elif Catalog.Product.is_parent(sku):
-                    print('Case 2')
-                    print('Parent Product. Will delete product.')
+                    print('Case 2 - Parent Product. Will delete product.')
                     delete_product(sku=sku, product_id=product_id, update_timestamp=update_timestamp)
 
                 else:
-                    print('Case 3')
-                    # This is a child variant. Do not delete product. Only variant.
+                    print('Case 3 - Child Product. Will delete variant.')
                     option_id = Database.Shopify.Product.Variant.get_option_id(sku=sku)
                     opt_val_id = Database.Shopify.Product.Variant.get_option_value_id(sku=sku)
                     variant_id = Database.Shopify.Product.Variant.get_id(sku=sku)
@@ -2208,9 +2270,7 @@ class Catalog:
                     Database.Shopify.Product.Variant.delete(variant_id)
 
             else:
-                print('No Binding ID')
-                # Delete Single Product
-                Catalog.logger.info(f'Deleting Product: {sku}')
+                Catalog.logger.info('No Binding ID - Delete Single Product')
                 delete_product(sku=sku, product_id=product_id, update_timestamp=update_timestamp)
 
         def delete_image(self, image):
@@ -2432,6 +2492,8 @@ class Catalog:
                 self.is_preorder = product_data['is_preorder']
                 self.preorder_release_date = product_data['preorder_release_date']
                 self.preorder_message = product_data['preorder_message']
+                self.is_on_sale = product_data['custom_is_on_sale']
+                self.sale_description = product_data['custom_sale_description']
 
                 # Product Details
                 self.web_title: str = product_data['web_title']
@@ -2481,7 +2543,19 @@ class Catalog:
 
                 # Climate Zone
                 climate_zone_min = product_data['custom_climate_zone_min']
+                if climate_zone_min:
+                    # regex for two characters number and a letter
+                    regex_res = re.match(r'\d{1,2}([a-zA-Z])?', climate_zone_min)
+                    if regex_res:
+                        climate_zone_min = regex_res.group() or None
+
                 climate_zone_max = product_data['custom_climate_zone_max']
+                if climate_zone_max:
+                    # regex for two characters number and a letter
+                    regex_res = re.match(r'\d{1,2}([a-zA-Z])?', climate_zone_max)
+                    if regex_res:
+                        climate_zone_max = regex_res.group() or None
+
                 # '3B - 11a'
                 if climate_zone_min and climate_zone_max:
                     clim_value = f'{climate_zone_min} - {climate_zone_max}'
@@ -2673,6 +2747,17 @@ class Catalog:
                     'value': 'true' if self.in_store_only else 'false',
                 }
 
+                self.meta_is_on_sale = {
+                    'id': product_data['custom_is_on_sale_id'],
+                    'value': 'true' if self.is_on_sale else 'false',
+                }
+                print(self.meta_is_on_sale)
+
+                self.meta_sale_description = {
+                    'id': product_data['custom_sale_description_id'],
+                    'value': self.sale_description,
+                }
+
                 # Product Images
                 self.images = []
                 self.has_variant_image = False
@@ -2837,7 +2922,11 @@ class Catalog:
                 MW.CF_IS_FEATURED as 'CUSTOM_IS_FEATURED_ID(105)',
                 MW.CF_IN_STORE_ONLY as 'CUSTOM_IN_STORE_ONLY_ID(106)',
                 ITEM.PROF_COD_2 as 'Size Unit(107)', 
-                ITEM.USR_VIDEO as 'VIDEOS(108)'
+                ITEM.USR_VIDEO as 'VIDEOS(108)',
+                {Column.CP.Product.is_on_sale} as 'IS_ON_SALE(109)',
+                MW.CF_IS_ON_SALE as 'CUSTOM_IS_ON_SALE_ID(110)',
+                {Column.CP.Product.sale_description} as 'SALE_DESCRIPTION(111)',
+                MW.CF_SALE_DESCR as 'CUSTOM_ON_SALE_DESCRIPTION_ID(112)'
 
                 FROM {Database.Counterpoint.Product.table} ITEM
                 LEFT OUTER JOIN IM_PRC PRC ON ITEM.ITEM_NO=PRC.ITEM_NO
@@ -2849,133 +2938,144 @@ class Catalog:
 
                 item = db.query(query)
                 if item is not None:
-                    details = {
-                        # Product ID Info
-                        'mw_db_id': item[0][0],
-                        'binding_id': item[0][1],
-                        'mw_binding_id': item[0][88],
-                        'is_bound': True if item[0][1] else False,
-                        'is_parent': item[0][2],
-                        'product_id': item[0][3],
-                        'variant_id': item[0][4],
-                        'variant_name': item[0][5],
-                        'inventory_id': item[0][6],
-                        # Product Status
-                        'web_visible': True if item[0][7] == 'Y' else False,
-                        'is_featured': True if item[0][8] == 'Y' else False,
-                        'in_store_only': True if item[0][9] == 'Y' else False,
-                        'is_preorder': True if item[0][10] == 'Y' else False,
-                        'preorder_release_date': convert_to_utc(item[0][11]) if item[0][11] else None,
-                        'preorder_message': item[0][12],
-                        'sort_order': int(item[0][13]) if item[0][13] else 0,
-                        # Product Description
-                        'web_title': item[0][14],
-                        'meta_title': item[0][15],
-                        'meta_description': item[0][16],
-                        'html_description': item[0][17],
-                        'status': item[0][18],
-                        # Product Pricing
-                        'reg_price': item[0][19],
-                        'price_1': item[0][20],
-                        'price_2': item[0][21],
-                        'cost': item[0][22],
-                        # # Inventory Levels
-                        'quantity_available': item[0][23],
-                        'buffer': item[0][24],
-                        # E-Commerce Categories
-                        'cp_ecommerce_categories': str(item[0][25]).split(',') if item[0][25] else [],
-                        # Additional Details
-                        'item_type': item[0][26],  # Inventory/Non-Inventory NOT USED CURRENTLY
-                        'brand': item[0][27],
-                        'long_descr': item[0][28],
-                        'tags': item[0][29],
-                        # Alt Text
-                        'alt_text_1': item[0][30],
-                        'alt_text_2': item[0][31],
-                        'alt_text_3': item[0][32],
-                        'alt_text_4': item[0][33],
-                        # Custom Fields
-                        'custom_botanical_name': item[0][34],
-                        'custom_climate_zone_min': item[0][35],
-                        'custom_climate_zone_max': item[0][36],
-                        'custom_plant_type': item[0][37],
-                        'type': item[0][38],  # Shows on Shopify Catalog Backend
-                        'custom_height_min': item[0][39],
-                        'custom_height_max': item[0][40],
-                        'custom_height_unit': item[0][41],
-                        'custom_width_min': item[0][42],
-                        'custom_width_max': item[0][43],
-                        'custom_width_unit': item[0][44],
-                        'custom_size': item[0][89],
-                        # Light Requirements
-                        'custom_full_sun': True if item[0][45] == 'Y' else False,
-                        'custom_part_sun': True if item[0][46] == 'Y' else False,
-                        'custom_part_shade': True if item[0][47] == 'Y' else False,
-                        'custom_full_shade': True if item[0][48] == 'Y' else False,
-                        'custom_bloom_spring': True if item[0][49] == 'Y' else False,
-                        'custom_bloom_summer': True if item[0][50] == 'Y' else False,
-                        'custom_bloom_fall': True if item[0][51] == 'Y' else False,
-                        'custom_bloom_winter': True if item[0][52] == 'Y' else False,
-                        # Colors
-                        'custom_color_pink': True if item[0][53] == 'Y' else False,
-                        'custom_color_red': True if item[0][54] == 'Y' else False,
-                        'custom_color_orange': True if item[0][55] == 'Y' else False,
-                        'custom_color_yellow': True if item[0][56] == 'Y' else False,
-                        'custom_color_green': True if item[0][57] == 'Y' else False,
-                        'custom_color_blue': True if item[0][58] == 'Y' else False,
-                        'custom_color_purple': True if item[0][59] == 'Y' else False,
-                        'custom_color_white': True if item[0][60] == 'Y' else False,
-                        'custom_color_custom': item[0][61].split(',') if item[0][61] else [],
-                        # Features
-                        'custom_low_maintenance': True if item[0][62] == 'Y' else False,
-                        'custom_evergreen': True if item[0][63] == 'Y' else False,
-                        'custom_deciduous': True if item[0][64] == 'Y' else False,
-                        'custom_shade': True if item[0][65] == 'Y' else False,
-                        'custom_privacy': True if item[0][66] == 'Y' else False,
-                        'custom_specimen': True if item[0][67] == 'Y' else False,
-                        'custom_drought_tolerance': True if item[0][68] == 'Y' else False,
-                        'custom_heat_tolerance': True if item[0][69] == 'Y' else False,
-                        'custom_cold_tolerance': True if item[0][70] == 'Y' else False,
-                        'custom_fast_growth': True if item[0][71] == 'Y' else False,
-                        'custom_attracts_pollinators': True if item[0][72] == 'Y' else False,
-                        'custom_attracts_wildlife': True if item[0][73] == 'Y' else False,
-                        'custom_native': True if item[0][74] == 'Y' else False,
-                        'custom_fragrant': True if item[0][75] == 'Y' else False,
-                        'custom_deer_resistant': True if item[0][76] == 'Y' else False,
-                        'custom_easy_to_grow': True if item[0][77] == 'Y' else False,
-                        'custom_low_light': True if item[0][78] == 'Y' else False,
-                        'custom_tropical': True if item[0][79] == 'Y' else False,
-                        'custom_vining': True if item[0][80] == 'Y' else False,
-                        'custom_air_purifying': True if item[0][81] == 'Y' else False,
-                        'custom_pet_friendly': True if item[0][82] == 'Y' else False,
-                        'custom_slow_growth': True if item[0][83] == 'Y' else False,
-                        'custom_edible': True if item[0][84] == 'Y' else False,
-                        # Dates
-                        'lst_maint_dt': item[0][85],
-                        # Shipping
-                        'weight': item[0][86],
-                        'taxable': True if item[0][87] == 'Y' else False,
-                        # Custom Fields
-                        'custom_botanical_name_id': item[0][90],
-                        'custom_plant_type_id': item[0][91],
-                        'custom_height_id': item[0][92],
-                        'custom_width_id': item[0][93],
-                        'custom_color_id': item[0][94],
-                        'custom_size_id': item[0][95],
-                        'custom_bloom_season_id': item[0][96],
-                        'custom_bloom_color_id': item[0][97],
-                        'custom_light_req_id': item[0][98],
-                        'custom_features_id': item[0][99],
-                        'custom_climate_zone_id': item[0][100],
-                        'custom_climate_zone_list_id': item[0][101],
-                        'custom_is_preorder_id': item[0][102],
-                        'custom_preorder_date_id': item[0][103],
-                        'custom_preorder_message_id': item[0][104],
-                        'custom_is_featured_id': item[0][105],
-                        'custom_in_store_only_id': item[0][106],
-                        'custom_size_unit': item[0][107],
-                        'videos': item[0][108].replace(' ', '').split(',') if item[0][108] else [],
-                    }
+                    try:
+                        details = {
+                            # Product ID Info
+                            'mw_db_id': item[0][0],
+                            'binding_id': item[0][1],
+                            'mw_binding_id': item[0][88],
+                            'is_bound': True if item[0][1] else False,
+                            'is_parent': item[0][2],
+                            'product_id': item[0][3],
+                            'variant_id': item[0][4],
+                            'variant_name': item[0][5],
+                            'inventory_id': item[0][6],
+                            # Product Status
+                            'web_visible': True if item[0][7] == 'Y' else False,
+                            'is_featured': True if item[0][8] == 'Y' else False,
+                            'in_store_only': True if item[0][9] == 'Y' else False,
+                            'is_preorder': True if item[0][10] == 'Y' else False,
+                            'preorder_release_date': convert_to_utc(item[0][11]) if item[0][11] else None,
+                            'preorder_message': item[0][12],
+                            'sort_order': int(item[0][13]) if item[0][13] else 0,
+                            # Product Description
+                            'web_title': item[0][14],
+                            'meta_title': item[0][15],
+                            'meta_description': item[0][16],
+                            'html_description': item[0][17],
+                            'status': item[0][18],
+                            # Product Pricing
+                            'reg_price': item[0][19],
+                            'price_1': item[0][20],
+                            'price_2': item[0][21],
+                            'cost': item[0][22],
+                            # # Inventory Levels
+                            'quantity_available': item[0][23],
+                            'buffer': item[0][24],
+                            # E-Commerce Categories
+                            'cp_ecommerce_categories': str(item[0][25]).split(',') if item[0][25] else [],
+                            # Additional Details
+                            'item_type': item[0][26],  # Inventory/Non-Inventory NOT USED CURRENTLY
+                            'brand': item[0][27],
+                            'long_descr': item[0][28],
+                            'tags': item[0][29],
+                            # Alt Text
+                            'alt_text_1': item[0][30],
+                            'alt_text_2': item[0][31],
+                            'alt_text_3': item[0][32],
+                            'alt_text_4': item[0][33],
+                            # Custom Fields
+                            'custom_botanical_name': item[0][34],
+                            'custom_climate_zone_min': item[0][35],
+                            'custom_climate_zone_max': item[0][36],
+                            'custom_plant_type': item[0][37],
+                            'type': item[0][38],  # Shows on Shopify Catalog Backend
+                            'custom_height_min': item[0][39],
+                            'custom_height_max': item[0][40],
+                            'custom_height_unit': item[0][41],
+                            'custom_width_min': item[0][42],
+                            'custom_width_max': item[0][43],
+                            'custom_width_unit': item[0][44],
+                            'custom_size': item[0][89],
+                            # Light Requirements
+                            'custom_full_sun': True if item[0][45] == 'Y' else False,
+                            'custom_part_sun': True if item[0][46] == 'Y' else False,
+                            'custom_part_shade': True if item[0][47] == 'Y' else False,
+                            'custom_full_shade': True if item[0][48] == 'Y' else False,
+                            'custom_bloom_spring': True if item[0][49] == 'Y' else False,
+                            'custom_bloom_summer': True if item[0][50] == 'Y' else False,
+                            'custom_bloom_fall': True if item[0][51] == 'Y' else False,
+                            'custom_bloom_winter': True if item[0][52] == 'Y' else False,
+                            # Colors
+                            'custom_color_pink': True if item[0][53] == 'Y' else False,
+                            'custom_color_red': True if item[0][54] == 'Y' else False,
+                            'custom_color_orange': True if item[0][55] == 'Y' else False,
+                            'custom_color_yellow': True if item[0][56] == 'Y' else False,
+                            'custom_color_green': True if item[0][57] == 'Y' else False,
+                            'custom_color_blue': True if item[0][58] == 'Y' else False,
+                            'custom_color_purple': True if item[0][59] == 'Y' else False,
+                            'custom_color_white': True if item[0][60] == 'Y' else False,
+                            'custom_color_custom': item[0][61].split(',') if item[0][61] else [],
+                            # Features
+                            'custom_low_maintenance': True if item[0][62] == 'Y' else False,
+                            'custom_evergreen': True if item[0][63] == 'Y' else False,
+                            'custom_deciduous': True if item[0][64] == 'Y' else False,
+                            'custom_shade': True if item[0][65] == 'Y' else False,
+                            'custom_privacy': True if item[0][66] == 'Y' else False,
+                            'custom_specimen': True if item[0][67] == 'Y' else False,
+                            'custom_drought_tolerance': True if item[0][68] == 'Y' else False,
+                            'custom_heat_tolerance': True if item[0][69] == 'Y' else False,
+                            'custom_cold_tolerance': True if item[0][70] == 'Y' else False,
+                            'custom_fast_growth': True if item[0][71] == 'Y' else False,
+                            'custom_attracts_pollinators': True if item[0][72] == 'Y' else False,
+                            'custom_attracts_wildlife': True if item[0][73] == 'Y' else False,
+                            'custom_native': True if item[0][74] == 'Y' else False,
+                            'custom_fragrant': True if item[0][75] == 'Y' else False,
+                            'custom_deer_resistant': True if item[0][76] == 'Y' else False,
+                            'custom_easy_to_grow': True if item[0][77] == 'Y' else False,
+                            'custom_low_light': True if item[0][78] == 'Y' else False,
+                            'custom_tropical': True if item[0][79] == 'Y' else False,
+                            'custom_vining': True if item[0][80] == 'Y' else False,
+                            'custom_air_purifying': True if item[0][81] == 'Y' else False,
+                            'custom_pet_friendly': True if item[0][82] == 'Y' else False,
+                            'custom_slow_growth': True if item[0][83] == 'Y' else False,
+                            'custom_edible': True if item[0][84] == 'Y' else False,
+                            # Dates
+                            'lst_maint_dt': item[0][85],
+                            # Shipping
+                            'weight': item[0][86],
+                            'taxable': True if item[0][87] == 'Y' else False,
+                            # Custom Fields
+                            'custom_botanical_name_id': item[0][90],
+                            'custom_plant_type_id': item[0][91],
+                            'custom_height_id': item[0][92],
+                            'custom_width_id': item[0][93],
+                            'custom_color_id': item[0][94],
+                            'custom_size_id': item[0][95],
+                            'custom_bloom_season_id': item[0][96],
+                            'custom_bloom_color_id': item[0][97],
+                            'custom_light_req_id': item[0][98],
+                            'custom_features_id': item[0][99],
+                            'custom_climate_zone_id': item[0][100],
+                            'custom_climate_zone_list_id': item[0][101],
+                            'custom_is_preorder_id': item[0][102],
+                            'custom_preorder_date_id': item[0][103],
+                            'custom_preorder_message_id': item[0][104],
+                            'custom_is_featured_id': item[0][105],
+                            'custom_in_store_only_id': item[0][106],
+                            'custom_size_unit': item[0][107],
+                            'videos': item[0][108].replace(' ', '').split(',') if item[0][108] else [],
+                            'custom_is_on_sale': True if item[0][109] == 'Y' else False,
+                            'custom_is_on_sale_id': item[0][110],
+                            'custom_sale_description': item[0][111],
+                            'custom_sale_description_id': item[0][112],
+                        }
+                    except KeyError:
+                        Catalog.error_handler.add_error_v(
+                            f'Error getting variant details for {self.sku}.\nResponse: {item}',
+                            origin='Product Variant Details',
+                        )
+                        return None
 
                     # for k, v in details.items():
                     #     print(f'{k}: {v}')
@@ -3411,9 +3511,18 @@ class Catalog:
 
 
 if __name__ == '__main__':
-    # from datetime import datetime
+    from datetime import datetime
+    # to_delete = [
+    #     {'sku': '200899'},
+    # ]
 
-    # cat = Catalog(last_sync=datetime(2024, 8, 14, 15, 20, 0), test_mode=True, test_queue=[{'sku': '202923'}])
-    # cat.sync()
-
-    print(Catalog.Product.get_family_members(binding_id='B0400', count=True))
+    # for x in to_delete:
+    #     Catalog.Product.delete(sku=x['sku'])
+    # for x in Catalog.metafields:
+    #     print(x)
+    cat = Catalog(
+        last_sync=datetime(2024, 8, 14, 15, 20, 0),
+        test_mode=True,
+        test_queue=[{'sku': 'APTEST', 'binding_id': 'B0400'}],
+    )
+    cat.sync()

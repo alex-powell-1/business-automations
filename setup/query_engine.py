@@ -70,12 +70,12 @@ class QueryEngine:
         except ProgrammingError as e:
             if e.args[0] == 'No results.  Previous SQL was not a query.':
                 if cursor.rowcount > 0:
-                    sql_data = {'code': 200, 'Affected Rows': cursor.rowcount, 'message': 'success'}
+                    sql_data = {'code': 200, 'affected rows': cursor.rowcount, 'message': 'success'}
                 else:
                     # No rows affected
                     sql_data = {
                         'code': 201,
-                        'Affected Rows': cursor.rowcount,
+                        'affected rows': cursor.rowcount,
                         'message': 'No rows affected',
                         'query': query,
                     }

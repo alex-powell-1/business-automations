@@ -57,7 +57,13 @@ class Shopify:
             if self.errors or self.user_errors:
                 if self.user_errors:
                     for i in self.user_errors:
-                        if i == 'Key must be unique within this namespace on this resource':
+                        if operation_name == 'productUpdate':
+                            if i == "Namespace can't be blank":
+                                break
+                            elif i == "Type can't be blank":
+                                break
+
+                        elif i == 'Key must be unique within this namespace on this resource':
                             product_id = variables['input']['id'].split('/')[-1]
                             Shopify.Metafield.delete(product_id=product_id)
                             Database.Shopify.Product.Metafield.delete(product_id=product_id)
@@ -76,6 +82,16 @@ class Shopify:
                             self.user_errors.remove(i)
                             # Re-run query
                             self.__init__(document, variables, operation_name)
+
+                        elif operation_name == 'customerDelete':
+                            if i == "Customer can't be found":
+                                # If a customer cannot be found in shopify, simply remove this error and move on.
+                                self.user_errors.remove(i)
+                                continue
+                            elif i == 'Customer can’t be deleted because they have associated orders':
+                                # If a customer cannot be deleted because they have associated orders, simply remove this error and move on.
+                                self.user_errors.remove(i)
+                                continue
 
                         elif i == 'Email has already been taken':
                             with open('./duplicate_emails.txt', 'a') as f:
@@ -625,6 +641,18 @@ class Shopify:
                     variables={'id': f'gid://shopify/Customer/{customer_id}'},
                     operation_name='customerDelete',
                 )
+                try:
+                    deleted_id = int(response.data['customerDelete']['deletedCustomerId'].split('/')[-1])
+                except:
+                    deleted_id = None
+
+                if deleted_id:
+                    if deleted_id == customer_id:
+                        Shopify.logger.success(f'Successfully deleted customer {customer_id}')
+                    else:
+                        Shopify.error_handler.add_error_v(
+                            f'Error deleting customer. Deleted ID: {deleted_id}, Customer ID: {customer_id}'
+                        )
                 return response.data
             elif all:
                 id_list = Shopify.Customer.get(all=True)
@@ -865,6 +893,15 @@ class Shopify:
                     variables={'id': f'{Shopify.Product.prefix}{product_id}'},
                     operation_name='productDelete',
                 )
+                try:
+                    deleted_product_id = int(response.data['productDelete']['deletedProductId'].split('/')[-1])
+                    if deleted_product_id == product_id:
+                        Shopify.logger.success(f'Product {product_id} deleted from Shopify.')
+                    else:
+                        print(f'No match. deleted_product_id: {deleted_product_id}, product_id: {product_id}')
+                except:
+                    Shopify.error_handler.add_error_v(error=f'Could not get deleted product ID: {response.data}')
+
                 return response.data
             elif all:
                 id_list = Shopify.Product.get(all=True)
@@ -1908,4 +1945,4 @@ def refresh_order(tkt_no):
 
 
 if __name__ == '__main__':
-    Shopify.Webhook.get()
+    Shopify.MetafieldDefinition.sync()

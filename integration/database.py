@@ -384,14 +384,20 @@ class Database:
                         """
                         response = Database.db.query(query)
                         all_videos = [[x[0], x[1]] for x in response] if response else []
+                        temp_videos = []
+
                         if all_videos:
                             for entry in all_videos:
                                 if ',' in entry[1]:
                                     multi_video_list = entry[1].replace(' ', '').split(',')
+
                                     for video in multi_video_list:
-                                        all_videos.append([entry[0], video])
-                                    all_videos.remove(entry)
-                        return all_videos
+                                        temp_videos.append([entry[0], video])
+
+                                else:
+                                    temp_videos.append(entry)
+
+                        return temp_videos
 
         class Customer:
             table = creds.cp_customer_table
@@ -410,7 +416,7 @@ class Database:
                 PROF_ALPHA_1, MW.WH_PRC_TIER, {creds.sms_subscribe_status}, MW.ID 
                 FROM {Database.Counterpoint.Customer.table} CP
                 FULL OUTER JOIN {creds.shopify_customer_table} MW on CP.CUST_NO = MW.cust_no
-                WHERE CP.LST_MAINT_DT > '{last_sync}' and CUST_NAM_TYP = 'P' {customer_filter}
+                WHERE IS_ECOMM_CUST = 'Y' AND CP.LST_MAINT_DT > '{last_sync}' and CUST_NAM_TYP = 'P' {customer_filter}
                 """
                 return Database.db.query(query)
 
@@ -490,6 +496,18 @@ class Database:
                                             CF_SOIL_TYP bigint,
                                             CF_COLOR bigint,
                                             CF_SIZE bigint,
+                                            CF_BLOOM_SEAS bigint,
+                                            CF_LIGHT_REQ bigint,
+                                            CF_FEATURES bigint,
+                                            CF_CLIM_ZON bigint,
+                                            CF_CLIM_ZON_LST bigint,
+                                            CF_IS_PREORDER bigint,
+                                            CF_PREORDER_DT bigint,
+                                            CF_PREORDER_MSG bigint,
+                                            CF_IS_FEATURED bigint,
+                                            CF_IS_IN_STORE_ONLY bigint,
+                                            CF_IS_ON_SALE bigint, 
+                                            CF_SALE_DESCR bigint,
                                             LST_MAINT_DT datetime NOT NULL DEFAULT(current_timestamp)
                                             );
                                             """,
@@ -614,6 +632,14 @@ class Database:
                             """
                 return Database.db.query(query)
 
+            def get_id(cp_cust_no):
+                query = f"""
+                        SELECT SHOP_CUST_ID FROM {Database.Shopify.Customer.table}
+                        WHERE CUST_NO = '{cp_cust_no}'
+                        """
+                response = Database.db.query(query)
+                return response[0][0] if response else None
+
             def exists(shopify_cust_no):
                 query = f"""
                         SELECT * FROM {Database.Shopify.Customer.table}
@@ -714,6 +740,8 @@ class Database:
                         )
 
             def delete(shopify_cust_no):
+                if not shopify_cust_no:
+                    return
                 query = f'DELETE FROM {Database.Shopify.Customer.table} WHERE SHOP_CUST_ID = {shopify_cust_no}'
                 response = Database.db.query(query)
                 if response['code'] == 200:
@@ -1020,7 +1048,7 @@ class Database:
                         PRODUCT_ID, VARIANT_ID, INVENTORY_ID, VARIANT_NAME, OPTION_ID, OPTION_VALUE_ID, CATEG_ID, 
                         CF_BOTAN_NAM, CF_PLANT_TYP, CF_HEIGHT, CF_WIDTH, CF_CLIM_ZON, CF_CLIM_ZON_LST,
                         CF_COLOR, CF_SIZE, CF_BLOOM_SEAS, CF_BLOOM_COLOR, CF_LIGHT_REQ, CF_FEATURES, CF_IS_PREORDER, 
-                        CF_PREORDER_DT, CF_PREORDER_MSG, CF_IS_FEATURED, CF_IN_STORE_ONLY
+                        CF_PREORDER_DT, CF_PREORDER_MSG, CF_IS_FEATURED, CF_IN_STORE_ONLY, CF_IS_ON_SALE, CF_SALE_DESCR
                         )
                          
                         VALUES ('{variant.sku}', {f"'{product.binding_id}'" if product.binding_id else 'NULL'}, 
@@ -1047,7 +1075,9 @@ class Database:
                         {product.meta_preorder_release_date['id'] if product.meta_preorder_release_date['id'] else "NULL"},
                         {product.meta_preorder_message['id'] if product.meta_preorder_message['id'] else "NULL"},
                         {product.meta_is_featured['id'] if product.meta_is_featured['id'] else "NULL"},
-                        {product.meta_in_store_only['id'] if product.meta_in_store_only['id'] else "NULL"}
+                        {product.meta_in_store_only['id'] if product.meta_in_store_only['id'] else "NULL"},
+                        {product.meta_is_on_sale['id'] if product.meta_is_on_sale['id'] else "NULL"},
+                        {product.meta_sale_description['id'] if product.meta_sale_description['id'] else "NULL"}
                         )
                         """
                     response = Database.db.query(insert_query)
@@ -1097,6 +1127,8 @@ class Database:
                         CF_PREORDER_MSG = {product.meta_preorder_message['id'] if product.meta_preorder_message['id'] else "NULL"},
                         CF_IS_FEATURED = {product.meta_is_featured['id'] if product.meta_is_featured['id'] else "NULL"},
                         CF_IN_STORE_ONLY = {product.meta_in_store_only['id'] if product.meta_in_store_only['id'] else "NULL"},
+                        CF_IS_ON_SALE = {product.meta_is_on_sale['id'] if product.meta_is_on_sale['id'] else "NULL"},
+                        CF_SALE_DESCR = {product.meta_sale_description['id'] if product.meta_sale_description['id'] else "NULL"},
                         LST_MAINT_DT = GETDATE() 
                         WHERE ID = {variant.mw_db_id}
                         """
@@ -1270,7 +1302,7 @@ class Database:
 
                         res = Database.db.query(q)
                         if res['code'] == 200:
-                            Database.logger.success(f'Query: {q}\nSQL DELETE Image')
+                            Database.logger.success(f'{res['affected rows']} images deleted from Middleware.')
                             if (image_id or image) and prod_id:
                                 # Decrement sort order of remaining images
                                 query = f"""
@@ -1280,9 +1312,9 @@ class Database:
                                 """
                                 response = Database.db.query(query)
                                 if response['code'] == 200:
-                                    Database.logger.success(f'Decrement Photos: Success')
+                                    Database.logger.success('Decrement Photos: Success')
                                 elif response['code'] == 201:
-                                    Database.logger.warn(f'Decrement Photos: No Rows Affected')
+                                    Database.logger.warn('Decrement Photos: No Rows Affected')
                                 else:
                                     error = f'Error decrementing sort order of images in Middleware. \nQuery: {query}\nResponse: {response}'
                                     Database.error_handler.add_error_v(
@@ -1413,6 +1445,8 @@ class Database:
                             elif url and sku:
                                 Database.logger.success(f'Video {url} for product {sku} deleted from Middleware.')
 
+                            Database.logger.success(f'{response['affected rows']} videos deleted from Middleware.')
+
                             if product_id and sort_order:
                                 # Decrement sort order of remaining videos
                                 query = f"""
@@ -1503,6 +1537,9 @@ class Database:
 
             def insert(values):
                 number_of_validations = len(values['VALIDATIONS'])
+                if values['DESCR']:
+                    values['DESCR'] = values['DESCR'].replace("'", "''")
+
                 if number_of_validations > 0:
                     validation_columns = ', ' + ', '.join(
                         [
@@ -1627,4 +1664,6 @@ class Database:
 
 
 if __name__ == '__main__':
-    print(Database.Shopify.Product.get_sku(8308139983015))
+    videos = Database.Counterpoint.Product.Media.Video.get()
+    for v in videos:
+        print(v)
