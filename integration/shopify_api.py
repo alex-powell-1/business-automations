@@ -353,16 +353,9 @@ class Shopify:
                 'total_ex_tax': total,
                 'total_inc_tax': total,
                 'items_total': snode['subtotalLineItemsQuantity'],
-                'items_shipped': 0,  # TODO: Add items shipped
-                'payment_method': None,  # TODO: Add payment method
                 'payment_status': snode['displayFinancialStatus'],
-                'refunded_amount': '0.0000',  # TODO: Add refunded amount
-                'store_credit_amount': get_store_credit_amount(),  # TODO: Add store credit amount
-                'gift_certificate_amount': '0.0000',  # TODO: Add gift certificate amount
+                'store_credit_amount': get_store_credit_amount(),
                 'customer_message': snode['note'],
-                'discount_amount': '0.0000',  # TODO: Add discount amount
-                'coupon_discount': '0.0000',  # TODO: Add coupon discount
-                'shipping_address_count': 1,  # TODO: Add shipping address count
                 'billing_address': {
                     'first_name': billing['firstName'],
                     'last_name': billing['lastName'],
