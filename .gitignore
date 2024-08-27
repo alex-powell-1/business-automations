@@ -180,3 +180,5 @@ product_update.json
 product_update.txt
 barcode.png
 customer_update.json
+post_creds.bat
+grab_creds.sh
