@@ -11,7 +11,7 @@ from traceback import print_exc as tb
 from setup.utilities import PhoneNumber
 
 
-verbose_print = False
+verbose_print = True
 
 
 class Shopify:
@@ -1140,6 +1140,9 @@ class Shopify:
                     return [x for x in response.data['product']['media']['nodes']]
 
             def reorder(product):
+                if not product.reorder_media_queue:
+                    Shopify.logger.info('No media to reorder')
+                    return
                 variables = {'id': f'{Shopify.Product.prefix}{product.product_id}', 'moves': []}
                 for m in product.reorder_media_queue:
                     if m.type == 'IMAGE':
@@ -1260,6 +1263,7 @@ class Shopify:
                     return response.data
 
                 def delete(image=None, product_id=None, shopify_id=None, variant_id=None):
+                    variables = None
                     if image:
                         variables = {
                             'mediaIds': [f'{Shopify.Product.Media.Image.prefix}{image.shopify_id}'],
@@ -1281,7 +1285,8 @@ class Shopify:
                             }
                         else:
                             return
-
+                    if not variables:
+                        return
                     response = Shopify.Query(
                         document=Shopify.Product.Media.queries,
                         variables=variables,
@@ -1928,8 +1933,97 @@ class Shopify:
                 Database.Shopify.Webhook.delete(id)
                 return response.data
 
-    class Promotion:
-        queries = './integration/queries/promotion.graphql'
+    class Discount:
+        queries = './integration/queries/discounts.graphql'
+        prefix = 'gid://shopify/DiscountCodeNode/'
+
+        def get(discount_id=None):
+            if discount_id:
+                response = Shopify.Query(
+                    document=Shopify.Discount.queries,
+                    variables={'id': f'{Shopify.Discount.prefix}{discount_id}'},
+                    operation_name='discount',
+                )
+                return response.data
+            else:
+                response = Shopify.Query(
+                    document=Shopify.Discount.queries, variables={'first': 100}, operation_name='discounts'
+                )
+                return response.data
+
+        class Code:
+            # Discounts that have a code
+            def activate(discount_id):
+                response = Shopify.Query(
+                    document=Shopify.Discount.queries,
+                    variables={'id': f'{Shopify.Discount.prefix}{discount_id}'},
+                    operation_name='discountCodeActivate',
+                )
+                return response.data
+
+            def deactivate(discount_id):
+                response = Shopify.Query(
+                    document=Shopify.Discount.queries,
+                    variables={'id': f'{Shopify.Discount.prefix}{discount_id}'},
+                    operation_name='discountCodeDeactivate',
+                )
+                return response.data
+
+            def delete(discount_id):
+                response = Shopify.Query(
+                    document=Shopify.Discount.queries,
+                    variables={'id': f'{Shopify.Discount.prefix}{discount_id}'},
+                    operation_name='discountCodeDelete',
+                )
+                return response.data
+
+        class Automatic:
+            # Discounts that are automatically applied
+            def activate(discount_id):
+                response = Shopify.Query(
+                    document=Shopify.Discount.queries,
+                    variables={'id': f'{Shopify.Discount.prefix}{discount_id}'},
+                    operation_name='discountAutomaticActivate',
+                )
+                return response.data
+
+            def deactivate(discount_id):
+                response = Shopify.Query(
+                    document=Shopify.Discount.queries,
+                    variables={'id': f'{Shopify.Discount.prefix}{discount_id}'},
+                    operation_name='discountAutomaticDeactivate',
+                )
+                return response.data
+
+            def delete(discount_id):
+                response = Shopify.Query(
+                    document=Shopify.Discount.queries,
+                    variables={'id': f'{Shopify.Discount.prefix}{discount_id}'},
+                    operation_name='discountAutomaticDelete',
+                )
+                return response.data
+
+            class Bxgy:
+                # Buy X Get Y Discounts that are applied automatically
+                def create(variables):
+                    if not variables:
+                        return
+                    response = Shopify.Query(
+                        document=Shopify.Discount.queries,
+                        variables=variables,
+                        operation_name='discountAutomaticBxgyCreate',
+                    )
+                    return response.data
+
+                def update(variables):
+                    if not variables:
+                        return
+                    response = Shopify.Query(
+                        document=Shopify.Discount.queries,
+                        variables=variables,
+                        operation_name='discountAutomaticBxgyUpdate',
+                    )
+                    return response.data
 
 
 def refresh_order(tkt_no):
@@ -1945,4 +2039,4 @@ def refresh_order(tkt_no):
 
 
 if __name__ == '__main__':
-    Shopify.MetafieldDefinition.sync()
+    Shopify.Discount.get()

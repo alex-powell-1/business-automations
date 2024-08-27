@@ -4,6 +4,7 @@ from setup import query_engine
 from setup.error_handler import ProcessOutErrorHandler
 from datetime import datetime, timedelta
 from setup.utilities import format_phone
+from traceback import format_exc as tb
 
 
 class Database:
@@ -449,6 +450,40 @@ class Database:
                     WHERE CUST_NO = '{cust_no}'"""
                     return Database.db.query(query)
 
+        class Promotion:
+            def get(group_code=None):
+                if group_code:
+                    promotions = [group_code]
+                else:
+                    # Get list of promotions from IM_PRC_GRP
+                    response = Database.db.query('SELECT GRP_COD FROM IM_PRC_GRP')
+                    print(response)
+                    promotions = [x[0] for x in response] if response else []
+
+                if promotions:
+                    # Get promotion details from IM_PRC_GRP and IM_PRC_GRP_RUL
+                    result = []
+                    for promo in promotions:
+                        query = f"""
+                        SELECT TOP 1 GRP.GRP_TYP, GRP.GRP_COD, GRP.GRP_SEQ_NO, GRP.DESCR, GRP.CUST_FILT, GRP.BEG_DAT, 
+                        GRP.END_DAT, GRP.LST_MAINT_DT, GRP.ENABLED, GRP.MIX_MATCH_COD, MW.ID, MW.SHOP_ID
+                        FROM IM_PRC_GRP GRP FULL OUTER JOIN {creds.shopify_promo_table} MW ON GRP.GRP_COD = MW.GRP_COD
+                        WHERE GRP.GRP_COD = '{promo}' and GRP.GRP_TYP = 'P'
+                        """
+                        response = Database.db.query(query=query)
+                        try:
+                            promotion = [x for x in response[0]] if response else None
+                        except Exception as e:
+                            Database.error_handler.add_error_v(
+                                error=f'Error getting promotion details for {promo}.\n\nResponse: {response}\n\nError: {e}',
+                                origin='get_promotion',
+                                traceback=tb(),
+                            )
+                            promotion = None
+                        if promotion:
+                            result.append(promotion)
+                    return result
+
     class Shopify:
         def rebuild_tables(self):
             def create_tables():
@@ -570,11 +605,11 @@ class Database:
                                             LST_MAINT_DT datetime NOT NULL DEFAULT(current_timestamp)
                                             )""",
                     'promo': f""" 
-                                            CREATE TABLE {Database.Shopify.promo_table}(
+                                            CREATE TABLE {Database.Shopify.Promotion.table}(
                                             ID int IDENTITY(1,1) PRIMARY KEY,
                                             GRP_COD nvarchar(50) NOT NULL,
                                             RUL_SEQ_NO int,
-                                            BC_ID int,
+                                            SHOP_ID int,
                                             LST_MAINT_DT datetime NOT NULL DEFAULT(current_timestamp)
                                             );""",
                     'metafields': f""" 
@@ -1664,6 +1699,7 @@ class Database:
 
 
 if __name__ == '__main__':
-    videos = Database.Counterpoint.Product.Media.Video.get()
-    for v in videos:
-        print(v)
+    promos = Database.Counterpoint.Promotion.get()
+    for x in promos:
+        print(x)
+        print()

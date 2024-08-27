@@ -281,6 +281,15 @@ query product($id: ID!) {
     variantsCount {
       count
     }
+    variants(first: 20) {
+      nodes {
+        id
+        title
+        inventoryItem {
+          id
+        }
+      }
+    }
     vendor
 
     media(first: 75) {

@@ -122,7 +122,6 @@ class Catalog:
                             # Will choose the lowest price web enabled variant as the parent.
                             Catalog.logger.warn(f'Parent SKU not found for {binding_id}.')
                             parent_sku = Catalog.Product.set_parent(binding_id=binding_id)
-                            print(f'Parent SKU: {parent_sku}')
 
                         queue_payload = {'sku': parent_sku, 'binding_id': binding_id}
                 else:
@@ -320,8 +319,10 @@ class Catalog:
             queue_length = len(self.sync_queue)
             success_count = 0
             fail_count = {'number': 0, 'items': []}
+
             if not self.inventory_only or self.verbose:
                 Catalog.logger.info(f'Syncing {queue_length} products.\n')
+
             while len(self.sync_queue) > 0:
                 start_time = time.time()
                 try:
@@ -350,17 +351,21 @@ class Catalog:
                         error=f'Error processing {target}. {e}', origin='Catalog Sync', traceback=tb()
                     )
 
-            if not self.inventory_only or self.verbose:
-                Catalog.logger.info(
-                    '-----------------------\n'
-                    'Sync Complete.\n'
-                    f'Success Count: {success_count}\n'
-                    f'Fail Count: {fail_count["number"]}\n'
-                    f'Fail Items: {fail_count["items"]}\n'
-                    '-----------------------\n'
-                )
+            if not self.inventory_only:
+                if self.verbose:
+                    Catalog.logger.info(
+                        '-----------------------\n'
+                        'Sync Complete.\n'
+                        f'Success Count: {success_count}\n'
+                        f'Fail Count: {fail_count["number"]}\n'
+                        f'Fail Items: {fail_count["items"]}\n'
+                        '-----------------------\n'
+                    )
 
             if fail_count['items']:
+                # Retry failed items one time. This will generally fix any issues with the product that
+                # were caused by broken mappings to the middleware database.
+                # Currently, this is running for inventory sync and full sync. Something to consider changing...
                 for item in fail_count['items']:
                     # Delete the failed item from Shopify and Middleware
                     Catalog.Product.delete(sku=item['sku'])
@@ -857,8 +862,6 @@ class Catalog:
             # E-Commerce Categories
             self.cp_ecommerce_categories = []
             self.shopify_collections = []
-
-            # Property Getter
 
             # Validate Product
             self.validation_retries = 10
@@ -1459,8 +1462,7 @@ class Catalog:
                     Shopify.Metafield.delete(metafield_id=self.meta_light_requirements['id'])
                     self.meta_light_requirements['id'] = None
 
-                # Size
-                # This only applies to single products
+                # Size - *This only applies to single products*
                 if not self.binding_id:
                     if self.meta_size['value']:
                         size_data = {'value': self.meta_size['value']}
@@ -1476,6 +1478,7 @@ class Catalog:
                         Shopify.Metafield.delete(metafield_id=self.meta_size['id'])
                         self.meta_size['id'] = None
 
+                # Bloom Season
                 if self.meta_bloom_season['value']:
                     bloom_season_data = {'value': json.dumps(self.meta_bloom_season['value'])}
                     if self.meta_bloom_season['id']:
@@ -1491,6 +1494,7 @@ class Catalog:
                     Shopify.Metafield.delete(metafield_id=self.meta_bloom_season['id'])
                     self.meta_bloom_season['id'] = None
 
+                # Features
                 if self.meta_features['value']:
                     features_data = {'value': json.dumps(self.meta_features['value'])}
                     if self.meta_features['id']:
@@ -1623,7 +1627,6 @@ class Catalog:
                         on_sale_description_data['key'] = Catalog.metafields['On Sale Description']['META_KEY']
                         on_sale_description_data['type'] = Catalog.metafields['On Sale Description']['TYPE']
 
-                    print(f'On Sale Description Data: {on_sale_description_data}')
                     result.append(on_sale_description_data)
 
                 elif self.meta_sale_description['id']:
@@ -1838,6 +1841,7 @@ class Catalog:
                     },
                     'inventoryPolicy': 'DENY',  # Prevents overselling,
                     'price': child.price_1,  # May be overwritten by price_2 (below)
+                    'compareAtPrice': 0,
                     'optionValues': {'optionName': 'Option'},
                     'taxable': True if self.taxable else False,
                 }
@@ -1910,6 +1914,7 @@ class Catalog:
                     },
                     'inventoryPolicy': 'DENY',
                     'price': self.default_price,
+                    'compareAtPrice': 0,
                     'taxable': False,
                 }
             }
@@ -1973,13 +1978,7 @@ class Catalog:
                 """Create new product in Shopify and Middleware."""
                 # Create Base Product
                 response = Shopify.Product.create(self.get_payload())
-                self.product_id = response['product_id']
-                self.option_id = response['option_ids'][0]
-                if 'meta_ids' in response:
-                    self.get_metafield_ids(response)
-
-                if 'media_ids' in response:
-                    self.get_media_ids(response)
+                self.get_shopify_product_ids(response)
 
                 # Assign Default Variant Properties
                 self.variants[0].variant_id = response['variant_ids'][0]
@@ -1989,13 +1988,6 @@ class Catalog:
                     self.variants[0].option_value_id = response['option_value_ids'][0]
 
                 self.variants[0].inventory_id = response['inventory_ids'][0]
-
-                # for x, image in enumerate(self.images):
-                #     image.product_id = self.product_id
-                #     image.shopify_id = response['media_ids'][x]
-
-                # for x, video in enumerate(self.videos):
-                #     video.product_id = self.product_id
 
                 if len(self.variants) > 1:
                     # Save Default Option Value ID for Deletion
@@ -2011,7 +2003,7 @@ class Catalog:
                         variant.inventory_id = response['inventory_ids'][x]
                         variant.option_id = self.option_id
 
-                    # # Remove Default Variant
+                    # Remove Default Variant
                     Shopify.Product.Option.update(
                         product_id=self.product_id,
                         option_id=self.option_id,
@@ -2033,15 +2025,8 @@ class Catalog:
 
                 product_payload = self.get_payload()
                 response = Shopify.Product.update(product_payload)
-                self.option_id = response['option_ids'][0]
-                if 'meta_ids' in response:
-                    self.get_metafield_ids(response)
-
-                if 'media_ids' in response:
-                    self.get_media_ids(response)
-
-                    if self.reorder_media_queue:
-                        Shopify.Product.Media.reorder(self)
+                self.get_shopify_product_ids(response)
+                Shopify.Product.Media.reorder(self)  # Reorder media if necessary
 
                 if self.is_bound:
                     # Update the Variants
@@ -2079,64 +2064,76 @@ class Catalog:
             image.shopify_id = Shopify.Product.Media.Image.create(image)
             Database.Shopify.Product.Media.Image.insert(image)
 
-        def get_metafield_ids(self, response):
-            for meta_id in response['meta_ids']:
-                if meta_id['namespace'] == 'product-specification':
-                    if meta_id['key'] == Catalog.metafields['Botanical Name']['META_KEY']:
-                        self.meta_botanical_name['id'] = meta_id['id']
-                    elif meta_id['key'] == Catalog.metafields['Growing Zone']['META_KEY']:
-                        self.meta_climate_zone['id'] = meta_id['id']
-                    elif meta_id['key'] == Catalog.metafields['Growing Zone List']['META_KEY']:
-                        self.meta_climate_zone_list['id'] = meta_id['id']
-                    elif meta_id['key'] == Catalog.metafields['Plant Type']['META_KEY']:
-                        self.meta_plant_type['id'] = meta_id['id']
-                    elif meta_id['key'] == Catalog.metafields['Mature Height']['META_KEY']:
-                        self.meta_height['id'] = meta_id['id']
-                    elif meta_id['key'] == Catalog.metafields['Mature Width']['META_KEY']:
-                        self.meta_width['id'] = meta_id['id']
-                    elif meta_id['key'] == Catalog.metafields['Light Requirements']['META_KEY']:
-                        self.meta_light_requirements['id'] = meta_id['id']
-                    elif meta_id['key'] == Catalog.metafields['Size']['META_KEY']:
-                        self.meta_size['id'] = meta_id['id']
-                    elif meta_id['key'] == Catalog.metafields['Bloom Season']['META_KEY']:
-                        self.meta_bloom_season['id'] = meta_id['id']
-                    elif meta_id['key'] == Catalog.metafields['Features']['META_KEY']:
-                        self.meta_features['id'] = meta_id['id']
-                    elif meta_id['key'] == Catalog.metafields['Color']['META_KEY']:
-                        self.meta_colors['id'] = meta_id['id']
-                    elif meta_id['key'] == Catalog.metafields['Bloom Color']['META_KEY']:
-                        self.meta_bloom_color['id'] = meta_id['id']
+        def get_shopify_product_ids(self, response):
+            if 'product_id' in response:
+                self.product_id = response['product_id']
+            if 'option_ids' in response:
+                self.option_id = response['option_ids'][0]
 
-                elif meta_id['namespace'] == 'product-status':
-                    if meta_id['key'] == Catalog.metafields['Preorder Item']['META_KEY']:
-                        self.meta_is_preorder['id'] = meta_id['id']
-                    elif meta_id['key'] == Catalog.metafields['Preorder Release Date']['META_KEY']:
-                        self.meta_preorder_release_date['id'] = meta_id['id']
-                    elif meta_id['key'] == Catalog.metafields['Preorder Message']['META_KEY']:
-                        self.meta_preorder_message['id'] = meta_id['id']
-                    elif meta_id['key'] == Catalog.metafields['Featured']['META_KEY']:
-                        self.meta_is_featured['id'] = meta_id['id']
-                    elif meta_id['key'] == Catalog.metafields['In Store Only']['META_KEY']:
-                        self.meta_in_store_only['id'] = meta_id['id']
-                    elif meta_id['key'] == Catalog.metafields['On Sale']['META_KEY']:
-                        self.meta_is_on_sale['id'] = meta_id['id']
-                    elif meta_id['key'] == Catalog.metafields['On Sale Description']['META_KEY']:
-                        self.meta_sale_description['id'] = meta_id['id']
+            def get_metafield_ids(response):
+                for meta_id in response['meta_ids']:
+                    if meta_id['namespace'] == 'product-specification':
+                        if meta_id['key'] == Catalog.metafields['Botanical Name']['META_KEY']:
+                            self.meta_botanical_name['id'] = meta_id['id']
+                        elif meta_id['key'] == Catalog.metafields['Growing Zone']['META_KEY']:
+                            self.meta_climate_zone['id'] = meta_id['id']
+                        elif meta_id['key'] == Catalog.metafields['Growing Zone List']['META_KEY']:
+                            self.meta_climate_zone_list['id'] = meta_id['id']
+                        elif meta_id['key'] == Catalog.metafields['Plant Type']['META_KEY']:
+                            self.meta_plant_type['id'] = meta_id['id']
+                        elif meta_id['key'] == Catalog.metafields['Mature Height']['META_KEY']:
+                            self.meta_height['id'] = meta_id['id']
+                        elif meta_id['key'] == Catalog.metafields['Mature Width']['META_KEY']:
+                            self.meta_width['id'] = meta_id['id']
+                        elif meta_id['key'] == Catalog.metafields['Light Requirements']['META_KEY']:
+                            self.meta_light_requirements['id'] = meta_id['id']
+                        elif meta_id['key'] == Catalog.metafields['Size']['META_KEY']:
+                            self.meta_size['id'] = meta_id['id']
+                        elif meta_id['key'] == Catalog.metafields['Bloom Season']['META_KEY']:
+                            self.meta_bloom_season['id'] = meta_id['id']
+                        elif meta_id['key'] == Catalog.metafields['Features']['META_KEY']:
+                            self.meta_features['id'] = meta_id['id']
+                        elif meta_id['key'] == Catalog.metafields['Color']['META_KEY']:
+                            self.meta_colors['id'] = meta_id['id']
+                        elif meta_id['key'] == Catalog.metafields['Bloom Color']['META_KEY']:
+                            self.meta_bloom_color['id'] = meta_id['id']
 
-        def get_media_ids(self, response):
-            for x in self.media:
-                x.product_id = self.product_id
-                x.shopify_id = response['media_ids'][x.temp_sort_order]
-                if x.temp_sort_order > x.sort_order:
-                    # Newly added media will be at the end of the media response list.
-                    # If that expected position is higher than the required position, add to job queue.
-                    self.reorder_media_queue.append(x)
+                    elif meta_id['namespace'] == 'product-status':
+                        if meta_id['key'] == Catalog.metafields['Preorder Item']['META_KEY']:
+                            self.meta_is_preorder['id'] = meta_id['id']
+                        elif meta_id['key'] == Catalog.metafields['Preorder Release Date']['META_KEY']:
+                            self.meta_preorder_release_date['id'] = meta_id['id']
+                        elif meta_id['key'] == Catalog.metafields['Preorder Message']['META_KEY']:
+                            self.meta_preorder_message['id'] = meta_id['id']
+                        elif meta_id['key'] == Catalog.metafields['Featured']['META_KEY']:
+                            self.meta_is_featured['id'] = meta_id['id']
+                        elif meta_id['key'] == Catalog.metafields['In Store Only']['META_KEY']:
+                            self.meta_in_store_only['id'] = meta_id['id']
+                        elif meta_id['key'] == Catalog.metafields['On Sale']['META_KEY']:
+                            self.meta_is_on_sale['id'] = meta_id['id']
+                        elif meta_id['key'] == Catalog.metafields['On Sale Description']['META_KEY']:
+                            self.meta_sale_description['id'] = meta_id['id']
 
-                elif response['media_ids'].index(x.shopify_id) != self.media.index(x):
-                    # This block accounts for existing media that has changed position.
-                    # Currently, this only applies to videos that are a comma separated list.
-                    x.sort_order = self.media.index(x)
-                    self.reorder_media_queue.append(x)
+            if 'meta_ids' in response:
+                get_metafield_ids(response)
+
+            def get_media_ids(response):
+                for x in self.media:
+                    x.product_id = self.product_id
+                    x.shopify_id = response['media_ids'][x.temp_sort_order]
+                    if x.temp_sort_order > x.sort_order:
+                        # Newly added media will be at the end of the media response list.
+                        # If that expected position is higher than the required position, add to job queue.
+                        self.reorder_media_queue.append(x)
+
+                    elif response['media_ids'].index(x.shopify_id) != self.media.index(x):
+                        # This block accounts for existing media that has changed position.
+                        # Currently, this only applies to videos that are a comma separated list.
+                        x.sort_order = self.media.index(x)
+                        self.reorder_media_queue.append(x)
+
+            if 'media_ids' in response:
+                get_media_ids(response)
 
         def get_shopify_collections(self):
             """Get Shopify Collection IDs from Middleware Category IDs"""
@@ -2351,13 +2348,10 @@ class Catalog:
 
         @staticmethod
         def set_parent(binding_id, remove_current=False):
-            print('Entering Set Parent Function of Product Class')
             # Get Family Members.
             family_members = Catalog.Product.get_family_members(binding_id=binding_id, price=True)
-            print(f'Family Members: {family_members}')
             # Choose the lowest price family member as the parent.
             parent_sku = min(family_members, key=lambda x: x['price_1'])['sku']
-
             Catalog.logger.info(f'Family Members: {family_members}, Target new parent item: {parent_sku}')
 
             if remove_current:
@@ -2751,7 +2745,6 @@ class Catalog:
                     'id': product_data['custom_is_on_sale_id'],
                     'value': 'true' if self.is_on_sale else 'false',
                 }
-                print(self.meta_is_on_sale)
 
                 self.meta_sale_description = {
                     'id': product_data['custom_sale_description_id'],
@@ -3376,6 +3369,12 @@ class Catalog:
             def delete(image_name):
                 """Takes in an image name and looks for matching image file in middleware. If found, delete."""
                 Catalog.logger.info(f'Deleting {image_name}')
+
+                product_id = None
+                variant_id = None
+                image_id = None
+                is_variant = False
+
                 image_query = f"""
                 SELECT img.PRODUCT_ID, prod.VARIANT_ID, IMAGE_ID, IS_VARIANT_IMAGE 
                 FROM SN_SHOP_IMAGES img
@@ -3393,7 +3392,6 @@ class Catalog:
                     )
 
                 if is_variant:
-                    print('This is a variant image. Delete from Shopify.')
                     Shopify.Product.Variant.Image.delete(
                         product_id=product_id, variant_id=variant_id, shopify_id=image_id
                     )

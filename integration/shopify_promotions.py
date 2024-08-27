@@ -1,73 +1,44 @@
 from datetime import datetime
-from time import sleep
-from setup.webDAV_engine import WebDAVJsonClient
 from integration.database import Database
 from setup.error_handler import ProcessOutErrorHandler
-import requests
 from setup import creds
 from setup.utilities import convert_to_utc
 from integration.catalog import Catalog
 from product_tools.products import Product
-from setup.utilities import VirtualRateLimiter
+from integration.shopify_api import Shopify
 
 
 class Promotions:
-    dav = WebDAVJsonClient()
-
     def __init__(self, last_sync=None):
         self.last_sync = last_sync
         self.db = Database.db
         self.error_handler = ProcessOutErrorHandler.error_handler
         self.logger = ProcessOutErrorHandler.logger
-        # self.promotions = []
-        # self.update_count = 0
-        # self.get_promotions()
-        # self.sale_badges = {}
-        # self.sale_badge_items = []
+        self.promotions = []
+        self.update_count = 0
+        self.sale_badges = {}
+        self.sale_badge_items = []
+        self.get_promotions()
 
     def get_promotions(self):
-        # Get list of promotions from IM_PRC_GRP
-        response = self.db.query('SELECT GRP_COD FROM IM_PRC_GRP')
-        promotions = [x[0] for x in response] if response else []
-        if promotions:
-            # Get promotion details from IM_PRC_GRP and IM_PRC_GRP_RUL
-            for promo in promotions:
-                query = f"""
-                SELECT TOP 1 GRP.GRP_TYP, GRP.GRP_COD, GRP.GRP_SEQ_NO, GRP.DESCR, GRP.CUST_FILT, GRP.BEG_DAT, 
-                GRP.END_DAT, GRP.LST_MAINT_DT, GRP.ENABLED, GRP.MIX_MATCH_COD, MW.ID, MW.BC_ID
-                FROM IM_PRC_GRP GRP FULL OUTER JOIN {creds.bc_promo_table} MW ON GRP.GRP_COD = MW.GRP_COD
-                WHERE GRP.GRP_COD = '{promo}' and GRP.GRP_TYP = 'P'
-                """
-                response = self.db.query(query=query)
-                promo_data = [x for x in response] if response else []
-                if promo_data:
-                    for data in promo_data:
-                        self.promotions.append(self.Promotion(promo=data))
+        promo_data = Database.Counterpoint.Promotion.get()
+        if promo_data:
+            for promo in promo_data:
+                self.promotions.append(self.Promotion(promo=promo))
 
     def sync(self):
-        # for promotion in self.promotions:
-        #     if promotion.lst_maint_dt > self.last_sync:
-        #         self.logger.info(f'Promotion {promotion.grp_cod} has been updated. Will process.')
-        #         promotion.get_price_rules()
-        #         promotion.has_bogo_twoofer = promotion.has_bogo()
-        #         promotion.process_promotion()
-        #         # Update BOGO PROMO sale badges in promotion config
-        #         self.process_sale_badges(promotion=promotion)
-        #         self.update_count += 1
+        for promotion in self.promotions:
+            if promotion.lst_maint_dt > self.last_sync:
+                self.logger.info(f'Promotion {promotion.grp_cod} has been updated. Will process.')
+                promotion.get_price_rules()
+                promotion.has_bogo_twoofer = promotion.has_bogo()
+                promotion.process_promotion()
+                # Update BOGO PROMO sale badges in promotion config
+                self.process_sale_badges(promotion=promotion)
+                self.update_count += 1
 
-        # if self.update_count == 0:
-        #     self.logger.info('Promotions Sync: No Promotions to update.')
-
-    @staticmethod
-    def bc_get_promotions(id=None):
-        if id:
-            url = f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/promotions/{id}'
-        else:
-            url = f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/promotions'
-
-        response = requests.get(url, headers=creds.bc_api_headers)
-        if response.status_code == 200:
-            return response.json()['data']
+        if self.update_count == 0:
+            self.logger.info('Promotions Sync: No Promotions to update.')
 
     def get_promotion_config_data(self):
         """Get Sale Badge Promotions from WebDAV. These are promotion badges that are displayed on the website
@@ -122,7 +93,6 @@ class Promotions:
     class Promotion:
         def __init__(self, promo):
             self.db = Database.db
-            self.dav = WebDAVJsonClient()
             self.error_handler = ProcessOutErrorHandler.error_handler
             self.logger = ProcessOutErrorHandler.logger
             self.grp_typ = promo[0]
@@ -194,77 +164,6 @@ class Promotions:
                     breaks = rule.price_breaks
             return breaks
 
-        def bc_create_bogo_promotion(self):
-            if self.has_bogo_twoofer:
-                payload = self.create_payload()
-                url = f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/promotions'
-                response = requests.post(url, headers=creds.bc_api_headers, json=payload)
-                if response.status_code == 201:
-                    self.logger.success(f'Promotion {self.grp_cod} created successfully.')
-                    self.bc_id = response.json()['data']['id']
-                    return True
-
-                elif response.status_code == 429:
-                    ms_to_wait = int(response.headers['X-Rate-Limit-Time-Reset-Ms'])
-                    seconds_to_wait = (ms_to_wait / 1000) + 1
-                    VirtualRateLimiter.pause_requests(seconds_to_wait)
-                    sleep(seconds_to_wait)
-                    response = requests.post(url, headers=creds.bc_api_headers, json=payload)
-                    if response.status_code == 201:
-                        self.logger.success(f'Promotion {self.grp_cod} created successfully.')
-                        self.bc_id = response.json()['data']['id']
-                        return True
-                    else:
-                        self.error_handler.add_error_v(
-                            error=f'Error: {response.status_code}\n' f'{response.text}', origin='Promotion creation'
-                        )
-                        return False
-                else:
-                    self.error_handler.add_error_v(
-                        error=f'Error: {response.status_code}\n' f'{response.text}', origin='Promotion Creation'
-                    )
-                    return False
-
-        def bc_update_bogo_promotion(self):
-            payload = self.create_payload()
-            url = f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/promotions/{self.bc_id}'
-            response = requests.put(url, headers=creds.bc_api_headers, json=payload)
-            if response.status_code == 200:
-                self.logger.success(f'Promotion {self.grp_cod} updated successfully.')
-                return True
-
-            elif response.status_code == 429:
-                ms_to_wait = int(response.headers['X-Rate-Limit-Time-Reset-Ms'])
-                seconds_to_wait = (ms_to_wait / 1000) + 1
-                VirtualRateLimiter.pause_requests(seconds_to_wait)
-                sleep(seconds_to_wait)
-                response = requests.put(url, headers=creds.bc_api_headers, json=payload)
-                if response.status_code in [200]:
-                    self.logger.success(f'Promotion {self.grp_cod} updated successfully.')
-                    return True
-                else:
-                    self.error_handler.add_error_v(
-                        error=f'Error: {response.status_code}\n' f'{response.text}', origin='Promotion Update'
-                    )
-                    return False
-            else:
-                self.error_handler.add_error_v(
-                    error=f'Error: {response.status_code}\n' f'{response.text}', origin='Promotion Update'
-                )
-                return False
-
-        def bc_delete_bogo_promotion(self):
-            url = f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/promotions/{self.bc_id}'
-            response = requests.delete(url, headers=creds.bc_api_headers)
-            if response.status_code == 204:
-                self.logger.success(f'Promotion {self.grp_cod} deleted successfully.')
-                return True
-            else:
-                self.error_handler.add_error_v(
-                    error=f'Error: {response.status_code}\n' f'{response.text}', origin='Promotion Deletion'
-                )
-                return False
-
         def get_discount_amount(self, price_rule):
             """Get the discount amount of the final price break."""
             return int(price_rule.price_breaks[-1].amt_or_pct)
@@ -309,28 +208,53 @@ class Promotions:
             reward = second_rule_qty - first_rule_qty
             return first_rule_qty, reward
 
-        def create_payload(self):
-            """Creates the payload for the BigCommerce API Promotion."""
-            payload = {
-                'name': self.descr,
-                'rules': self.get_promotion_rules(),
-                'notifications': [],
-                'stop': False,
-                'currency_code': 'USD',
-                'redemption_type': 'AUTOMATIC',
-                'status': 'ENABLED' if self.enabled else 'DISABLED',
-                'can_be_used_with_other_promotions': True,
-            }
+        def get_payload(self):
+            def get_bogo_twoofer_payload():
+                payload = {
+                    'automaticBxgyDiscount': {
+                        'usesPerOrderLimit': promotion.uses_per_order_limit,
+                        'title': self.descr,  # 'Buy 1 Get 1 50% Off'
+                        'status': 'ACTIVE' if self.enabled else 'EXPIRED',
+                        'combinesWith': {
+                            'orderDiscounts': 'true',
+                            'productDiscounts': 'true',
+                            'shippingDiscounts': 'true',
+                        },
+                        'customerBuys': {
+                            'value': {'quantity': promotion.customer_buys_quantity},
+                            'items': {
+                                'products': {
+                                    'productsToAdd': [
+                                        f'gid://shopify/Product/{x}' for x in promotion.customer_buys_skus
+                                    ]
+                                }
+                            },
+                        },
+                        'customerGets': {
+                            'appliesOnOneTimePurchase': 'true',
+                            'appliesOnSubscription': 'true',
+                            'value': {
+                                'discountOnQuantity': {
+                                    'quantity': promotion.customer_gets_quantity,
+                                    'effect': {'percentage': 1},
+                                }
+                            },
+                            'items': {
+                                'products': {
+                                    'productsToAdd': [
+                                        f'gid://shopify/Product/{x}' for x in promotion.customer_gets_skus
+                                    ]
+                                }
+                            },
+                        },
+                    }
+                }
+                if self.beg_dat:
+                    payload['automaticBxgyDiscount']['startsAt'] = convert_to_utc(self.beg_dat)
+                if self.end_dat:
+                    payload['automaticBxgyDiscount']['endsAt'] = convert_to_utc(self.end_dat)
 
-            if self.max_uses:
-                payload['max_uses'] = self.max_uses
-
-            if self.beg_dat:
-                payload['start_date'] = convert_to_utc(self.beg_dat)
-            if self.end_dat:
-                payload['end_date'] = convert_to_utc(self.end_dat)
-
-            return payload
+                return payload
 
         def process_promotion(self):
             if self.enabled:
@@ -338,15 +262,12 @@ class Promotions:
                     # process BOGO Twoofers
                     if self.db_id:
                         # Update Promotion
-                        if self.bc_update_bogo_promotion():
-                            if self.mw_update_bogo_promotion():
-                                self.logger.success(f'Promotion {self.grp_cod} processed successfully.')
+                        Shopify.Discount.Automatic.Bxgy.update(payload=self.get_payload())
                     else:
                         # Create Promotion
-                        if self.bc_create_bogo_promotion():
-                            if self.mw_insert_bogo_promotion():
-                                self.logger.success(f'BOGO Promotions for {self.grp_cod} processed successfully.')
+                        Shopify.Discount.Automatic.Bxgy.create(payload=self.get_payload())
 
+                    Database.Shopify.Promotion.sync()
                 # Process Regular Fixed Price Promotions
                 self.add_sale_price()
             else:
@@ -609,5 +530,7 @@ class Promotions:
 
 
 if __name__ == '__main__':
-    promo = Promotions(last_sync=datetime(2024, 7, 15))
-    promo.sync()
+    promo = Promotions(last_sync=datetime(2022, 7, 15))
+    for promotion in promo.promotions:
+        print(promotion)
+    # promo.sync()
