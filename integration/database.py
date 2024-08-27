@@ -451,14 +451,15 @@ class Database:
                     return Database.db.query(query)
 
         class Promotion:
-            def get(group_code=None):
+            def get(group_code=None, ids_only=False):
                 if group_code:
                     promotions = [group_code]
                 else:
                     # Get list of promotions from IM_PRC_GRP
                     response = Database.db.query('SELECT GRP_COD FROM IM_PRC_GRP')
-                    print(response)
                     promotions = [x[0] for x in response] if response else []
+                    if ids_only:
+                        return promotions
 
                 if promotions:
                     # Get promotion details from IM_PRC_GRP and IM_PRC_GRP_RUL
@@ -467,7 +468,7 @@ class Database:
                         query = f"""
                         SELECT TOP 1 GRP.GRP_TYP, GRP.GRP_COD, GRP.GRP_SEQ_NO, GRP.DESCR, GRP.CUST_FILT, GRP.BEG_DAT, 
                         GRP.END_DAT, GRP.LST_MAINT_DT, GRP.ENABLED, GRP.MIX_MATCH_COD, MW.ID, MW.SHOP_ID
-                        FROM IM_PRC_GRP GRP FULL OUTER JOIN {creds.shopify_promo_table} MW ON GRP.GRP_COD = MW.GRP_COD
+                        FROM IM_PRC_GRP GRP FULL OUTER JOIN {creds.shopify_discount_table} MW ON GRP.GRP_COD = MW.GRP_COD
                         WHERE GRP.GRP_COD = '{promo}' and GRP.GRP_TYP = 'P'
                         """
                         response = Database.db.query(query=query)
@@ -483,6 +484,19 @@ class Database:
                         if promotion:
                             result.append(promotion)
                     return result
+
+            class PriceRule:
+                def get(group_code):
+                    query = f"""
+                    SELECT RUL.GRP_TYP, RUL.GRP_COD, RUL.RUL_SEQ_NO, RUL.DESCR, RUL.CUST_FILT, RUL.ITEM_FILT, 
+                    RUL.SAL_FILT, RUL.IS_CUSTOM, RUL.USE_BOGO_TWOFER, RUL.REQ_FULL_GRP_FOR_BOGO_TWOFER, 
+                    MW.ID, MW.SHOP_ID
+                    FROM IM_PRC_RUL RUL
+                    FULL OUTER JOIN SN_PROMO MW on rul.GRP_COD = MW.GRP_COD
+                    WHERE RUL.GRP_COD = '{group_code}'
+                    """
+                    response = Database.db.query(query)
+                    return [rule for rule in response] if response else []
 
     class Shopify:
         def rebuild_tables(self):
@@ -1691,15 +1705,69 @@ class Database:
                     else:
                         return f'Webhook {hook_id} deleted'
 
-        class Promotion:
-            table = creds.shopify_promo_table
+        class Discount:
+            table = creds.shopify_discount_table
+
+            def get():
+                query = f'SELECT GRP_COD FROM {Database.Shopify.Discount.table}'
+                response = Database.db.query(query)
+                return [x[0] for x in response] if response else None
+
+            def sync(price_rule):
+                if price_rule.db_id:
+                    Database.Shopify.Discount.update(price_rule)
+                else:
+                    Database.Shopify.Discount.insert(price_rule)
+
+            def insert(rule):
+                """Insert a new discount rule into the Middleware."""
+                query = f"""
+                INSERT INTO SN_PROMO(GRP_COD, RUL_SEQ_NO, SHOP_ID, ENABLED)
+                VALUES('{rule.grp_cod}', {rule.shopify_id}, {1 if rule.enabled else 0})
+                """
+                response = Database.db.query(query)
+                if response['code'] == 200:
+                    Database.logger.success(f'Promotion {rule.grp_cod} inserted successfully.')
+                else:
+                    Database.error_handler.add_error_v(
+                        error=f'Error: {response["code"]}\n' f'{response["message"]}', origin='Promotion Insertion'
+                    )
+
+            def update(rule):
+                query = f"""
+                UPDATE SN_PROMO
+                SET SHOP_ID = {rule.shopify_id}, ENABLED = {1 if rule.enabled else 0}, LST_MAINT_DT = GETDATE()
+                WHERE GRP_COD = '{rule.grp_cod}'
+                """
+                response = Database.db.query(query)
+                if response['code'] == 200:
+                    Database.logger.success(f'Promotion {rule.grp_cod} updated successfully.')
+                elif response['code'] == 201:
+                    Database.logger.warn(f'Promotion {rule.grp_cod} not found for update.')
+                else:
+                    Database.error_handler.add_error_v(
+                        error=f'Error: {response["code"]}\n' f'{response["message"]}', origin='Promotion Update'
+                    )
+
+            def delete(shopify_id):
+                if not shopify_id:
+                    Database.logger.warn('No Shopify ID provided for deletion.')
+                    return
+                query = f'DELETE FROM SN_PROMO WHERE SHOP_ID = {shopify_id}'
+                response = Database.db.query(query)
+
+                if response['code'] == 200:
+                    Database.logger.success(f'Promotion {shopify_id} deleted successfully.')
+                elif response['code'] == 201:
+                    Database.logger.warn(f'Promotion {shopify_id} not found for deletion.')
+                else:
+                    Database.error_handler.add_error_v(
+                        error=f'Error: {response["code"]}\n' f'{response["message"]}', origin='Promotion Deletion'
+                    )
 
         class Gift_Certificate:
             table = creds.shopify_gift_cert_table
 
 
 if __name__ == '__main__':
-    promos = Database.Counterpoint.Promotion.get()
-    for x in promos:
-        print(x)
-        print()
+    print(Database.Shopify.Discount.get())

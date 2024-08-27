@@ -1979,10 +1979,12 @@ class Shopify:
 
         class Automatic:
             # Discounts that are automatically applied
+            prefix = 'gid://shopify/DiscountAutomaticNode/'
+
             def activate(discount_id):
                 response = Shopify.Query(
                     document=Shopify.Discount.queries,
-                    variables={'id': f'{Shopify.Discount.prefix}{discount_id}'},
+                    variables={'id': f'{Shopify.Discount.Automatic.prefix}{discount_id}'},
                     operation_name='discountAutomaticActivate',
                 )
                 return response.data
@@ -1990,7 +1992,7 @@ class Shopify:
             def deactivate(discount_id):
                 response = Shopify.Query(
                     document=Shopify.Discount.queries,
-                    variables={'id': f'{Shopify.Discount.prefix}{discount_id}'},
+                    variables={'id': f'{Shopify.Discount.Automatic.prefix}{discount_id}'},
                     operation_name='discountAutomaticDeactivate',
                 )
                 return response.data
@@ -1998,13 +2000,13 @@ class Shopify:
             def delete(discount_id):
                 response = Shopify.Query(
                     document=Shopify.Discount.queries,
-                    variables={'id': f'{Shopify.Discount.prefix}{discount_id}'},
+                    variables={'id': f'{Shopify.Discount.Automatic.prefix}{discount_id}'},
                     operation_name='discountAutomaticDelete',
                 )
                 return response.data
 
             class Bxgy:
-                # Buy X Get Y Discounts that are applied automatically
+                # Buy X, Get Y Discounts that are applied automatically
                 def create(variables):
                     if not variables:
                         return
@@ -2013,7 +2015,9 @@ class Shopify:
                         variables=variables,
                         operation_name='discountAutomaticBxgyCreate',
                     )
-                    return response.data
+                    return response.data['discountAutomaticBxgyCreate']['automaticDiscountNode']['id'].split('/')[
+                        -1
+                    ]
 
                 def update(variables):
                     if not variables:
@@ -2039,4 +2043,4 @@ def refresh_order(tkt_no):
 
 
 if __name__ == '__main__':
-    Shopify.Discount.get()
+    Shopify.Discount.Automatic.activate(1165000671399)
