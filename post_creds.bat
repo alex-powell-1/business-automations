@@ -1,1 +1,0 @@
-copy ./setup/creds.py \\MAINSERVER\CPSQL.1\business_automations

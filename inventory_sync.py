@@ -6,6 +6,7 @@ from setup import creds
 from datetime import datetime
 
 from setup.error_handler import Logger, ErrorHandler
+from traceback import format_exc as tb
 from setup.utilities import get_last_sync, set_last_sync
 from time import sleep
 
@@ -34,17 +35,15 @@ class Inventory:
 
 if __name__ == '__main__':
     while True:
+        now = datetime.now()
+        hour = now.hour
+        if 18 > hour > 7:
+            delay = 10
+            step = 6
+        else:
+            delay = 300
+            step = 10
         try:
-            now = datetime.now()
-            hour = now.hour
-
-            if 18 > hour > 7:
-                delay = 10
-                step = 6
-            else:
-                delay = 300
-                step = 10
-
             # Upload Inventory to file share.
             inventory_upload.upload_inventory()
 
@@ -54,4 +53,5 @@ if __name__ == '__main__':
                 sleep(delay)
 
         except Exception as e:
-            Inventory.error_handler.add_error_v(f'Error: {e}')
+            Inventory.error_handler.add_error_v(error=f'Error: {e}', origin='inventory_sync.py', traceback=tb())
+            sleep(60)

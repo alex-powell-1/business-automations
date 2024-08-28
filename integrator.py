@@ -11,6 +11,7 @@ from setup.utilities import get_last_sync, set_last_sync
 
 import sys
 import time
+from traceback import format_exc as tb
 
 
 class Integrator:
@@ -201,4 +202,9 @@ if __name__ == '__main__':
             main_menu()
 
     else:
-        integrator.sync()
+        try:
+            integrator.sync()
+        except KeyboardInterrupt:
+            sys.exit(0)
+        except Exception as e:
+            Integrator.error_handler.add_error_v(error=e, origin='Integrator.py', traceback=tb())

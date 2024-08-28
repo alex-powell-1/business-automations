@@ -4,6 +4,7 @@ from setup import query_engine
 from setup.error_handler import ProcessOutErrorHandler
 from datetime import datetime, timedelta
 from setup.utilities import format_phone
+from traceback import format_exc as tb
 
 
 class Database:
@@ -384,14 +385,20 @@ class Database:
                         """
                         response = Database.db.query(query)
                         all_videos = [[x[0], x[1]] for x in response] if response else []
+                        temp_videos = []
+
                         if all_videos:
                             for entry in all_videos:
                                 if ',' in entry[1]:
                                     multi_video_list = entry[1].replace(' ', '').split(',')
+
                                     for video in multi_video_list:
-                                        all_videos.append([entry[0], video])
-                                    all_videos.remove(entry)
-                        return all_videos
+                                        temp_videos.append([entry[0], video])
+
+                                else:
+                                    temp_videos.append(entry)
+
+                        return temp_videos
 
         class Customer:
             table = creds.cp_customer_table
@@ -410,7 +417,7 @@ class Database:
                 PROF_ALPHA_1, MW.WH_PRC_TIER, {creds.sms_subscribe_status}, MW.ID 
                 FROM {Database.Counterpoint.Customer.table} CP
                 FULL OUTER JOIN {creds.shopify_customer_table} MW on CP.CUST_NO = MW.cust_no
-                WHERE CP.LST_MAINT_DT > '{last_sync}' and CUST_NAM_TYP = 'P' {customer_filter}
+                WHERE IS_ECOMM_CUST = 'Y' AND CP.LST_MAINT_DT > '{last_sync}' and CUST_NAM_TYP = 'P' {customer_filter}
                 """
                 return Database.db.query(query)
 
@@ -442,6 +449,54 @@ class Database:
                     FROM AR_SHIP_ADRS
                     WHERE CUST_NO = '{cust_no}'"""
                     return Database.db.query(query)
+
+        class Promotion:
+            def get(group_code=None, ids_only=False):
+                if group_code:
+                    promotions = [group_code]
+                else:
+                    # Get list of promotions from IM_PRC_GRP
+                    response = Database.db.query('SELECT GRP_COD FROM IM_PRC_GRP')
+                    promotions = [x[0] for x in response] if response else []
+                    if ids_only:
+                        return promotions
+
+                if promotions:
+                    # Get promotion details from IM_PRC_GRP and IM_PRC_GRP_RUL
+                    result = []
+                    for promo in promotions:
+                        query = f"""
+                        SELECT TOP 1 GRP.GRP_TYP, GRP.GRP_COD, GRP.GRP_SEQ_NO, GRP.DESCR, GRP.CUST_FILT, GRP.BEG_DAT, 
+                        GRP.END_DAT, GRP.LST_MAINT_DT, GRP.ENABLED, GRP.MIX_MATCH_COD, MW.ID, MW.SHOP_ID
+                        FROM IM_PRC_GRP GRP FULL OUTER JOIN {creds.shopify_discount_table} MW ON GRP.GRP_COD = MW.GRP_COD
+                        WHERE GRP.GRP_COD = '{promo}' and GRP.GRP_TYP = 'P'
+                        """
+                        response = Database.db.query(query=query)
+                        try:
+                            promotion = [x for x in response[0]] if response else None
+                        except Exception as e:
+                            Database.error_handler.add_error_v(
+                                error=f'Error getting promotion details for {promo}.\n\nResponse: {response}\n\nError: {e}',
+                                origin='get_promotion',
+                                traceback=tb(),
+                            )
+                            promotion = None
+                        if promotion:
+                            result.append(promotion)
+                    return result
+
+            class PriceRule:
+                def get(group_code):
+                    query = f"""
+                    SELECT RUL.GRP_TYP, RUL.GRP_COD, RUL.RUL_SEQ_NO, RUL.DESCR, RUL.CUST_FILT, RUL.ITEM_FILT, 
+                    RUL.SAL_FILT, RUL.IS_CUSTOM, RUL.USE_BOGO_TWOFER, RUL.REQ_FULL_GRP_FOR_BOGO_TWOFER, 
+                    MW.ID, MW.SHOP_ID
+                    FROM IM_PRC_RUL RUL
+                    FULL OUTER JOIN SN_PROMO MW on rul.GRP_COD = MW.GRP_COD
+                    WHERE RUL.GRP_COD = '{group_code}'
+                    """
+                    response = Database.db.query(query)
+                    return [rule for rule in response] if response else []
 
     class Shopify:
         def rebuild_tables(self):
@@ -490,6 +545,18 @@ class Database:
                                             CF_SOIL_TYP bigint,
                                             CF_COLOR bigint,
                                             CF_SIZE bigint,
+                                            CF_BLOOM_SEAS bigint,
+                                            CF_LIGHT_REQ bigint,
+                                            CF_FEATURES bigint,
+                                            CF_CLIM_ZON bigint,
+                                            CF_CLIM_ZON_LST bigint,
+                                            CF_IS_PREORDER bigint,
+                                            CF_PREORDER_DT bigint,
+                                            CF_PREORDER_MSG bigint,
+                                            CF_IS_FEATURED bigint,
+                                            CF_IS_IN_STORE_ONLY bigint,
+                                            CF_IS_ON_SALE bigint, 
+                                            CF_SALE_DESCR bigint,
                                             LST_MAINT_DT datetime NOT NULL DEFAULT(current_timestamp)
                                             );
                                             """,
@@ -552,11 +619,11 @@ class Database:
                                             LST_MAINT_DT datetime NOT NULL DEFAULT(current_timestamp)
                                             )""",
                     'promo': f""" 
-                                            CREATE TABLE {Database.Shopify.promo_table}(
+                                            CREATE TABLE {Database.Shopify.Promotion.table}(
                                             ID int IDENTITY(1,1) PRIMARY KEY,
                                             GRP_COD nvarchar(50) NOT NULL,
                                             RUL_SEQ_NO int,
-                                            BC_ID int,
+                                            SHOP_ID int,
                                             LST_MAINT_DT datetime NOT NULL DEFAULT(current_timestamp)
                                             );""",
                     'metafields': f""" 
@@ -613,6 +680,14 @@ class Database:
                             SELECT * FROM {Database.Shopify.Customer.table}
                             """
                 return Database.db.query(query)
+
+            def get_id(cp_cust_no):
+                query = f"""
+                        SELECT SHOP_CUST_ID FROM {Database.Shopify.Customer.table}
+                        WHERE CUST_NO = '{cp_cust_no}'
+                        """
+                response = Database.db.query(query)
+                return response[0][0] if response else None
 
             def exists(shopify_cust_no):
                 query = f"""
@@ -714,6 +789,8 @@ class Database:
                         )
 
             def delete(shopify_cust_no):
+                if not shopify_cust_no:
+                    return
                 query = f'DELETE FROM {Database.Shopify.Customer.table} WHERE SHOP_CUST_ID = {shopify_cust_no}'
                 response = Database.db.query(query)
                 if response['code'] == 200:
@@ -1020,7 +1097,7 @@ class Database:
                         PRODUCT_ID, VARIANT_ID, INVENTORY_ID, VARIANT_NAME, OPTION_ID, OPTION_VALUE_ID, CATEG_ID, 
                         CF_BOTAN_NAM, CF_PLANT_TYP, CF_HEIGHT, CF_WIDTH, CF_CLIM_ZON, CF_CLIM_ZON_LST,
                         CF_COLOR, CF_SIZE, CF_BLOOM_SEAS, CF_BLOOM_COLOR, CF_LIGHT_REQ, CF_FEATURES, CF_IS_PREORDER, 
-                        CF_PREORDER_DT, CF_PREORDER_MSG, CF_IS_FEATURED, CF_IN_STORE_ONLY
+                        CF_PREORDER_DT, CF_PREORDER_MSG, CF_IS_FEATURED, CF_IN_STORE_ONLY, CF_IS_ON_SALE, CF_SALE_DESCR
                         )
                          
                         VALUES ('{variant.sku}', {f"'{product.binding_id}'" if product.binding_id else 'NULL'}, 
@@ -1047,7 +1124,9 @@ class Database:
                         {product.meta_preorder_release_date['id'] if product.meta_preorder_release_date['id'] else "NULL"},
                         {product.meta_preorder_message['id'] if product.meta_preorder_message['id'] else "NULL"},
                         {product.meta_is_featured['id'] if product.meta_is_featured['id'] else "NULL"},
-                        {product.meta_in_store_only['id'] if product.meta_in_store_only['id'] else "NULL"}
+                        {product.meta_in_store_only['id'] if product.meta_in_store_only['id'] else "NULL"},
+                        {product.meta_is_on_sale['id'] if product.meta_is_on_sale['id'] else "NULL"},
+                        {product.meta_sale_description['id'] if product.meta_sale_description['id'] else "NULL"}
                         )
                         """
                     response = Database.db.query(insert_query)
@@ -1097,6 +1176,8 @@ class Database:
                         CF_PREORDER_MSG = {product.meta_preorder_message['id'] if product.meta_preorder_message['id'] else "NULL"},
                         CF_IS_FEATURED = {product.meta_is_featured['id'] if product.meta_is_featured['id'] else "NULL"},
                         CF_IN_STORE_ONLY = {product.meta_in_store_only['id'] if product.meta_in_store_only['id'] else "NULL"},
+                        CF_IS_ON_SALE = {product.meta_is_on_sale['id'] if product.meta_is_on_sale['id'] else "NULL"},
+                        CF_SALE_DESCR = {product.meta_sale_description['id'] if product.meta_sale_description['id'] else "NULL"},
                         LST_MAINT_DT = GETDATE() 
                         WHERE ID = {variant.mw_db_id}
                         """
@@ -1270,7 +1351,7 @@ class Database:
 
                         res = Database.db.query(q)
                         if res['code'] == 200:
-                            Database.logger.success(f'Query: {q}\nSQL DELETE Image')
+                            Database.logger.success(f'{res['affected rows']} images deleted from Middleware.')
                             if (image_id or image) and prod_id:
                                 # Decrement sort order of remaining images
                                 query = f"""
@@ -1280,9 +1361,9 @@ class Database:
                                 """
                                 response = Database.db.query(query)
                                 if response['code'] == 200:
-                                    Database.logger.success(f'Decrement Photos: Success')
+                                    Database.logger.success('Decrement Photos: Success')
                                 elif response['code'] == 201:
-                                    Database.logger.warn(f'Decrement Photos: No Rows Affected')
+                                    Database.logger.warn('Decrement Photos: No Rows Affected')
                                 else:
                                     error = f'Error decrementing sort order of images in Middleware. \nQuery: {query}\nResponse: {response}'
                                     Database.error_handler.add_error_v(
@@ -1413,6 +1494,8 @@ class Database:
                             elif url and sku:
                                 Database.logger.success(f'Video {url} for product {sku} deleted from Middleware.')
 
+                            Database.logger.success(f'{response['affected rows']} videos deleted from Middleware.')
+
                             if product_id and sort_order:
                                 # Decrement sort order of remaining videos
                                 query = f"""
@@ -1503,6 +1586,9 @@ class Database:
 
             def insert(values):
                 number_of_validations = len(values['VALIDATIONS'])
+                if values['DESCR']:
+                    values['DESCR'] = values['DESCR'].replace("'", "''")
+
                 if number_of_validations > 0:
                     validation_columns = ', ' + ', '.join(
                         [
@@ -1619,12 +1705,69 @@ class Database:
                     else:
                         return f'Webhook {hook_id} deleted'
 
-        class Promotion:
-            table = creds.shopify_promo_table
+        class Discount:
+            table = creds.shopify_discount_table
+
+            def get():
+                query = f'SELECT GRP_COD FROM {Database.Shopify.Discount.table}'
+                response = Database.db.query(query)
+                return [x[0] for x in response] if response else None
+
+            def sync(price_rule):
+                if price_rule.db_id:
+                    Database.Shopify.Discount.update(price_rule)
+                else:
+                    Database.Shopify.Discount.insert(price_rule)
+
+            def insert(rule):
+                """Insert a new discount rule into the Middleware."""
+                query = f"""
+                INSERT INTO SN_PROMO(GRP_COD, RUL_SEQ_NO, SHOP_ID, ENABLED)
+                VALUES('{rule.grp_cod}', {rule.shopify_id}, {1 if rule.enabled else 0})
+                """
+                response = Database.db.query(query)
+                if response['code'] == 200:
+                    Database.logger.success(f'Promotion {rule.grp_cod} inserted successfully.')
+                else:
+                    Database.error_handler.add_error_v(
+                        error=f'Error: {response["code"]}\n' f'{response["message"]}', origin='Promotion Insertion'
+                    )
+
+            def update(rule):
+                query = f"""
+                UPDATE SN_PROMO
+                SET SHOP_ID = {rule.shopify_id}, ENABLED = {1 if rule.enabled else 0}, LST_MAINT_DT = GETDATE()
+                WHERE GRP_COD = '{rule.grp_cod}'
+                """
+                response = Database.db.query(query)
+                if response['code'] == 200:
+                    Database.logger.success(f'Promotion {rule.grp_cod} updated successfully.')
+                elif response['code'] == 201:
+                    Database.logger.warn(f'Promotion {rule.grp_cod} not found for update.')
+                else:
+                    Database.error_handler.add_error_v(
+                        error=f'Error: {response["code"]}\n' f'{response["message"]}', origin='Promotion Update'
+                    )
+
+            def delete(shopify_id):
+                if not shopify_id:
+                    Database.logger.warn('No Shopify ID provided for deletion.')
+                    return
+                query = f'DELETE FROM SN_PROMO WHERE SHOP_ID = {shopify_id}'
+                response = Database.db.query(query)
+
+                if response['code'] == 200:
+                    Database.logger.success(f'Promotion {shopify_id} deleted successfully.')
+                elif response['code'] == 201:
+                    Database.logger.warn(f'Promotion {shopify_id} not found for deletion.')
+                else:
+                    Database.error_handler.add_error_v(
+                        error=f'Error: {response["code"]}\n' f'{response["message"]}', origin='Promotion Deletion'
+                    )
 
         class Gift_Certificate:
             table = creds.shopify_gift_cert_table
 
 
 if __name__ == '__main__':
-    print(Database.Shopify.Product.get_sku(8308139983015))
+    print(Database.Shopify.Discount.get())

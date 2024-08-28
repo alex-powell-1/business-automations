@@ -11,7 +11,7 @@ from traceback import print_exc as tb
 from setup.utilities import PhoneNumber
 
 
-verbose_print = False
+verbose_print = True
 
 
 class Shopify:
@@ -57,7 +57,13 @@ class Shopify:
             if self.errors or self.user_errors:
                 if self.user_errors:
                     for i in self.user_errors:
-                        if i == 'Key must be unique within this namespace on this resource':
+                        if operation_name == 'productUpdate':
+                            if i == "Namespace can't be blank":
+                                break
+                            elif i == "Type can't be blank":
+                                break
+
+                        elif i == 'Key must be unique within this namespace on this resource':
                             product_id = variables['input']['id'].split('/')[-1]
                             Shopify.Metafield.delete(product_id=product_id)
                             Database.Shopify.Product.Metafield.delete(product_id=product_id)
@@ -76,6 +82,16 @@ class Shopify:
                             self.user_errors.remove(i)
                             # Re-run query
                             self.__init__(document, variables, operation_name)
+
+                        elif operation_name == 'customerDelete':
+                            if i == "Customer can't be found":
+                                # If a customer cannot be found in shopify, simply remove this error and move on.
+                                self.user_errors.remove(i)
+                                continue
+                            elif i == 'Customer can’t be deleted because they have associated orders':
+                                # If a customer cannot be deleted because they have associated orders, simply remove this error and move on.
+                                self.user_errors.remove(i)
+                                continue
 
                         elif i == 'Email has already been taken':
                             with open('./duplicate_emails.txt', 'a') as f:
@@ -628,6 +644,18 @@ class Shopify:
                     variables={'id': f'gid://shopify/Customer/{customer_id}'},
                     operation_name='customerDelete',
                 )
+                try:
+                    deleted_id = int(response.data['customerDelete']['deletedCustomerId'].split('/')[-1])
+                except:
+                    deleted_id = None
+
+                if deleted_id:
+                    if deleted_id == customer_id:
+                        Shopify.logger.success(f'Successfully deleted customer {customer_id}')
+                    else:
+                        Shopify.error_handler.add_error_v(
+                            f'Error deleting customer. Deleted ID: {deleted_id}, Customer ID: {customer_id}'
+                        )
                 return response.data
             elif all:
                 id_list = Shopify.Customer.get(all=True)
@@ -868,6 +896,15 @@ class Shopify:
                     variables={'id': f'{Shopify.Product.prefix}{product_id}'},
                     operation_name='productDelete',
                 )
+                try:
+                    deleted_product_id = int(response.data['productDelete']['deletedProductId'].split('/')[-1])
+                    if deleted_product_id == product_id:
+                        Shopify.logger.success(f'Product {product_id} deleted from Shopify.')
+                    else:
+                        print(f'No match. deleted_product_id: {deleted_product_id}, product_id: {product_id}')
+                except:
+                    Shopify.error_handler.add_error_v(error=f'Could not get deleted product ID: {response.data}')
+
                 return response.data
             elif all:
                 id_list = Shopify.Product.get(all=True)
@@ -1106,6 +1143,9 @@ class Shopify:
                     return [x for x in response.data['product']['media']['nodes']]
 
             def reorder(product):
+                if not product.reorder_media_queue:
+                    Shopify.logger.info('No media to reorder')
+                    return
                 variables = {'id': f'{Shopify.Product.prefix}{product.product_id}', 'moves': []}
                 for m in product.reorder_media_queue:
                     if m.type == 'IMAGE':
@@ -1226,6 +1266,7 @@ class Shopify:
                     return response.data
 
                 def delete(image=None, product_id=None, shopify_id=None, variant_id=None):
+                    variables = None
                     if image:
                         variables = {
                             'mediaIds': [f'{Shopify.Product.Media.Image.prefix}{image.shopify_id}'],
@@ -1247,7 +1288,8 @@ class Shopify:
                             }
                         else:
                             return
-
+                    if not variables:
+                        return
                     response = Shopify.Query(
                         document=Shopify.Product.Media.queries,
                         variables=variables,
@@ -1894,8 +1936,101 @@ class Shopify:
                 Database.Shopify.Webhook.delete(id)
                 return response.data
 
-    class Promotion:
-        queries = './integration/queries/promotion.graphql'
+    class Discount:
+        queries = './integration/queries/discounts.graphql'
+        prefix = 'gid://shopify/DiscountCodeNode/'
+
+        def get(discount_id=None):
+            if discount_id:
+                response = Shopify.Query(
+                    document=Shopify.Discount.queries,
+                    variables={'id': f'{Shopify.Discount.prefix}{discount_id}'},
+                    operation_name='discount',
+                )
+                return response.data
+            else:
+                response = Shopify.Query(
+                    document=Shopify.Discount.queries, variables={'first': 100}, operation_name='discounts'
+                )
+                return response.data
+
+        class Code:
+            # Discounts that have a code
+            def activate(discount_id):
+                response = Shopify.Query(
+                    document=Shopify.Discount.queries,
+                    variables={'id': f'{Shopify.Discount.prefix}{discount_id}'},
+                    operation_name='discountCodeActivate',
+                )
+                return response.data
+
+            def deactivate(discount_id):
+                response = Shopify.Query(
+                    document=Shopify.Discount.queries,
+                    variables={'id': f'{Shopify.Discount.prefix}{discount_id}'},
+                    operation_name='discountCodeDeactivate',
+                )
+                return response.data
+
+            def delete(discount_id):
+                response = Shopify.Query(
+                    document=Shopify.Discount.queries,
+                    variables={'id': f'{Shopify.Discount.prefix}{discount_id}'},
+                    operation_name='discountCodeDelete',
+                )
+                return response.data
+
+        class Automatic:
+            # Discounts that are automatically applied
+            prefix = 'gid://shopify/DiscountAutomaticNode/'
+
+            def activate(discount_id):
+                response = Shopify.Query(
+                    document=Shopify.Discount.queries,
+                    variables={'id': f'{Shopify.Discount.Automatic.prefix}{discount_id}'},
+                    operation_name='discountAutomaticActivate',
+                )
+                return response.data
+
+            def deactivate(discount_id):
+                response = Shopify.Query(
+                    document=Shopify.Discount.queries,
+                    variables={'id': f'{Shopify.Discount.Automatic.prefix}{discount_id}'},
+                    operation_name='discountAutomaticDeactivate',
+                )
+                return response.data
+
+            def delete(discount_id):
+                response = Shopify.Query(
+                    document=Shopify.Discount.queries,
+                    variables={'id': f'{Shopify.Discount.Automatic.prefix}{discount_id}'},
+                    operation_name='discountAutomaticDelete',
+                )
+                return response.data
+
+            class Bxgy:
+                # Buy X, Get Y Discounts that are applied automatically
+                def create(variables):
+                    if not variables:
+                        return
+                    response = Shopify.Query(
+                        document=Shopify.Discount.queries,
+                        variables=variables,
+                        operation_name='discountAutomaticBxgyCreate',
+                    )
+                    return response.data['discountAutomaticBxgyCreate']['automaticDiscountNode']['id'].split('/')[
+                        -1
+                    ]
+
+                def update(variables):
+                    if not variables:
+                        return
+                    response = Shopify.Query(
+                        document=Shopify.Discount.queries,
+                        variables=variables,
+                        operation_name='discountAutomaticBxgyUpdate',
+                    )
+                    return response.data
 
 
 def refresh_order(tkt_no):
@@ -1911,4 +2046,4 @@ def refresh_order(tkt_no):
 
 
 if __name__ == '__main__':
-    Shopify.Webhook.get()
+    Shopify.Discount.Automatic.activate(1165000671399)

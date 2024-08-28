@@ -24,6 +24,7 @@ class Promotions:
         self.get_promotions()
         self.sale_badges = {}
         self.sale_badge_items = []
+        print(self.promotions)
 
     def get_promotions(self):
         # Get list of promotions from IM_PRC_GRP
@@ -610,4 +611,7 @@ class Promotions:
 
 if __name__ == '__main__':
     promo = Promotions(last_sync=datetime(2024, 7, 15))
-    promo.sync()
+    for promotion in promo.promotions:
+        if promotion.enabled:
+            print(promotion)
+    # promo.sync()
