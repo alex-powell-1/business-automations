@@ -92,7 +92,7 @@ def send_sms(greeting, phone, item, qty, coupon_code, coupon_offer, photo=None):
     """Send SMS text message to customer"""
     phone = PhoneNumber(phone).to_twilio()
 
-    message = f'{greeting}\n\nYou requested to be notified when { item } was back in stock. We are excited to share that we have { int(qty) } available now!\n\nUse code: { coupon_code } online or in-store for { coupon_offer }!'
+    message = f'{greeting}!\n\nYou requested to be notified when { item } was back in stock. We are excited to share that we have { int(qty) } available now!\n\nUse code: { coupon_code } online or in-store for { coupon_offer }!'
     SMSEngine.send_text(origin='SERVER', campaign='STOCK NOTIFY', to_phone=phone, message=message, url=photo)
 
 
@@ -132,11 +132,11 @@ def send_stock_notifications():
 
         cust_no = customer_tools.customers.lookup_customer(email_address=email, phone_number=phone)
 
-        greeting = 'Hey there!'
+        greeting = 'Hey there'
 
         if cust_no is not None:
             customer = customer_tools.customers.Customer(cust_no)
-            greeting = f'Hey {customer.first_name}!'
+            greeting = f'Hey {customer.first_name}'
 
         coupon_code = generate_random_coupon()
         barcode_engine.generate_barcode(data=coupon_code, filename=coupon_code)
