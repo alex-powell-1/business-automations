@@ -156,6 +156,36 @@ def send_stock_notifications():
             coupon_code = generate_random_coupon()
             barcode_engine.generate_barcode(data=coupon_code, filename=coupon_code)
 
+            # Create CounterPoint Coupons
+            try:
+                cp_create_coupon(
+                    description=f'{customer.first_name.title()} ' f'{customer.last_name.title()}-Stock:{item_no}',
+                    code=coupon_code,
+                    amount=10,
+                    min_purchase=100,
+                )
+            except Exception as e:
+                error_handler.error_handler.add_error_v(
+                    f'CP Coupon Creation Error: {e}', origin='stock_notification.py'
+                )
+            else:
+                error_handler.logger.info(f'CP Coupon Creation Success! Code: {coupon_code}')
+
+            # Create Coupon Expiration Date
+            expiration_date = utils.format_datetime(datetime.datetime.now() + relativedelta(days=+5))
+
+            # Send to BigCommerce. Create Coupon.
+            shopify_create_coupon(
+                name=f'Back in Stock({item_no}, {email})',
+                coupon_type='per_total_discount',
+                amount=10,
+                min_purchase=100,
+                code=coupon_code,
+                max_uses_per_customer=1,
+                max_uses=1,
+                expiration=expiration_date,
+            )
+
         product_photo = creds.photo_path + f'/{item_no}.jpg'
 
         ###############################################################
@@ -243,6 +273,7 @@ if __name__ == '__main__':
 #                 coupon_exclusions = ['45', '804', 'HB', 'BOSTON']
 #                 if item.item_no not in coupon_exclusions:
 #                     # Create Coupon Code
+
 #                     random_coupon_code = generate_random_code(10)
 
 #                     # Create CounterPoint Coupons
