@@ -557,15 +557,7 @@ def update_customer(
     if phone_number is not None:
         phone_number = format_phone_number(phone_number)
 
-    NAM = f'{FST_NAM} {LST_NAM}'
-    NAM_UPR = NAM.upper()
-    FST_NAM_UPR = FST_NAM.upper()
-    LST_NAM_UPR = LST_NAM.upper()
-
-    query = f"""
-    UPDATE AR_CUST
-    SET LST_MAINT_DT = GETDATE()
-    """
+    query = 'UPDATE AR_CUST SET LST_MAINT_DT = GETDATE()'
 
     # PHONE_1 = '{phone_number}',
     # EMAIL_ADRS_1 = '{email_address}',
