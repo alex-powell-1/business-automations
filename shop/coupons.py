@@ -6,6 +6,8 @@ from setup.query_engine import QueryEngine as db
 from setup import creds
 from setup.error_handler import ScheduledTasksErrorHandler as error_handler
 
+from integration.shopify_api import Shopify
+
 
 def shopify_create_coupon(
     name, coupon_type, amount, min_purchase, code, max_uses_per_customer, max_uses, expiration, enabled=True
@@ -71,7 +73,7 @@ def cp_delete_coupon(code):
 
 
 def shopify_delete_coupon(coupon_id):
-    pass
+    Shopify.Discount.Code.delete(coupon_id)
 
 
 def generate_random_code(length):
@@ -87,9 +89,33 @@ def utc_to_local(utc_dt: datetime):
     return utc_dt.replace(tzinfo=timezone.utc).astimezone(tz=None)
 
 
+def get_expired_coupons():
+    discounts = [x['node'] for x in Shopify.Discount.get()['discountNodes']['edges']]
+
+    expired_discounts = []
+
+    for discount in discounts:
+        try:
+            ends_at = discount['discount']['endsAt']
+            if ends_at is None:
+                raise
+
+            ends_at = datetime.strptime(ends_at, '%Y-%m-%dT%H:%M:%SZ')
+            ends_at = utc_to_local(ends_at)
+
+            if ends_at < datetime.now():
+                expired_discounts.append(discount)
+        except Exception as e:
+            pass
+
+    return expired_discounts
+
+
 def delete_expired_coupons():
     error_handler.logger.info(f'Deleting Expired Coupons: Starting at {datetime.now():%H:%M:%S}')
     total = 0
+
+    # Get expired coupons and delete
 
     error_handler.logger.info(f'Deleting Expired Coupons: Finished at {datetime.now():%H:%M:%S}')
     error_handler.logger.info(f'Total Coupons Deleted: {total}')

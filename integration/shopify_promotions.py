@@ -347,7 +347,7 @@ class Promotions:
 
                     Shopify.Discount.Automatic.delete(shopify_id)
                     Database.Shopify.Discount.delete(shopify_id)
-            elif shopify_id:
+            elif shopify_discount_code_id:
                 Shopify.Discount.Code.delete(shopify_discount_code_id)
 
         class PriceRule:
