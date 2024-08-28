@@ -8,11 +8,57 @@ from setup.error_handler import ScheduledTasksErrorHandler as error_handler
 
 from integration.shopify_api import Shopify
 
+from dateutil.relativedelta import relativedelta
+
+
+def utc_to_local(utc_dt: datetime):
+    return utc_dt.replace(tzinfo=timezone.utc).astimezone(tz=None)
+
+
+def local_to_utc(local_dt: datetime):
+    return local_dt.astimezone(tz=timezone.utc)
+
 
 def shopify_create_coupon(
-    name, coupon_type, amount, min_purchase, code, max_uses_per_customer, max_uses, expiration, enabled=True
+    name,
+    amount,
+    min_purchase,
+    code,
+    max_uses,
+    expiration,
+    product_variants_to_add=[],
+    product_variants_to_remove=[],
+    products_to_add=[],
+    products_to_remove=[],
+    enabled=True,
 ):
-    pass
+    Shopify.Discount.Code.Basic.create(
+        {
+            'basicCodeDiscount': {
+                'appliesOncePerCustomer': True,
+                'code': code,
+                'combinesWith': {'orderDiscounts': False, 'productDiscounts': False, 'shippingDiscounts': False},
+                'customerGets': {
+                    'items': {
+                        'all': True,
+                        'products': {
+                            'productVariantsToAdd': product_variants_to_add,
+                            'productVariantsToRemove': product_variants_to_remove,
+                            'productsToAdd': products_to_add,
+                            'productsToRemove': products_to_remove,
+                        },
+                    },
+                    'value': {'discountAmount': {'amount': amount, 'appliesOnEachItem': False}},
+                },
+                'customerSelection': {'all': True},
+                'endsAt': local_to_utc(expiration).strftime('%Y-%m-%dT%H:%M:%SZ'),
+                'minimumRequirement': {'subtotal': {'greaterThanOrEqualToSubtotal': min_purchase}},
+                'startsAt': local_to_utc(datetime.now()).strftime('%Y-%m-%dT%H:%M:%SZ'),
+                'title': name,
+                'usageLimit': max_uses,
+            }
+        }
+    )
 
 
 def cp_has_coupon(code):
@@ -75,8 +121,6 @@ def cp_delete_coupon(code):
             return False
     except Exception as e:
         error_handler.error_handler.add_error_v(error=f'CP Coupon Deletion Error: {e}', origin='cp_delete_coupon')
-    else:
-        error_handler.logger.success(f'Deleted Coupon: {code}')
 
 
 def generate_random_code(length):
@@ -86,10 +130,6 @@ def generate_random_code(length):
         return generate_random_code(length)
 
     return res
-
-
-def utc_to_local(utc_dt: datetime):
-    return utc_dt.replace(tzinfo=timezone.utc).astimezone(tz=None)
 
 
 def get_expired_coupons():
@@ -109,7 +149,7 @@ def get_expired_coupons():
 
                 if ends_at < datetime.now():
                     expired_discounts.append(discount)
-            except Exception as e:
+            except:
                 pass
 
         return expired_discounts
@@ -126,14 +166,14 @@ def delete_expired_coupons():
 
     for id in ids:
         try:
-            Shopify.Discount.Code.delete(id)
+            Shopify.Discount.Code.deactivate(id)
             total += 0.5
         except Exception as e:
             error_handler.error_handler.add_error_v(
                 f'Error deleting coupon from Shopify: {e}', origin='delete_expired_coupons'
             )
 
-        cp_delete_coupon(id)
-        total += 0.5
+        if cp_delete_coupon(id):
+            total += 0.5
 
     error_handler.logger.success(f'Expired Coupons Delete. {total} / {len(ids)}')

@@ -1980,6 +1980,23 @@ class Shopify:
                 )
                 return response.data
 
+            class Basic:
+                @staticmethod
+                def create(variables):
+                    if not variables:
+                        return
+                    response = Shopify.Query(
+                        document=Shopify.Discount.queries,
+                        variables=variables,
+                        operation_name='discountCodeBasicCreate',
+                    )
+                    # promotion_id = response.data['discountAutomaticBxgyCreate']['automaticDiscountNode'][
+                    #     'id'
+                    # ].split('/')[-1]
+                    print(response.data)
+                    # Shopify.logger.success(f'Promotion ID: {promotion_id} created on Shopify')
+                    # return promotion_id
+
         class Automatic:
             # Discounts that are automatically applied
             prefix = 'gid://shopify/DiscountAutomaticNode/'
