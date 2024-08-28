@@ -174,7 +174,7 @@ def send_stock_notifications():
             # Create Coupon Expiration Date
             expiration_date = utils.format_datetime(datetime.datetime.now() + relativedelta(days=+5))
 
-            # Send to BigCommerce. Create Coupon.
+            # Send to Shopify. Create Coupon.
             shopify_create_coupon(
                 name=f'Back in Stock({item_no}, {email})',
                 coupon_type='per_total_discount',
