@@ -162,16 +162,14 @@ def send_stock_notifications():
                 error_handler.logger.info(f'CP Coupon Creation Success! Code: {coupon_code}')
 
             # Create Coupon Expiration Date
-            expiration_date = utils.format_datetime(datetime.datetime.now() + relativedelta(days=+5))
+            expiration_date = datetime.datetime.now() + relativedelta(days=+5)
 
             # Send to Shopify. Create Coupon.
             shopify_create_coupon(
                 name=f'Back in Stock({item_no}, {email})',
-                coupon_type='per_total_discount',
                 amount=10,
                 min_purchase=100,
                 code=coupon_code,
-                max_uses_per_customer=1,
                 max_uses=1,
                 expiration=expiration_date,
             )
@@ -191,7 +189,7 @@ def send_stock_notifications():
                 qty=qty,
                 coupon_code=coupon_code,
                 webtitle=Product(item_no).web_title,
-                photo=product_photo,
+                photo=None,
             )
             messages_sent += 1
 
