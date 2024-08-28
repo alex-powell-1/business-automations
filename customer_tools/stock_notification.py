@@ -191,7 +191,7 @@ def send_stock_notifications():
                 qty=qty,
                 coupon_code=coupon_code,
                 webtitle=Product(item_no).web_title,
-                photo=product_photo,
+                photo=None,
             )
             messages_sent += 1
 
