@@ -1,635 +1,658 @@
 query discount($id: ID!) {
-  discountNode(id: $id) {
-    id
-    discount {
-      ... on DiscountCodeBasic {
-        title
-        status
-      }
-      ... on DiscountCodeBxgy {
-        # This is Buy X Get Y discount
-        title
-        status # The status of the discount. (ACTIVE, SCHEDULED, EXPIRED)
-        discountClass # The class of the discount for combining purposes. (ORDER, PRODUCT)
-        startsAt
-        endsAt # The date and time when the discount ends. For open-ended discounts, use null.
-        summary
-        totalSales {
-          amount
-          currencyCode
-        }
-        createdAt
-        updatedAt
-        usesPerOrderLimit # The maximum number of times that the discount can be applied to an order.
-        usageLimit # The maximum number of times that the discount can be used.
-        appliesOncePerCustomer
-        asyncUsageCount # This is the number of times the discount has been used
-        combinesWith {
-          orderDiscounts
-          productDiscounts
-          shippingDiscounts
-        }
-        createdAt
-        customerBuys {
-          items {
-            ... on AllDiscountItems {
-              allItems
-            }
-            ... on DiscountCollections {
-              collections(first: 100) {
-                edges {
-                  node {
-                    id
-                    handle
-                    title
-                  }
-                }
-              }
-            }
-            ... on DiscountProducts {
-              products(first: 100) {
-                edges {
-                  node {
-                    id
-                    handle
-                    title
-                  }
-                }
-              }
-            }
-          }
-          value {
-            ... on DiscountPurchaseAmount {
-              amount
-            }
-            ... on DiscountQuantity {
-              quantity
-            }
-          }
-        }
-        customerGets {
-          appliesOnOneTimePurchase
-          appliesOnSubscription
-          items {
-            ... on AllDiscountItems {
-              allItems
-            }
-            ... on DiscountCollections {
-              collections(first: 100) {
-                edges {
-                  node {
-                    id
-                    handle
-                    title
-                  }
-                }
-              }
-            }
-            ... on DiscountProducts {
-              products(first: 100) {
-                edges {
-                  node {
-                    id
-                    handle
-                    title
-                  }
-                }
-              }
-            }
-          }
-          value {
-            ... on DiscountAmount {
-              amount {
-                amount
-                currencyCode
-              }
-              appliesOnEachItem
-            }
-
-            ... on DiscountOnQuantity {
-              effect {
-                ... on DiscountAmount {
-                  amount {
+    discountNode(id: $id) {
+        id
+        discount {
+            ... on DiscountCodeBasic {
+                title
+                status
+                discountClass # The class of the discount for combining purposes. (ORDER, PRODUCT)
+                startsAt
+                endsAt # The date and time when the discount ends. For open-ended discounts, use null.
+                summary
+                totalSales {
                     amount
                     currencyCode
-                  }
-                  appliesOnEachItem
                 }
-              }
-              quantity {
-                quantity
-              }
+                createdAt
+                updatedAt
+                usageLimit # The maximum number of times that the discount can be used.
+                appliesOncePerCustomer
+                asyncUsageCount # This is the number of times the discount has been used
+                combinesWith {
+                    orderDiscounts
+                    productDiscounts
+                    shippingDiscounts
+                }
             }
-            ... on DiscountPercentage {
-              percentage
+            ... on DiscountCodeBxgy {
+                # This is Buy X Get Y discount
+                title
+                status # The status of the discount. (ACTIVE, SCHEDULED, EXPIRED)
+                discountClass # The class of the discount for combining purposes. (ORDER, PRODUCT)
+                startsAt
+                endsAt # The date and time when the discount ends. For open-ended discounts, use null.
+                summary
+                totalSales {
+                    amount
+                    currencyCode
+                }
+                createdAt
+                updatedAt
+                usesPerOrderLimit # The maximum number of times that the discount can be applied to an order.
+                usageLimit # The maximum number of times that the discount can be used.
+                appliesOncePerCustomer
+                asyncUsageCount # This is the number of times the discount has been used
+                combinesWith {
+                    orderDiscounts
+                    productDiscounts
+                    shippingDiscounts
+                }
+                createdAt
+                customerBuys {
+                    items {
+                        ... on AllDiscountItems {
+                            allItems
+                        }
+                        ... on DiscountCollections {
+                            collections(first: 100) {
+                                edges {
+                                    node {
+                                        id
+                                        handle
+                                        title
+                                    }
+                                }
+                            }
+                        }
+                        ... on DiscountProducts {
+                            products(first: 100) {
+                                edges {
+                                    node {
+                                        id
+                                        handle
+                                        title
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    value {
+                        ... on DiscountPurchaseAmount {
+                            amount
+                        }
+                        ... on DiscountQuantity {
+                            quantity
+                        }
+                    }
+                }
+                customerGets {
+                    appliesOnOneTimePurchase
+                    appliesOnSubscription
+                    items {
+                        ... on AllDiscountItems {
+                            allItems
+                        }
+                        ... on DiscountCollections {
+                            collections(first: 100) {
+                                edges {
+                                    node {
+                                        id
+                                        handle
+                                        title
+                                    }
+                                }
+                            }
+                        }
+                        ... on DiscountProducts {
+                            products(first: 100) {
+                                edges {
+                                    node {
+                                        id
+                                        handle
+                                        title
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    value {
+                        ... on DiscountAmount {
+                            amount {
+                                amount
+                                currencyCode
+                            }
+                            appliesOnEachItem
+                        }
+
+                        ... on DiscountOnQuantity {
+                            effect {
+                                ... on DiscountAmount {
+                                    amount {
+                                        amount
+                                        currencyCode
+                                    }
+                                    appliesOnEachItem
+                                }
+                            }
+                            quantity {
+                                quantity
+                            }
+                        }
+                        ... on DiscountPercentage {
+                            percentage
+                        }
+                    }
+                }
+                customerSelection {
+                    ... on DiscountCustomerAll {
+                        allCustomers
+                    }
+                    ... on DiscountCustomerSegments {
+                        segments {
+                            id
+                            name
+                        }
+                    }
+                    ... on DiscountCustomers {
+                        customers {
+                            addresses(first: 100) {
+                                id
+                                name
+                            }
+                        }
+                    }
+                }
             }
-          }
+            ... on DiscountCodeFreeShipping {
+                title
+            }
+            ... on DiscountAutomaticApp {
+                title
+            }
+            ... on DiscountAutomaticBasic {
+                title
+            }
+            ... on DiscountAutomaticBxgy {
+                title
+            }
+            ... on DiscountAutomaticFreeShipping {
+                title
+            }
         }
-        customerSelection {
-          ... on DiscountCustomerAll {
-            allCustomers
-          }
-          ... on DiscountCustomerSegments {
-            segments {
-              id
-              name
-            }
-          }
-          ... on DiscountCustomers {
-            customers {
-              addresses(first: 100) {
-                id
-                name
-              }
-            }
-          }
-        }
-      }
-      ... on DiscountCodeFreeShipping {
-        title
-      }
-      ... on DiscountAutomaticApp {
-        title
-      }
-      ... on DiscountAutomaticBasic {
-        title
-      }
-      ... on DiscountAutomaticBxgy {
-        title
-      }
-      ... on DiscountAutomaticFreeShipping {
-        title
-      }
     }
-  }
 }
 
 query discounts($first: Int) {
-  discountNodes(first: $first) {
-    edges {
-      node {
-        id
-        discount {
-          ... on DiscountCodeBasic {
-            # This is a basic discount
-            title
-            status
-            discountClass # The class of the discount for combining purposes. (ORDER, PRODUCT)
-            startsAt
-            endsAt # The date and time when the discount ends. For open-ended discounts, use null.
-            summary
-            totalSales {
-              amount
-              currencyCode
-            }
-            createdAt
-            updatedAt
-            usageLimit # The maximum number of times that the discount can be used.
-            appliesOncePerCustomer
-            asyncUsageCount # This is the number of times the discount has been used
-            combinesWith {
-              orderDiscounts
-              productDiscounts
-              shippingDiscounts
-            }
-          }
-          ... on DiscountCodeBxgy {
-            # This is Buy X Get Y discount
-            title
-            status # The status of the discount. (ACTIVE, SCHEDULED, EXPIRED)
-            discountClass # The class of the discount for combining purposes. (ORDER, PRODUCT)
-            startsAt
-            endsAt # The date and time when the discount ends. For open-ended discounts, use null.
-            summary
-            totalSales {
-              amount
-              currencyCode
-            }
-            createdAt
-            updatedAt
-            usesPerOrderLimit # The maximum number of times that the discount can be applied to an order.
-            usageLimit # The maximum number of times that the discount can be used.
-            appliesOncePerCustomer
-            asyncUsageCount # This is the number of times the discount has been used
-            combinesWith {
-              orderDiscounts
-              productDiscounts
-              shippingDiscounts
-            }
-            createdAt
-            customerBuys {
-              items {
-                ... on AllDiscountItems {
-                  allItems
-                }
-                ... on DiscountCollections {
-                  collections(first: 100) {
-                    edges {
-                      node {
-                        id
-                        handle
+    discountNodes(first: $first) {
+        edges {
+            node {
+                id
+                discount {
+                    ... on DiscountCodeBasic {
+                        # This is a basic discount
                         title
-                      }
+                        status
+                        discountClass # The class of the discount for combining purposes. (ORDER, PRODUCT)
+                        startsAt
+                        endsAt # The date and time when the discount ends. For open-ended discounts, use null.
+                        summary
+                        totalSales {
+                            amount
+                            currencyCode
+                        }
+                        createdAt
+                        updatedAt
+                        usageLimit # The maximum number of times that the discount can be used.
+                        appliesOncePerCustomer
+                        asyncUsageCount # This is the number of times the discount has been used
+                        combinesWith {
+                            orderDiscounts
+                            productDiscounts
+                            shippingDiscounts
+                        }
                     }
-                  }
-                }
-                ... on DiscountProducts {
-                  products(first: 100) {
-                    edges {
-                      node {
-                        id
-                        handle
+                    ... on DiscountCodeBxgy {
+                        # This is Buy X Get Y discount
                         title
-                      }
-                    }
-                  }
-                }
-              }
-              value {
-                ... on DiscountPurchaseAmount {
-                  amount
-                }
-                ... on DiscountQuantity {
-                  quantity
-                }
-              }
-            }
-            customerGets {
-              appliesOnOneTimePurchase
-              appliesOnSubscription
-              items {
-                ... on AllDiscountItems {
-                  allItems
-                }
-                ... on DiscountCollections {
-                  collections(first: 100) {
-                    edges {
-                      node {
-                        id
-                        handle
-                        title
-                      }
-                    }
-                  }
-                }
-                ... on DiscountProducts {
-                  products(first: 100) {
-                    edges {
-                      node {
-                        id
-                        handle
-                        title
-                      }
-                    }
-                  }
-                }
-              }
-              value {
-                ... on DiscountAmount {
-                  amount {
-                    amount
-                    currencyCode
-                  }
-                  appliesOnEachItem
-                }
+                        status # The status of the discount. (ACTIVE, SCHEDULED, EXPIRED)
+                        discountClass # The class of the discount for combining purposes. (ORDER, PRODUCT)
+                        startsAt
+                        endsAt # The date and time when the discount ends. For open-ended discounts, use null.
+                        summary
+                        totalSales {
+                            amount
+                            currencyCode
+                        }
+                        createdAt
+                        updatedAt
+                        usesPerOrderLimit # The maximum number of times that the discount can be applied to an order.
+                        usageLimit # The maximum number of times that the discount can be used.
+                        appliesOncePerCustomer
+                        asyncUsageCount # This is the number of times the discount has been used
+                        combinesWith {
+                            orderDiscounts
+                            productDiscounts
+                            shippingDiscounts
+                        }
+                        createdAt
+                        customerBuys {
+                            items {
+                                ... on AllDiscountItems {
+                                    allItems
+                                }
+                                ... on DiscountCollections {
+                                    collections(first: 100) {
+                                        edges {
+                                            node {
+                                                id
+                                                handle
+                                                title
+                                            }
+                                        }
+                                    }
+                                }
+                                ... on DiscountProducts {
+                                    products(first: 100) {
+                                        edges {
+                                            node {
+                                                id
+                                                handle
+                                                title
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            value {
+                                ... on DiscountPurchaseAmount {
+                                    amount
+                                }
+                                ... on DiscountQuantity {
+                                    quantity
+                                }
+                            }
+                        }
+                        customerGets {
+                            appliesOnOneTimePurchase
+                            appliesOnSubscription
+                            items {
+                                ... on AllDiscountItems {
+                                    allItems
+                                }
+                                ... on DiscountCollections {
+                                    collections(first: 100) {
+                                        edges {
+                                            node {
+                                                id
+                                                handle
+                                                title
+                                            }
+                                        }
+                                    }
+                                }
+                                ... on DiscountProducts {
+                                    products(first: 100) {
+                                        edges {
+                                            node {
+                                                id
+                                                handle
+                                                title
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            value {
+                                ... on DiscountAmount {
+                                    amount {
+                                        amount
+                                        currencyCode
+                                    }
+                                    appliesOnEachItem
+                                }
 
-                ... on DiscountOnQuantity {
-                  effect {
-                    ... on DiscountAmount {
-                      amount {
-                        amount
-                        currencyCode
-                      }
-                      appliesOnEachItem
+                                ... on DiscountOnQuantity {
+                                    effect {
+                                        ... on DiscountAmount {
+                                            amount {
+                                                amount
+                                                currencyCode
+                                            }
+                                            appliesOnEachItem
+                                        }
+                                    }
+                                    quantity {
+                                        quantity
+                                    }
+                                }
+                                ... on DiscountPercentage {
+                                    percentage
+                                }
+                            }
+                        }
+                        customerSelection {
+                            ... on DiscountCustomerAll {
+                                allCustomers
+                            }
+                            ... on DiscountCustomerSegments {
+                                segments {
+                                    id
+                                    name
+                                }
+                            }
+                            ... on DiscountCustomers {
+                                customers {
+                                    addresses(first: 100) {
+                                        id
+                                        name
+                                    }
+                                }
+                            }
+                        }
                     }
-                  }
-                  quantity {
-                    quantity
-                  }
+                    ... on DiscountCodeFreeShipping {
+                        title
+                    }
+                    ... on DiscountAutomaticApp {
+                        title
+                    }
+                    ... on DiscountAutomaticBasic {
+                        title
+                        status
+                        discountClass # The class of the discount for combining purposes. (ORDER, PRODUCT)
+                        startsAt
+                        endsAt # The date and time when the discount ends. For open-ended discounts, use null.
+                        summary
+                        createdAt
+                        updatedAt
+                        asyncUsageCount # This is the number of times the discount has been used
+                        combinesWith {
+                            orderDiscounts
+                            productDiscounts
+                            shippingDiscounts
+                        }
+                    }
+                    ... on DiscountAutomaticBxgy {
+                        title
+                    }
+                    ... on DiscountAutomaticFreeShipping {
+                        title
+                    }
                 }
-                ... on DiscountPercentage {
-                  percentage
-                }
-              }
             }
-            customerSelection {
-              ... on DiscountCustomerAll {
-                allCustomers
-              }
-              ... on DiscountCustomerSegments {
-                segments {
-                  id
-                  name
-                }
-              }
-              ... on DiscountCustomers {
-                customers {
-                  addresses(first: 100) {
-                    id
-                    name
-                  }
-                }
-              }
-            }
-          }
-          ... on DiscountCodeFreeShipping {
-            title
-          }
-          ... on DiscountAutomaticApp {
-            title
-          }
-          ... on DiscountAutomaticBasic {
-            title
-            status
-            discountClass # The class of the discount for combining purposes. (ORDER, PRODUCT)
-            startsAt
-            endsAt # The date and time when the discount ends. For open-ended discounts, use null.
-            summary
-            createdAt
-            updatedAt
-            asyncUsageCount # This is the number of times the discount has been used
-            combinesWith {
-              orderDiscounts
-              productDiscounts
-              shippingDiscounts
-            }
-          }
-          ... on DiscountAutomaticBxgy {
-            title
-          }
-          ... on DiscountAutomaticFreeShipping {
-            title
-          }
         }
-      }
     }
-  }
 }
 
 mutation discountAutomaticBxgyCreate(
-  $automaticBxgyDiscount: DiscountAutomaticBxgyInput!
+    $automaticBxgyDiscount: DiscountAutomaticBxgyInput!
 ) {
-  discountAutomaticBxgyCreate(automaticBxgyDiscount: $automaticBxgyDiscount) {
-    automaticDiscountNode {
-      id
-      automaticDiscount {
-        ... on DiscountAutomaticBxgy {
-          createdAt
-          startsAt
-          endsAt
-          status
-          summary
-          title
-          usesPerOrderLimit
-          customerGets {
-            items {
-              ... on DiscountProducts {
-                products(first: 2) {
-                  nodes {
-                    id
-                  }
+    discountAutomaticBxgyCreate(automaticBxgyDiscount: $automaticBxgyDiscount) {
+        automaticDiscountNode {
+            id
+            automaticDiscount {
+                ... on DiscountAutomaticBxgy {
+                    createdAt
+                    startsAt
+                    endsAt
+                    status
+                    summary
+                    title
+                    usesPerOrderLimit
+                    customerGets {
+                        items {
+                            ... on DiscountProducts {
+                                products(first: 2) {
+                                    nodes {
+                                        id
+                                    }
+                                }
+                            }
+                        }
+                        value {
+                            ... on DiscountOnQuantity {
+                                quantity {
+                                    quantity
+                                }
+                            }
+                        }
+                    }
+                    customerBuys {
+                        items {
+                            ... on DiscountProducts {
+                                products(first: 250) {
+                                    nodes {
+                                        id
+                                    }
+                                }
+                            }
+                        }
+                        value {
+                            ... on DiscountQuantity {
+                                quantity
+                            }
+                        }
+                    }
                 }
-              }
             }
-            value {
-              ... on DiscountOnQuantity {
-                quantity {
-                  quantity
-                }
-              }
-            }
-          }
-          customerBuys {
-            items {
-              ... on DiscountProducts {
-                products(first: 250) {
-                  nodes {
-                    id
-                  }
-                }
-              }
-            }
-            value {
-              ... on DiscountQuantity {
-                quantity
-              }
-            }
-          }
         }
-      }
+        userErrors {
+            field
+            code
+            message
+        }
     }
-    userErrors {
-      field
-      code
-      message
-    }
-  }
 }
 
 mutation discountCodeBxgyCreate($bxgyCodeDiscount: DiscountCodeBxgyInput!) {
-  discountCodeBxgyCreate(bxgyCodeDiscount: $bxgyCodeDiscount) {
-    codeDiscountNode {
-      codeDiscount {
-        ... on DiscountCodeBxgy {
-          title
-          codes(first: 10) {
-            nodes {
-              code
-            }
-          }
-          startsAt
-          endsAt
-          customerBuys {
-            items {
-              ...collectionsFragment
-            }
-            value {
-              ... on DiscountQuantity {
-                quantity
-              }
-            }
-          }
-          customerGets {
-            appliesOnOneTimePurchase
-            appliesOnSubscription
-            value {
-              ... on DiscountOnQuantity {
-                effect {
-                  ... on DiscountPercentage {
-                    percentage
-                  }
+    discountCodeBxgyCreate(bxgyCodeDiscount: $bxgyCodeDiscount) {
+        codeDiscountNode {
+            codeDiscount {
+                ... on DiscountCodeBxgy {
+                    title
+                    codes(first: 10) {
+                        nodes {
+                            code
+                        }
+                    }
+                    startsAt
+                    endsAt
+                    customerBuys {
+                        items {
+                            ...collectionsFragment
+                        }
+                        value {
+                            ... on DiscountQuantity {
+                                quantity
+                            }
+                        }
+                    }
+                    customerGets {
+                        appliesOnOneTimePurchase
+                        appliesOnSubscription
+                        value {
+                            ... on DiscountOnQuantity {
+                                effect {
+                                    ... on DiscountPercentage {
+                                        percentage
+                                    }
+                                }
+                                quantity {
+                                    quantity
+                                }
+                            }
+                        }
+                        items {
+                            ...collectionsFragment
+                        }
+                    }
+                    customerSelection {
+                        ... on DiscountCustomerAll {
+                            allCustomers
+                        }
+                    }
+                    appliesOncePerCustomer
+                    usesPerOrderLimit
                 }
-                quantity {
-                  quantity
-                }
-              }
             }
-            items {
-              ...collectionsFragment
-            }
-          }
-          customerSelection {
-            ... on DiscountCustomerAll {
-              allCustomers
-            }
-          }
-          appliesOncePerCustomer
-          usesPerOrderLimit
         }
-      }
+        userErrors {
+            field
+            code
+            message
+        }
     }
-    userErrors {
-      field
-      code
-      message
-    }
-  }
 }
 
 fragment collectionsFragment on DiscountCollections {
-  collections(first: 10) {
-    nodes {
-      id
-      title
+    collections(first: 10) {
+        nodes {
+            id
+            title
+        }
     }
-  }
 }
 
-
-mutation discountAutomaticBxgyUpdate($automaticBxgyDiscount: DiscountAutomaticBxgyInput!, $id: ID!) {
-  discountAutomaticBxgyUpdate(automaticBxgyDiscount: $automaticBxgyDiscount, id: $id) {
-    automaticDiscountNode {
-      id
-      automaticDiscount {
-        ... on DiscountAutomaticBxgy {
-          customerGets {
-            items {
-              ... on DiscountProducts {
-                products(first: 2) {
-                  nodes {
-                    id
-                  }
+mutation discountAutomaticBxgyUpdate(
+    $automaticBxgyDiscount: DiscountAutomaticBxgyInput!
+    $id: ID!
+) {
+    discountAutomaticBxgyUpdate(
+        automaticBxgyDiscount: $automaticBxgyDiscount
+        id: $id
+    ) {
+        automaticDiscountNode {
+            id
+            automaticDiscount {
+                ... on DiscountAutomaticBxgy {
+                    customerGets {
+                        items {
+                            ... on DiscountProducts {
+                                products(first: 2) {
+                                    nodes {
+                                        id
+                                    }
+                                }
+                            }
+                        }
+                        value {
+                            ... on DiscountOnQuantity {
+                                quantity {
+                                    quantity
+                                }
+                                effect {
+                                    ... on DiscountPercentage {
+                                        percentage
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
-              }
             }
-            value {
-              ... on DiscountOnQuantity {
-                quantity {
-                  quantity
-                }
-                effect {
-                  ... on DiscountPercentage {
-                    percentage
-                  }
-                }
-              }
-            }
-          }
         }
-      }
+        userErrors {
+            field
+            code
+            message
+        }
     }
-    userErrors {
-      field
-      code
-      message
-    }
-  }
 }
 
 mutation discountAutomaticDelete($id: ID!) {
-  discountAutomaticDelete(id: $id) {
-    deletedAutomaticDiscountId
-    userErrors {
-      field
-      code
-      message
+    discountAutomaticDelete(id: $id) {
+        deletedAutomaticDiscountId
+        userErrors {
+            field
+            code
+            message
+        }
     }
-  }
 }
 
 mutation discountAutomaticActivate($id: ID!) {
-  discountAutomaticActivate(id: $id) {
-    automaticDiscountNode {
-      automaticDiscount {
-        ... on DiscountAutomaticBxgy {
-          status
-          startsAt
-          endsAt
+    discountAutomaticActivate(id: $id) {
+        automaticDiscountNode {
+            automaticDiscount {
+                ... on DiscountAutomaticBxgy {
+                    status
+                    startsAt
+                    endsAt
+                }
+            }
         }
-      }
+        userErrors {
+            field
+            message
+        }
     }
-    userErrors {
-      field
-      message
-    }
-  }
 }
 
 mutation discountAutomaticDeactivate($id: ID!) {
-  discountAutomaticDeactivate(id: $id) {
-    automaticDiscountNode {
-      automaticDiscount {
-        ... on DiscountAutomaticBxgy {
-          status
-          startsAt
-          endsAt
+    discountAutomaticDeactivate(id: $id) {
+        automaticDiscountNode {
+            automaticDiscount {
+                ... on DiscountAutomaticBxgy {
+                    status
+                    startsAt
+                    endsAt
+                }
+            }
         }
-      }
+        userErrors {
+            field
+            message
+        }
     }
-    userErrors {
-      field
-      message
-    }
-  }
 }
 
 mutation discountCodeActivate($id: ID!) {
-  discountCodeActivate(id: $id) {
-    codeDiscountNode {
-      codeDiscount {
-        ... on DiscountCodeBasic {
-          title
-          status
-          startsAt
-          endsAt
+    discountCodeActivate(id: $id) {
+        codeDiscountNode {
+            codeDiscount {
+                ... on DiscountCodeBasic {
+                    title
+                    status
+                    startsAt
+                    endsAt
+                }
+            }
         }
-      }
+        userErrors {
+            field
+            code
+            message
+        }
     }
-    userErrors {
-      field
-      code
-      message
-    }
-  }
 }
 
 mutation discountCodeDeactivate($id: ID!) {
-  discountCodeDeactivate(id: $id) {
-    codeDiscountNode {
-      codeDiscount {
-        ... on DiscountCodeBasic {
-          title
-          status
-          startsAt
-          endsAt
+    discountCodeDeactivate(id: $id) {
+        codeDiscountNode {
+            codeDiscount {
+                ... on DiscountCodeBasic {
+                    title
+                    status
+                    startsAt
+                    endsAt
+                }
+            }
         }
-      }
+        userErrors {
+            field
+            code
+            message
+        }
     }
-    userErrors {
-      field
-      code
-      message
-    }
-  }
 }
 
 mutation discountCodeDelete($id: ID!) {
-  discountCodeDelete(id: $id) {
-    deletedCodeDiscountId
-    userErrors {
-      field
-      code
-      message
+    discountCodeDelete(id: $id) {
+        deletedCodeDiscountId
+        userErrors {
+            field
+            code
+            message
+        }
     }
-  }
 }

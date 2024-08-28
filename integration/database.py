@@ -178,7 +178,10 @@ class Database:
             username=None,
         ):
             body = body.replace("'", "''")
-            name = name.replace("'", "''")
+
+            if name is not None:
+                name = name.replace("'", "''")
+
             to_phone = format_phone(to_phone, mode='counterpoint')
             from_phone = format_phone(from_phone, mode='counterpoint')
 

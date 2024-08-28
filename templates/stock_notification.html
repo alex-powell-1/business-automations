@@ -1,118 +1,171 @@
 <!DOCTYPE html>
-<html lang="en" style="background-color: white;">
+<html lang="en" style="background-color: white">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>{{ title }}</title>
+        <style>
+            tr td {
+                padding-left: 20px;
+                padding-right: 20px;
+            }
+        </style>
+    </head>
 
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ title }}</title>
-    <style>
-        tr td {
-            padding-left: 20px;
-            padding-right: 20px;
-        }
-    </style>
-</head>
-
-<body>
-    <div style="
-    background-color: white;
-    width: 600px;
-    margin-left: auto;
-    margin-right: auto;
-    border-width: px;
-    border-style: solid;
-    border-color: darkgreen;
-    border-radius: 15px;
-    box-shadow: 5px 5px 5px darkgrey;">
-        <table role="presentation" cellspacing="0" width="100%">
-            <tr>
-                <td>
-                    <div class="header" style="text-align: center;">
-                        <a href="{{ company_url }}"><img src="cid:image1" style="width: 50%;
-                                margin-bottom: 15px;"></a>
-                    </div>
-                </td>
-            </tr>
-        </table>
-
-        <table role="presentation" cellspacing="0" width="100%">
-            <tr>
-                <td>
-                    <div class="body">
-                        <div style="text-align: center">
-                            <a href="{{ item_url }}"><img id="product-img" src="cid:image2" style="
-                                width: 55%;
-                                display: block;
-                                margin: auto;
-                                margin-bottom: 15px;"/></a>
+    <body>
+        <div
+            style="
+                background-color: white;
+                width: 600px;
+                margin-left: auto;
+                margin-right: auto;
+                border-width: px;
+                border-style: solid;
+                border-color: darkgreen;
+                border-radius: 15px;
+                box-shadow: 5px 5px 5px darkgrey;
+            ">
+            <table role="presentation" cellspacing="0" width="100%">
+                <tr>
+                    <td>
+                        <div class="header" style="text-align: center">
+                            <a href="{{ company_url }}"
+                                ><img
+                                    src="cid:image1"
+                                    style="width: 50%; margin-bottom: 15px"
+                            /></a>
                         </div>
-                        <div style="
-                            padding-left: 20px;
-                            padding-right: 20px;">
-                            <section>
-                                <p>{{ greeting }}!</p>
-                                <p>You requested to be notified when {{ item }} was back in stock.</p>
-                                <p>We are excited to share that we have <strong>{{ qty  }} available now!</strong></p>
+                    </td>
+                </tr>
+            </table>
 
-                                <div>
-                                    {% if coupon_code != "" %}
-                                        <p>Use code: <strong>{{ coupon_code }}</strong> online or in-store to {{ coupon_offer }}!</p>
-                                        <img style="display:block;margin:0 auto;max-width:80%;padding-bottom:1rem;" src="cid:image3" alt="Barcode" />
-                                    {% endif %}
-                                </div>
-
-                                <a href="{{ item_url }}">
-
-                                    <div class="btn" style="
-                                    background-color: darkgreen;
-                                    width: 50%;
-                                    margin-left: auto;
-                                    margin-right: auto;
-                                    border-radius: 10px;
-                                    border-style: solid;
-                                    border-color: grey;">
-
-                                        <p class="btn-txt" style="
-                                        text-align: center;
-                                        color:white;
-                                        font-family: 'Lucida Sans', 'Lucida Sans Regular', 'Lucida Grande', 'Lucida Sans Unicode', Geneva, Verdana, sans-serif;
-                                        font-weight: 600;">Buy Now!</p>
-
-                                    </div>
-                                </a>
-
-                                <div>
-                                    {% if coupon_code != "" %}
-                                        <p id="expiration"><em>This coupon expires in 5 days.</em></p>
-                                    {% endif %}
-                                </div>
-
-                                <p>Please reach out if we can be of help with your landscape!</p>
-
-
-                                <div>
-                                    {% if item_description is not none and item_description|length > 25 %}
-                                        <h2>Read more about {{ item }}:</h2>
-                                        {{ item_description }}
-                                    {% endif %}
-                                </div>
-
-
+            <table role="presentation" cellspacing="0" width="100%">
+                <tr>
+                    <td>
+                        <div class="body">
+                            <div style="text-align: center">
+                                <a href="{{ item_url }}"
+                                    ><img
+                                        id="product-img"
+                                        src="cid:image2"
+                                        style="
+                                            width: 55%;
+                                            display: block;
+                                            margin: auto;
+                                            margin-bottom: 15px;
+                                        "
+                                /></a>
+                            </div>
+                            <div
+                                style="padding-left: 20px; padding-right: 20px">
                                 <section>
-                                    <p>Thanks,</p>
+                                    <p>{{ greeting }}!</p>
+                                    <p>
+                                        You requested to be notified when {{
+                                        item }} was back in stock.
+                                    </p>
+                                    <p>
+                                        We are excited to share that we have
+                                        <strong
+                                            >{{ qty }} available now!</strong
+                                        >
+                                    </p>
 
-                                    <p><strong>{{ signature_name }}</strong><br>
-                                    {{ signature_title }}<br>
-                                    {{ company_phone }}<br>
-                                    <a href="{{ company_url }}">{{ company }}</a><br>
-                                    <a href="{{ company_reviews }}">Recent Google Reviews</a></p>
-                                  </section>
-                            </section>
+                                    <div>
+                                        {% if coupon_code != "" %}
+                                        <p>
+                                            Use code:
+                                            <strong>{{ coupon_code }}</strong>
+                                            online or in-store to {{
+                                            coupon_offer }}!
+                                        </p>
+                                        <img
+                                            style="
+                                                display: block;
+                                                margin: 0 auto;
+                                                max-width: 80%;
+                                                padding-bottom: 1rem;
+                                            "
+                                            src="cid:image3"
+                                            alt="Barcode" />
+                                        {% endif %}
+                                    </div>
+
+                                    <a href="{{ item_url }}">
+                                        <div
+                                            class="btn"
+                                            style="
+                                                background-color: darkgreen;
+                                                width: 50%;
+                                                margin-left: auto;
+                                                margin-right: auto;
+                                                border-radius: 10px;
+                                                border-style: solid;
+                                                border-color: grey;
+                                            ">
+                                            <p
+                                                class="btn-txt"
+                                                style="
+                                                    text-align: center;
+                                                    color: white;
+                                                    font-family: 'Lucida Sans',
+                                                        'Lucida Sans Regular',
+                                                        'Lucida Grande',
+                                                        'Lucida Sans Unicode',
+                                                        Geneva, Verdana,
+                                                        sans-serif;
+                                                    font-weight: 600;
+                                                ">
+                                                Buy Now!
+                                            </p>
+                                        </div>
+                                    </a>
+
+                                    <div>
+                                        {% if coupon_code != "" %}
+                                        <p id="expiration">
+                                            <em
+                                                >This coupon expires in 5
+                                                days.</em
+                                            >
+                                        </p>
+                                        {% endif %}
+                                    </div>
+
+                                    <p>
+                                        Please reach out if we can be of help
+                                        with your landscape!
+                                    </p>
+
+                                    <div>
+                                        {% if item_description is not none and
+                                        item_description|length > 25 %}
+                                        <h2>Read more about {{ item }}:</h2>
+                                        {{ item_description }} {% endif %}
+                                    </div>
+
+                                    <section>
+                                        <p>Thanks,</p>
+
+                                        <p>
+                                            <strong>{{ signature_name }}</strong
+                                            ><br />
+                                            {{ signature_title }}<br />
+                                            {{ company_phone }}<br />
+                                            <a href="{{ company_url }}"
+                                                >{{ company }}</a
+                                            ><br />
+                                            <a href="{{ company_reviews }}"
+                                                >Recent Google Reviews</a
+                                            >
+                                        </p>
+                                    </section>
+                                </section>
+                            </div>
                         </div>
-                    </div>
-                </td>
-            </tr>
-        </table>
-    </div>
-</body>
+                    </td>
+                </tr>
+            </table>
+        </div>
+    </body>
 </html>

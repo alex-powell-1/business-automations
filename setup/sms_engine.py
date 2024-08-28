@@ -86,21 +86,22 @@ class SMSEngine:
                 SMSEngine.logger.success(
                     message=f'{twilio_message.to}, {twilio_message.body}, {twilio_message.sid}'
                 )
-            Database.SMS.insert(
-                origin=origin,
-                campaign=campaign,
-                to_phone=to_phone,
-                from_phone=creds.twilio_phone_number,
-                cust_no=cust_no,
-                body=message,
-                username=username,
-                name=name,
-                category=category,
-                media=url,
-                sid=twilio_message.sid,
-                error_code=error_code,
-                error_message=error_message,
-            )
+
+                Database.SMS.insert(
+                    origin=origin,
+                    campaign=campaign,
+                    to_phone=to_phone,
+                    from_phone=creds.twilio_phone_number,
+                    cust_no=cust_no,
+                    body=message,
+                    username=username,
+                    name=name,
+                    category=category,
+                    media=url,
+                    sid=twilio_message.sid,
+                    error_code=error_code,
+                    error_message=error_message,
+                )
 
     @staticmethod
     def move_phone_1_to_landline(origin, campaign, cust_no, name, category, phone):

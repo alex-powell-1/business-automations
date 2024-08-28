@@ -34,6 +34,8 @@ from traceback import format_exc as tb
 
 import uuid_utils as uuidu
 
+from setup.utilities import PhoneNumber
+
 app = flask.Flask(__name__)
 
 limiter = Limiter(get_remote_address, app=app)
@@ -130,32 +132,130 @@ def stock_notification():
 
     # Validate the input data
     try:
-        validate(instance=sanitized_data, schema=creds.stock_notification_schema)
+        validate(
+            instance=sanitized_data,
+            schema={
+                'type': 'object',
+                'properties': {
+                    'email': {'type': 'string'},
+                    'phone': {'type': 'string'},
+                    'sku': {'type': 'string'},
+                    'ngrok-skip-browser-warning': {'type': 'string'},
+                },
+                'required': ['sku'],  # Add required fields here
+            },
+        )
     except ValidationError as e:
         ProcessInErrorHandler.error_handler.add_error_v(error=f'Invalid input data: {e}', origin='stock_notify')
-        abort(400, description='Invalid input data')
+        return f'An error occurred: {str(e)}', 500
     else:
         email = sanitized_data.get('email')
+        phone = sanitized_data.get('phone')
         item_no = sanitized_data.get('sku')
-        try:
-            df = pandas.read_csv(creds.stock_notification_log)
-        except FileNotFoundError:
-            pass
-        else:
-            entries = df.to_dict('records')
-            for x in entries:
-                if x['email'] == email and str(x['item_no']) == item_no:
-                    return (
-                        'This email address is already on file for this item. We will send you an email '
-                        'when it comes back in stock. Please contact our office at '
-                        "<a href='tel:8288740679'>(828) 874-0679</a> if you need an alternative "
-                        'item. Thank you!'
-                    ), 400
 
-        stock_notification_data = [[str(datetime.now())[:-7], email, item_no]]
-        df = pandas.DataFrame(stock_notification_data, columns=['date', 'email', str('item_no')])
-        log_engine.write_log(df, creds.stock_notification_log)
-        return 'Your submission was received.'
+        if phone is not None:
+            phone = PhoneNumber(phone).to_cp()
+
+        if email is None and phone is None:
+            return 'Please provide an email or phone number.', 400
+
+        def has_info():
+            query = f"""
+            SELECT EMAIL, PHONE FROM SN_STOCK_NOTIFY
+            WHERE ITEM_NO = '{item_no}'
+            """
+
+            if email is not None:
+                query += f" AND EMAIL = '{email}'"
+
+            if phone is not None:
+                query += f" AND PHONE = '{phone}'"
+
+            try:
+                response = Database.db.query(query)
+                return response[0][0] is not None
+            except:
+                return False
+
+        def insert():
+            cols = 'ITEM_NO'
+            values = f"'{item_no}'"
+
+            if email is not None:
+                cols += ', EMAIL'
+                values += f", '{email}'"
+
+            if phone is not None:
+                cols += ', PHONE'
+                values += f", '{phone}'"
+
+            query = f"""
+            INSERT INTO SN_STOCK_NOTIFY
+            ({cols})
+            VALUES
+            ({values})
+            """
+
+            try:
+                response = Database.db.query(query)
+
+                if response['code'] == 200:
+                    return (
+                        'Thanks for your submission! We will send you an email when your item is back in stock.',
+                        200,
+                    )
+                else:
+                    return 'An error occurred. Please try again.', 500
+            except:
+                return 'An error occurred. Please try again.', 500
+
+        if has_info():
+            nouns1 = []
+
+            indefinite_article = 'a'
+
+            nouns2 = []
+
+            if email is not None:
+                nouns1.append('email address')
+                indefinite_article = 'an'
+                nouns2.append('email')
+
+            if phone is not None:
+                nouns1.append('phone number')
+                nouns2.append('text')
+
+            noun1 = ' or '.join(nouns1)
+            noun2 = ' & '.join(nouns2)
+
+            return (
+                f"""This {noun1} is already on file for this item. We will send you
+                {indefinite_article} {noun2} when your item is back in stock. 
+                Please contact our office at <a href='tel:8288740679'>(828) 874-0679</a>
+                if you need an alternative item. Thank you!"""
+            ), 400
+        else:
+            return insert()
+
+        # try:
+        #     df = pandas.read_csv(creds.stock_notification_log)
+        # except FileNotFoundError:
+        #     pass
+        # else:
+        #     entries = df.to_dict('records')
+        #     for x in entries:
+        #         if x['email'] == email and str(x['item_no']) == item_no:
+        #             return (
+        #                 'This email address is already on file for this item. We will send you an email '
+        #                 'when it comes back in stock. Please contact our office at '
+        #                 "<a href='tel:8288740679'>(828) 874-0679</a> if you need an alternative "
+        #                 'item. Thank you!'
+        #             ), 400
+
+        # stock_notification_data = [[str(datetime.now())[:-7], email, item_no]]
+        # df = pandas.DataFrame(stock_notification_data, columns=['date', 'email', str('item_no')])
+        # log_engine.write_log(df, creds.stock_notification_log)
+        # return 'Your submission was received.'
 
 
 @app.route('/gift-card-recipient', methods=['POST'])
