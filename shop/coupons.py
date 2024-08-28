@@ -65,15 +65,18 @@ def cp_delete_coupon(code):
     DELETE FROM PS_DISC_COD WHERE DISC_COD = '{code}'
     """
     try:
-        db.query(query)
+        response = db.query(query)
+
+        if response['code'] == 200:
+            error_handler.logger.success(f'Deleted Coupon: {code}')
+            return True
+        else:
+            error_handler.error_handler.add_error_v(f'Could not find coupon in CounterPoint: {code}')
+            return False
     except Exception as e:
         error_handler.error_handler.add_error_v(error=f'CP Coupon Deletion Error: {e}', origin='cp_delete_coupon')
     else:
         error_handler.logger.success(f'Deleted Coupon: {code}')
-
-
-def shopify_delete_coupon(coupon_id):
-    Shopify.Discount.Code.delete(coupon_id)
 
 
 def generate_random_code(length):
@@ -90,40 +93,47 @@ def utc_to_local(utc_dt: datetime):
 
 
 def get_expired_coupons():
-    discounts = [x['node'] for x in Shopify.Discount.get()['discountNodes']['edges']]
+    try:
+        discounts = [x['node'] for x in Shopify.Discount.get()['discountNodes']['edges']]
 
-    expired_discounts = []
+        expired_discounts = []
 
-    for discount in discounts:
-        try:
-            ends_at = discount['discount']['endsAt']
-            if ends_at is None:
-                raise
+        for discount in discounts:
+            try:
+                ends_at = discount['discount']['endsAt']
+                if ends_at is None:
+                    raise
 
-            ends_at = datetime.strptime(ends_at, '%Y-%m-%dT%H:%M:%SZ')
-            ends_at = utc_to_local(ends_at)
+                ends_at = datetime.strptime(ends_at, '%Y-%m-%dT%H:%M:%SZ')
+                ends_at = utc_to_local(ends_at)
 
-            if ends_at < datetime.now():
-                expired_discounts.append(discount)
-        except Exception as e:
-            pass
+                if ends_at < datetime.now():
+                    expired_discounts.append(discount)
+            except Exception as e:
+                pass
 
-    return expired_discounts
+        return expired_discounts
+    except Exception as e:
+        error_handler.error_handler.add_error_v(f'Error getting expired coupons: {e}', origin='get_expired_coupons')
+        return []
 
 
 def delete_expired_coupons():
     error_handler.logger.info('Deleting Expired Coupons')
     total = 0
 
-    expired = get_expired_coupons()
-
-    ids = [x['id'] for x in expired]
+    ids = [x['id'] for x in get_expired_coupons()]
 
     for id in ids:
         try:
-            shopify_delete_coupon(id)
-            total += 1
+            Shopify.Discount.Code.delete(id)
+            total += 0.5
         except Exception as e:
-            error_handler.error_handler.add_error_v(f'Error deleting coupon: {e}', origin='delete_expired_coupons')
+            error_handler.error_handler.add_error_v(
+                f'Error deleting coupon from Shopify: {e}', origin='delete_expired_coupons'
+            )
 
-    error_handler.logger.success(f'Expired Coupons Deleted: {total/len(ids)/len(expired)}')
+        cp_delete_coupon(id)
+        total += 0.5
+
+    error_handler.logger.success(f'Expired Coupons Delete. {total} / {len(ids)}')
