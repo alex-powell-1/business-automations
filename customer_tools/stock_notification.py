@@ -8,7 +8,7 @@ from dateutil.relativedelta import relativedelta
 from jinja2 import Template
 
 import customer_tools
-from big_commerce.coupons import generate_random_code, bc_create_coupon, cp_create_coupon
+from shop.coupons import generate_random_code, shopify_create_coupon, cp_create_coupon
 import customer_tools.customers
 from product_tools.products import Product
 from setup import creds
@@ -97,7 +97,12 @@ def send_sms(greeting, phone, item, qty, webtitle, coupon_code, coupon_offer, ph
 
     link = f'https://settlemyrenursery.com/products/{form_string(webtitle)}'
 
-    message = f'{greeting}!\n\nYou requested to be notified when { item } was back in stock. We are excited to share that we have { int(qty) } available now!\n\nUse code: { coupon_code } online or in-store for { coupon_offer }!\n\n{ link }'
+    coupon_message = ''
+
+    if coupon_code is not None:
+        coupon_message = f'\n\nUse code: { coupon_code } online or in-store for { coupon_offer }!'
+
+    message = f'{greeting}!\n\nYou requested to be notified when { item } was back in stock. We are excited to share that we have { int(qty) } available now!{ coupon_message }\n\n{ link }'
     SMSEngine.send_text(origin='SERVER', campaign='STOCK NOTIFY', to_phone=phone, message=message, url=photo)
 
 
@@ -143,8 +148,15 @@ def send_stock_notifications():
             customer = customer_tools.customers.Customer(cust_no)
             greeting = f'Hey {customer.first_name}'
 
-        coupon_code = generate_random_coupon()
-        barcode_engine.generate_barcode(data=coupon_code, filename=coupon_code)
+        coupon_code = None
+        coupon_exclusions = ['45', '804', 'HB', 'BOSTON']
+        included = item_no not in coupon_exclusions
+
+        if included:
+            coupon_code = generate_random_coupon()
+            barcode_engine.generate_barcode(data=coupon_code, filename=coupon_code)
+
+        product_photo = creds.photo_path + f'/{item_no}.jpg'
 
         ###############################################################
         ###################### Send Text / Email ######################
@@ -157,14 +169,17 @@ def send_stock_notifications():
                 phone=phone,
                 item=description,
                 qty=qty,
-                coupon_code='5OFF',
-                coupon_offer='5% Off',
+                coupon_code=coupon_code,
+                coupon_offer='$10 Off Order of $100 or more',
                 webtitle=Product(item_no).web_title,
+                photo=product_photo,
             )
 
         if email is not None:
             query += f" AND EMAIL = '{email}'"
-            send_email(greeting=greeting, email=email, item_number=item_no, coupon_code='5OFF', photo=None)
+            send_email(
+                greeting=greeting, email=email, item_number=item_no, coupon_code=coupon_code, photo=product_photo
+            )
 
         #################################################################
         ##################### Remove Database Entry #####################
@@ -182,7 +197,8 @@ def send_stock_notifications():
         except:
             error_handler.error_handler.add_error_v('Error querying database', origin='stock_notification.py')
 
-        os.remove(f'./{coupon_code}.png')
+        if included:
+            os.remove(f'./{coupon_code}.png')
 
     error_handler.logger.success('Completed: Send Stock Notification Text')
 
