@@ -88,11 +88,16 @@ def send_email(greeting, email, item_number, coupon_code, photo=None):
     )
 
 
-def send_sms(greeting, phone, item, qty, coupon_code, coupon_offer, photo=None):
+def send_sms(greeting, phone, item, qty, webtitle, coupon_code, coupon_offer, photo=None):
     """Send SMS text message to customer"""
     phone = PhoneNumber(phone).to_twilio()
 
-    message = f'{greeting}!\n\nYou requested to be notified when { item } was back in stock. We are excited to share that we have { int(qty) } available now!\n\nUse code: { coupon_code } online or in-store for { coupon_offer }!'
+    def form_string(str: str):
+        return str.strip().replace(' ', '-').replace('"', '').replace('&', '-').replace('.', '-').lower()
+
+    link = f'https://settlemyrenursery.com/products/{form_string(webtitle)}'
+
+    message = f'{greeting}!\n\nYou requested to be notified when { item } was back in stock. We are excited to share that we have { int(qty) } available now!\n\nUse code: { coupon_code } online or in-store for { coupon_offer }!\n\n{ link }'
     SMSEngine.send_text(origin='SERVER', campaign='STOCK NOTIFY', to_phone=phone, message=message, url=photo)
 
 
@@ -148,7 +153,13 @@ def send_stock_notifications():
         if phone is not None:
             query += f" AND PHONE = '{phone}'"
             send_sms(
-                greeting=greeting, phone=phone, item=description, qty=qty, coupon_code='5OFF', coupon_offer='5% Off'
+                greeting=greeting,
+                phone=phone,
+                item=description,
+                qty=qty,
+                coupon_code='5OFF',
+                coupon_offer='5% Off',
+                webtitle=Product(item_no).web_title,
             )
 
         if email is not None:
