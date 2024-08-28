@@ -11,7 +11,7 @@ from traceback import print_exc as tb
 from setup.utilities import PhoneNumber
 
 
-verbose_print = True
+verbose_print = False
 
 
 class Shopify:
@@ -2003,6 +2003,7 @@ class Shopify:
                     variables={'id': f'{Shopify.Discount.Automatic.prefix}{discount_id}'},
                     operation_name='discountAutomaticDelete',
                 )
+                Shopify.logger.success(f'Discount ID: {discount_id} deleted on Shopify')
                 return response.data
 
             class Bxgy:
@@ -2015,9 +2016,11 @@ class Shopify:
                         variables=variables,
                         operation_name='discountAutomaticBxgyCreate',
                     )
-                    return response.data['discountAutomaticBxgyCreate']['automaticDiscountNode']['id'].split('/')[
-                        -1
-                    ]
+                    promotion_id = response.data['discountAutomaticBxgyCreate']['automaticDiscountNode'][
+                        'id'
+                    ].split('/')[-1]
+                    Shopify.logger.success(f'Promotion ID: {promotion_id} created on Shopify')
+                    return promotion_id
 
                 def update(variables):
                     if not variables:
@@ -2027,6 +2030,10 @@ class Shopify:
                         variables=variables,
                         operation_name='discountAutomaticBxgyUpdate',
                     )
+                    promotion_id = response.data['discountAutomaticBxgyUpdate']['automaticDiscountNode'][
+                        'id'
+                    ].split('/')[-1]
+                    Shopify.logger.success(f'Promotion ID: {promotion_id} updated on Shopify')
                     return response.data
 
 

@@ -5,6 +5,7 @@ from twilio.base.exceptions import TwilioRestException
 from twilio.rest import Client
 
 from setup import creds
+from setup.creds import Table
 from integration.database import Database
 from setup.query_engine import QueryEngine as db
 from setup.utilities import format_phone
@@ -137,7 +138,7 @@ class SMSEngine:
         print(response)
         if response['code'] == 200:
             query = f"""
-            INSERT INTO {creds.sms_event_table} (ORIGIN, CAMPAIGN, PHONE, CUST_NO, NAME, CATEGORY, EVENT_TYPE, MESSAGE)
+            INSERT INTO {Table.Middleware.sms_event} (ORIGIN, CAMPAIGN, PHONE, CUST_NO, NAME, CATEGORY, EVENT_TYPE, MESSAGE)
             VALUES ('{origin}', '{campaign}', '{phone}', '{cust_no}', '{name}', '{category}',
             'Subscribe', 'SET {creds.sms_subscribe_status} = Y')"""
             print(query)
@@ -162,7 +163,7 @@ class SMSEngine:
         print(response)
         if response['code'] == 200:
             query = f"""
-            INSERT INTO {creds.sms_event_table} (ORIGIN, CAMPAIGN, PHONE, CUST_NO, NAME, CATEGORY, EVENT_TYPE, MESSAGE)
+            INSERT INTO {Table.Middleware.sms_event} (ORIGIN, CAMPAIGN, PHONE, CUST_NO, NAME, CATEGORY, EVENT_TYPE, MESSAGE)
             VALUES ('{origin}', '{campaign}', '{phone}', '{cust_no}', '{name}', '{category}',
             'Unsubscribe', 'SET {creds.sms_subscribe_status} = N')"""
             print(query)

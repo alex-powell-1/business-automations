@@ -1,5 +1,5 @@
 from setup import creds
-from setup.creds import Column
+from setup.creds import Column, Table
 from setup import query_engine
 from setup.error_handler import ProcessOutErrorHandler
 from datetime import datetime, timedelta
@@ -15,7 +15,7 @@ class Database:
     def create_tables():
         tables = {
             'design_leads': f"""
-                                        CREATE TABLE {creds.design_leads_table} (
+                                        CREATE TABLE {Table.Middleware.design_leads} (
                                         ID int IDENTITY(1,1) PRIMARY KEY,
                                         DATE datetime NOT NULL DEFAULT(current_timestamp),
                                         CUST_NO varchar(50),
@@ -37,7 +37,7 @@ class Database:
                                         COMMENTS varchar(500)
                                         )""",
             'qr': f"""
-                                        CREATE TABLE {creds.qr_table} (
+                                        CREATE TABLE {Table.Middleware.qr} (
                                         QR_CODE varchar(100) NOT NULL PRIMARY KEY,
                                         URL varchar(100),
                                         PUBLICATION varchar(50),
@@ -51,12 +51,12 @@ class Database:
                                         LST_SCAN datetime
                                         )""",
             'qr_activ': f"""
-                                        CREATE TABLE {creds.qr_activity_table} (
+                                        CREATE TABLE {Table.Middleware.qr_activity} (
                                         SCAN_DT datetime NOT NULL DEFAULT(current_timestamp) PRIMARY KEY,
                                         CODE varchar(100) NOT NULL FOREIGN KEY REFERENCES SN_QR(QR_CODE),
                                         );""",
             'sms': f"""
-                                        CREATE TABLE {creds.sms_table}(
+                                        CREATE TABLE {Table.Middleware.sms}(
                                         ID int IDENTITY(1,1) PRIMARY KEY,
                                         DATE datetime NOT NULL DEFAULT(current_timestamp),
                                         ORIGIN varchar(30),
@@ -75,7 +75,7 @@ class Database:
                                         ERROR_MESSAGE varchar(255)
                                         )""",
             'sms_event': f"""
-                                        CREATE TABLE {creds.sms_event_table}(
+                                        CREATE TABLE {Table.Middleware.sms_event}(
                                         ID int IDENTITY(1,1) PRIMARY KEY,
                                         DATE datetime NOT NULL DEFAULT(current_timestamp),
                                         ORIGIN varchar(30),
@@ -95,12 +95,12 @@ class Database:
         def get(yesterday=True):
             if yesterday:
                 query = f"""
-                SELECT * FROM {creds.design_leads_table}
+                SELECT * FROM {Table.Middleware.design_leads}
                 WHERE DATE > '{datetime.now().date() - timedelta(days=1)}' AND DATE < '{datetime.now().date()}'
                 """
             else:
                 query = f"""
-                    SELECT * FROM {creds.design_leads_table}
+                    SELECT * FROM {Table.Middleware.design_leads}
                     """
             return Database.db.query(query)
 
@@ -136,7 +136,7 @@ class Database:
                         install = 1
 
             query = f"""
-                INSERT INTO {creds.design_leads_table} (DATE, CUST_NO, FST_NAM, LST_NAM, EMAIL, PHONE, SKETCH, SCALED, DIGITAL, 
+                INSERT INTO {Table.Middleware.design_leads} (DATE, CUST_NO, FST_NAM, LST_NAM, EMAIL, PHONE, SKETCH, SCALED, DIGITAL, 
                 ON_SITE, DELIVERY, INSTALL, TIMELINE, STREET, CITY, STATE, ZIP, COMMENTS)
                 VALUES ('{date}', {f"'{cust_no}'" if cust_no else 'NULL'}, '{first_name}', '{last_name}', '{email}', '{phone}', {sketch}, 
                 {scaled}, {digital}, {on_site}, {delivery}, {install}, '{timeline}', 
@@ -153,12 +153,12 @@ class Database:
         def get(cust_no=None):
             if cust_no:
                 query = f"""
-                SELECT * FROM {creds.sms_table}
+                SELECT * FROM {Table.Middleware.sms}
                 WHERE CUST_NO = '{cust_no}'
                 """
             else:
                 query = f"""
-                SELECT * FROM {creds.sms_table}
+                SELECT * FROM {Table.Middleware.sms}
                 """
             return Database.db.query(query)
 
@@ -188,7 +188,7 @@ class Database:
                 direction = 'INBOUND'
 
             query = f"""
-                INSERT INTO {creds.sms_table} (ORIGIN, CAMPAIGN, DIRECTION, TO_PHONE, FROM_PHONE, CUST_NO, BODY, USERNAME, NAME, CATEGORY, MEDIA, SID, ERROR_CODE, ERROR_MESSAGE)
+                INSERT INTO {Table.Middleware.sms} (ORIGIN, CAMPAIGN, DIRECTION, TO_PHONE, FROM_PHONE, CUST_NO, BODY, USERNAME, NAME, CATEGORY, MEDIA, SID, ERROR_CODE, ERROR_MESSAGE)
                 VALUES ('{origin}', {f"'{campaign}'" if campaign else 'NULL'}, '{direction}', '{to_phone}', '{from_phone}', 
                 {f"'{cust_no}'" if cust_no else 'NULL'}, '{body}', {f"'{username}'" if username else 'NULL'}, '{name}', 
                 {f"'{category}'" if category else 'NULL'}, {f"'{media}'" if media else 'NULL'}, {f"'{sid}'" if sid else 'NULL'}, 
@@ -206,16 +206,14 @@ class Database:
 
     class Counterpoint:
         class Order:
-            table = 'PS_DOC_HDR'
-
             def delete(doc_id=None, tkt_no=None):
                 if doc_id:
                     query = f"""
-                    DELETE FROM {Database.Counterpoint.Order.table}
+                    DELETE FROM {Table.CP.orders}
                     WHERE DOC_ID = {doc_id}"""
                 elif tkt_no:
                     query = f"""
-                    DELETE FROM {Database.Counterpoint.Order.table}
+                    DELETE FROM {Table.CP.orders}
                     WHERE TKT_NO = '{tkt_no}'"""
 
                 else:
@@ -232,11 +230,80 @@ class Database:
                     raise Exception(error)
 
         class Product:
-            table = creds.cp_item_table
+            def set_sale_price(sku, price):
+                query = f"""
+                UPDATE {Table.CP.item_prices}
+                SET PRC_2 = {price}, LST_MAINT_DT = GETDATE()
+                WHERE ITEM_NO = '{sku}'				
+                """
+                response = Database.db.query(query)
+                if response['code'] == 200:
+                    Database.logger.success(f'Sale price set for {sku}.')
+                elif response['code'] == 201:
+                    Database.logger.warn(f'Set Sale Price: No rows affected for {sku}.')
+                else:
+                    error = f'Error setting sale price for {sku}. \n Query: {query}\nResponse: {response}'
+                    Database.error_handler.add_error_v(error=error)
+                    raise Exception(error)
+
+            def remove_sale_price(items):
+                if len(items) > 1:
+                    where_filter = f'WHERE ITEM_NO IN {tuple(items)}'
+                else:
+                    where_filter = f"WHERE ITEM_NO = '{items[0]}'"
+
+                    query = f"""
+                    UPDATE IM_PRC
+                    SET PRC_2 = NULL, LST_MAINT_DT = GETDATE()
+                    {where_filter}
+            
+                    UPDATE IM_ITEM
+                    SET IS_ON_SALE = 'N', SALE_DESCR = NULL, LST_MAINT_DT = GETDATE()
+                    {where_filter}
+                    """
+                    # Removing Sale Price, Last Maintenance Date, and Removing from On Sale Category
+                    response = Database.db.query(query)
+
+                    if response['code'] == 200:
+                        Database.logger.success(f'Sale Price removed successfully from {items}.')
+                    elif response['code'] == 201:
+                        Database.logger.warn(f'No Rows Affected for {items}')
+                    else:
+                        Database.error_handler.add_error_v(
+                            error=f'Error: {response["code"]}\n {response["message"]}, origin="Sale Price Removal")'
+                        )
+
+            def set_sale_status(items, status, description=None):
+                if len(items) > 1:
+                    where_filter = f' WHERE ITEM_NO IN {tuple(items)}'
+                else:
+                    where_filter = f" WHERE ITEM_NO = '{items[0]}'"
+
+                query = f"""
+                    UPDATE {Table.CP.items}
+                    SET IS_ON_SALE = '{status}', LST_MAINT_DT = GETDATE()
+                    """
+                if description:
+                    query += f", SALE_DESCR = '{description}'"
+                else:
+                    query += ', SALE_DESCR = NULL'
+
+                query += where_filter
+
+                # Updating Sale Price, Sale Flag, Sale Description, Last Maintenance Date
+                response = Database.db.query(query)
+                if response['code'] == 200:
+                    Database.logger.success(f'Sale status updated for {items}.')
+                elif response['code'] == 201:
+                    Database.logger.warn(f'Sale status not updated for {items}.')
+                else:
+                    error = f'Error updating sale status for {items}. \n Query: {query}\nResponse: {response}'
+                    Database.error_handler.add_error_v(error=error)
+                    raise Exception(error)
 
             def update(payload):
                 """FOR PRODUCTS_UPDATE WEBHOOK ONLY. Normal updates from shopify_catalog.py use sync()"""
-                query = f'UPDATE {Database.Counterpoint.Product.table} SET '
+                query = f'UPDATE {Table.CP.items} SET '
                 # Item Status
                 if 'status' in payload:
                     if payload['status'] == 'active':
@@ -379,7 +446,7 @@ class Database:
                     def get():
                         query = f"""
                         SELECT ITEM_NO, {Column.CP.Product.videos} 
-                        FROM {Database.Counterpoint.Product.table}
+                        FROM {Table.CP.items}
                         WHERE {Column.CP.Product.videos} IS NOT NULL AND
                         {Column.CP.Product.web_enabled} = 'Y'
                         """
@@ -400,9 +467,27 @@ class Database:
 
                         return temp_videos
 
-        class Customer:
-            table = creds.cp_customer_table
+            class Discount:
+                def update(rule):
+                    for i in rule.items:
+                        # Add Sale Item Flag and Sale Description to Items
+                        query = f"""
+                        UPDATE {Table.CP.items}
+                        SET IS_ON_SALE = 'Y', SALE_DESCR = '{rule.badge_text}', LST_MAINT_DT = GETDATE()
+                        WHERE ITEM_NO = '{i}'
+                        """
+                        # Updating Sale Price, Last Maintenance Date, and Adding to On Sale Category
+                        response = Database.db.query(query)
+                        if response['code'] == 200:
+                            Database.logger.success(f'Item: {i} Sale Status and Description Added Successfully.')
+                        elif response['code'] == 201:
+                            Database.logger.warn(f'No Rows Affected for Item: {i}')
+                        else:
+                            Database.error_handler.add_error_v(
+                                error=f'Error: {response["code"]}\n {response["message"]}, origin="Sale Price Addition")'
+                            )
 
+        class Customer:
             def get(last_sync=datetime(1970, 1, 1), customer_no=None, customer_list=None):
                 if customer_no:
                     customer_filter = f"AND CP.CUST_NO = '{customer_no}'"
@@ -415,8 +500,8 @@ class Database:
                 SELECT CP.CUST_NO, FST_NAM, LST_NAM, EMAIL_ADRS_1, PHONE_1, LOY_PTS_BAL, MW.LOY_ACCOUNT, ADRS_1, ADRS_2, CITY, STATE, ZIP_COD, CNTRY,
                 MW.SHOP_CUST_ID, MW.META_CUST_NO, CATEG_COD, MW.META_CATEG, PROF_COD_2, MW.META_BIR_MTH, PROF_COD_3, MW.META_SPS_BIR_MTH, 
                 PROF_ALPHA_1, MW.WH_PRC_TIER, {creds.sms_subscribe_status}, MW.ID 
-                FROM {Database.Counterpoint.Customer.table} CP
-                FULL OUTER JOIN {creds.shopify_customer_table} MW on CP.CUST_NO = MW.cust_no
+                FROM {Table.CP.customers} CP
+                FULL OUTER JOIN {Table.Shopify.customers} MW on CP.CUST_NO = MW.cust_no
                 WHERE IS_ECOMM_CUST = 'Y' AND CP.LST_MAINT_DT > '{last_sync}' and CUST_NAM_TYP = 'P' {customer_filter}
                 """
                 return Database.db.query(query)
@@ -427,7 +512,7 @@ class Database:
                 else:
                     customer_list = str(tuple(customer_list))
                 query = f"""
-                UPDATE {Database.Counterpoint.Customer.table}
+                UPDATE {Table.CP.customers}
                 SET LST_MAINT_DT = GETDATE()
                 WHERE CUST_NO IN {customer_list}"""
 
@@ -446,7 +531,7 @@ class Database:
                 def get(cust_no):
                     query = f"""
                     SELECT FST_NAM, LST_NAM, ADRS_1, ADRS_2, CITY, STATE, ZIP_COD, CNTRY, PHONE_1
-                    FROM AR_SHIP_ADRS
+                    FROM {Table.CP.customer_ship_addresses}
                     WHERE CUST_NO = '{cust_no}'"""
                     return Database.db.query(query)
 
@@ -467,8 +552,8 @@ class Database:
                     for promo in promotions:
                         query = f"""
                         SELECT TOP 1 GRP.GRP_TYP, GRP.GRP_COD, GRP.GRP_SEQ_NO, GRP.DESCR, GRP.CUST_FILT, GRP.BEG_DAT, 
-                        GRP.END_DAT, GRP.LST_MAINT_DT, GRP.ENABLED, GRP.MIX_MATCH_COD, MW.ID, MW.SHOP_ID
-                        FROM IM_PRC_GRP GRP FULL OUTER JOIN {creds.shopify_discount_table} MW ON GRP.GRP_COD = MW.GRP_COD
+                        GRP.END_DAT, GRP.LST_MAINT_DT, GRP.ENABLED, GRP.MIX_MATCH_COD, MW.SHOP_ID
+                        FROM IM_PRC_GRP GRP FULL OUTER JOIN {Table.Middleware.discounts} MW ON GRP.GRP_COD = MW.GRP_COD
                         WHERE GRP.GRP_COD = '{promo}' and GRP.GRP_TYP = 'P'
                         """
                         response = Database.db.query(query=query)
@@ -490,8 +575,9 @@ class Database:
                     query = f"""
                     SELECT RUL.GRP_TYP, RUL.GRP_COD, RUL.RUL_SEQ_NO, RUL.DESCR, RUL.CUST_FILT, RUL.ITEM_FILT, 
                     RUL.SAL_FILT, RUL.IS_CUSTOM, RUL.USE_BOGO_TWOFER, RUL.REQ_FULL_GRP_FOR_BOGO_TWOFER, 
-                    MW.ID, MW.SHOP_ID
+                    MW.SHOP_ID, GRP.ENABLED, MW.ENABLED, MW.ID
                     FROM IM_PRC_RUL RUL
+					INNER JOIN IM_PRC_GRP GRP on GRP.GRP_COD = RUL.GRP_COD
                     FULL OUTER JOIN SN_PROMO MW on rul.GRP_COD = MW.GRP_COD
                     WHERE RUL.GRP_COD = '{group_code}'
                     """
@@ -503,7 +589,7 @@ class Database:
             def create_tables():
                 tables = {
                     'categories': f"""
-                                            CREATE TABLE {Database.Shopify.category_table} (
+                                            CREATE TABLE {Table.Middleware.collections} (
                                             CATEG_ID int IDENTITY(1,1) PRIMARY KEY,
                                             COLLECTION_ID bigint,
                                             MENU_ID bigint,
@@ -518,7 +604,7 @@ class Database:
                                             );
                                             """,
                     'products': f"""
-                                            CREATE TABLE {Database.Shopify.Product.table} (                                        
+                                            CREATE TABLE {Table.Middleware.products} (                                        
                                             ID int IDENTITY(1,1) PRIMARY KEY,
                                             ITEM_NO varchar(50) NOT NULL,
                                             BINDING_ID varchar(10),
@@ -561,7 +647,7 @@ class Database:
                                             );
                                             """,
                     'images': f"""
-                                            CREATE TABLE {Database.Shopify.image_table} (
+                                            CREATE TABLE {Table.Middleware.images} (
                                             ID int IDENTITY(1,1) PRIMARY KEY,
                                             IMAGE_NAME nvarchar(255) NOT NULL,
                                             ITEM_NO varchar(50),
@@ -580,7 +666,7 @@ class Database:
                                             );
                                             """,
                     'videos': f"""
-                                            CREATE TABLE {Database.Shopify.video_table} (
+                                            CREATE TABLE {Table.Middleware.images} (
                                             ID int IDENTITY(1,1) PRIMARY KEY,
                                             ITEM_NO varchar(50),
                                             URL nvarchar(255),
@@ -596,7 +682,7 @@ class Database:
                                             );
                                             """,
                     'customers': f"""
-                                            CREATE TABLE {Database.Shopify.customer_table} (
+                                            CREATE TABLE {Table.Middleware.customers} (
                                             ID int IDENTITY(1,1) PRIMARY KEY,
                                             CUST_NO varchar(50) NOT NULL,
                                             SHOP_CUST_ID bigint,
@@ -605,29 +691,30 @@ class Database:
                                             );
                                             """,
                     'orders': f"""
-                                            CREATE TABLE {Database.Shopify.order_table} (
+                                            CREATE TABLE {Table.Middleware.orders} (
                                             ID int IDENTITY(1, 1) PRIMARY KEY,
                                             ORDER_NO int NOT NULL,
                                             DOC_ID bigint,
                                             STATUS bit DEFAULT(0)
                                             )""",
                     'gift': f"""
-                                            CREATE TABLE {Database.Shopify.gift_cert_table} (
+                                            CREATE TABLE {Table.Middleware.gift_certificates} (
                                             ID int IDENTITY(1, 1) PRIMARY KEY,
                                             GFC_NO varchar(30) NOT NULL,
                                             BC_GFC_ID int NOT NULL,
                                             LST_MAINT_DT datetime NOT NULL DEFAULT(current_timestamp)
                                             )""",
                     'promo': f""" 
-                                            CREATE TABLE {Database.Shopify.Promotion.table}(
+                                            CREATE TABLE {Table.Middleware.discounts}(
                                             ID int IDENTITY(1,1) PRIMARY KEY,
                                             GRP_COD nvarchar(50) NOT NULL,
                                             RUL_SEQ_NO int,
-                                            SHOP_ID int,
+                                            SHOP_ID bigint,
+                                            ENABLED bit DEFAULT(0),
                                             LST_MAINT_DT datetime NOT NULL DEFAULT(current_timestamp)
                                             );""",
                     'metafields': f""" 
-                                            CREATE TABLE {Database.Shopify.metafield_table}(
+                                            CREATE TABLE {Table.Middleware.metafields}(
                                             META_ID bigint NOT NULL, 
                                             NAME varchar(50) NOT NULL, 
                                             DESCR varchar(255),
@@ -667,23 +754,21 @@ class Database:
             create_tables()
 
         class Customer:
-            table = creds.shopify_customer_table
-
             def get(customer_no=None):
                 if customer_no:
                     query = f"""
-                            SELECT * FROM {Database.Shopify.Customer.table}
+                            SELECT * FROM {Table.Middleware.customers}
                             WHERE CUST_NO = '{customer_no}'
                             """
                 else:
                     query = f"""
-                            SELECT * FROM {Database.Shopify.Customer.table}
+                            SELECT * FROM {Table.Middleware.customers}
                             """
                 return Database.db.query(query)
 
             def get_id(cp_cust_no):
                 query = f"""
-                        SELECT SHOP_CUST_ID FROM {Database.Shopify.Customer.table}
+                        SELECT SHOP_CUST_ID FROM {Table.Middleware.customers}
                         WHERE CUST_NO = '{cp_cust_no}'
                         """
                 response = Database.db.query(query)
@@ -691,7 +776,7 @@ class Database:
 
             def exists(shopify_cust_no):
                 query = f"""
-                        SELECT * FROM {Database.Shopify.Customer.table}
+                        SELECT * FROM {Table.Middleware.customers}
                         WHERE SHOP_CUST_ID = {shopify_cust_no}
                         """
                 return Database.db.query(query)
@@ -707,7 +792,7 @@ class Database:
                 meta_wholesale_price_tier_id=None,
             ):
                 query = f"""
-                        INSERT INTO {Database.Shopify.Customer.table} (CUST_NO, SHOP_CUST_ID, 
+                        INSERT INTO {Table.Middleware.customers} (CUST_NO, SHOP_CUST_ID, 
                         LOY_ACCOUNT, META_CUST_NO, META_CATEG, META_BIR_MTH, META_SPS_BIR_MTH, WH_PRC_TIER)
                         VALUES ('{cp_cust_no}', '{shopify_cust_no}', 
                         {loyalty_point_id if loyalty_point_id else "NULL"}, 
@@ -738,7 +823,7 @@ class Database:
                 meta_wholesale_price_tier_id=None,
             ):
                 query = f"""
-                        UPDATE {Database.Shopify.Customer.table}
+                        UPDATE {Table.Middleware.customers}
                         SET SHOP_CUST_ID = {shopify_cust_no}, 
                         LOY_ACCOUNT = {loyalty_point_id if loyalty_point_id else "NULL"},
                         META_CUST_NO = {meta_cust_no_id if meta_cust_no_id else "NULL"},
@@ -791,7 +876,7 @@ class Database:
             def delete(shopify_cust_no):
                 if not shopify_cust_no:
                     return
-                query = f'DELETE FROM {Database.Shopify.Customer.table} WHERE SHOP_CUST_ID = {shopify_cust_no}'
+                query = f'DELETE FROM {Table.Middleware.customers} WHERE SHOP_CUST_ID = {shopify_cust_no}'
                 response = Database.db.query(query)
                 if response['code'] == 200:
                     Database.logger.success(f'Customer {shopify_cust_no} deleted from Middleware.')
@@ -803,14 +888,12 @@ class Database:
                     raise Exception(error)
 
         class Order:
-            table = creds.shopify_order_table
+            pass
 
         class Collection:
-            table = creds.shopify_collection_table
-
             def get_cp_categ_id(collection_id):
                 query = f"""
-                        SELECT CP_CATEG_ID FROM {creds.shopify_collection_table}
+                        SELECT CP_CATEG_ID FROM {Table.Middleware.collections}
                         WHERE COLLECTION_ID = {collection_id}
                         """
                 response = Database.db.query(query)
@@ -821,7 +904,7 @@ class Database:
 
             def insert(category):
                 query = f"""
-                INSERT INTO {creds.shopify_collection_table}(COLLECTION_ID, MENU_ID, CP_CATEG_ID, CP_PARENT_ID, CATEG_NAME, 
+                INSERT INTO {Table.Middleware.collections}(COLLECTION_ID, MENU_ID, CP_CATEG_ID, CP_PARENT_ID, CATEG_NAME, 
                 SORT_ORDER, DESCRIPTION, IS_VISIBLE, IMG_SIZE, LST_MAINT_DT)
                 VALUES({category.collection_id if category.collection_id else 'NULL'}, 
                 {category.menu_id if category.menu_id else 'NULL'}, {category.cp_categ_id}, 
@@ -840,7 +923,7 @@ class Database:
 
             def update(category):
                 query = f"""
-                UPDATE {creds.shopify_collection_table}
+                UPDATE {Table.Middleware.collections}
                 SET COLLECTION_ID = {category.collection_id if category.collection_id else 'NULL'}, 
                 MENU_ID = {category.menu_id if category.menu_id else 'NULL'},
                 CP_PARENT_ID = {category.cp_parent_id}, CATEG_NAME = '{category.name}',
@@ -866,7 +949,7 @@ class Database:
                     raise Exception('No CP_CATEG_ID provided for deletion.')
 
                 query = f"""
-                        DELETE FROM {creds.shopify_collection_table}
+                        DELETE FROM {Table.Middleware.collections}
                         WHERE CP_CATEG_ID = {cp_categ_id}
                         """
                 response = Database.db.query(query)
@@ -889,10 +972,8 @@ class Database:
                     raise Exception(response['message'])
 
         class Product:
-            table = creds.shopify_product_table
-
             def get_by_category(cp_category=None, cp_subcategory=None):
-                query = f"""SELECT ITEM_NO FROM {Database.Counterpoint.Product.table} 
+                query = f"""SELECT ITEM_NO FROM {Table.CP.items} 
                 WHERE {Column.CP.Product.web_enabled} = 'Y' AND 
                 ({Column.CP.Product.binding_id} IS NULL OR
                 {Column.CP.Product.is_parent} = 'Y') AND 
@@ -920,7 +1001,7 @@ class Database:
             def get_id(item_no=None, binding_id=None, image_id=None, video_id=None, all=False):
                 """Get product ID from SQL using image ID. If not found, return None."""
                 if all:
-                    query = f"""SELECT PRODUCT_ID FROM {Database.Shopify.Product.table} """
+                    query = f"""SELECT PRODUCT_ID FROM {Table.Middleware.products} """
                     prod_id_res = Database.db.query(query)
                     if prod_id_res is not None:
                         return [x[0] for x in prod_id_res]
@@ -929,19 +1010,15 @@ class Database:
 
                 if item_no:
                     product_query = (
-                        f"SELECT PRODUCT_ID FROM {Database.Shopify.Product.table} WHERE ITEM_NO = '{item_no}'"
+                        f"SELECT PRODUCT_ID FROM {Table.Middleware.products} WHERE ITEM_NO = '{item_no}'"
                     )
                 if image_id:
-                    product_query = (
-                        f'SELECT PRODUCT_ID FROM {creds.shopify_image_table} WHERE IMAGE_ID = {image_id}'
-                    )
+                    product_query = f'SELECT PRODUCT_ID FROM {Table.Middleware.images} WHERE IMAGE_ID = {image_id}'
                 if video_id:
-                    product_query = (
-                        f'SELECT PRODUCT_ID FROM {creds.shopify_video_table} WHERE VIDEO_ID = {video_id}'
-                    )
+                    product_query = f'SELECT PRODUCT_ID FROM {Table.Middleware.videos} WHERE VIDEO_ID = {video_id}'
                 if binding_id:
                     product_query = (
-                        f"SELECT PRODUCT_ID FROM {Database.Shopify.Product.table} WHERE BINDING_ID = '{binding_id}'"
+                        f"SELECT PRODUCT_ID FROM {Table.Middleware.products} WHERE BINDING_ID = '{binding_id}'"
                     )
 
                 if product_query:
@@ -956,7 +1033,7 @@ class Database:
             def get_parent_item_no(product_id):
                 if product_id:
                     query = f"""
-                            SELECT ITEM_NO FROM {Database.Shopify.Product.table}
+                            SELECT ITEM_NO FROM {Table.Middleware.products}
                             WHERE PRODUCT_ID = {product_id} AND (BINDING_ID IS NULL OR IS_PARENT = 1)
                             """
                 else:
@@ -972,7 +1049,7 @@ class Database:
             def get_sku(product_id):
                 if product_id:
                     query = f"""
-                            SELECT ITEM_NO FROM {Database.Shopify.Product.table}
+                            SELECT ITEM_NO FROM {Table.Middleware.products}
                             WHERE PRODUCT_ID = {product_id}
                             """
                 else:
@@ -988,7 +1065,7 @@ class Database:
             def get_binding_id(product_id):
                 if product_id:
                     query = f"""
-                            SELECT BINDING_ID FROM {Database.Shopify.Product.table}
+                            SELECT BINDING_ID FROM {Table.Middleware.products}
                             WHERE PRODUCT_ID = {product_id}
                             """
                 else:
@@ -1027,7 +1104,7 @@ class Database:
 
             def delete(product_id):
                 if product_id:
-                    query = f'DELETE FROM {Database.Shopify.Product.table} WHERE PRODUCT_ID = {product_id}'
+                    query = f'DELETE FROM {Table.Middleware.products} WHERE PRODUCT_ID = {product_id}'
                 else:
                     Database.logger.warn('No product ID provided for deletion.')
                     return
@@ -1093,7 +1170,7 @@ class Database:
                         collection_string = None
 
                     insert_query = f"""
-                        INSERT INTO {Database.Shopify.Product.table} (ITEM_NO, BINDING_ID, IS_PARENT, 
+                        INSERT INTO {Table.Middleware.products} (ITEM_NO, BINDING_ID, IS_PARENT, 
                         PRODUCT_ID, VARIANT_ID, INVENTORY_ID, VARIANT_NAME, OPTION_ID, OPTION_VALUE_ID, CATEG_ID, 
                         CF_BOTAN_NAM, CF_PLANT_TYP, CF_HEIGHT, CF_WIDTH, CF_CLIM_ZON, CF_CLIM_ZON_LST,
                         CF_COLOR, CF_SIZE, CF_BLOOM_SEAS, CF_BLOOM_COLOR, CF_LIGHT_REQ, CF_FEATURES, CF_IS_PREORDER, 
@@ -1148,7 +1225,7 @@ class Database:
                         collection_string = None
 
                     update_query = f"""
-                        UPDATE {Database.Shopify.Product.table} 
+                        UPDATE {Table.Middleware.products} 
                         SET ITEM_NO = '{variant.sku}', 
                         BINDING_ID = {f"'{product.binding_id}'" if product.binding_id else 'NULL'}, 
                         IS_PARENT = {1 if variant.is_parent else 0}, 
@@ -1199,7 +1276,7 @@ class Database:
 
                 def delete(variant_id):
                     if variant_id:
-                        query = f'DELETE FROM {Database.Shopify.Product.table} WHERE VARIANT_ID = {variant_id}'
+                        query = f'DELETE FROM {Table.Middleware.products} WHERE VARIANT_ID = {variant_id}'
                     else:
                         Database.logger.warn('No variant ID provided for deletion.')
                         return
@@ -1218,7 +1295,7 @@ class Database:
                             """Return all image ids for a product."""
                             if item_no:
                                 query = f"""
-                                SELECT IMAGE_ID FROM {creds.shopify_image_table}
+                                SELECT IMAGE_ID FROM {Table.Middleware.images}
                                 WHERE ITEM_NO = '{item_no}'
                                 """
                             else:
@@ -1234,7 +1311,7 @@ class Database:
                     Database.Shopify.Product.Media.Video.delete(product_id=product_id)
 
                 class Image:
-                    table = creds.shopify_image_table
+                    table = Table.Middleware.images
 
                     def get(image_id, column=None):
                         if column is None:
@@ -1259,7 +1336,7 @@ class Database:
                     def get_image_id(file_name):
                         if file_name:
                             query = (
-                                f"SELECT IMAGE_ID FROM {creds.shopify_image_table} WHERE IMAGE_NAME = '{file_name}'"
+                                f"SELECT IMAGE_ID FROM {Table.Middleware.images} WHERE IMAGE_NAME = '{file_name}'"
                             )
                         else:
                             Database.logger.warn('No file name provided for image ID lookup.')
@@ -1272,7 +1349,7 @@ class Database:
 
                     def insert(image):
                         img_insert = f"""
-                        INSERT INTO {creds.shopify_image_table} (IMAGE_NAME, ITEM_NO, FILE_PATH,
+                        INSERT INTO {Table.Middleware.images} (IMAGE_NAME, ITEM_NO, FILE_PATH,
                         PRODUCT_ID, IMAGE_ID, THUMBNAIL, IMAGE_NUMBER, SORT_ORDER,
                         IS_BINDING_IMAGE, BINDING_ID, IS_VARIANT_IMAGE, DESCR, SIZE)
                         VALUES (
@@ -1294,7 +1371,7 @@ class Database:
 
                     def update(image):
                         q = f"""
-                        UPDATE {creds.shopify_image_table}
+                        UPDATE {Table.Middleware.images}
                         SET IMAGE_NAME = '{image.name}', ITEM_NO = '{image.sku}', FILE_PATH = '{image.file_path}',
                         PRODUCT_ID = '{image.product_id}', IMAGE_ID = '{image.shopify_id}',
                         THUMBNAIL = '{1 if image.is_thumbnail else 0}', IMAGE_NUMBER = '{image.number}',
@@ -1329,7 +1406,7 @@ class Database:
                             sort_order = Database.Shopify.Product.Media.Image.get(
                                 image_id=image_id, column='SORT_ORDER'
                             )
-                            q = f"DELETE FROM {creds.shopify_image_table} WHERE IMAGE_ID = '{image_id}'"
+                            q = f"DELETE FROM {Table.Middleware.images} WHERE IMAGE_ID = '{image_id}'"
 
                         elif image:
                             # Delete Single Image from Image Object
@@ -1339,11 +1416,11 @@ class Database:
                                 image.shopify_id = Database.Shopify.Product.Media.Image.get_image_id(
                                     filename=image.name
                                 )
-                            q = f"DELETE FROM {creds.shopify_image_table} WHERE IMAGE_ID = '{image.shopify_id}'"
+                            q = f"DELETE FROM {Table.Middleware.images} WHERE IMAGE_ID = '{image.shopify_id}'"
 
                         elif product_id:
                             # Delete All Images from Product ID
-                            q = f"DELETE FROM {creds.shopify_image_table} WHERE PRODUCT_ID = '{product_id}'"
+                            q = f"DELETE FROM {Table.Middleware.images} WHERE PRODUCT_ID = '{product_id}'"
 
                         else:
                             Database.logger.warn('No image or image_id provided for deletion.')
@@ -1355,7 +1432,7 @@ class Database:
                             if (image_id or image) and prod_id:
                                 # Decrement sort order of remaining images
                                 query = f"""
-                                UPDATE {creds.shopify_image_table}
+                                UPDATE {Table.Middleware.images}
                                 SET SORT_ORDER = SORT_ORDER - 1
                                 WHERE PRODUCT_ID = {prod_id} AND SORT_ORDER > {sort_order}
                                 """
@@ -1386,7 +1463,7 @@ class Database:
                             raise Exception(error)
 
                 class Video:
-                    table = creds.shopify_video_table
+                    table = Table.Middleware.videos
 
                     def get(product_id=None, video_id=None, url=None, sku=None, column=None):
                         if column is None:
@@ -1551,15 +1628,13 @@ class Database:
                             raise Exception(response['message'])
 
         class Metafield_Definition:
-            table = creds.shopify_metafield_table
-
             def get(definition_id=None):
                 if definition_id:
                     where_filter = f'WHERE META_ID = {definition_id}'
                 else:
                     where_filter = ''
 
-                query = f'SELECT * FROM {creds.shopify_metafield_table} {where_filter}'
+                query = f'SELECT * FROM {Table.Middleware.metafields} {where_filter}'
                 response = Database.db.query(query)
                 if response is not None:
                     result = {}
@@ -1608,7 +1683,7 @@ class Database:
                     validation_values = ''
 
                 query = f"""
-                        INSERT INTO {creds.shopify_metafield_table} (META_ID, NAME, DESCR, NAME_SPACE, META_KEY, 
+                        INSERT INTO {Table.Middleware.metafields} (META_ID, NAME, DESCR, NAME_SPACE, META_KEY, 
                         TYPE, PIN, PINNED_POS, OWNER_TYPE {validation_columns})
                         VALUES({values['META_ID']}, '{values['NAME']}', '{values['DESCR']}', 
                         '{values['NAME_SPACE']}', '{values['META_KEY']}', '{values['TYPE']}',
@@ -1622,7 +1697,7 @@ class Database:
 
             def update(values):
                 query = f"""
-                        UPDATE {creds.shopify_metafield_table}
+                        UPDATE {Table.Middleware.metafields}
                         SET META_ID = {values['META_ID']},
                         NAME =  '{values['NAME']}',
                         DESCR = '{values['DESCR']}',
@@ -1645,22 +1720,20 @@ class Database:
                     where_filter = f'WHERE META_ID = {definition_id}'
                 else:
                     where_filter = ''
-                query = f'DELETE FROM {creds.shopify_metafield_table} {where_filter}'
+                query = f'DELETE FROM {Table.Middleware.metafields} {where_filter}'
                 response = Database.db.query(query)
                 if response['code'] not in [200, 201]:
                     raise Exception(response['message'])
 
         class Webhook:
-            table = creds.shopify_webhook_table
-
             def get(id='', ids_only=False):
                 if id:
-                    query = f'SELECT * FROM {Database.Shopify.Webhook.table} WHERE HOOK_ID = {id}'
+                    query = f'SELECT * FROM {Table.Middleware.webhooks} WHERE HOOK_ID = {id}'
                     response = Database.db.query(query)
                     if response is not None:
                         return response
                 else:
-                    query = f'SELECT * FROM {Database.Shopify.Webhook.table}'
+                    query = f'SELECT * FROM {Table.Middleware.webhooks}'
                     response = Database.db.query(query)
                     if response is not None:
                         if ids_only:
@@ -1669,7 +1742,7 @@ class Database:
 
             def insert(webhook_data):
                 query = f"""
-                        INSERT INTO {Database.Shopify.Webhook.table} (HOOK_ID, TOPIC, DESTINATION, FORMAT, DOMAIN)
+                        INSERT INTO {Table.Middleware.webhooks} (HOOK_ID, TOPIC, DESTINATION, FORMAT, DOMAIN)
                         VALUES ({webhook_data['HOOK_ID']}, '{webhook_data['TOPIC']}', '{webhook_data['DESTINATION']}', '{webhook_data['FORMAT']}', '{webhook_data['DOMAIN']}')
                         """
                 response = Database.db.query(query)
@@ -1678,7 +1751,7 @@ class Database:
 
             def update(webhook_data):
                 query = f"""
-                        UPDATE {Database.Shopify.Webhook.table}
+                        UPDATE {Table.Middleware.webhooks}
                         SET TOPIC = '{webhook_data['TOPIC']}', 
                         DESTINATION = '{webhook_data['DESTINATION']}', 
                         FORMAT = '{webhook_data['FORMAT']}',
@@ -1691,14 +1764,14 @@ class Database:
 
             def delete(hook_id=None, all=False):
                 if all:
-                    response = Database.db.query(f'DELETE FROM {Database.Shopify.Webhook.table}')
+                    response = Database.db.query(f'DELETE FROM {Table.Middleware.webhooks}')
                     if response['code'] != 200:
                         raise Exception(response['message'])
                     else:
                         return 'All webhooks deleted'
                 elif hook_id:
                     response = Database.db.query(
-                        f'DELETE FROM {Database.Shopify.Webhook.table} WHERE HOOK_ID = {hook_id}'
+                        f'DELETE FROM {Table.Middleware.webhooks} WHERE HOOK_ID = {hook_id}'
                     )
                     if response['code'] != 200:
                         raise Exception(response['message'])
@@ -1706,10 +1779,11 @@ class Database:
                         return f'Webhook {hook_id} deleted'
 
         class Discount:
-            table = creds.shopify_discount_table
-
-            def get():
-                query = f'SELECT GRP_COD FROM {Database.Shopify.Discount.table}'
+            def get(group_code=None):
+                if group_code:
+                    query = f"SELECT SHOP_ID FROM {Table.Middleware.discounts} WHERE GRP_COD = '{group_code}'"
+                else:
+                    query = f'SELECT GRP_COD FROM {Table.Middleware.discounts}'
                 response = Database.db.query(query)
                 return [x[0] for x in response] if response else None
 
@@ -1723,30 +1797,41 @@ class Database:
                 """Insert a new discount rule into the Middleware."""
                 query = f"""
                 INSERT INTO SN_PROMO(GRP_COD, RUL_SEQ_NO, SHOP_ID, ENABLED)
-                VALUES('{rule.grp_cod}', {rule.shopify_id}, {1 if rule.enabled else 0})
+                VALUES('{rule.grp_cod}', {rule.seq_no},{rule.shopify_id}, {1 if rule.is_enabled_cp else 0})
                 """
                 response = Database.db.query(query)
                 if response['code'] == 200:
-                    Database.logger.success(f'Promotion {rule.grp_cod} inserted successfully.')
+                    Database.logger.success(
+                        f'Promotion {rule.grp_cod}-Rule: {rule.seq_no} inserted successfully into Middleware.'
+                    )
                 else:
                     Database.error_handler.add_error_v(
-                        error=f'Error: {response["code"]}\n' f'{response["message"]}', origin='Promotion Insertion'
+                        error=f'Error: {response["code"]}\n\nQuery: {query}\n\nResponse:{response["message"]}',
+                        origin='Middleware Promotion Insertion',
                     )
 
             def update(rule):
                 query = f"""
                 UPDATE SN_PROMO
-                SET SHOP_ID = {rule.shopify_id}, ENABLED = {1 if rule.enabled else 0}, LST_MAINT_DT = GETDATE()
+                SET RUL_SEQ_NO = {rule.seq_no},
+                SHOP_ID = {rule.shopify_id}, 
+                ENABLED = {1 if rule.is_enabled_cp else 0}, 
+                LST_MAINT_DT = GETDATE()
                 WHERE GRP_COD = '{rule.grp_cod}'
                 """
                 response = Database.db.query(query)
                 if response['code'] == 200:
-                    Database.logger.success(f'Promotion {rule.grp_cod} updated successfully.')
+                    Database.logger.success(
+                        f'Promotion {rule.grp_cod}-Rule: {rule.seq_no} updated successfully in Middleware.'
+                    )
                 elif response['code'] == 201:
-                    Database.logger.warn(f'Promotion {rule.grp_cod} not found for update.')
+                    Database.logger.warn(
+                        f'Promotion {rule.grp_cod}-Rule: {rule.seq_no} not found for update in Middleware.'
+                    )
                 else:
                     Database.error_handler.add_error_v(
-                        error=f'Error: {response["code"]}\n' f'{response["message"]}', origin='Promotion Update'
+                        error=f'Error: {response["code"]}\n\nQuery: {query}\n\nResponse:{response["message"]}',
+                        origin='Middleware Promotion Update',
                     )
 
             def delete(shopify_id):
@@ -1757,17 +1842,67 @@ class Database:
                 response = Database.db.query(query)
 
                 if response['code'] == 200:
-                    Database.logger.success(f'Promotion {shopify_id} deleted successfully.')
+                    Database.logger.success(f'DELETE: Promotion {shopify_id} deleted successfully from Middleware.')
                 elif response['code'] == 201:
-                    Database.logger.warn(f'Promotion {shopify_id} not found for deletion.')
+                    Database.logger.warn(f'DELETE: Promotion {shopify_id} not found in Middleware.')
                 else:
                     Database.error_handler.add_error_v(
-                        error=f'Error: {response["code"]}\n' f'{response["message"]}', origin='Promotion Deletion'
+                        error=f'Error: {response["code"]}\n\nQuery: {query}\n\nResponse:{response["message"]}',
+                        origin='Middleware Promotion Deletion',
                     )
 
+            class Line:
+                def get(shopify_id):
+                    if not shopify_id:
+                        Database.logger.warn('No Shopify ID provided for line item lookup.')
+                        return
+                    query = f'SELECT ITEM_NO FROM {Table.Middleware.discount_lines} WHERE SHOP_ID = {shopify_id}'
+                    response = Database.db.query(query)
+                    return [x[0] for x in response] if response else None
+
+                def insert(items):
+                    """Insert Items affected by BOGO promos into middleware."""
+                    if not items:
+                        Database.logger.warn('No items provided for insertion.')
+                        return
+                    for i in items:
+                        query = f"""
+                        INSERT INTO {Table.Middleware.discount_lines} (SHOP_ID, ITEM_NO)
+                        VALUES ({i['shopify_id']}, '{i['sku']}')"""
+                        response = Database.db.query(query)
+                        if response['code'] == 200:
+                            Database.logger.success(f'Promotion {i} inserted successfully into Middleware.')
+                        else:
+                            Database.error_handler.add_error_v(
+                                error=f'Error: {response["code"]}\n\nQuery: {query}\n\nResponse:{response["message"]}',
+                                origin='Middleware Promotion Line Item Insertion',
+                            )
+
+                def delete(shopify_ids):
+                    if not shopify_ids:
+                        Database.logger.warn('No Shopify IDs provided for deletion.')
+                        return
+                    if len(shopify_ids) == 1:
+                        where_filter = f'SHOP_ID = {shopify_ids[0]}'
+                    else:
+                        where_filter = f'SHOP_ID IN {tuple(shopify_ids)}'
+                    query = f'DELETE FROM {Table.Middleware.discount_lines} WHERE {where_filter}'
+                    response = Database.db.query(query)
+                    if response['code'] == 200:
+                        Database.logger.success(
+                            f'DELETE: Promotion {shopify_ids} deleted successfully from Middleware.'
+                        )
+                    elif response['code'] == 201:
+                        Database.logger.warn(f'DELETE: Promotion {shopify_ids} not found in Middleware.')
+                    else:
+                        Database.error_handler.add_error_v(
+                            error=f'Error: {response["code"]}\n\nQuery: {query}\n\nResponse:{response["message"]}',
+                            origin='Middleware Promotion Line Item Deletion',
+                        )
+
         class Gift_Certificate:
-            table = creds.shopify_gift_cert_table
+            pass
 
 
 if __name__ == '__main__':
-    print(Database.Shopify.Discount.get())
+    print(Database.Shopify.Discount.get('TEST'))
