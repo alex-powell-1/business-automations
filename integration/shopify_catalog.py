@@ -53,7 +53,7 @@ class Catalog:
         counterpoint_items = db.query(f"SELECT ITEM_NO FROM {Table.CP.items} WHERE IS_ECOMM_ITEM = 'Y'")
         self.cp_items = [x[0] for x in counterpoint_items] if counterpoint_items else []
 
-        middleware_items = db.query(f'SELECT ITEM_NO FROM {creds.shopify_product_table}')
+        middleware_items = db.query(f'SELECT ITEM_NO FROM {Table.Middleware.products}')
         self.mw_items = [x[0] for x in middleware_items] if middleware_items else []
 
     def get_sync_queue(self, test_mode=False):
@@ -162,7 +162,7 @@ class Catalog:
                 for member in family_members:
                     query = f"""
                     SELECT ID, BINDING_ID
-                    FROM {creds.shopify_product_table}
+                    FROM {Table.Middleware.products}
                     WHERE ITEM_NO = '{member}'
                     """
                     response = db.query(query)
@@ -386,7 +386,7 @@ class Catalog:
 
         def delete_products():
             # Get all product IDs from Middleware
-            query = f'SELECT DISTINCT PRODUCT_ID FROM {creds.shopify_product_table}'
+            query = f'SELECT DISTINCT PRODUCT_ID FROM {Table.Middleware.products}'
             response = db.query(query)
             product_id_list = [x[0] for x in response] if response else []
 
@@ -408,7 +408,7 @@ class Catalog:
 
         def delete_collections():
             # Get all categories from Middleware. Delete from Shopify and Middleware.
-            query = f'SELECT DISTINCT COLLECTION_ID FROM {creds.shopify_collection_table}'
+            query = f'SELECT DISTINCT COLLECTION_ID FROM {Table.Middleware.collections}'
             response = db.query(query)
             parent_category_list = [x[0] for x in response] if response else []
             while parent_category_list:
@@ -490,7 +490,7 @@ class Catalog:
             SELECT cp.CATEG_ID, ISNULL(cp.PARENT_ID, 0), mw.COLLECTION_ID, mw.MENU_ID, cp.DESCR, cp.DISP_SEQ_NO, cp.HTML_DESCR, 
             cp.LST_MAINT_DT, mw.CP_CATEG_ID, mw.is_visible, mw.IMG_SIZE
             FROM EC_CATEG cp
-            FULL OUTER JOIN {creds.shopify_collection_table} mw on cp.CATEG_ID=mw.CP_CATEG_ID
+            FULL OUTER JOIN {Table.Middleware.collections} mw on cp.CATEG_ID=mw.CP_CATEG_ID
             """
             response = db.query(query)
             if response:
@@ -651,7 +651,7 @@ class Catalog:
             Catalog.logger.info(f'Deleting Category: {cp_categ_id}')
             query = f"""
             SELECT COLLECTION_ID
-            FROM {creds.shopify_collection_table}
+            FROM {Table.Middleware.collections}
             WHERE CP_CATEG_ID = {cp_categ_id}
             """
             response = db.query(query)
@@ -716,7 +716,7 @@ class Catalog:
             def get_shopify_cat_id(self):
                 query = f"""
                 SELECT COLLECTION_ID
-                FROM {creds.shopify_collection_table}
+                FROM {Table.Middleware.collections}
                 WHERE CP_CATEG_ID = {self.cp_categ_id}
                 """
                 response = db.query(query)
@@ -732,9 +732,9 @@ class Catalog:
             def get_shopify_parent_id(self):
                 query = f"""
                 SELECT COLLECTION_ID
-                FROM {creds.shopify_collection_table}
+                FROM {Table.Middleware.collections}
                 WHERE CP_CATEG_ID = (SELECT CP_PARENT_ID 
-                                    FROM {creds.shopify_collection_table} 
+                                    FROM {Table.Middleware.collections} 
                                     WHERE CP_CATEG_ID = {self.cp_categ_id})
                 """
                 response = db.query(query)
@@ -745,7 +745,7 @@ class Catalog:
                 url_path = []
                 url_path.append(parse_custom_url(self.name))
                 while parent_id != 0:
-                    query = f'SELECT CATEG_NAME, CP_PARENT_ID FROM {creds.shopify_collection_table} WHERE CP_CATEG_ID = {parent_id}'
+                    query = f'SELECT CATEG_NAME, CP_PARENT_ID FROM {Table.Middleware.collections} WHERE CP_CATEG_ID = {parent_id}'
                     response = db.query(query)
                     if response:
                         url_path.append(parse_custom_url(response[0][0] or ''))
@@ -1523,7 +1523,7 @@ class Catalog:
                     except Exception as e:
                         Catalog.error_handler.add_error_v(f'Error deleting metafield: {e}')
                         query = f"""
-                        UPDATE {creds.shopify_product_table}
+                        UPDATE {Table.Middleware.products}
                         SET {creds.meta_color} = NULL
                         WHERE PRODUCT_ID = {self.product_id}
                         """
@@ -1548,7 +1548,7 @@ class Catalog:
                     except Exception as e:
                         Catalog.error_handler.add_error_v(f'Error deleting metafield: {e}')
                         query = f"""
-                        UPDATE {creds.shopify_product_table}
+                        UPDATE {Table.Middleware.products}
                         SET {creds.meta_bloom_color} = NULL
                         WHERE PRODUCT_ID = {self.product_id}
                         """
@@ -2142,7 +2142,7 @@ class Catalog:
                     # Get Collection ID from Middleware Category ID
                     q = f"""
                         SELECT COLLECTION_ID 
-                        FROM {creds.shopify_collection_table}
+                        FROM {Table.Middleware.collections}
                         WHERE CP_CATEG_ID = '{category}'
                         """
                     response = db.query(q)
@@ -2278,7 +2278,7 @@ class Catalog:
             """Check if this product is a parent product."""
             query = f"""
             SELECT IS_PARENT
-            FROM {creds.shopify_product_table}
+            FROM {Table.Middleware.products}
             WHERE ITEM_NO = '{sku}'
             """
             response = db.query(query)
@@ -2301,7 +2301,7 @@ class Catalog:
             if binding_id is None:
                 return True
             query = f"""SELECT COUNT(*) 
-            FROM {creds.shopify_product_table} 
+            FROM {Table.Middleware.products} 
             WHERE BINDING_ID = '{binding_id}'"""
             response = db.query(query)
             if response is not None:
@@ -2323,7 +2323,7 @@ class Catalog:
 
         @staticmethod
         def get_product_id(sku):
-            query = f"SELECT PRODUCT_ID FROM {creds.shopify_product_table} WHERE ITEM_NO = '{sku}'"
+            query = f"SELECT PRODUCT_ID FROM {Table.Middleware.products} WHERE ITEM_NO = '{sku}'"
             response = db.query(query)
             return response[0][0] if response is not None else None
 
@@ -2332,7 +2332,7 @@ class Catalog:
             if middleware:
                 query = f"""
                 SELECT BINDING_ID
-                FROM {creds.shopify_product_table}
+                FROM {Table.Middleware.products}
                 WHERE ITEM_NO = '{sku}'
                 """
             else:
@@ -2392,7 +2392,7 @@ class Catalog:
             if count:
                 query = f"""
                 SELECT COUNT(ITEM_NO)
-                FROM {creds.shopify_product_table}
+                FROM {Table.Middleware.products}
                 WHERE BINDING_ID = '{binding_id}'
                 """
                 response = db.query(query)
@@ -2434,7 +2434,7 @@ class Catalog:
                 else:
                     query = f"""
                     SELECT ITEM_NO
-                    FROM {creds.shopify_product_table}
+                    FROM {Table.Middleware.products}
                     WHERE BINDING_ID = '{binding_id}'
                     """
                     response = db.query(query)
@@ -2923,7 +2923,7 @@ class Catalog:
                 LEFT OUTER JOIN IM_PRC PRC ON ITEM.ITEM_NO=PRC.ITEM_NO
                 LEFT OUTER JOIN IM_INV INV ON ITEM.ITEM_NO=INV.ITEM_NO
                 LEFT OUTER JOIN EC_ITEM_DESCR ON ITEM.ITEM_NO=EC_ITEM_DESCR.ITEM_NO
-                LEFT OUTER JOIN  {creds.shopify_product_table} MW ON ITEM.ITEM_NO=MW.ITEM_NO
+                LEFT OUTER JOIN  {Table.Middleware.products} MW ON ITEM.ITEM_NO=MW.ITEM_NO
                 LEFT OUTER JOIN IM_ITEM_PROF_COD COD ON ITEM.PROF_COD_1 = COD.PROF_COD
                 WHERE ITEM.ITEM_NO = '{self.sku}'"""
 
@@ -3168,7 +3168,7 @@ class Catalog:
 
             def get_image_details(self):
                 """Get image details from SQL"""
-                query = f"SELECT * FROM {creds.shopify_image_table} WHERE IMAGE_NAME = '{self.name}'"
+                query = f"SELECT * FROM {Table.Middleware.images} WHERE IMAGE_NAME = '{self.name}'"
                 response = db.query(query)
                 if response is not None:
                     self.db_id = response[0][0]
@@ -3429,7 +3429,7 @@ class Catalog:
 
             def get_video_details(self):
                 query = (
-                    f"SELECT * FROM {creds.shopify_video_table} WHERE URL = '{self.url}' and ITEM_NO = '{self.sku}'"
+                    f"SELECT * FROM {Table.Middleware.videos} WHERE URL = '{self.url}' and ITEM_NO = '{self.sku}'"
                 )
                 response = db.query(query)
                 if response is not None:
