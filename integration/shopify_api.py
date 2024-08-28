@@ -11,7 +11,7 @@ from traceback import print_exc as tb
 from setup.utilities import PhoneNumber
 
 
-verbose_print = True
+verbose_print = False
 
 
 class Shopify:
@@ -347,6 +347,16 @@ class Shopify:
             if shippingCost > 0:
                 shopify_products.append(create_shipping_item())
 
+            def get_phone():
+                try:
+                    return PhoneNumber(
+                        billing['phone']
+                        or snode['customer']['phone']
+                        or ((snode['shippingAddress'] or {'phone': None})['phone'])
+                    ).to_cp()
+                except:
+                    return None
+
             bc_order = {
                 'id': snode['name'],
                 'customer_id': snode['customer']['id'],
@@ -359,16 +369,9 @@ class Shopify:
                 'total_ex_tax': total,
                 'total_inc_tax': total,
                 'items_total': snode['subtotalLineItemsQuantity'],
-                'items_shipped': 0,  # TODO: Add items shipped
-                'payment_method': None,  # TODO: Add payment method
                 'payment_status': snode['displayFinancialStatus'],
-                'refunded_amount': '0.0000',  # TODO: Add refunded amount
-                'store_credit_amount': get_store_credit_amount(),  # TODO: Add store credit amount
-                'gift_certificate_amount': '0.0000',  # TODO: Add gift certificate amount
+                'store_credit_amount': get_store_credit_amount(),
                 'customer_message': snode['note'],
-                'discount_amount': '0.0000',  # TODO: Add discount amount
-                'coupon_discount': '0.0000',  # TODO: Add coupon discount
-                'shipping_address_count': 1,  # TODO: Add shipping address count
                 'billing_address': {
                     'first_name': billing['firstName'],
                     'last_name': billing['lastName'],
@@ -379,7 +382,7 @@ class Shopify:
                     'state': billing['province'],
                     'zip': billing['zip'],
                     'country': billing['country'],
-                    'phone': billing['phone'] or PhoneNumber(snode['customer']['phone']).to_cp(),
+                    'phone': get_phone(),
                     'email': snode['email'] or snode['customer']['email'],
                 },
                 'products': {'url': shopify_products},
@@ -395,7 +398,7 @@ class Shopify:
                             'state': (snode['shippingAddress'] or {'province': None})['province'],
                             'zip': (snode['shippingAddress'] or {'zip': None})['zip'],
                             'country': (snode['shippingAddress'] or {'country': None})['country'],
-                            'phone': (snode['shippingAddress'] or {'phone': None})['phone'],
+                            'phone': (snode['shippingAddress'] or {'phone': None})['phone'] or get_phone(),
                             'email': snode['email'],
                         }
                     ]
@@ -2003,6 +2006,7 @@ class Shopify:
                     variables={'id': f'{Shopify.Discount.Automatic.prefix}{discount_id}'},
                     operation_name='discountAutomaticDelete',
                 )
+                Shopify.logger.success(f'Discount ID: {discount_id} deleted on Shopify')
                 return response.data
 
             class Bxgy:
@@ -2015,9 +2019,11 @@ class Shopify:
                         variables=variables,
                         operation_name='discountAutomaticBxgyCreate',
                     )
-                    return response.data['discountAutomaticBxgyCreate']['automaticDiscountNode']['id'].split('/')[
-                        -1
-                    ]
+                    promotion_id = response.data['discountAutomaticBxgyCreate']['automaticDiscountNode'][
+                        'id'
+                    ].split('/')[-1]
+                    Shopify.logger.success(f'Promotion ID: {promotion_id} created on Shopify')
+                    return promotion_id
 
                 def update(variables):
                     if not variables:
@@ -2027,6 +2033,10 @@ class Shopify:
                         variables=variables,
                         operation_name='discountAutomaticBxgyUpdate',
                     )
+                    promotion_id = response.data['discountAutomaticBxgyUpdate']['automaticDiscountNode'][
+                        'id'
+                    ].split('/')[-1]
+                    Shopify.logger.success(f'Promotion ID: {promotion_id} updated on Shopify')
                     return response.data
 
 

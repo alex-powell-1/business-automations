@@ -11,7 +11,7 @@ from PIL import Image, ImageOps
 from integration.database import Database
 
 from setup import creds
-from setup.creds import Column
+from setup.creds import Column, Table
 from setup.query_engine import QueryEngine as db
 from setup.utilities import get_all_binding_ids, get_product_images, convert_to_utc, parse_custom_url, get_filesize
 
@@ -50,12 +50,10 @@ class Catalog:
 
     def get_products(self):
         # Get data for self.cp_items and self.mw_items
-        counterpoint_items = db.query(
-            f"SELECT ITEM_NO FROM {Database.Counterpoint.Product.table} WHERE IS_ECOMM_ITEM = 'Y'"
-        )
+        counterpoint_items = db.query(f"SELECT ITEM_NO FROM {Table.CP.items} WHERE IS_ECOMM_ITEM = 'Y'")
         self.cp_items = [x[0] for x in counterpoint_items] if counterpoint_items else []
 
-        middleware_items = db.query(f'SELECT ITEM_NO FROM {creds.shopify_product_table}')
+        middleware_items = db.query(f'SELECT ITEM_NO FROM {Table.Middleware.products}')
         self.mw_items = [x[0] for x in middleware_items] if middleware_items else []
 
     def get_sync_queue(self, test_mode=False):
@@ -65,7 +63,7 @@ class Catalog:
         if self.inventory_only:
             query = f"""
             SELECT ITEM.ITEM_NO, ITEM.{Column.CP.Product.binding_id} as 'Binding ID'
-            FROM {Database.Counterpoint.Product.table} ITEM
+            FROM {Table.CP.items} ITEM
             INNER JOIN IM_INV INV on ITEM.ITEM_NO = INV.ITEM_NO
             WHERE INV.LST_MAINT_DT > '{self.last_sync: %Y-%m-%d %H:%M:%S}' and
             ITEM.{Column.CP.Product.web_enabled} = 'Y'
@@ -73,7 +71,7 @@ class Catalog:
         else:
             query = f"""
             SELECT ITEM_NO, ITEM.{Column.CP.Product.binding_id} as 'Binding ID'
-            FROM {Database.Counterpoint.Product.table} ITEM
+            FROM {Table.CP.items} ITEM
             WHERE ITEM.LST_MAINT_DT > '{self.last_sync: %Y-%m-%d %H:%M:%S}' and
             ITEM.{Column.CP.Product.web_enabled} = 'Y'
             ORDER BY {Column.CP.Product.binding_id} DESC
@@ -98,7 +96,7 @@ class Catalog:
                         # Get Parent to Process.
                         query = f"""
                         SELECT ITEM_NO
-                        FROM {Database.Counterpoint.Product.table}
+                        FROM {Table.CP.items}
                         WHERE {Column.CP.Product.binding_id} = '{binding_id}' AND 
                         {Column.CP.Product.web_enabled} = 'Y' 
                         AND {Column.CP.Product.is_parent} = 'Y'"""
@@ -164,7 +162,7 @@ class Catalog:
                 for member in family_members:
                     query = f"""
                     SELECT ID, BINDING_ID
-                    FROM {creds.shopify_product_table}
+                    FROM {Table.Middleware.products}
                     WHERE ITEM_NO = '{member}'
                     """
                     response = db.query(query)
@@ -260,7 +258,7 @@ class Catalog:
                 else:
                     where_filter = ''
                 query = f"""
-                    UPDATE {Database.Counterpoint.Product.table}
+                    UPDATE {Table.CP.items}
                     SET LST_MAINT_DT = GETDATE()
                     WHERE (ITEM_NO in {sku_list} {where_filter}) AND 
                     {Column.CP.Product.web_enabled} = 'Y'"""
@@ -388,7 +386,7 @@ class Catalog:
 
         def delete_products():
             # Get all product IDs from Middleware
-            query = f'SELECT DISTINCT PRODUCT_ID FROM {creds.shopify_product_table}'
+            query = f'SELECT DISTINCT PRODUCT_ID FROM {Table.Middleware.products}'
             response = db.query(query)
             product_id_list = [x[0] for x in response] if response else []
 
@@ -410,7 +408,7 @@ class Catalog:
 
         def delete_collections():
             # Get all categories from Middleware. Delete from Shopify and Middleware.
-            query = f'SELECT DISTINCT COLLECTION_ID FROM {creds.shopify_collection_table}'
+            query = f'SELECT DISTINCT COLLECTION_ID FROM {Table.Middleware.collections}'
             response = db.query(query)
             parent_category_list = [x[0] for x in response] if response else []
             while parent_category_list:
@@ -492,7 +490,7 @@ class Catalog:
             SELECT cp.CATEG_ID, ISNULL(cp.PARENT_ID, 0), mw.COLLECTION_ID, mw.MENU_ID, cp.DESCR, cp.DISP_SEQ_NO, cp.HTML_DESCR, 
             cp.LST_MAINT_DT, mw.CP_CATEG_ID, mw.is_visible, mw.IMG_SIZE
             FROM EC_CATEG cp
-            FULL OUTER JOIN {creds.shopify_collection_table} mw on cp.CATEG_ID=mw.CP_CATEG_ID
+            FULL OUTER JOIN {Table.Middleware.collections} mw on cp.CATEG_ID=mw.CP_CATEG_ID
             """
             response = db.query(query)
             if response:
@@ -653,7 +651,7 @@ class Catalog:
             Catalog.logger.info(f'Deleting Category: {cp_categ_id}')
             query = f"""
             SELECT COLLECTION_ID
-            FROM {creds.shopify_collection_table}
+            FROM {Table.Middleware.collections}
             WHERE CP_CATEG_ID = {cp_categ_id}
             """
             response = db.query(query)
@@ -718,7 +716,7 @@ class Catalog:
             def get_shopify_cat_id(self):
                 query = f"""
                 SELECT COLLECTION_ID
-                FROM {creds.shopify_collection_table}
+                FROM {Table.Middleware.collections}
                 WHERE CP_CATEG_ID = {self.cp_categ_id}
                 """
                 response = db.query(query)
@@ -734,9 +732,9 @@ class Catalog:
             def get_shopify_parent_id(self):
                 query = f"""
                 SELECT COLLECTION_ID
-                FROM {creds.shopify_collection_table}
+                FROM {Table.Middleware.collections}
                 WHERE CP_CATEG_ID = (SELECT CP_PARENT_ID 
-                                    FROM {creds.shopify_collection_table} 
+                                    FROM {Table.Middleware.collections} 
                                     WHERE CP_CATEG_ID = {self.cp_categ_id})
                 """
                 response = db.query(query)
@@ -747,7 +745,7 @@ class Catalog:
                 url_path = []
                 url_path.append(parse_custom_url(self.name))
                 while parent_id != 0:
-                    query = f'SELECT CATEG_NAME, CP_PARENT_ID FROM {creds.shopify_collection_table} WHERE CP_CATEG_ID = {parent_id}'
+                    query = f'SELECT CATEG_NAME, CP_PARENT_ID FROM {Table.Middleware.collections} WHERE CP_CATEG_ID = {parent_id}'
                     response = db.query(query)
                     if response:
                         url_path.append(parse_custom_url(response[0][0] or ''))
@@ -900,7 +898,7 @@ class Catalog:
 
                 query = f"""
                 SELECT ITEM_NO
-                FROM {Database.Counterpoint.Product.table}
+                FROM {Table.CP.items}
                 WHERE {Column.CP.Product.binding_id} = '{self.binding_id}' and IS_ECOMM_ITEM = 'Y'
                 ORDER BY PRC_1
                 """
@@ -1139,7 +1137,7 @@ class Catalog:
                 target_item = min(self.variants, key=lambda x: x.price_1).sku
 
                 query = f"""
-                UPDATE {Database.Counterpoint.Product.table}
+                UPDATE {Table.CP.items}
                 SET {Column.CP.Product.is_parent} = '{flag}', LST_MAINT_DT = GETDATE()
                 WHERE ITEM_NO = '{target_item}'
                 """
@@ -1183,14 +1181,14 @@ class Catalog:
                         if self.is_bound:
                             # Bound product: use binding key and parent variant
                             query = f"""
-                            UPDATE {Database.Counterpoint.Product.table}
+                            UPDATE {Table.CP.items}
                             SET {Column.CP.Product.web_title} = '{self.long_descr}'
                             WHERE {Column.CP.Product.binding_id} = '{self.binding_id}' and {Column.CP.Product.is_parent} = 'Y'"""
 
                         # Single Product use sku
                         else:
                             query = f"""
-                            UPDATE {Database.Counterpoint.Product.table}
+                            UPDATE {Table.CP.items}
                             SET {Column.CP.Product.web_title} = '{self.long_descr}'
                             WHERE ITEM_NO = '{self.sku}'"""
 
@@ -1204,13 +1202,13 @@ class Catalog:
                         # For bound products, look for matching web titles OUTSIDE of the current binding id
                         query = f"""
                         SELECT COUNT(ITEM_NO)
-                        FROM {Database.Counterpoint.Product.table}
+                        FROM {Table.CP.items}
                         WHERE {Column.CP.Product.web_title} = '{self.web_title.replace("'", "''")}' AND {Column.CP.Product.binding_id} != '{self.binding_id}' AND IS_ECOMM_ITEM = 'Y'"""
 
                     else:
                         query = f"""
                         SELECT COUNT(ITEM_NO)
-                        FROM {Database.Counterpoint.Product.table}
+                        FROM {Table.CP.items}
                         WHERE {Column.CP.Product.web_title} = '{self.web_title.replace("'", "''")}' AND IS_ECOMM_ITEM = 'Y'"""
 
                     response = db.query(query)
@@ -1232,7 +1230,7 @@ class Catalog:
                             if self.is_bound:
                                 # Update Parent Variant
                                 query = f"""
-                                UPDATE {Database.Counterpoint.Product.table}
+                                UPDATE {Table.CP.items}
                                 SET {Column.CP.Product.web_title} = '{self.web_title.replace("'", "''")}'
                                 WHERE {Column.CP.Product.binding_id} = '{self.binding_id}' and {Column.CP.Product.is_parent} = 'Y'
                                 
@@ -1240,7 +1238,7 @@ class Catalog:
                             else:
                                 # Update Single Product
                                 query = f"""
-                                UPDATE {Database.Counterpoint.Product.table}
+                                UPDATE {Table.CP.items}
                                 SET {Column.CP.Product.web_title} = '{self.web_title.replace("'", "''")}'
                                 WHERE ITEM_NO = '{self.sku}'"""
                             db.query(query)
@@ -1297,7 +1295,7 @@ class Catalog:
                                 )
                                 child.web_title = ''
                                 query = f"""
-                                UPDATE {Database.Counterpoint.Product.table}
+                                UPDATE {Table.CP.items}
                                 SET {Column.CP.Product.web_title} = NULL
                                 WHERE ITEM_NO = '{child.sku}'"""
                                 db.query(query)
@@ -1525,7 +1523,7 @@ class Catalog:
                     except Exception as e:
                         Catalog.error_handler.add_error_v(f'Error deleting metafield: {e}')
                         query = f"""
-                        UPDATE {creds.shopify_product_table}
+                        UPDATE {Table.Middleware.products}
                         SET {creds.meta_color} = NULL
                         WHERE PRODUCT_ID = {self.product_id}
                         """
@@ -1550,7 +1548,7 @@ class Catalog:
                     except Exception as e:
                         Catalog.error_handler.add_error_v(f'Error deleting metafield: {e}')
                         query = f"""
-                        UPDATE {creds.shopify_product_table}
+                        UPDATE {Table.Middleware.products}
                         SET {creds.meta_bloom_color} = NULL
                         WHERE PRODUCT_ID = {self.product_id}
                         """
@@ -2144,7 +2142,7 @@ class Catalog:
                     # Get Collection ID from Middleware Category ID
                     q = f"""
                         SELECT COLLECTION_ID 
-                        FROM {creds.shopify_collection_table}
+                        FROM {Table.Middleware.collections}
                         WHERE CP_CATEG_ID = '{category}'
                         """
                     response = db.query(q)
@@ -2280,7 +2278,7 @@ class Catalog:
             """Check if this product is a parent product."""
             query = f"""
             SELECT IS_PARENT
-            FROM {creds.shopify_product_table}
+            FROM {Table.Middleware.products}
             WHERE ITEM_NO = '{sku}'
             """
             response = db.query(query)
@@ -2291,7 +2289,7 @@ class Catalog:
             print('Entering Remove Parent Function of Product Class')
             """Remove parent status from all children"""
             query = f"""
-                    UPDATE {Database.Counterpoint.Product.table} 
+                    UPDATE {Table.CP.items} 
                     SET {Column.CP.Product.is_parent} = 'N', LST_MAINT_DT = GETDATE()
                     WHERE {Column.CP.Product.binding_id} = '{self.binding_id}'
                     """
@@ -2303,7 +2301,7 @@ class Catalog:
             if binding_id is None:
                 return True
             query = f"""SELECT COUNT(*) 
-            FROM {creds.shopify_product_table} 
+            FROM {Table.Middleware.products} 
             WHERE BINDING_ID = '{binding_id}'"""
             response = db.query(query)
             if response is not None:
@@ -2314,7 +2312,7 @@ class Catalog:
             binding_ids = set()
             query = f"""
             SELECT {Column.CP.Product.binding_id}
-            FROM {Database.Counterpoint.Product.table}
+            FROM {Table.CP.items}
             WHERE {Column.CP.Product.binding_id} IS NOT NULL
             """
             response = db.query(query)
@@ -2325,7 +2323,7 @@ class Catalog:
 
         @staticmethod
         def get_product_id(sku):
-            query = f"SELECT PRODUCT_ID FROM {creds.shopify_product_table} WHERE ITEM_NO = '{sku}'"
+            query = f"SELECT PRODUCT_ID FROM {Table.Middleware.products} WHERE ITEM_NO = '{sku}'"
             response = db.query(query)
             return response[0][0] if response is not None else None
 
@@ -2334,13 +2332,13 @@ class Catalog:
             if middleware:
                 query = f"""
                 SELECT BINDING_ID
-                FROM {creds.shopify_product_table}
+                FROM {Table.Middleware.products}
                 WHERE ITEM_NO = '{sku}'
                 """
             else:
                 query = f"""
                 SELECT {Column.CP.Product.binding_id}
-                FROM {Database.Counterpoint.Product.table}
+                FROM {Table.CP.items}
                 WHERE ITEM_NO = '{sku}'
                 """
             response = db.query(query)
@@ -2357,7 +2355,7 @@ class Catalog:
             if remove_current:
                 # Remove Parent Status from all children.
                 remove_parent_query = f"""
-                        UPDATE {Database.Counterpoint.Product.table} 
+                        UPDATE {Table.CP.items} 
                         SET {Column.CP.Product.is_parent} = 'N', 
                         LST_MAINT_DT = GETDATE()
                         WHERE {Column.CP.Product.binding_id} = '{binding_id}'
@@ -2372,7 +2370,7 @@ class Catalog:
 
             # Set Parent Status for new parent.
             query = f"""
-            UPDATE {Database.Counterpoint.Product.table}
+            UPDATE {Table.CP.items}
             SET {Column.CP.Product.is_parent} = 'Y'
             WHERE ITEM_NO = '{parent_sku}'
             """
@@ -2394,7 +2392,7 @@ class Catalog:
             if count:
                 query = f"""
                 SELECT COUNT(ITEM_NO)
-                FROM {creds.shopify_product_table}
+                FROM {Table.Middleware.products}
                 WHERE BINDING_ID = '{binding_id}'
                 """
                 response = db.query(query)
@@ -2414,7 +2412,7 @@ class Catalog:
                     # include retail price for each item
                     query = f"""
                     SELECT ITEM_NO, PRC_1
-                    FROM {Database.Counterpoint.Product.table}
+                    FROM {Table.CP.items}
                     WHERE {Column.CP.Product.binding_id} = '{binding_id}' AND 
                     {Column.CP.Product.web_enabled} = 'Y'
                     """
@@ -2425,7 +2423,7 @@ class Catalog:
                 elif counterpoint:
                     query = f"""
                     SELECT ITEM_NO
-                    FROM {Database.Counterpoint.Product.table}
+                    FROM {Table.CP.items}
                     WHERE {Column.CP.Product.binding_id} = '{binding_id}' AND
                     {Column.CP.Product.web_enabled} = 'Y'
                     """
@@ -2436,7 +2434,7 @@ class Catalog:
                 else:
                     query = f"""
                     SELECT ITEM_NO
-                    FROM {creds.shopify_product_table}
+                    FROM {Table.Middleware.products}
                     WHERE BINDING_ID = '{binding_id}'
                     """
                     response = db.query(query)
@@ -2447,7 +2445,7 @@ class Catalog:
         def update_timestamp(sku):
             """Updates the LST_MAINT_DT field in Counterpoint for a given SKU."""
             query = f"""
-            UPDATE {Database.Counterpoint.Product.table}
+            UPDATE {Table.CP.items}
             SET LST_MAINT_DT = GETDATE()
             WHERE ITEM_NO = '{sku}'
             """
@@ -2921,11 +2919,11 @@ class Catalog:
                 {Column.CP.Product.sale_description} as 'SALE_DESCRIPTION(111)',
                 MW.CF_SALE_DESCR as 'CUSTOM_ON_SALE_DESCRIPTION_ID(112)'
 
-                FROM {Database.Counterpoint.Product.table} ITEM
+                FROM {Table.CP.items} ITEM
                 LEFT OUTER JOIN IM_PRC PRC ON ITEM.ITEM_NO=PRC.ITEM_NO
                 LEFT OUTER JOIN IM_INV INV ON ITEM.ITEM_NO=INV.ITEM_NO
                 LEFT OUTER JOIN EC_ITEM_DESCR ON ITEM.ITEM_NO=EC_ITEM_DESCR.ITEM_NO
-                LEFT OUTER JOIN  {creds.shopify_product_table} MW ON ITEM.ITEM_NO=MW.ITEM_NO
+                LEFT OUTER JOIN  {Table.Middleware.products} MW ON ITEM.ITEM_NO=MW.ITEM_NO
                 LEFT OUTER JOIN IM_ITEM_PROF_COD COD ON ITEM.PROF_COD_1 = COD.PROF_COD
                 WHERE ITEM.ITEM_NO = '{self.sku}'"""
 
@@ -3170,7 +3168,7 @@ class Catalog:
 
             def get_image_details(self):
                 """Get image details from SQL"""
-                query = f"SELECT * FROM {creds.shopify_image_table} WHERE IMAGE_NAME = '{self.name}'"
+                query = f"SELECT * FROM {Table.Middleware.images} WHERE IMAGE_NAME = '{self.name}'"
                 response = db.query(query)
                 if response is not None:
                     self.db_id = response[0][0]
@@ -3295,7 +3293,7 @@ class Catalog:
                 def get_item_no_from_image_name(image_name):
                     def get_binding_id(item_no):
                         query = f"""
-                               SELECT {Column.CP.Product.binding_id} FROM {Database.Counterpoint.Product.table}
+                               SELECT {Column.CP.Product.binding_id} FROM {Table.CP.items}
                                WHERE ITEM_NO = '{item_no}'
                                """
                         response = db.query(query)
@@ -3336,7 +3334,7 @@ class Catalog:
                 # currently there are only 4 counterpoint fields for descriptions.
                 if self.number < 5:
                     query = f"""
-                           SELECT {str(f'USR_PROF_ALPHA_{self.number + 21}')} FROM {Database.Counterpoint.Product.table}
+                           SELECT {str(f'USR_PROF_ALPHA_{self.number + 21}')} FROM {Table.CP.items}
                            WHERE ITEM_NO = '{self.sku}'
                            """
                     response = db.query(query)
@@ -3431,7 +3429,7 @@ class Catalog:
 
             def get_video_details(self):
                 query = (
-                    f"SELECT * FROM {creds.shopify_video_table} WHERE URL = '{self.url}' and ITEM_NO = '{self.sku}'"
+                    f"SELECT * FROM {Table.Middleware.videos} WHERE URL = '{self.url}' and ITEM_NO = '{self.sku}'"
                 )
                 response = db.query(query)
                 if response is not None:
@@ -3483,17 +3481,9 @@ class Catalog:
                 return True
 
             @staticmethod
-            def get_video_id(sku, url):
-                query = f"""
-                SELECT VIDEO_ID FROM {Database.Shopify.Product.Media.Video.table} 
-                WHERE ITEM_NO = '{sku}' and URL = '{url}'"""
-                response = db.query(query)
-                return response[0][0] if response is not None else None
-
-            @staticmethod
             def delete(sku, url):
                 product_id = Catalog.Product.get_product_id(sku)
-                video_id = Catalog.Product.Video.get_video_id(sku, url)
+                video_id = Database.Shopify.Product.Media.Video.get(sku=sku, url=url, column='VIDEO_ID')
                 if video_id:
                     Shopify.Product.Media.delete(product_id=product_id, media_type='video', media_id=video_id)
                     Database.Shopify.Product.Media.Video.delete(video_id=video_id)

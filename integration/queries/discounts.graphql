@@ -402,7 +402,7 @@ mutation discountAutomaticBxgyCreate(
           customerBuys {
             items {
               ... on DiscountProducts {
-                products(first: 2) {
+                products(first: 250) {
                   nodes {
                     id
                   }

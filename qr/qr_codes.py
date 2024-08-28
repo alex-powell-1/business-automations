@@ -1,4 +1,5 @@
 from setup import creds
+from setup.creds import Table
 from setup.query_engine import QueryEngine as db
 from setup.error_handler import ProcessInErrorHandler
 
@@ -9,7 +10,7 @@ class QR:
 
     def insert(qr_code, url, publication, medium, offer, description, coupon_code):
         query = f"""
-        INSERT INTO SN_QR (QR_CODE, URL, PUBLICATION, MEDIUM, OFFER, DESCR, COUPON_CODE)
+        INSERT INTO {Table.Middleware.qr} (QR_CODE, URL, PUBLICATION, MEDIUM, OFFER, DESCR, COUPON_CODE)
         Values('{qr_code}','{url}', '{publication}', '{medium}', '{offer}', '{description}', '{coupon_code}')
         """
         response = db.query(query)
@@ -22,7 +23,7 @@ class QR:
 
     def is_valid(qr_code):
         query = f"""
-        SELECT ID FROM {creds.qr_table}
+        SELECT ID FROM {Table.Middleware.qr}
         WHERE QR_CODE = '{qr_code}'
         """
         response = db.query(query)
@@ -30,7 +31,7 @@ class QR:
 
     def get_visit_count(qr_code):
         query = f"""
-        SELECT VISIT_COUNT FROM {creds.qr_table}
+        SELECT VISIT_COUNT FROM {Table.Middleware.qr}
         WHERE QR_CODE = '{qr_code}'
         """
         response = db.query(query)
@@ -38,7 +39,7 @@ class QR:
 
     def get_url(qr_code):
         query = f"""
-        SELECT URL FROM {creds.qr_table}
+        SELECT URL FROM {Table.Middleware.qr}
         WHERE QR_CODE = '{qr_code}'
         """
         response = db.query(query)
@@ -50,10 +51,10 @@ class QR:
             return False
 
         query = f"""
-        INSERT INTO {creds.qr_activity_table}(CODE, SCAN_DT)
+        INSERT INTO {Table.Middleware.qr_activity}(CODE, SCAN_DT)
         VALUES ('{qr_code}', GETDATE())
         
-        UPDATE {creds.qr_table}
+        UPDATE {Table.Middleware.qr}
         SET VISIT_COUNT = VISIT_COUNT + 1, LST_SCAN = GETDATE()
         WHERE QR_CODE = '{qr_code}'
         """
@@ -66,7 +67,7 @@ class QR:
 
     def delete(qr_code):
         query = f"""
-        DELETE FROM {creds.qr_table}
+        DELETE FROM {Table.Middleware.qr}
         WHERE QR_CODE = '{qr_code}'
         """
         response = db.query(query)

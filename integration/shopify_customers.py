@@ -2,6 +2,7 @@ from integration.database import Database
 import concurrent.futures
 from integration.shopify_api import Shopify
 from setup import creds
+from setup.creds import Table
 from datetime import datetime
 import integration.object_processor as object_processor
 import json
@@ -48,7 +49,7 @@ class Customers:
 
     def get_mw_customers(self):
         query = f"""
-        SELECT CUST_NO FROM {creds.shopify_customer_table}
+        SELECT CUST_NO FROM {Table.Middleware.customers}
         """
         response = self.db.query(query)
         return [x[0] for x in response] if response is not None else []
