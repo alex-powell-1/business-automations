@@ -151,9 +151,9 @@ class Printer:
                         'order_total': float(order['total_inc_tax']),
                         'cust_no': str(cust_no),
                         # Customer Billing
-                        'cb_name': order['billing_address']['first_name']
+                        'cb_name': (order['billing_address']['first_name'] or 'WEB')
                         + ' '
-                        + order['billing_address']['last_name'],
+                        + (order['billing_address']['last_name'] or 'CUSTOMER'),
                         'cb_phone': order['billing_address']['phone'],
                         'cb_email': order['billing_address']['email'],
                         'cb_street': order['billing_address']['street_1'],
@@ -180,7 +180,9 @@ class Printer:
                         if len(order['coupons']['url']) > 0
                         else 0,
                         'loyalty': float(order['store_credit_amount']),
-                        'gc_amount': float(order['gift_certificate_amount']),
+                        'gc_amount': float(order['gift_certificate_amount'])
+                        if 'gift_certificate_amount' in order
+                        else 0,
                         'barcode': barcode,
                     }
 

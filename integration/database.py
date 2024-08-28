@@ -1860,7 +1860,7 @@ class Database:
                     response = Database.db.query(query)
                     return [x[0] for x in response] if response else None
 
-                def insert(items):
+                def insert(items, shopify_promo_id):
                     """Insert Items affected by BOGO promos into middleware."""
                     if not items:
                         Database.logger.warn('No items provided for insertion.')
@@ -1868,7 +1868,7 @@ class Database:
                     for i in items:
                         query = f"""
                         INSERT INTO {Table.Middleware.discount_lines} (SHOP_ID, ITEM_NO)
-                        VALUES ({i['shopify_id']}, '{i['sku']}')"""
+                        VALUES ({shopify_promo_id}, '{i}')"""
                         response = Database.db.query(query)
                         if response['code'] == 200:
                             Database.logger.success(f'Promotion {i} inserted successfully into Middleware.')
@@ -1878,27 +1878,47 @@ class Database:
                                 origin='Middleware Promotion Line Item Insertion',
                             )
 
-                def delete(shopify_ids):
-                    if not shopify_ids:
-                        Database.logger.warn('No Shopify IDs provided for deletion.')
+                def delete(shopify_id=None, item_no_list=None):
+                    if not shopify_id and not item_no_list:
+                        Database.logger.warn('MW Discount Line Delete: Must provide promo id or item number list.')
                         return
-                    if len(shopify_ids) == 1:
-                        where_filter = f'SHOP_ID = {shopify_ids[0]}'
-                    else:
-                        where_filter = f'SHOP_ID IN {tuple(shopify_ids)}'
-                    query = f'DELETE FROM {Table.Middleware.discount_lines} WHERE {where_filter}'
-                    response = Database.db.query(query)
-                    if response['code'] == 200:
-                        Database.logger.success(
-                            f'DELETE: Promotion {shopify_ids} deleted successfully from Middleware.'
-                        )
-                    elif response['code'] == 201:
-                        Database.logger.warn(f'DELETE: Promotion {shopify_ids} not found in Middleware.')
-                    else:
-                        Database.error_handler.add_error_v(
-                            error=f'Error: {response["code"]}\n\nQuery: {query}\n\nResponse:{response["message"]}',
-                            origin='Middleware Promotion Line Item Deletion',
-                        )
+                    if shopify_id:
+                        # Delete all line items for a specific promotion
+                        query = f'DELETE FROM {Table.Middleware.discount_lines} WHERE SHOP_ID = {shopify_id}'
+                        response = Database.db.query(query)
+                        if response['code'] == 200:
+                            Database.logger.success(
+                                f'DELETE: Promotion {shopify_id} deleted successfully from Middleware.'
+                            )
+                        elif response['code'] == 201:
+                            Database.logger.warn(f'DELETE: Promotion {shopify_id} not found in Middleware.')
+                        else:
+                            Database.error_handler.add_error_v(
+                                error=f'Error: {response["code"]}\n\nQuery: {query}\n\nResponse:{response["message"]}',
+                                origin='Middleware Promotion Line Item Deletion',
+                            )
+                        return
+                    elif item_no_list:
+                        # Delete all line items for a list of item numbers
+                        if len(item_no_list) == 1:
+                            where_filter = f'ITEM_NO = {item_no_list[0]}'
+                        else:
+                            where_filter = f'ITEM_NO IN {tuple(item_no_list)}'
+                        query = f'DELETE FROM {Table.Middleware.discount_lines} WHERE {where_filter}'
+                        response = Database.db.query(query)
+                        if response['code'] == 200:
+                            Database.logger.success(
+                                f'DELETE: Promotion {item_no_list} deleted successfully from Middleware.'
+                            )
+                        elif response['code'] == 201:
+                            Database.logger.warn(
+                                f'DELETE: No Promotion lines for {item_no_list} found in Middleware.'
+                            )
+                        else:
+                            Database.error_handler.add_error_v(
+                                error=f'Error: {response["code"]}\n\nQuery: {query}\n\nResponse:{response["message"]}',
+                                origin='Middleware Promotion Line Item Deletion',
+                            )
 
         class Gift_Certificate:
             pass

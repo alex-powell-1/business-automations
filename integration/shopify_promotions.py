@@ -175,14 +175,7 @@ class Promotions:
                     'combinesWith': {'orderDiscounts': True, 'productDiscounts': True, 'shippingDiscounts': True},
                     'customerBuys': {
                         'value': {'quantity': str(required_qty)},
-                        'items': {
-                            'products': {
-                                'productsToAdd': [
-                                    f'gid://shopify/Product/{Database.Shopify.Product.get_id(item_no=x)}'
-                                    for x in rule.items
-                                ]
-                            }
-                        },
+                        'items': {'products': {'productsToAdd': [], 'productsToRemove': []}},
                     },
                     'customerGets': {
                         'value': {
@@ -191,20 +184,36 @@ class Promotions:
                                 'effect': {'percentage': discount_amount},
                             }
                         },
-                        'items': {
-                            'products': {
-                                'productsToAdd': [
-                                    f'gid://shopify/Product/{Database.Shopify.Product.get_id(item_no=x)}'
-                                    for x in rule.items
-                                ]
-                            }
-                        },
+                        'items': {'products': {'productsToAdd': [], 'productsToRemove': []}},
                     },
                 }
             }
 
             if rule.shopify_id:  # For updating existing promotions
                 payload['id'] = f'{Shopify.Discount.Automatic.prefix}{rule.shopify_id}'
+
+            if rule.items:
+                for i in rule.items:
+                    shopify_id = Database.Shopify.Product.get_id(item_no=i)
+                    if shopify_id:
+                        payload['automaticBxgyDiscount']['customerBuys']['items']['products'][
+                            'productsToAdd'
+                        ].append(f'gid://shopify/Product/{shopify_id}')
+                        payload['automaticBxgyDiscount']['customerGets']['items']['products'][
+                            'productsToAdd'
+                        ].append(f'gid://shopify/Product/{shopify_id}')
+
+            if rule.mw_items:
+                for i in rule.mw_items:
+                    if i not in rule.items:
+                        shopify_id = Database.Shopify.Product.get_id(item_no=i)
+                        if shopify_id:
+                            payload['automaticBxgyDiscount']['customerBuys']['items']['products'][
+                                'productsToRemove'
+                            ].append(f'gid://shopify/Product/{shopify_id}')
+                            payload['automaticBxgyDiscount']['customerGets']['items']['products'][
+                                'productsToRemove'
+                            ].append(f'gid://shopify/Product/{shopify_id}')
 
             if self.beg_dat:
                 payload['automaticBxgyDiscount']['startsAt'] = convert_to_utc(self.beg_dat)
@@ -220,17 +229,12 @@ class Promotions:
                     # process BOGO Twoofers
                     variables = self.get_bxgy_payload(rule)
                     if rule.shopify_id:
-                        # Update Promotion
                         Shopify.Discount.Automatic.Bxgy.update(variables)
-                        if rule.is_enabled_cp and not rule.is_enabled_mw:
-                            Shopify.Discount.Automatic.activate(self.shopify_id)
-                        elif not rule.is_enabled_cp and rule.is_enabled_mw:
-                            Shopify.Discount.Automatic.deactivate(self.shopify_id)
                     else:
-                        # Create Promotion
                         rule.shopify_id = Shopify.Discount.Automatic.Bxgy.create(variables)
-                        if not rule.is_enabled_cp:
-                            Shopify.Discount.Automatic.deactivate(self.shopify_id)
+
+                    self.set_sale_status(rule)
+                    Database.Shopify.Discount.Line.insert(rule.items)
 
                     # Sync BOGO Twoofer Promotions to Middleware.
                     # Fixed Price Promotions are processed outside this block.
@@ -241,6 +245,22 @@ class Promotions:
                     self.add_sale_price()
                 else:
                     self.remove_sale_price()
+
+        def set_sale_status(self, rule):
+            status = 'Y' if rule.is_enabled_cp else 'N'
+
+            Database.Counterpoint.Product.set_sale_status(
+                items=rule.items, status=status, description=rule.badge_text
+            )
+
+            if rule.is_enabled_cp and not rule.is_enabled_mw:
+                Shopify.Discount.Automatic.activate(rule.shopify_id)
+
+            elif not rule.is_enabled_cp and rule.is_enabled_mw:
+                Shopify.Discount.Automatic.deactivate(rule.shopify_id)
+
+            else:
+                Promotions.logger.info(f'You missed something. CP: {rule.is_enabled_cp} MW: {rule.is_enabled_mw}')
 
         def add_sale_price(self):
             """Updates the sale price for non-bogo items in the promotion. Adds on sale flag and sale description."""
@@ -271,32 +291,25 @@ class Promotions:
                     continue
 
                 if rule.is_bogo_twoofer():
-                    print(f'Items: {rule.items}')
-                    Database.Counterpoint.Product.set_sale_status(
-                        items=rule.items, status='Y', description=rule.badge_text
-                    )
-                    items = [{'sku': x, 'shopify_id': rule.shopify_id} for x in rule.items]
-                    Database.Shopify.Discount.Line.insert(items)
-
+                    pass
                 else:
                     # Set Sale Status to 'Y' and Sale Description
                     Database.Counterpoint.Product.set_sale_status(
-                        items=[x['sku'] for x in items], status='Y', description=rule.badge_text
+                        items=rule.items, status='Y', description=rule.badge_text
                     )
                     # Set Sale Price
                     target_price_break = rule.price_breaks[0]
                     target_method = target_price_break.prc_meth
                     target_amount = target_price_break.amt_or_pct
-                    for i in items:
-                        sku = i['sku']
-                        item = Product(sku)
+                    for i in rule.items:
+                        item = Product(i)
                         current_sale_price = round(float(item.price_2), 2)
                         target_sale_price = get_target_price(item, target_method, target_amount)
 
                         if current_sale_price == target_sale_price:
                             continue
                         else:
-                            Database.Counterpoint.Product.set_sale_price(sku=sku, price=target_sale_price)
+                            Database.Counterpoint.Product.set_sale_price(sku=i, price=target_sale_price)
 
         def remove_sale_price(self):
             """Removes the sale price for Non BOGO TWOOFER items in the promotion.
@@ -305,27 +318,37 @@ class Promotions:
                 if not rule.items:
                     Promotions.logger.warn(f'Remove Sale Prices: No Items Found for Rule: {rule.seq_no}')
                     continue
-                if rule.is_bogo_twoofer():
-                    Database.Counterpoint.Product.set_sale_status(items=rule.items, status='N')
-                    items = [{'sku': x, 'shopify_id': rule.shopify_id} for x in rule.items]
-                    Database.Shopify.Discount.Line.delete(items)
-
                 else:
-                    # Non BOGO Twoofer Promotions
-                    Database.Counterpoint.Product.remove_sale_price(items)
+                    if rule.is_bogo_twoofer():
+                        # Database.Shopify.Discount.Line.delete(shopify_id=rule.shopify_id)
+                        pass
+
+                    else:
+                        Database.Counterpoint.Product.remove_sale_price(rule.items)
+
+                    Database.Counterpoint.Product.set_sale_status(items=rule.items, status='N')
 
         @staticmethod
-        def delete(group_code):
-            rules = Database.Shopify.Discount.get(group_code=group_code)  # Get all rules with the same group code
-            if not rules:
-                Promotions.logger.warn(f'No Shopify ID found for Group Code: {group_code}')
+        def delete(group_code=None, shopify_discount_code_id=None):
+            if not group_code and not shopify_discount_code_id:
+                Promotions.logger.warn('No Group Code or Shopify ID provided.')
                 return
-            for shopify_id in rules:
-                items = Database.Shopify.Discount.Line.get(shopify_id)
-                if items:
-                    Database.Counterpoint.Product.set_sale_status(items=items, status='N')
-                Shopify.Discount.Automatic.delete(shopify_id)
-                Database.Shopify.Discount.delete(shopify_id)
+            if group_code:
+                rules = Database.Shopify.Discount.get(
+                    group_code=group_code
+                )  # Get all rules with the same group code
+                if not rules:
+                    Promotions.logger.warn(f'No Shopify ID found for Group Code: {group_code}')
+                    return
+                for shopify_id in rules:
+                    items = Database.Shopify.Discount.Line.get(shopify_id)
+                    if items:
+                        Database.Counterpoint.Product.set_sale_status(items=items, status='N')
+
+                    Shopify.Discount.Automatic.delete(shopify_id)
+                    Database.Shopify.Discount.delete(shopify_id)
+            elif shopify_id:
+                Shopify.Discount.Code.delete(shopify_discount_code_id)
 
         class PriceRule:
             def __init__(self, rule):
@@ -349,6 +372,7 @@ class Promotions:
 
                 self.price_breaks = []
                 self.items = []
+                self.mw_items = Database.Shopify.Discount.Line.get(self.shopify_id)
                 self.get_price_breaks()
                 self.get_cp_items()
                 self.badge_text = self.get_badge_text()
@@ -505,5 +529,5 @@ if __name__ == '__main__':
     for p in promo.promotions:
         # print(p)
         if p.grp_cod == 'TEST':
-            # p.process()
+            p.process()
             Promotions.Promotion.delete(p.grp_cod)
