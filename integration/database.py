@@ -1787,11 +1787,13 @@ class Database:
                 response = Database.db.query(query)
                 return [x[0] for x in response] if response else None
 
-            def sync(price_rule):
-                if price_rule.db_id:
-                    Database.Shopify.Discount.update(price_rule)
+            def sync(rule):
+                if rule.db_id:
+                    Database.Shopify.Discount.update(rule)
                 else:
-                    Database.Shopify.Discount.insert(price_rule)
+                    Database.Shopify.Discount.insert(rule)
+
+                Database.Shopify.Discount.Line.sync(rule)
 
             def insert(rule):
                 """Insert a new discount rule into the Middleware."""
@@ -1860,23 +1862,61 @@ class Database:
                     response = Database.db.query(query)
                     return [x[0] for x in response] if response else None
 
-                def insert(items, shopify_promo_id):
+                def sync(rule):
+                    cp_items = rule.items
+                    mw_items = rule.mw_items
+                    if cp_items:
+                        for item in cp_items:
+                            if mw_items:
+                                if item in mw_items:
+                                    continue
+                                else:
+                                    Database.Shopify.Discount.Line.insert(item, rule.shopify_id)
+                            else:
+                                Database.Shopify.Discount.Line.insert(item, rule.shopify_id)
+                    if mw_items:
+                        for item in mw_items:
+                            if item in cp_items:
+                                continue
+                            else:
+                                Database.Shopify.Discount.Line.delete(item_no_list=[item])
+
+                def insert(item, shopify_promo_id):
                     """Insert Items affected by BOGO promos into middleware."""
-                    if not items:
-                        Database.logger.warn('No items provided for insertion.')
+                    if not item:
+                        Database.logger.warn('No item provided for insertion.')
                         return
-                    for i in items:
-                        query = f"""
-                        INSERT INTO {Table.Middleware.discount_lines} (SHOP_ID, ITEM_NO)
-                        VALUES ({shopify_promo_id}, '{i}')"""
-                        response = Database.db.query(query)
-                        if response['code'] == 200:
-                            Database.logger.success(f'Promotion {i} inserted successfully into Middleware.')
-                        else:
-                            Database.error_handler.add_error_v(
-                                error=f'Error: {response["code"]}\n\nQuery: {query}\n\nResponse:{response["message"]}',
-                                origin='Middleware Promotion Line Item Insertion',
-                            )
+                    query = f"""
+                    INSERT INTO {Table.Middleware.discount_lines} (SHOP_ID, ITEM_NO)
+                    VALUES ({shopify_promo_id}, '{item}')"""
+                    response = Database.db.query(query)
+                    if response['code'] == 200:
+                        Database.logger.success(f'Promotion {item} inserted successfully into Middleware.')
+                    else:
+                        Database.error_handler.add_error_v(
+                            error=f'Error: {response["code"]}\n\nQuery: {query}\n\nResponse:{response["message"]}',
+                            origin='Middleware Promotion Line Item Insertion',
+                        )
+
+                def update(line, shopify_id):
+                    if not line.item_no:
+                        Database.logger.warn('No item number provided for update.')
+                        return
+                    query = f"""
+                    UPDATE {Table.Middleware.discount_lines}
+                    SET SHOP_ID = {shopify_id}
+                    WHERE ITEM_NO = '{line.item_no}'
+                    """
+                    response = Database.db.query(query)
+                    if response['code'] == 200:
+                        Database.logger.success(f'Promotion {line.item_no} updated successfully in Middleware.')
+                    elif response['code'] == 201:
+                        Database.logger.warn(f'Promotion {line.item_no} not found for update in Middleware.')
+                    else:
+                        Database.error_handler.add_error_v(
+                            error=f'Error: {response["code"]}\n\nQuery: {query}\n\nResponse:{response["message"]}',
+                            origin='Middleware Promotion Line Item Update',
+                        )
 
                 def delete(shopify_id=None, item_no_list=None):
                     if not shopify_id and not item_no_list:

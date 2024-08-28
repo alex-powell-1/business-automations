@@ -226,6 +226,7 @@ class Promotions:
         def process(self):
             for rule in self.price_rules:
                 if rule.is_bogo_twoofer:
+                    self.process_line_deletes(rule)
                     # process BOGO Twoofers
                     variables = self.get_bxgy_payload(rule)
                     if rule.shopify_id:
@@ -234,7 +235,6 @@ class Promotions:
                         rule.shopify_id = Shopify.Discount.Automatic.Bxgy.create(variables)
 
                     self.set_sale_status(rule)
-                    Database.Shopify.Discount.Line.insert(rule.items)
 
                     # Sync BOGO Twoofer Promotions to Middleware.
                     # Fixed Price Promotions are processed outside this block.
@@ -245,6 +245,14 @@ class Promotions:
                     self.add_sale_price()
                 else:
                     self.remove_sale_price()
+
+        def process_line_deletes(self, rule):
+            cp_rule_items = rule.items
+            mw_rule_items = rule.mw_items
+            if mw_rule_items:
+                delete_list = [x for x in mw_rule_items if x not in cp_rule_items]
+                if delete_list:
+                    Database.Shopify.Discount.Line.delete(item_no_list=delete_list)
 
         def set_sale_status(self, rule):
             status = 'Y' if rule.is_enabled_cp else 'N'
@@ -347,7 +355,7 @@ class Promotions:
 
                     Shopify.Discount.Automatic.delete(shopify_id)
                     Database.Shopify.Discount.delete(shopify_id)
-            elif shopify_id:
+            elif shopify_discount_code_id:
                 Shopify.Discount.Code.delete(shopify_discount_code_id)
 
         class PriceRule:
@@ -530,4 +538,4 @@ if __name__ == '__main__':
         # print(p)
         if p.grp_cod == 'TEST':
             p.process()
-            Promotions.Promotion.delete(p.grp_cod)
+            # Promotions.Promotion.delete(p.grp_cod)
