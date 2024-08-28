@@ -174,7 +174,9 @@ def send_stock_notifications():
                 expiration=expiration_date,
             )
 
-        product_photo = creds.photo_path + f'/{item_no}.jpg'
+        # TODO: Copy photo from item folder to public_files
+        # item_photo = creds.photo_path + f'/{item_no}.jpg'
+        product_photo = creds.public_files + '/' + f'/{item_no}.jpg'
 
         ###############################################################
         ###################### Send Text / Email ######################
@@ -189,7 +191,7 @@ def send_stock_notifications():
                 qty=qty,
                 coupon_code=coupon_code,
                 webtitle=Product(item_no).web_title,
-                photo=None,
+                photo=product_photo,
             )
             messages_sent += 1
 
