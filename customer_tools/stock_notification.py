@@ -86,10 +86,12 @@ def send_sms(greeting, phone, item, qty, webtitle, coupon_code, photo=None):
     coupon_message = ''
 
     if coupon_code is not None:
-        coupon_message = f'\n\nUse code: { coupon_code } online or in-store for { coupon_offer }!'
+        coupon_message = f'\n\nUse code: { coupon_code } online or in-store to { coupon_offer }!'
 
     message = f'{greeting}!\n\nYou requested to be notified when { item } was back in stock. We are excited to share that we have { int(qty) } available now!{ coupon_message }\n\n{ link }'
-    SMSEngine.send_text(origin='SERVER', campaign='STOCK NOTIFY', to_phone=phone, message=message, url=photo)
+    SMSEngine.send_text(
+        origin='SERVER', campaign='STOCK NOTIFY', to_phone=phone, message=message, url=photo, username='Automation'
+    )
 
 
 def send_stock_notifications():
@@ -198,7 +200,8 @@ def send_stock_notifications():
             send_email(
                 greeting=greeting, email=email, item_number=item_no, coupon_code=coupon_code, photo=product_photo
             )
-            messages_sent += 1
+            if phone is None:
+                messages_sent += 1
 
         #################################################################
         ##################### Remove Database Entry #####################
