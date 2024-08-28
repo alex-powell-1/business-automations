@@ -8,7 +8,7 @@ from dateutil.relativedelta import relativedelta
 from jinja2 import Template
 
 import customer_tools
-from shop.coupons import generate_random_code, shopify_create_coupon, cp_create_coupon
+from shop.coupons import generate_random_code, shopify_create_coupon, cp_create_coupon, delete_expired_coupons
 import customer_tools.customers
 from product_tools.products import Product
 from setup import creds
@@ -224,6 +224,8 @@ def send_stock_notifications():
 
     error_handler.logger.success('Completed: Send Stock Notification Text')
     error_handler.logger.info(f'Total Messages Sent: {messages_sent}')
+
+    delete_expired_coupons()
 
 
 if __name__ == '__main__':

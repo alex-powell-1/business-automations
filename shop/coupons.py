@@ -112,13 +112,18 @@ def get_expired_coupons():
 
 
 def delete_expired_coupons():
-    error_handler.logger.info(f'Deleting Expired Coupons: Starting at {datetime.now():%H:%M:%S}')
+    error_handler.logger.info('Deleting Expired Coupons')
     total = 0
 
-    ids = [x['id'] for x in get_expired_coupons()]
+    expired = get_expired_coupons()
+
+    ids = [x['id'] for x in expired]
 
     for id in ids:
-        shopify_delete_coupon(id)
+        try:
+            shopify_delete_coupon(id)
+            total += 1
+        except Exception as e:
+            error_handler.error_handler.add_error_v(f'Error deleting coupon: {e}', origin='delete_expired_coupons')
 
-    error_handler.logger.info(f'Deleting Expired Coupons: Finished at {datetime.now():%H:%M:%S}')
-    error_handler.logger.info(f'Total Coupons Deleted: {total}')
+    error_handler.logger.success(f'Expired Coupons Deleted: {total/len(ids)/len(expired)}')
