@@ -437,6 +437,12 @@ def add_new_customer(first_name, last_name, phone_number, email_address, street_
             except:
                 state = None
 
+        if first_name is None:
+            first_name = 'WEB'
+
+        if last_name is None:
+            last_name = 'CUSTOMER'
+
         payload = {
             'Workgroup': '1',
             'AR_CUST': {
@@ -551,24 +557,7 @@ def update_customer(
     if phone_number is not None:
         phone_number = format_phone_number(phone_number)
 
-    FST_NAM = first_name.title().strip()
-    LST_NAM = last_name.title().strip()
-    NAM = f'{FST_NAM} {LST_NAM}'
-    NAM_UPR = NAM.upper()
-    FST_NAM_UPR = FST_NAM.upper()
-    LST_NAM_UPR = LST_NAM.upper()
-
-    query = f"""
-    UPDATE AR_CUST
-    SET FST_NAM = '{FST_NAM}',
-    LST_NAM = '{LST_NAM}',
-    NAM = '{NAM}',
-    NAM_UPR = '{NAM_UPR}',
-    FST_NAM_UPR = '{FST_NAM_UPR}',
-    LST_NAM_UPR = '{LST_NAM_UPR}',
-    CONTCT_1 = '{NAM}', 
-    LST_MAINT_DT = GETDATE()
-    """
+    query = 'UPDATE AR_CUST SET LST_MAINT_DT = GETDATE()'
 
     # PHONE_1 = '{phone_number}',
     # EMAIL_ADRS_1 = '{email_address}',
@@ -576,6 +565,27 @@ def update_customer(
     # CITY = '{city}',
     # STATE = '{state}',
     # ZIP_COD = '{zip_code}',
+
+    if first_name is not None:
+        FST_NAM = first_name.title().strip()
+
+        query += f", FST_NAM = '{FST_NAM}'"
+        query += f", FST_NAM_UPR = '{FST_NAM.upper()}'"
+
+    if last_name is not None:
+        LST_NAM = last_name.title().strip()
+
+        query += f", LST_NAM = '{LST_NAM}'"
+        query += f", LST_NAM_UPR = '{LST_NAM.upper()}'"
+
+    if first_name is not None and last_name is not None:
+        FST_NAM = first_name.title().strip()
+        LST_NAM = last_name.title().strip()
+        NAM = f'{FST_NAM} {LST_NAM}'
+
+        query += f", NAM = '{NAM}'"
+        query += f", NAM_UPR = '{NAM.upper()}'"
+        query += f", CONTCT_1 = '{NAM}'"
 
     if phone_number is not None:
         query += f", PHONE_1 = '{phone_number}'"
