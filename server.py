@@ -162,11 +162,11 @@ def stock_notification():
         email_valid = validate_email(sanitized_data['email'])
         phone_valid = validate_phone(sanitized_data['phone'])
 
-        if email_empty and phone_empty or (not email_valid and not phone_valid):
+        if (email_empty and phone_empty) or (not email_valid and not phone_valid):
             return 'Invalid email or phone number.', 400
-        elif email_empty and not phone_empty and not phone_valid:
+        elif not phone_valid and not phone_empty:
             return 'Invalid phone number.', 400
-        elif not email_empty and phone_empty and not email_valid:
+        elif not email_valid and not email_empty:
             return 'Invalid email address.', 400
     except Exception as e:
         ProcessInErrorHandler.error_handler.add_error_v(error=f'Invalid input data: {e}', origin='stock_notify')
@@ -180,12 +180,9 @@ def stock_notification():
         if phone is not None:
             phone = PhoneNumber(phone).to_cp()
 
-        if email is None and phone is None:
-            return 'Please provide an email or phone number.', 400
-
         def has_info():
             query = f"""
-            SELECT EMAIL, PHONE FROM SN_STOCK_NOTIFY
+            SELECT ITEM_NO FROM SN_STOCK_NOTIFY
             WHERE ITEM_NO = '{item_no}'
             """
 
