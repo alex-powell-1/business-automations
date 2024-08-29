@@ -127,6 +127,13 @@ def stock_notification():
     a product comes back into stock."""
     ProcessInErrorHandler.logger.log_file = f'log_{datetime.now():%m_%d_%y}.log'
 
+    token = request.headers.get('Authorization').split(' ')[1]
+    url = 'https://www.google.com/recaptcha/api/siteverify'
+    payload = {'secret': creds.recaptcha_secret, 'response': token}
+    response = requests.post(url, data=payload)
+    if not response.json()['success']:
+        return 'Could not verify captcha.', 400
+
     data = request.json
     # Sanitize the input data
     sanitized_data = {k: bleach.clean(v) for k, v in data.items()}

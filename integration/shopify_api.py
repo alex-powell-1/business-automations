@@ -1977,7 +1977,7 @@ class Shopify:
                 return response.data
             else:
                 response = Shopify.Query(
-                    document=Shopify.Discount.queries, variables={'first': 100}, operation_name='discounts'
+                    document=Shopify.Discount.queries, variables={'first': 250}, operation_name='discounts'
                 )
                 return response.data
 
@@ -2006,6 +2006,28 @@ class Shopify:
                     operation_name='discountCodeDelete',
                 )
                 return response.data
+
+            class Basic:
+                @staticmethod
+                def create(variables, eh=None):
+                    if eh is None:
+                        eh = Shopify.error_handler
+                    try:
+                        if not variables:
+                            return
+                        response = Shopify.Query(
+                            document=Shopify.Discount.queries,
+                            variables=variables,
+                            operation_name='discountCodeBasicCreate',
+                        )
+                        id = response.data['discountCodeBasicCreate']['codeDiscountNode']['id']
+                        discount_id = id.split('/')[-1]
+
+                        eh.logger.success(f'Discount ID: {discount_id} created on Shopify')
+                        return discount_id
+                    except:
+                        eh.add_error_v(f'Error creating discount: {variables}', origin='shopify_api.py')
+                        return None
 
         class Automatic:
             # Discounts that are automatically applied
