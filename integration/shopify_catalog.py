@@ -303,7 +303,7 @@ class Catalog:
             self.get_sync_queue()  # Get all products that have been updated since the last sync
 
         if not self.sync_queue:
-            if not self.inventory_only or self.verbose:  # don't log this for inventory sync.
+            if not self.inventory_only:  # don't log this for inventory sync.
                 Catalog.logger.success('No products to sync.')
         else:
             queue_length = len(self.sync_queue)

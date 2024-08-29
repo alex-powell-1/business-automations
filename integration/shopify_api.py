@@ -2,6 +2,7 @@ from setup import creds
 from setup.creds import Metafield, Route
 import requests
 import json
+from time import sleep
 from setup.error_handler import ProcessOutErrorHandler
 from pathlib import Path
 from integration.database import Database
@@ -12,7 +13,7 @@ from traceback import print_exc as tb
 from setup.utilities import PhoneNumber
 
 
-verbose_print = True
+verbose_print = False
 
 
 class Shopify:
@@ -47,9 +48,80 @@ class Shopify:
                 )
             if self.errors or self.user_errors:
                 print(f'\n\nVariables: \n\n{variables}\n\n')
+                print(f'Operation Name: {operation_name}\n\n')
+                print(f'User Errors: {self.user_errors}')
+                print(f'Errors: {self.errors}\n\n')
+                print(operation_name, self)
+
                 if self.user_errors:
+                    print('Entering User Errors: ', self.user_errors)
                     for i in self.user_errors:
-                        if operation_name == 'customerUpdate':
+                        if operation_name.startswith('customer'):
+                            if i == 'Email has already been taken':
+                                with open('./duplicate_emails.txt', 'a') as f:
+                                    print(f"Duplicate email: {variables['input']['email']}", file=f)
+                                # Remove email from variables
+                                if 'email' in variables['input']:
+                                    del variables['input']['email']
+                                if 'emailMarketingConsent' in variables['input']:
+                                    del variables['input']['emailMarketingConsent']
+                                for error in self.user_errors:
+                                    # This will remove any instances of this error from the user_errors list
+                                    if error == 'Email has already been taken':
+                                        self.user_errors.remove(error)
+                                return self.__init__(document, variables, operation_name)
+
+                            elif i == 'Phone has already been taken':
+                                with open('./duplicate_phones.txt', 'a') as f:
+                                    print(f"Duplicate phone: {variables['input']['phone']}", file=f)
+                                # Remove phone from variables
+                                if 'phone' in variables['input']:
+                                    del variables['input']['phone']
+                                if 'smsMarketingConsent' in variables['input']:
+                                    del variables['input']['smsMarketingConsent']
+                                for error in self.user_errors:
+                                    # This will remove any instances of this error from the user_errors list
+                                    if error == 'Phone has already been taken':
+                                        self.user_errors.remove(error)
+                                return self.__init__(document, variables, operation_name)
+
+                            elif i == 'Province is not valid':
+                                province_code_list = [x['provinceCode'] for x in variables['input']['addresses']]
+                                if province_code_list:
+                                    counter = 0
+                                    for code in province_code_list:
+                                        # Remove province from variables
+                                        if 'provinceCode' in variables['input']['addresses'][counter]:
+                                            del variables['input']['addresses'][counter]['provinceCode']
+                                        counter += 1
+                                for error in self.user_errors:
+                                    # This will remove any instances of this error from the user_errors list
+                                    if error == 'Province is not valid':
+                                        self.user_errors.remove(error)
+
+                                return self.__init__(document, variables, operation_name)
+
+                            elif i == 'Customer does not exist':
+                                Database.Shopify.Customer.delete(
+                                    shopify_cust_no=variables['input']['id'].split('/')[-1]
+                                )
+                                # remove id from variables
+                                variables['id'] = None
+                                self.user_errors.remove(i)
+                                # Re-run query
+                                return self.__init__(document, variables, operation_name)
+
+                            elif operation_name == 'customerDelete':
+                                if i == "Customer can't be found":
+                                    # If a customer cannot be found in shopify, simply remove this error and move on.
+                                    self.user_errors.remove(i)
+                                    continue
+                                elif i == 'Customer can’t be deleted because they have associated orders':
+                                    # If a customer cannot be deleted because they have associated orders, simply remove this error and move on.
+                                    self.user_errors.remove(i)
+                                    continue
+
+                        elif operation_name == 'customerUpdate':
                             if i == 'Key must be unique within this namespace on this resource':
                                 # Delete all customer metafields for this customer and resend the payload
                                 customer_id = variables['input']['id'].split('/')[-1]
@@ -60,9 +132,10 @@ class Shopify:
                                     if error == 'Key must be unique within this namespace on this resource':
                                         self.user_errors.remove(error)
                                 # Re-run query
-                                self.__init__(document, variables, operation_name)
+                                Shopify.logger.info(f'Re-running query for customer {customer_id}')
+                                return self.__init__(document, variables, operation_name)
 
-                        if operation_name == 'productUpdate':
+                        elif operation_name == 'productUpdate':
                             if i == "Namespace can't be blank":
                                 break
                             elif i == "Type can't be blank":
@@ -77,45 +150,7 @@ class Shopify:
                                     if error == 'Key must be unique within this namespace on this resource':
                                         self.user_errors.remove(error)
                                 # Re-run query
-                                self.__init__(document, variables, operation_name)
-
-                        elif i == 'Customer does not exist':
-                            Database.Shopify.Customer.delete(
-                                shopify_cust_no=variables['input']['id'].split('/')[-1]
-                            )
-                            # remove id from variables
-                            variables['id'] = None
-                            self.user_errors.remove(i)
-                            # Re-run query
-                            self.__init__(document, variables, operation_name)
-
-                        elif operation_name == 'customerDelete':
-                            if i == "Customer can't be found":
-                                # If a customer cannot be found in shopify, simply remove this error and move on.
-                                self.user_errors.remove(i)
-                                continue
-                            elif i == 'Customer can’t be deleted because they have associated orders':
-                                # If a customer cannot be deleted because they have associated orders, simply remove this error and move on.
-                                self.user_errors.remove(i)
-                                continue
-
-                        elif i == 'Email has already been taken':
-                            with open('./duplicate_emails.txt', 'a') as f:
-                                print(f"Duplicate email: {variables['input']['email']}", file=f)
-                            # Remove email from variables
-                            del ['input']['email']
-                            del variables['input']['emailMarketingConsent']
-                            self.user_errors.remove(i)
-                            self.__init__(document, variables, operation_name)
-
-                        elif i == 'Phone has already been taken':
-                            with open('./duplicate_phones.txt', 'a') as f:
-                                print(f"Duplicate phone: {variables['input']['phone']}", file=f)
-                            # Remove phone from variables
-                            del variables['input']['phone']
-                            del variables['input']['smsMarketingConsent']
-                            self.user_errors.remove(i)
-                            self.__init__(document, variables, operation_name)
+                                return self.__init__(document, variables, operation_name)
 
                         elif i == 'Metafield does not exist':
                             self.user_errors.remove(i)
@@ -145,6 +180,10 @@ class Shopify:
             try:
                 return response.json()
             except:
+                if response.text.startswith('upstream connect error or disconnect/reset before headers.'):
+                    sleep(5)
+                    return self.execute_query(document, variables, operation_name)
+
                 raise Exception(f'Error: {response.text}')
 
     class Order:
@@ -1159,7 +1198,6 @@ class Shopify:
 
             def reorder(product):
                 if not product.reorder_media_queue:
-                    Shopify.logger.info('No media to reorder')
                     return
                 variables = {'id': f'{Shopify.Product.prefix}{product.product_id}', 'moves': []}
                 for m in product.reorder_media_queue:
