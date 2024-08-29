@@ -745,8 +745,10 @@ def shopify_customer_create():
             logger.success(f'Customer {id} added successfully.')
             return jsonify({'success': True}), 200
 
-    with open('./logs/customer_create.json', 'a') as f:
-        json.dump(webhook_data, f)
+    logger.success(f'Customer Create Finished: {id}')
+
+    # with open('./logs/customer_create.json', 'a') as f:
+    #     json.dump(webhook_data, f)
 
 
 @app.route(Route.Shopify.customer_update, methods=['POST'])
