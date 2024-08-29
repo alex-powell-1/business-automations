@@ -157,10 +157,6 @@ class OrderAPI(DocumentAPI):
 
                 ext_prc = float(product['base_price']) * qty - total_discount
 
-                print(product['sku'])
-                print(ext_prc)
-                print(qty)
-
                 line_item = {
                     'LIN_TYP': 'O',
                     'ITEM_NO': product['sku'],
@@ -752,8 +748,6 @@ class OrderAPI(DocumentAPI):
             bc_order = OrderAPI.get_order(order_id)
         else:
             bc_order = bc_order_override
-
-        print(bc_order['payment_status'])
 
         if str(bc_order['payment_status']).lower() in ['declined', '']:
             oapi.error_handler.add_error_v('Order payment declined')

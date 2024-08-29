@@ -8,6 +8,7 @@ from setup import date_presets
 from setup.create_log import create_customer_log
 from setup.query_engine import QueryEngine as db
 from setup.error_handler import ScheduledTasksErrorHandler as error_handler
+from integration.database import Database
 
 from setup.utilities import PhoneNumber
 
@@ -441,13 +442,7 @@ def add_new_customer(first_name, last_name, phone_number, email_address, street_
 
         payload = {
             'Workgroup': '1',
-            'AR_CUST': {
-                'FST_NAM': first_name,
-                'LST_NAM': last_name,
-                'STR_ID': '1',
-                'EMAIL_ADRS_1': email_address,
-                'LST_MAINT_DT': 'GETDATE()',
-            },
+            'AR_CUST': {'FST_NAM': first_name, 'LST_NAM': last_name, 'STR_ID': '1', 'EMAIL_ADRS_1': email_address},
         }
 
         if phone_number is not None:
@@ -472,7 +467,9 @@ def add_new_customer(first_name, last_name, phone_number, email_address, street_
         else:
             print(f'Error: {response.status_code} - {response.text}')
 
-        return response.json()['CUST_NO']
+        cust_id = response.json()['CUST_NO']
+        Database.Counterpoint.Customer.update_timestamps(customer_no=cust_id)
+        return cust_id
     else:
         return 'Already a customer'
 
@@ -554,13 +551,6 @@ def update_customer(
         phone_number = format_phone_number(phone_number)
 
     query = 'UPDATE AR_CUST SET LST_MAINT_DT = GETDATE()'
-
-    # PHONE_1 = '{phone_number}',
-    # EMAIL_ADRS_1 = '{email_address}',
-    # ADRS_1 = '{street_address}',
-    # CITY = '{city}',
-    # STATE = '{state}',
-    # ZIP_COD = '{zip_code}',
 
     if first_name is not None:
         FST_NAM = first_name.title().strip()

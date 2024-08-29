@@ -184,57 +184,7 @@ def stock_notification():
         if phone is not None:
             phone = PhoneNumber(phone).to_cp()
 
-        def has_info():
-            query = f"""
-            SELECT ITEM_NO FROM SN_STOCK_NOTIFY
-            WHERE ITEM_NO = '{item_no}'
-            """
-
-            if email is not None:
-                query += f" AND EMAIL = '{email}'"
-
-            if phone is not None:
-                query += f" AND PHONE = '{phone}'"
-
-            try:
-                response = Database.db.query(query)
-                return response[0][0] is not None
-            except:
-                return False
-
-        def insert():
-            cols = 'ITEM_NO'
-            values = f"'{item_no}'"
-
-            if email is not None:
-                cols += ', EMAIL'
-                values += f", '{email}'"
-
-            if phone is not None:
-                cols += ', PHONE'
-                values += f", '{phone}'"
-
-            query = f"""
-            INSERT INTO SN_STOCK_NOTIFY
-            ({cols})
-            VALUES
-            ({values})
-            """
-
-            try:
-                response = Database.db.query(query)
-
-                if response['code'] == 200:
-                    return (
-                        'Thanks for your submission! We will send you an email when your item is back in stock.',
-                        200,
-                    )
-                else:
-                    return 'An error occurred. Please try again.', 500
-            except:
-                return 'An error occurred. Please try again.', 500
-
-        if has_info():
+        if Database.StockNotification.has_info(item_no=item_no, email=email, phone=phone):
             nouns1 = []
 
             indefinite_article = 'a'
@@ -260,7 +210,17 @@ def stock_notification():
                 if you need an alternative item. Thank you!"""
             ), 400
         else:
-            return insert()
+            try:
+                response = Database.StockNotification.insert(item_no=item_no, email=email, phone=phone)
+                if response['code'] == 200:
+                    return (
+                        'Thanks for your submission! We will send you an email when your item is back in stock.',
+                        200,
+                    )
+                else:
+                    return 'An error occurred. Please try again.', 500
+            except:
+                return 'An error occurred. Please try again.', 500
 
 
 @app.route('/gift-card-recipient', methods=['POST'])
