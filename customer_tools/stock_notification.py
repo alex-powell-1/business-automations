@@ -109,7 +109,15 @@ def send_sms(greeting, phone, item, qty, webtitle, coupon_code, photo=None):
     phone = PhoneNumber(phone).to_twilio()
 
     def form_string(str: str):
-        return str.strip().replace(' ', '-').replace('"', '').replace('&', '-').replace('.', '-').lower()
+        return (
+            str.strip()
+            .replace(' ', '-')
+            .replace('"', '')
+            .replace('&', '-')
+            .replace('.', '-')
+            .replace('/', '-')
+            .lower()
+        )
 
     link = f'https://settlemyrenursery.com/products/{form_string(webtitle)}'
 
@@ -203,7 +211,7 @@ def create_coupon(item_no, customer):
 
 def send_stock_notifications():
     """Sends stock notification text updates for items that were out of stock
-    but now have stock > 0. Cleans table so contacts are only notified once"""
+    but now have stock > 5. Cleans table so contacts are only notified once"""
 
     error_handler.logger.info('Starting: Send Stock Notification Text')
 
