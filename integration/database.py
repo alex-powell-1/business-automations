@@ -1,5 +1,5 @@
 from setup import creds
-from setup.creds import Column, Table
+from setup.creds import Column, Table, Metafield
 from setup import query_engine
 from setup.error_handler import ProcessOutErrorHandler
 from datetime import datetime, timedelta
@@ -447,6 +447,7 @@ class Database:
             class Media:
                 class Video:
                     def get():
+                        """Returns a list of SKUs and URLS for all videos in Counterpoint."""
                         query = f"""
                         SELECT ITEM_NO, {Column.CP.Product.videos} 
                         FROM {Table.CP.items}
@@ -504,7 +505,7 @@ class Database:
                 MW.SHOP_CUST_ID, MW.META_CUST_NO, CATEG_COD, MW.META_CATEG, PROF_COD_2, MW.META_BIR_MTH, PROF_COD_3, MW.META_SPS_BIR_MTH, 
                 PROF_ALPHA_1, MW.WH_PRC_TIER, {creds.sms_subscribe_status}, MW.ID 
                 FROM {Table.CP.customers} CP
-                FULL OUTER JOIN {Table.Shopify.customers} MW on CP.CUST_NO = MW.cust_no
+                FULL OUTER JOIN {Table.Middleware.customers} MW on CP.CUST_NO = MW.cust_no
                 WHERE IS_ECOMM_CUST = 'Y' AND CP.LST_MAINT_DT > '{last_sync}' and CUST_NAM_TYP = 'P' {customer_filter}
                 """
                 return Database.db.query(query)
@@ -585,7 +586,11 @@ class Database:
                     WHERE RUL.GRP_COD = '{group_code}'
                     """
                     response = Database.db.query(query)
-                    return [rule for rule in response] if response else []
+                    result = [rule for rule in response] if response else []
+                    # if result:
+                    #     # Remove duplicates
+                    #     result = [x for x in result if x not in result[0:]]
+                    return result
 
     class Shopify:
         def rebuild_tables(self):
@@ -757,15 +762,20 @@ class Database:
             create_tables()
 
         class Customer:
-            def get(customer_no=None):
+            def get(customer_no=None, column=None):
+                if column:
+                    query_column = column
+                else:
+                    query_column = '*'
+
                 if customer_no:
                     query = f"""
-                            SELECT * FROM {Table.Middleware.customers}
+                            SELECT {query_column} FROM {Table.Middleware.customers}
                             WHERE CUST_NO = '{customer_no}'
                             """
                 else:
                     query = f"""
-                            SELECT * FROM {Table.Middleware.customers}
+                            SELECT {query_column} FROM {Table.Middleware.customers}
                             """
                 return Database.db.query(query)
 
@@ -889,6 +899,49 @@ class Database:
                     error = f'Error deleting customer {shopify_cust_no} from Middleware. \n Query: {query}\nResponse: {response}'
                     Database.error_handler.add_error_v(error=error)
                     raise Exception(error)
+
+            class Metafield:
+                def delete(cp_cust_no: str = None, shopify_cust_no: int = None, column=None):
+                    """Delete metafield(s) for customer using either CP or Shopify customer number.
+                    If column is provided, only that column will be deleted.
+                    Otherwise, all metafields will be deleted."""
+                    if not cp_cust_no and not shopify_cust_no:
+                        return
+                    query = f"""
+                    UPDATE {Table.Middleware.customers}
+                    SET 
+                    """
+                    if column:
+                        query += f' {column} = NULL'
+                    else:
+                        # Delete All Metafield Column Data for Customer
+                        cust_meta_columns = Metafield.Customer.__dict__.keys()
+                        for column in cust_meta_columns:
+                            if not column.startswith('__'):
+                                key = Metafield.Customer.__dict__[column]
+                                query += f' {key} = NULL,'
+                        # Remove trailing comma
+                        if query[-1] == ',':
+                            query = query[:-1]
+
+                    if cp_cust_no:
+                        query += f" WHERE CUST_NO = '{cp_cust_no}'"
+                    elif shopify_cust_no:
+                        query += f' WHERE SHOP_CUST_ID = {shopify_cust_no}'
+
+                    response = Database.db.query(query)
+                    if response['code'] == 200:
+                        Database.logger.success(
+                            f'Metafields for CUST: {cp_cust_no or shopify_cust_no} deleted from Middleware.'
+                        )
+                    elif response['code'] == 201:
+                        Database.logger.warn(
+                            f'Metafields for CUST: {cp_cust_no or shopify_cust_no} not found in Middleware. \nQuery:\n{query}'
+                        )
+                    else:
+                        error = f'Error deleting metafields for CUST: {cp_cust_no or shopify_cust_no} from Middleware.\nQuery:\n{query}\nResponse: {response}'
+                        Database.error_handler.add_error_v(error=error)
+                        raise Exception(error)
 
         class Order:
             pass
@@ -1314,21 +1367,22 @@ class Database:
                     Database.Shopify.Product.Media.Video.delete(product_id=product_id)
 
                 class Image:
-                    table = Table.Middleware.images
-
-                    def get(image_id, column=None):
+                    def get(image_id=None, column=None):
                         if column is None:
-                            column = '*'
+                            column = '*'  # Get all columns
 
                         if image_id:
                             where_filter = f'WHERE IMAGE_ID = {image_id}'
+                        else:
+                            where_filter = ''  # Get all images
 
                         query = f"""
-                        SELECT {column} FROM {Database.Shopify.Product.Media.Image.table}
+                        SELECT {column} 
+                        FROM {Table.Middleware.images}
                         {where_filter}
                         """
                         response = Database.db.query(query)
-                        if column == '*':
+                        if column == '*' or ',' in column or where_filter == '':  # Return all columns
                             return response
                         else:
                             try:
@@ -1466,8 +1520,6 @@ class Database:
                             raise Exception(error)
 
                 class Video:
-                    table = Table.Middleware.videos
-
                     def get(product_id=None, video_id=None, url=None, sku=None, column=None):
                         if column is None:
                             column = '*'
@@ -1478,24 +1530,30 @@ class Database:
                             where_filter = f'WHERE VIDEO_ID = {video_id}'
                         elif url and sku:
                             where_filter = f"WHERE URL = '{url}' AND ITEM_NO = '{sku}'"
+                        else:
+                            where_filter = ''  # Get all videos
 
                         query = f"""
-                        SELECT {column} FROM {Database.Shopify.Product.Media.Video.table}
+                        SELECT {column} 
+                        FROM {Table.Middleware.videos}
                         {where_filter}
                         """
 
                         response = Database.db.query(query)
-                        if product_id:
-                            return response
-                        else:
-                            try:
-                                return response[0][0]
-                            except:
-                                return None
+                        if response:
+                            if product_id:
+                                return response
+                            elif where_filter == '':  # Return all columns
+                                return response
+                            else:
+                                try:
+                                    return response[0][0]
+                                except:
+                                    return None
 
                     def insert(video):
                         query = f"""
-                        INSERT INTO {Database.Shopify.Product.Media.Video.table} (ITEM_NO, URL, VIDEO_NAME, FILE_PATH, 
+                        INSERT INTO {Table.Middleware.videos} (ITEM_NO, URL, VIDEO_NAME, FILE_PATH, 
                         PRODUCT_ID, VIDEO_ID, SORT_ORDER, BINDING_ID, DESCR, SIZE)
                         VALUES (
                         {f"'{video.sku}'" if video.sku else 'NULL'},
@@ -1517,7 +1575,7 @@ class Database:
 
                     def update(video):
                         query = f"""
-                        UPDATE {Database.Shopify.Product.Media.Video.table}
+                        UPDATE {Table.Middleware.videos}
                         SET 
                         ITEM_NO = {f"'{video.sku}'" if video.sku else 'NULL'},
                         URL = {f"'{video.url}'" if video.url else 'NULL'},
@@ -1566,7 +1624,7 @@ class Database:
                             else:
                                 raise Exception('No video_id or product_id provided for deletion.')
 
-                        query = f'DELETE FROM {Database.Shopify.Product.Media.Video.table} {where_filter}'
+                        query = f'DELETE FROM {Table.Middleware.videos} {where_filter}'
                         response = Database.db.query(query)
                         if response['code'] == 200:
                             if video_id:
@@ -1579,7 +1637,7 @@ class Database:
                             if product_id and sort_order:
                                 # Decrement sort order of remaining videos
                                 query = f"""
-                                UPDATE {Database.Shopify.Product.Media.Video.table}
+                                UPDATE {Table.Middleware.videos}
                                 SET SORT_ORDER = SORT_ORDER - 1
                                 WHERE PRODUCT_ID = {product_id} AND SORT_ORDER > {sort_order}
                                 """
@@ -1615,20 +1673,42 @@ class Database:
                             raise Exception(error)
 
             class Metafield:
-                def delete(product_id):
-                    for column in creds.shopify['metafields'].values():
-                        query = f"""
-                        UPDATE {creds.shopify_product_table}
-                        SET {column} = NULL
-                        WHERE PRODUCT_ID = {product_id}
-                        """
-                        response = Database.db.query(query)
-                        if response['code'] == 200:
-                            Database.logger.success(f'Metafield {column} deleted from product {product_id}.')
-                        elif response['code'] == 201:
-                            Database.logger.warn(f'No rows affected for product {product_id} in Middleware.')
-                        else:
-                            raise Exception(response['message'])
+                def delete(sku: str = None, shopify_product_id: int = None, column=None):
+                    if not sku or not shopify_product_id:
+                        Database.logger.warn('No SKU or Shopify Product ID provided for metafield deletion.')
+                        return
+                    query = f'UPDATE {Table.Middleware.products} SET'
+
+                    if column:
+                        query += f' {column} = NULL'
+                    else:
+                        # Delete All Metafield Column Data for Customer
+                        prod_meta_columns = Metafield.Product.__dict__.keys()
+                        if prod_meta_columns:
+                            for column in prod_meta_columns:
+                                if not column.startswith('__'):
+                                    key = Metafield.Product.__dict__[column]
+                                    query += f' {key} = NULL,'
+                            # Remove trailing comma
+                            if query[-1] == ',':
+                                query = query[:-1]
+
+                    if shopify_product_id:
+                        query += f' WHERE PRODUCT_ID = {shopify_product_id}'
+                    elif sku:
+                        query += f" WHERE ITEM_NO = '{sku}'"
+
+                    response = Database.db.query(query)
+                    if response['code'] == 200:
+                        Database.logger.success(
+                            f'Metafield {column} deleted from product {shopify_product_id or sku}.'
+                        )
+                    elif response['code'] == 201:
+                        Database.logger.warn(
+                            f'No rows affected for product {shopify_product_id or sku} in Middleware.'
+                        )
+                    else:
+                        raise Exception(response['message'])
 
         class Metafield_Definition:
             def get(definition_id=None):
@@ -1818,11 +1898,10 @@ class Database:
             def update(rule):
                 query = f"""
                 UPDATE SN_PROMO
-                SET RUL_SEQ_NO = {rule.seq_no},
-                SHOP_ID = {rule.shopify_id}, 
+                SET SHOP_ID = {rule.shopify_id}, 
                 ENABLED = {1 if rule.is_enabled_cp else 0}, 
                 LST_MAINT_DT = GETDATE()
-                WHERE GRP_COD = '{rule.grp_cod}'
+                WHERE GRP_COD = '{rule.grp_cod}' and RUL_SEQ_NO = {rule.seq_no}
                 """
                 response = Database.db.query(query)
                 if response['code'] == 200:

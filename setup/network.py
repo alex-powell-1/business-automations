@@ -30,7 +30,7 @@ def restart_server_if_disconnected():
 
 def health_check():
     error_handler.logger.info(f'Flask Server Health Check: Starting at {datetime.now():%H:%M:%S}')
-    url = f'{creds.ngrok_domain}/health'
+    url = f'{creds.api_endpoint}/health'
     response = requests.get(url=url)
     if response.status_code != 200:
         error_handler.logger.warn(f'Flask server is not running. Restart the server: {creds.flask_server_name}')

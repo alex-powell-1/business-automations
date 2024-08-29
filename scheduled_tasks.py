@@ -47,6 +47,13 @@ try:
         except Exception as err:
             error_handler.add_error_v(error=err, origin='Item Report')
 
+    # LOW STOCK REPORT EMAIL - for product management team
+    if creds.low_stock_report['enabled'] and creds.low_stock_report['hour'] == hour:
+        try:
+            Email.Staff.LowStockReport.send(recipients=creds.low_stock_report['recipients'])
+        except Exception as err:
+            error_handler.add_error_v(error=err, origin='Low Stock Report')
+
     # LANDSCAPE DESIGN LEAD NOTIFICATION EMAIL - Customer Followup Email to Sales Team
     if creds.lead_email['enabled'] and creds.lead_email['hour'] == hour:
         try:

@@ -22,6 +22,7 @@ from waitress import serve
 from setup.utilities import convert_utc_to_local
 
 from setup import creds, authorization
+from setup.creds import Route
 from setup.email_engine import Email
 from setup.sms_engine import SMSEngine
 from setup.error_handler import ProcessInErrorHandler, ProcessOutErrorHandler, LeadFormErrorHandler
@@ -73,7 +74,7 @@ def verify_webhook(data, hmac_header):
     return hmac.compare_digest(calculated_hmac, hmac_header.encode())
 
 
-@app.route('/design', methods=['POST'])
+@app.route(Route.design, methods=['POST'])
 @limiter.limit('20/minute')  # 10 requests per minute
 def get_service_information():
     """Route for information request about company service. Sends JSON to RabbitMQ for asynchronous processing."""
@@ -119,7 +120,7 @@ def get_service_information():
         return 'Your information has been received. Please check your email for more information from our team.'
 
 
-@app.route('/stock_notify', methods=['POST'])
+@app.route(Route.stock_notify, methods=['POST'])
 @limiter.limit('20/minute')  # 10 requests per minute
 def stock_notification():
     """Get contact and product information from user who wants notification of when
@@ -243,26 +244,6 @@ def stock_notification():
             ), 400
         else:
             return insert()
-
-        # try:
-        #     df = pandas.read_csv(creds.stock_notification_log)
-        # except FileNotFoundError:
-        #     pass
-        # else:
-        #     entries = df.to_dict('records')
-        #     for x in entries:
-        #         if x['email'] == email and str(x['item_no']) == item_no:
-        #             return (
-        #                 'This email address is already on file for this item. We will send you an email '
-        #                 'when it comes back in stock. Please contact our office at '
-        #                 "<a href='tel:8288740679'>(828) 874-0679</a> if you need an alternative "
-        #                 'item. Thank you!'
-        #             ), 400
-
-        # stock_notification_data = [[str(datetime.now())[:-7], email, item_no]]
-        # df = pandas.DataFrame(stock_notification_data, columns=['date', 'email', str('item_no')])
-        # log_engine.write_log(df, creds.stock_notification_log)
-        # return 'Your submission was received.'
 
 
 @app.route('/gift-card-recipient', methods=['POST'])
@@ -406,7 +387,7 @@ def update_uuid_name():
     return jsonify({'message': 'Name updated.'}), 200
 
 
-@app.route('/newsletter', methods=['POST'])
+@app.route(Route.newsletter, methods=['POST'])
 @limiter.limit('20 per minute')
 def newsletter_signup():
     """Route for website pop-up. Offers user a coupon and adds their information to a csv."""
@@ -483,7 +464,7 @@ def newsletter_signup():
             return 'OK', 200
 
 
-@app.route('/sms', methods=['POST'])
+@app.route(Route.sms, methods=['POST'])
 @limiter.limit('40/minute')  # rate limiter
 def incoming_sms():
     """Webhook route for incoming SMS/MMS messages to be used with client messenger application.
@@ -575,38 +556,7 @@ def incoming_sms():
     return str(resp)
 
 
-@app.route('/bc', methods=['POST'])
-@limiter.limit('20/minute')
-def bc_orders():
-    """Webhook route for incoming orders. Sends to RabbitMQ queue for asynchronous processing"""
-    response_data = request.get_json()
-    order_id = response_data['data']['node']['id']
-
-    ProcessInErrorHandler.logger.info(f'Received order {order_id}')
-
-    # Send order to RabbitMQ for asynchronous processing
-    try:
-        connection = pika.BlockingConnection(pika.ConnectionParameters('localhost'))
-        channel = connection.channel()
-
-        channel.queue_declare(queue='bc_orders', durable=True)
-
-        channel.basic_publish(
-            exchange='',
-            routing_key='bc_orders',
-            body=str(order_id),
-            properties=pika.BasicProperties(delivery_mode=pika.DeliveryMode.Persistent),
-        )
-        connection.close()
-    except Exception as e:
-        ProcessInErrorHandler.error_handler.add_error_v(
-            error=f'Error sending order {order_id} to RabbitMQ: {e}', origin='bc_orders'
-        )
-
-    return jsonify({'success': True}), 200
-
-
-@app.route(creds.route_shopify_order_create, methods=['POST'])
+@app.route(Route.Shopify.order_create, methods=['POST'])
 @limiter.limit('20/minute')
 def shopify():
     """Webhook route for incoming orders. Sends to RabbitMQ queue for asynchronous processing"""
@@ -649,7 +599,7 @@ def shopify():
     return jsonify({'success': True}), 200
 
 
-@app.route(creds.route_shopify_draft_create, methods=['POST'])
+@app.route(Route.Shopify.draft_create, methods=['POST'])
 @limiter.limit('20/minute')
 def shopify_draft_create():
     """Webhook route for newly created draft orders. Sends to RabbitMQ queue for asynchronous processing"""
@@ -685,7 +635,7 @@ def shopify_draft_create():
     return jsonify({'success': True}), 200
 
 
-@app.route(creds.route_shopify_draft_update, methods=['POST'])
+@app.route(Route.Shopify.draft_update, methods=['POST'])
 @limiter.limit('20/minute')
 def shopify_draft_update():
     """Webhook route for updated draft orders. Sends to RabbitMQ queue for asynchronous processing"""
@@ -721,7 +671,26 @@ def shopify_draft_update():
     return jsonify({'success': True}), 200
 
 
-@app.route(creds.route_shopify_customer_update, methods=['POST'])
+@app.route(Route.Shopify.customer_create, methods=['POST'])
+@limiter.limit('60/minute')
+def shopify_customer_create():
+    """Webhook route for updated customers. Sends to RabbitMQ queue for asynchronous processing"""
+    webhook_data = request.json
+    headers = request.headers
+    data = request.get_data()
+    hmac_header = headers.get('X-Shopify-Hmac-Sha256')
+
+    if not hmac_header:
+        return jsonify({'error': 'Unauthorized'}), 401
+    verified = verify_webhook(data, hmac_header)
+    if not verified:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    with open('./logs/customer_create.json', 'a') as f:
+        json.dump(webhook_data, f)
+
+
+@app.route(Route.Shopify.customer_update, methods=['POST'])
 @limiter.limit('60/minute')
 def shopify_customer_update():
     """Webhook route for updated customers. Sends to RabbitMQ queue for asynchronous processing"""
@@ -736,7 +705,7 @@ def shopify_customer_update():
     if not verified:
         return jsonify({'error': 'Unauthorized'}), 401
 
-    with open('customer_update.json', 'a') as f:
+    with open('./logs/customer_update.json', 'a') as f:
         json.dump(webhook_data, f)
     # customer_id = webhook_data['id']
     # try:
@@ -760,7 +729,7 @@ def shopify_customer_update():
     return jsonify({'success': True}), 200
 
 
-@app.route(creds.route_shopify_product_update, methods=['POST'])
+@app.route(Route.Shopify.product_update, methods=['POST'])
 @limiter.limit('60/minute')
 def shopify_product_update():
     """Webhook route for updated products. Sends to RabbitMQ queue for asynchronous processing"""
@@ -918,7 +887,7 @@ def shopify_product_update():
     return jsonify({'success': True}), 200
 
 
-@app.route('/token', methods=['POST'])
+@app.route(Route.token, methods=['POST'])
 @limiter.limit('10/minute')  # 10 requests per minute
 def get_token():
     password = request.args.get('password')
@@ -932,7 +901,7 @@ def get_token():
     return jsonify({'error': 'Invalid username or password'}), 401
 
 
-@app.route('/commercialAvailability', methods=['POST'])
+@app.route(Route.commercial_availability, methods=['POST'])
 @limiter.limit('10/minute')  # 10 requests per minute
 def get_commercial_availability():
     token = request.args.get('token')
@@ -953,7 +922,7 @@ def get_commercial_availability():
         return jsonify({'error': 'Error fetching data'}), 500
 
 
-@app.route('/availability', methods=['POST'])
+@app.route(Route.retail_availability, methods=['POST'])
 @limiter.limit('10/minute')  # 10 requests per minute
 def get_availability():
     response = requests.get(creds.retail_availability_url)
@@ -964,14 +933,14 @@ def get_availability():
         return jsonify({'error': 'Error fetching data'}), 500
 
 
-@app.route('/health', methods=['GET'])
+@app.route(Route.health_check, methods=['GET'])
 @limiter.limit('10/minute')  # 10 requests per minute
 def health_check():
     ProcessInErrorHandler.logger.success('Server is running')
     return jsonify({'status': 'Server is running'}), 200
 
 
-@app.route('/files/<path:path>', methods=['GET'])
+@app.route(f'{Route.file_server}/<path:path>', methods=['GET'])
 def serve_file(path):
     try:
         return send_from_directory(creds.public_files, path)
@@ -984,7 +953,7 @@ def serve_file(path):
         return jsonify({'error': 'Internal server error'}), 500
 
 
-@app.route('/qr/<qr_id>', methods=['GET'])
+@app.route(f'{Route.qr}/<qr_id>', methods=['GET'])
 def qr_tracker(qr_id):
     QR.visit(qr_id)
     return jsonify({'success': True}), 200

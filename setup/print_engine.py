@@ -14,7 +14,7 @@ from traceback import format_exc as tb
 from setup.order_engine import utc_to_local
 from email import utils
 from integration.cp_api import OrderAPI
-
+from integration.database import Database
 
 test_mode = False
 
@@ -92,6 +92,10 @@ class Printer:
             order = Shopify.Order.as_bc_order(order_id)
             cust_no = OrderAPI.get_cust_no(order)
             ProcessInErrorHandler.logger.info(f'Customer Number: {cust_no}')
+            customer_res = Database.Counterpoint.Customer.get(customer_no=cust_no)
+            first_name = customer_res[0][1]
+            last_name = customer_res[0][2]
+
             # Get Product List
             products = order['products']['url']
             product_list = []
@@ -151,9 +155,7 @@ class Printer:
                         'order_total': float(order['total_inc_tax']),
                         'cust_no': str(cust_no),
                         # Customer Billing
-                        'cb_name': (order['billing_address']['first_name'] or 'WEB')
-                        + ' '
-                        + (order['billing_address']['last_name'] or 'CUSTOMER'),
+                        'cb_name': first_name + ' ' + last_name,
                         'cb_phone': order['billing_address']['phone'],
                         'cb_email': order['billing_address']['email'],
                         'cb_street': order['billing_address']['street_1'],
@@ -212,4 +214,4 @@ class Printer:
 
 
 if __name__ == '__main__':
-    Printer.Order.print(5590886711463)
+    Printer.Order.print(5652402864295)
