@@ -87,7 +87,16 @@ class Database:
                                         EVENT_TYPE varchar(20),
                                         MESSAGE varchar(255)
                                         )""",
+            'stock_notify': f"""
+                                        CREATE TABLE {Table.stock_notify}(
+                                        ID int IDENTITY(1,1) primary key,
+                                        ITEM_NO varchar(16) NOT NULL,
+                                        EMAIL varchar(64),
+                                        PHONE varchar(16),
+                                        CREATED_DT DATETIME DEFAULT(current_timestamp)
+                                        );""",
         }
+
         for table in tables:
             Database.db.query(tables[table])
 
@@ -606,7 +615,7 @@ class Database:
                         query = f"""
                         SELECT TOP 1 GRP.GRP_TYP, GRP.GRP_COD, GRP.GRP_SEQ_NO, GRP.DESCR, GRP.CUST_FILT, GRP.BEG_DAT, 
                         GRP.END_DAT, GRP.LST_MAINT_DT, GRP.ENABLED, GRP.MIX_MATCH_COD, MW.SHOP_ID
-                        FROM IM_PRC_GRP GRP FULL OUTER JOIN {Table.Middleware.discounts} MW ON GRP.GRP_COD = MW.GRP_COD
+                        FROM IM_PRC_GRP GRP FULL OUTER JOIN {Table.Middleware.promotions} MW ON GRP.GRP_COD = MW.GRP_COD
                         WHERE GRP.GRP_COD = '{promo}' and GRP.GRP_TYP = 'P'
                         """
                         response = Database.db.query(query=query)
@@ -754,6 +763,13 @@ class Database:
                                             DOC_ID bigint,
                                             STATUS bit DEFAULT(0)
                                             )""",
+                    'draft_orders': f"""
+                                            CREATE TABLE {Table.Middleware.draft_orders} (  
+                                            ID int IDENTITY(1,1) primary key,
+                                            DOC_ID bigint not NULL,
+                                            DRAFT_ID varchar(64) not NULL,
+                                            CREATED_DT DATETIME DEFAULT(current_timestamp)
+                                            );""",
                     'gift': f"""
                                             CREATE TABLE {Table.Middleware.gift_certificates} (
                                             ID int IDENTITY(1, 1) PRIMARY KEY,
@@ -762,13 +778,20 @@ class Database:
                                             LST_MAINT_DT datetime NOT NULL DEFAULT(current_timestamp)
                                             )""",
                     'promo': f""" 
-                                            CREATE TABLE {Table.Middleware.discounts}(
+                                            CREATE TABLE {Table.Middleware.promotions}(
                                             ID int IDENTITY(1,1) PRIMARY KEY,
                                             GRP_COD nvarchar(50) NOT NULL,
                                             RUL_SEQ_NO int,
                                             SHOP_ID bigint,
                                             ENABLED bit DEFAULT(0),
                                             LST_MAINT_DT datetime NOT NULL DEFAULT(current_timestamp)
+                                            );""",
+                    'discount': f"""
+                                            CREATE TABLE {Table.Middleware.discounts} (
+                                            ID int IDENTITY(1,1) primary key,
+                                            SHOP_ID bigint,
+                                            DISC_ID bigint,
+                                            CREATED_DT DATETIME DEFAULT(current_timestamp)
                                             );""",
                     'metafields': f""" 
                                             CREATE TABLE {Table.Middleware.metafields}(
@@ -1910,27 +1933,29 @@ class Database:
                     else:
                         return f'Webhook {hook_id} deleted'
 
-        class Discount:
+        class Promotion:
+            """Promotion Prices translated into Automatic Discounts in Shopify."""
+
             def get(group_code=None):
                 if group_code:
-                    query = f"SELECT SHOP_ID FROM {Table.Middleware.discounts} WHERE GRP_COD = '{group_code}'"
+                    query = f"SELECT SHOP_ID FROM {Table.Middleware.promotions} WHERE GRP_COD = '{group_code}'"
                 else:
-                    query = f'SELECT GRP_COD FROM {Table.Middleware.discounts}'
+                    query = f'SELECT GRP_COD FROM {Table.Middleware.promotions}'
                 response = Database.db.query(query)
                 return [x[0] for x in response] if response else None
 
             def sync(rule):
                 if rule.db_id:
-                    Database.Shopify.Discount.update(rule)
+                    Database.Shopify.Promotion.update(rule)
                 else:
-                    Database.Shopify.Discount.insert(rule)
+                    Database.Shopify.Promotion.insert(rule)
 
-                Database.Shopify.Discount.Line.sync(rule)
+                Database.Shopify.Promotion.Line.sync(rule)
 
             def insert(rule):
                 """Insert a new discount rule into the Middleware."""
                 query = f"""
-                INSERT INTO SN_PROMO(GRP_COD, RUL_SEQ_NO, SHOP_ID, ENABLED)
+                INSERT INTO {Table.Middleware.promotions}(GRP_COD, RUL_SEQ_NO, SHOP_ID, ENABLED)
                 VALUES('{rule.grp_cod}', {rule.seq_no},{rule.shopify_id}, {1 if rule.is_enabled_cp else 0})
                 """
                 response = Database.db.query(query)
@@ -1946,7 +1971,7 @@ class Database:
 
             def update(rule):
                 query = f"""
-                UPDATE SN_PROMO
+                UPDATE {Table.Middleware.promotions}
                 SET SHOP_ID = {rule.shopify_id}, 
                 ENABLED = {1 if rule.is_enabled_cp else 0}, 
                 LST_MAINT_DT = GETDATE()
@@ -1971,7 +1996,7 @@ class Database:
                 if not shopify_id:
                     Database.logger.warn('No Shopify ID provided for deletion.')
                     return
-                query = f'DELETE FROM SN_PROMO WHERE SHOP_ID = {shopify_id}'
+                query = f'DELETE FROM {Table.Middleware.promotions} WHERE SHOP_ID = {shopify_id}'
                 response = Database.db.query(query)
 
                 if response['code'] == 200:
@@ -1989,7 +2014,7 @@ class Database:
                     if not shopify_id:
                         Database.logger.warn('No Shopify ID provided for line item lookup.')
                         return
-                    query = f'SELECT ITEM_NO FROM {Table.Middleware.discount_lines} WHERE SHOP_ID = {shopify_id}'
+                    query = f'SELECT ITEM_NO FROM {Table.Middleware.promotion_lines} WHERE SHOP_ID = {shopify_id}'
                     response = Database.db.query(query)
                     return [x[0] for x in response] if response else None
 
@@ -2002,15 +2027,15 @@ class Database:
                                 if item in mw_items:
                                     continue
                                 else:
-                                    Database.Shopify.Discount.Line.insert(item, rule.shopify_id)
+                                    Database.Shopify.Promotion.Line.insert(item, rule.shopify_id)
                             else:
-                                Database.Shopify.Discount.Line.insert(item, rule.shopify_id)
+                                Database.Shopify.Promotion.Line.insert(item, rule.shopify_id)
                     if mw_items:
                         for item in mw_items:
                             if item in cp_items:
                                 continue
                             else:
-                                Database.Shopify.Discount.Line.delete(item_no_list=[item])
+                                Database.Shopify.Promotion.Line.delete(item_no_list=[item])
 
                 def insert(item, shopify_promo_id):
                     """Insert Items affected by BOGO promos into middleware."""
@@ -2018,7 +2043,7 @@ class Database:
                         Database.logger.warn('No item provided for insertion.')
                         return
                     query = f"""
-                    INSERT INTO {Table.Middleware.discount_lines} (SHOP_ID, ITEM_NO)
+                    INSERT INTO {Table.Middleware.promotion_lines} (SHOP_ID, ITEM_NO)
                     VALUES ({shopify_promo_id}, '{item}')"""
                     response = Database.db.query(query)
                     if response['code'] == 200:
@@ -2034,7 +2059,7 @@ class Database:
                         Database.logger.warn('No item number provided for update.')
                         return
                     query = f"""
-                    UPDATE {Table.Middleware.discount_lines}
+                    UPDATE {Table.Middleware.promotion_lines}
                     SET SHOP_ID = {shopify_id}
                     WHERE ITEM_NO = '{line.item_no}'
                     """
@@ -2055,7 +2080,7 @@ class Database:
                         return
                     if shopify_id:
                         # Delete all line items for a specific promotion
-                        query = f'DELETE FROM {Table.Middleware.discount_lines} WHERE SHOP_ID = {shopify_id}'
+                        query = f'DELETE FROM {Table.Middleware.promotion_lines} WHERE SHOP_ID = {shopify_id}'
                         response = Database.db.query(query)
                         if response['code'] == 200:
                             Database.logger.success(
@@ -2075,7 +2100,7 @@ class Database:
                             where_filter = f'ITEM_NO = {item_no_list[0]}'
                         else:
                             where_filter = f'ITEM_NO IN {tuple(item_no_list)}'
-                        query = f'DELETE FROM {Table.Middleware.discount_lines} WHERE {where_filter}'
+                        query = f'DELETE FROM {Table.Middleware.promotion_lines} WHERE {where_filter}'
                         response = Database.db.query(query)
                         if response['code'] == 200:
                             Database.logger.success(
@@ -2091,9 +2116,25 @@ class Database:
                                 origin='Middleware Promotion Line Item Deletion',
                             )
 
+        class Discount:
+            """Basic Discount Codes"""
+
+            def get(discount_id):
+                if not discount_id:
+                    Database.logger.warn('No discount ID provided for lookup.')
+                    return
+                query = f'SELECT * FROM {Table.Middleware.discounts} WHERE SHOP_ID = {discount_id}'
+                response = Database.db.query(query)
+                if response:
+                    db_id = response[0][0]
+                    shop_id = response[0][1]
+                    cp_id = response[0][2]
+                    lst_maint_dt = response[0][3]
+                    return {'db_id': db_id, 'shop_id': shop_id, 'cp_id': cp_id, 'lst_maint_dt': lst_maint_dt}
+
         class Gift_Certificate:
             pass
 
 
 if __name__ == '__main__':
-    print(Database.Shopify.Discount.get('TEST'))
+    print(Database.Shopify.Discount.get(1165344506023))

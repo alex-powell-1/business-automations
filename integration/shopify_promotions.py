@@ -34,14 +34,14 @@ class Promotions:
         # List of Group Codes from Counterpoint
         cp_promotions = [x.grp_cod for x in self.promotions]
         # List of Group Codes from Middleware
-        mw_promotions = Database.Shopify.Discount.get()
+        mw_promotions = Database.Shopify.Promotion.get()
 
         if mw_promotions:
             delete_count = 0
             for mw_promotion in mw_promotions:
                 if mw_promotion not in cp_promotions:
                     # Promotion has been deleted in Counterpoint. Delete in Shopify and Middleware
-                    shopify_id = Database.Shopify.Discount.get_id(mw_promotion)
+                    shopify_id = Database.Shopify.Promotion.get_id(mw_promotion)
                     Promotions.Promotion.delete(shopify_id)
                     delete_count += 1
 
@@ -241,7 +241,7 @@ class Promotions:
 
                     # Sync BOGO Twoofer Promotions to Middleware.
                     # Fixed Price Promotions are processed outside this block.
-                    Database.Shopify.Discount.sync(rule)
+                    Database.Shopify.Promotion.sync(rule)
 
                 # Process Non-BOGO Twoofer Promotions
                 if rule.is_enabled_cp:
@@ -255,7 +255,7 @@ class Promotions:
             if mw_rule_items:
                 delete_list = [x for x in mw_rule_items if x not in cp_rule_items]
                 if delete_list:
-                    Database.Shopify.Discount.Line.delete(item_no_list=delete_list)
+                    Database.Shopify.Promotion.Line.delete(item_no_list=delete_list)
 
         def set_sale_status(self, rule):
             status = 'Y' if rule.is_enabled_cp else 'N'
@@ -334,7 +334,6 @@ class Promotions:
                     continue
                 else:
                     if rule.is_bogo_twoofer():
-                        # Database.Shopify.Discount.Line.delete(shopify_id=rule.shopify_id)
                         pass
 
                     else:
@@ -348,19 +347,19 @@ class Promotions:
                 Promotions.logger.warn('No Group Code or Shopify ID provided.')
                 return
             if group_code:
-                rules = Database.Shopify.Discount.get(
+                rules = Database.Shopify.Promotion.get(
                     group_code=group_code
                 )  # Get all rules with the same group code
                 if not rules:
                     Promotions.logger.warn(f'No Shopify ID found for Group Code: {group_code}')
                     return
                 for shopify_id in rules:
-                    items = Database.Shopify.Discount.Line.get(shopify_id)
+                    items = Database.Shopify.Promotion.Line.get(shopify_id)
                     if items:
                         Database.Counterpoint.Product.set_sale_status(items=items, status='N')
 
                     Shopify.Discount.Automatic.delete(shopify_id)
-                    Database.Shopify.Discount.delete(shopify_id)
+                    Database.Shopify.Promotion.delete(shopify_id)
             elif shopify_discount_code_id:
                 Shopify.Discount.Code.delete(shopify_discount_code_id)
 
@@ -386,7 +385,7 @@ class Promotions:
 
                 self.price_breaks = []
                 self.items = []
-                self.mw_items = Database.Shopify.Discount.Line.get(self.shopify_id)
+                self.mw_items = Database.Shopify.Promotion.Line.get(self.shopify_id)
                 self.get_price_breaks()
                 self.get_cp_items()
                 self.badge_text = self.get_badge_text()

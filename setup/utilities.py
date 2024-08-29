@@ -12,10 +12,19 @@ from setup.error_handler import ProcessOutErrorHandler
 
 class PhoneNumber:
     def __init__(self, phone_number: str):
-        self.raw = self.strip_number(phone_number)
-        self.area_code = self.raw[0:3]
-        self.exchange = self.raw[3:6]
-        self.subscriber_number = self.raw[6:]
+        self.raw = phone_number
+        if not self.is_valid():
+            raise ValueError(f'Invalid phone number format. Input: {phone_number}')
+        self.stripped = self.strip_number(phone_number)
+        self.area_code = self.stripped[0:3]
+        self.exchange = self.stripped[3:6]
+        self.subscriber_number = self.stripped[6:]
+
+    def is_valid(self) -> bool:
+        """Validates a phone number using regex."""
+        pattern = r'(\+\d{1,3})?[-.\s]?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}'
+        if re.match(pattern, self.raw):
+            return True
 
     def strip_number(self, phone_number: str):
         return (

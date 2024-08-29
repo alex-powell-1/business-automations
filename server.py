@@ -56,7 +56,9 @@ dev = False
 @app.errorhandler(ValidationError)
 def handle_validation_error(e):
     # Return a JSON response with a message indicating that the input data is invalid
-    ProcessInErrorHandler.error_handler.add_error_v(error=f'Invalid input data: {e}', origin='validation_error')
+    ProcessInErrorHandler.error_handler.add_error_v(
+        error=f'Invalid input data: {e}', origin='validation_error', traceback=tb()
+    )
     return jsonify({'error': 'Invalid input data'}), 400
 
 
@@ -692,23 +694,23 @@ def shopify_customer_create():
                 first_name=webhook_data['first_name'],
                 last_name=webhook_data['last_name'],
                 phone_number=webhook_data['phone'],
-                email=webhook_data['email'],
+                email_address=webhook_data['email'],
                 street_address=street,
                 city=city,
                 state=state,
                 zip_code=zip_code,
             )
         except Exception as e:
-            error_handler.add_error_v(error=f'Error adding customer {id}: {e}', origin='shopify_customer_create')
+            error_handler.add_error_v(
+                error=f'Error adding customer {id}: {e}', origin='shopify_customer_create', traceback=tb()
+            )
             return jsonify({'error': 'Error adding customer'}), 500
         else:
             logger.success(f'Customer {id} added successfully.')
             return jsonify({'success': True}), 200
 
     logger.success(f'Customer Create Finished: {id}')
-
-    # with open('./logs/customer_create.json', 'a') as f:
-    #     json.dump(webhook_data, f)
+    return jsonify({'success': True}), 200
 
 
 @app.route(Route.Shopify.customer_update, methods=['POST'])

@@ -34,6 +34,12 @@ def create_inventory_csv(retail=True):
         for x in response:
             item_number = x[0]
             item_descr = x[1]
+
+            try:
+                item_descr.replace('"', '')
+            except:
+                pass
+
             item_price = round(float(x[2]), 2)
             item_qty_avail = int(x[3])
             category = x[4]
