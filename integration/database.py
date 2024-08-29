@@ -15,7 +15,7 @@ class Database:
     def create_tables():
         tables = {
             'design_leads': f"""
-                                        CREATE TABLE {Table.Middleware.design_leads} (
+                                        CREATE TABLE {Table.design_leads} (
                                         ID int IDENTITY(1,1) PRIMARY KEY,
                                         DATE datetime NOT NULL DEFAULT(current_timestamp),
                                         CUST_NO varchar(50),
@@ -37,7 +37,7 @@ class Database:
                                         COMMENTS varchar(500)
                                         )""",
             'qr': f"""
-                                        CREATE TABLE {Table.Middleware.qr} (
+                                        CREATE TABLE {Table.qr} (
                                         QR_CODE varchar(100) NOT NULL PRIMARY KEY,
                                         URL varchar(100),
                                         PUBLICATION varchar(50),
@@ -51,12 +51,12 @@ class Database:
                                         LST_SCAN datetime
                                         )""",
             'qr_activ': f"""
-                                        CREATE TABLE {Table.Middleware.qr_activity} (
+                                        CREATE TABLE {Table.qr_activity} (
                                         SCAN_DT datetime NOT NULL DEFAULT(current_timestamp) PRIMARY KEY,
                                         CODE varchar(100) NOT NULL FOREIGN KEY REFERENCES SN_QR(QR_CODE),
                                         );""",
             'sms': f"""
-                                        CREATE TABLE {Table.Middleware.sms}(
+                                        CREATE TABLE {Table.sms}(
                                         ID int IDENTITY(1,1) PRIMARY KEY,
                                         DATE datetime NOT NULL DEFAULT(current_timestamp),
                                         ORIGIN varchar(30),
@@ -75,7 +75,7 @@ class Database:
                                         ERROR_MESSAGE varchar(255)
                                         )""",
             'sms_event': f"""
-                                        CREATE TABLE {Table.Middleware.sms_event}(
+                                        CREATE TABLE {Table.sms_event}(
                                         ID int IDENTITY(1,1) PRIMARY KEY,
                                         DATE datetime NOT NULL DEFAULT(current_timestamp),
                                         ORIGIN varchar(30),
@@ -95,12 +95,12 @@ class Database:
         def get(yesterday=True):
             if yesterday:
                 query = f"""
-                SELECT * FROM {Table.Middleware.design_leads}
+                SELECT * FROM {Table.design_leads}
                 WHERE DATE > '{datetime.now().date() - timedelta(days=1)}' AND DATE < '{datetime.now().date()}'
                 """
             else:
                 query = f"""
-                    SELECT * FROM {Table.Middleware.design_leads}
+                    SELECT * FROM {Table.design_leads}
                     """
             return Database.db.query(query)
 
@@ -136,7 +136,7 @@ class Database:
                         install = 1
 
             query = f"""
-                INSERT INTO {Table.Middleware.design_leads} (DATE, CUST_NO, FST_NAM, LST_NAM, EMAIL, PHONE, SKETCH, SCALED, DIGITAL, 
+                INSERT INTO {Table.design_leads} (DATE, CUST_NO, FST_NAM, LST_NAM, EMAIL, PHONE, SKETCH, SCALED, DIGITAL, 
                 ON_SITE, DELIVERY, INSTALL, TIMELINE, STREET, CITY, STATE, ZIP, COMMENTS)
                 VALUES ('{date}', {f"'{cust_no}'" if cust_no else 'NULL'}, '{first_name}', '{last_name}', '{email}', '{phone}', {sketch}, 
                 {scaled}, {digital}, {on_site}, {delivery}, {install}, '{timeline}', 
@@ -153,12 +153,12 @@ class Database:
         def get(cust_no=None):
             if cust_no:
                 query = f"""
-                SELECT * FROM {Table.Middleware.sms}
+                SELECT * FROM {Table.sms}
                 WHERE CUST_NO = '{cust_no}'
                 """
             else:
                 query = f"""
-                SELECT * FROM {Table.Middleware.sms}
+                SELECT * FROM {Table.sms}
                 """
             return Database.db.query(query)
 
@@ -191,7 +191,7 @@ class Database:
                 direction = 'INBOUND'
 
             query = f"""
-                INSERT INTO {Table.Middleware.sms} (ORIGIN, CAMPAIGN, DIRECTION, TO_PHONE, FROM_PHONE, CUST_NO, BODY, USERNAME, NAME, CATEGORY, MEDIA, SID, ERROR_CODE, ERROR_MESSAGE)
+                INSERT INTO {Table.sms} (ORIGIN, CAMPAIGN, DIRECTION, TO_PHONE, FROM_PHONE, CUST_NO, BODY, USERNAME, NAME, CATEGORY, MEDIA, SID, ERROR_CODE, ERROR_MESSAGE)
                 VALUES ('{origin}', {f"'{campaign}'" if campaign else 'NULL'}, '{direction}', '{to_phone}', '{from_phone}', 
                 {f"'{cust_no}'" if cust_no else 'NULL'}, '{body}', {f"'{username}'" if username else 'NULL'}, '{name}', 
                 {f"'{category}'" if category else 'NULL'}, {f"'{media}'" if media else 'NULL'}, {f"'{sid}'" if sid else 'NULL'}, 
@@ -206,6 +206,48 @@ class Database:
             else:
                 error = f'Error adding SMS sent to {to_phone} to Middleware. \nQuery: {query}\nResponse: {response}'
                 Database.error_handler.add_error_v(error=error, origin='insert_sms')
+
+    class StockNotification:
+        def has_info(item_no, email=None, phone=None):
+            query = f"""
+            SELECT ITEM_NO 
+            FROM {Table.stock_notify}
+            WHERE ITEM_NO = '{item_no}'
+            """
+
+            if email is not None:
+                query += f" AND EMAIL = '{email}'"
+
+            if phone is not None:
+                query += f" AND PHONE = '{phone}'"
+
+            try:
+                response = Database.db.query(query)
+                return response[0][0] is not None
+            except:
+                return False
+
+        def insert(item_no, email=None, phone=None):
+            cols = 'ITEM_NO'
+            values = f"'{item_no}'"
+
+            if email is not None:
+                cols += ', EMAIL'
+                values += f", '{email}'"
+
+            if phone is not None:
+                cols += ', PHONE'
+                values += f", '{phone}'"
+
+            query = f"""
+            INSERT INTO {Table.stock_notify}
+            ({cols})
+            VALUES
+            ({values})
+            """
+
+            response = Database.db.query(query)
+            return response
 
     class Counterpoint:
         class Order:
@@ -406,7 +448,8 @@ class Database:
 
                 def get(item_no):
                     query = f"""
-                    SELECT HTML_DESCR FROM {Database.Counterpoint.Product.HTMLDescription.table} 
+                    SELECT HTML_DESCR 
+                    FROM {Database.Counterpoint.Product.HTMLDescription.table} 
                     WHERE ITEM_NO = '{item_no}'
                     """
                     return Database.db.query(query)
@@ -510,11 +553,17 @@ class Database:
                 """
                 return Database.db.query(query)
 
-            def update_timestamps(customer_list):
+            def update_timestamps(customer_list: list = None, customer_no: str = None):
+                if not customer_list and not customer_no:
+                    return
+                if customer_no:
+                    customer_list = [customer_no]
+
                 if len(customer_list) == 1:
                     customer_list = f"('{customer_list[0]}')"
                 else:
                     customer_list = str(tuple(customer_list))
+
                 query = f"""
                 UPDATE {Table.CP.customers}
                 SET LST_MAINT_DT = GETDATE()

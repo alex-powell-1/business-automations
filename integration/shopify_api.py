@@ -2140,4 +2140,4 @@ def refresh_order(tkt_no):
 
 
 if __name__ == '__main__':
-    Shopify.Webhook.create()
+    pass

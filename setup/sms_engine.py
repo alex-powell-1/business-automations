@@ -139,7 +139,7 @@ class SMSEngine:
         print(response)
         if response['code'] == 200:
             query = f"""
-            INSERT INTO {Table.Middleware.sms_event} (ORIGIN, CAMPAIGN, PHONE, CUST_NO, NAME, CATEGORY, EVENT_TYPE, MESSAGE)
+            INSERT INTO {Table.sms_event} (ORIGIN, CAMPAIGN, PHONE, CUST_NO, NAME, CATEGORY, EVENT_TYPE, MESSAGE)
             VALUES ('{origin}', '{campaign}', '{phone}', '{cust_no}', '{name}', '{category}',
             'Subscribe', 'SET {creds.sms_subscribe_status} = Y')"""
             print(query)
@@ -164,7 +164,7 @@ class SMSEngine:
         print(response)
         if response['code'] == 200:
             query = f"""
-            INSERT INTO {Table.Middleware.sms_event} (ORIGIN, CAMPAIGN, PHONE, CUST_NO, NAME, CATEGORY, EVENT_TYPE, MESSAGE)
+            INSERT INTO {Table.sms_event} (ORIGIN, CAMPAIGN, PHONE, CUST_NO, NAME, CATEGORY, EVENT_TYPE, MESSAGE)
             VALUES ('{origin}', '{campaign}', '{phone}', '{cust_no}', '{name}', '{category}',
             'Unsubscribe', 'SET {creds.sms_subscribe_status} = N')"""
             print(query)
