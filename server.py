@@ -172,6 +172,7 @@ def stock_notification():
         ProcessInErrorHandler.error_handler.add_error_v(error=f'Invalid input data: {e}', origin='stock_notify')
         return f'An error occurred: {str(e)}', 500
     else:
+        # Fix empty strings
         email = None if email_empty else sanitized_data['email']
         phone = None if phone_empty else sanitized_data['phone']
         item_no = sanitized_data['sku']
