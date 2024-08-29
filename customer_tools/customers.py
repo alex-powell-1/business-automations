@@ -9,6 +9,8 @@ from setup.create_log import create_customer_log
 from setup.query_engine import QueryEngine as db
 from setup.error_handler import ScheduledTasksErrorHandler as error_handler
 
+from setup.utilities import PhoneNumber
+
 
 class Customer:
     def __init__(self, number):
@@ -332,13 +334,7 @@ def lookup_customer_by_email(email_address):
 
 
 def format_phone_number(phone_number: str):
-    phone_number = phone_number.replace('+1', '')
-
-    if len(phone_number) >= 11 and phone_number.startswith('1'):
-        phone_number = phone_number[1:]
-
-    phone_number = ''.join(filter(str.isdigit, phone_number))
-    return f'{phone_number[0:3]}-{phone_number[3:6]}-{phone_number[6:]}'
+    return PhoneNumber(phone_number).to_cp()
 
 
 def lookup_customer_by_phone(phone_number):

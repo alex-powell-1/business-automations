@@ -15,6 +15,8 @@ import json
 
 from setup.utilities import VirtualRateLimiter
 
+from integration.shopify_api import Shopify
+
 
 class Customers:
     def __init__(self, last_sync):
@@ -500,6 +502,18 @@ class Customers:
                 self.logger.success(f'Customer {self.cust_no} loyalty points set to 0.')
             else:
                 self.error_handler.add_error_v(error=f'Error setting customer {self.cust_no} loyalty points to 0.')
+
+        @staticmethod
+        def get_metafields(cust_id):
+            return Shopify.Customer.Metafield.get(shopify_cust_no=cust_id)['customer']['metafields']['edges']
+
+        @staticmethod
+        def get_metafield_keys(cust_id):
+            return [x['node']['key'] for x in Customers.Customer.get_metafields(cust_id)]
+
+        @staticmethod
+        def has_metafield(cust_id, key):
+            return key in Customers.Customer.get_metafield_keys(cust_id)
 
 
 if __name__ == '__main__':

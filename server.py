@@ -38,6 +38,10 @@ import uuid_utils as uuidu
 
 from setup.utilities import PhoneNumber
 
+from integration.customers import Customers
+
+from customer_tools.customers import add_new_customer
+
 app = flask.Flask(__name__)
 
 limiter = Limiter(get_remote_address, app=app)
@@ -698,6 +702,48 @@ def shopify_customer_create():
     verified = verify_webhook(data, hmac_header)
     if not verified:
         return jsonify({'error': 'Unauthorized'}), 401
+
+    id = webhook_data['id']
+
+    error_handler = ProcessInErrorHandler.error_handler
+    logger = error_handler.logger
+
+    logger.info(f'Processing Customer Create: {id}')
+
+    if Customers.Customer.has_metafield(cust_id=id, key='number'):
+        ProcessInErrorHandler.logger.info(f'Customer {id} already has metafields. Skipping.')
+    else:
+        try:
+            street = None
+            city = None
+            state = None
+            zip_code = None
+
+            addrs = webhook_data['addresses']
+
+            if len(addrs) > 0:
+                a = addrs[0]
+                street = a['address1']
+                city = a['city']
+                state = a['province']
+                zip_code = a['zip']
+
+            add_new_customer(
+                first_name=webhook_data['first_name'],
+                last_name=webhook_data['last_name'],
+                phone_number=webhook_data['phone'],
+                email=webhook_data['email'],
+                street_address=street,
+                city=city,
+                state=state,
+                zip_code=zip_code,
+            )
+        except Exception as e:
+            error_handler.add_error_v(error=f'Error adding customer {id}: {e}', origin='shopify_customer_create')
+            return jsonify({'error': 'Error adding customer'}), 500
+        else:
+            logger.success(f'Customer {id} added successfully.')
+            return jsonify({'success': True}), 200
 
     with open('./logs/customer_create.json', 'a') as f:
         json.dump(webhook_data, f)
