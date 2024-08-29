@@ -28,6 +28,7 @@ mutation customerCreate($input: CustomerInput!) {
             namespace
             key
             id
+            value
           }
         }
       }
@@ -51,6 +52,7 @@ mutation customerUpdate($input: CustomerInput!) {
             namespace
             key
             id
+            value
           }
         }
       }

@@ -79,6 +79,7 @@ class Customers:
             fail_count = {'number': 0, 'customer': []}
             Customers.logger.header(f'Syncing Customers: {len(self.customers)}')
             for customer in self.customers:
+                # customer.process()
                 try:
                     with concurrent.futures.ThreadPoolExecutor(max_workers=40) as executor:
                         executor.submit(customer.process())
@@ -451,8 +452,8 @@ class Customers:
             else:
                 response = create()
 
-                self.get_ids(response)
-                self.update_loyalty_points()
+            self.get_ids(response)
+            self.update_loyalty_points()
 
             Database.Shopify.Customer.sync(self)
 
@@ -520,6 +521,7 @@ class Customers:
 
 
 if __name__ == '__main__':
-    customers = Customers(test_mode=True)
-    # customers.backfill_middleware()
-    customers.sync()
+    # customers = Customers()
+    # # customers.backfill_middleware()
+    # customers.sync()
+    pass

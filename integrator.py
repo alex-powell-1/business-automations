@@ -44,7 +44,7 @@ class Integrator:
         start_sync_time = datetime.now()
         self.logger.header('Sync Starting')
         self.customers.sync()
-        # self.catalog.sync(initial=initial)
+        self.catalog.sync(initial=initial)
         set_last_sync(file_name='last_sync_integrator.txt', start_time=start_sync_time)
         completion_time = (datetime.now() - start_sync_time).seconds
         Integrator.logger.info(f'Sync completion time: {completion_time} seconds')
