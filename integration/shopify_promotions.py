@@ -221,6 +221,8 @@ class Promotions:
             if self.end_dat:
                 payload['automaticBxgyDiscount']['endsAt'] = convert_to_utc(self.end_dat)
 
+            for k, v in payload.items():
+                print(f'{k}: {v}')
             return payload
 
         def process(self):
@@ -230,6 +232,7 @@ class Promotions:
                     # process BOGO Twoofers
                     variables = self.get_bxgy_payload(rule)
                     if rule.shopify_id:
+                        print(f'Updating BOGO Twoofer: {rule.shopify_id}')
                         Shopify.Discount.Automatic.Bxgy.update(variables)
                     else:
                         rule.shopify_id = Shopify.Discount.Automatic.Bxgy.create(variables)
@@ -266,6 +269,9 @@ class Promotions:
 
             elif not rule.is_enabled_cp and rule.is_enabled_mw:
                 Shopify.Discount.Automatic.deactivate(rule.shopify_id)
+
+            elif rule.is_enabled_cp == rule.is_enabled_mw:
+                pass
 
             else:
                 Promotions.logger.info(f'You missed something. CP: {rule.is_enabled_cp} MW: {rule.is_enabled_mw}')
@@ -537,5 +543,6 @@ if __name__ == '__main__':
     for p in promo.promotions:
         # print(p)
         if p.grp_cod == 'TEST':
-            p.process()
+            print(p)
+            # p.process()
             # Promotions.Promotion.delete(p.grp_cod)

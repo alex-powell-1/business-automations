@@ -119,7 +119,7 @@ query customer($id: ID!) {
     metafield(key: "app_key", namespace: "affiliates") {
       description
     }
-    metafields(first: 5) {
+    metafields(first: 50) {
       edges {
         node {
           namespace
@@ -129,7 +129,7 @@ query customer($id: ID!) {
       }
     }
     note
-    orders(first: 5) {
+    orders(first: 50) {
       edges {
         node {
           id
@@ -147,5 +147,19 @@ query customer($id: ID!) {
     updatedAt
     validEmailAddress
     verifiedEmail
+  }
+}
+
+query customerMetafields($id: ID!) {
+  customer(id: $id) {
+    metafields(first: 50) {
+      edges {
+        node {
+          namespace
+          key
+          id
+        }
+      }
+    }
   }
 }

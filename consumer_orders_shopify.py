@@ -31,7 +31,7 @@ class RabbitMQConsumer:
         self.logger.info(f'Beginning processing for Order #{order_id}')
 
         # Give CC Processor time to complete capture of CC info and process
-        sleep(5)  # <---- This is to give payment processor time to complete
+        sleep(5)  # <-- This is to give payment processor time to complete
         try:
             # Convert order to BC Order dictionary
             order = Shopify.Order.as_bc_order(order_id=order_id)

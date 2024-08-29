@@ -11,7 +11,7 @@ from PIL import Image, ImageOps
 from integration.database import Database
 
 from setup import creds
-from setup.creds import Column, Table
+from setup.creds import Column, Table, Metafield
 from setup.query_engine import QueryEngine as db
 from setup.utilities import get_all_binding_ids, get_product_images, convert_to_utc, parse_custom_url, get_filesize
 
@@ -211,15 +211,11 @@ class Catalog:
         Updates LST_MAINT_DT in CP if new images have been added."""
 
         def process_images():
-            def get_middleware_images():
-                query = f'SELECT IMAGE_NAME, SIZE FROM {creds.shopify_image_table}'
-                response = db.query(query)
-                return [[x[0], x[1]] for x in response] if response else []
-
             Catalog.logger.info('Processing Image Updates.')
             start_time = time.time()
             self.product_images = get_product_images()
-            mw_image_list = get_middleware_images()
+            mw_images = Database.Shopify.Product.Media.Image.get(column='IMAGE_NAME, SIZE')
+            mw_image_list = [[x[0], x[1]] for x in mw_images] if mw_images else []
 
             delete_targets = Catalog.get_deletion_target(
                 primary_source=self.product_images, secondary_source=mw_image_list
@@ -268,15 +264,11 @@ class Catalog:
             Catalog.logger.info(f'Image Add/Delete Processing Complete. Time: {time.time() - start_time}')
 
         def process_videos():
-            def get_middleware_videos():
-                query = f'SELECT ITEM_NO, URL FROM {creds.shopify_video_table}'
-                response = db.query(query)
-                return [[x[0], x[1]] for x in response] if response else []
-
             Catalog.logger.info('Processing Video Updates.')
             start_time = time.time()
             self.product_videos = Database.Counterpoint.Product.Media.Video.get()
-            mw_video_list = get_middleware_videos()
+            mw_video_data = Database.Shopify.Product.Media.Video.get(column='ITEM_NO, URL')
+            mw_video_list = [[x[0], x[1]] for x in mw_video_data] if mw_video_data else []
             delete_targets = Catalog.get_deletion_target(
                 primary_source=self.product_videos, secondary_source=mw_video_list
             )
@@ -1524,7 +1516,7 @@ class Catalog:
                         Catalog.error_handler.add_error_v(f'Error deleting metafield: {e}')
                         query = f"""
                         UPDATE {Table.Middleware.products}
-                        SET {creds.meta_color} = NULL
+                        SET {Metafield.Product.color} = NULL
                         WHERE PRODUCT_ID = {self.product_id}
                         """
                         db.query(query)
@@ -1549,7 +1541,7 @@ class Catalog:
                         Catalog.error_handler.add_error_v(f'Error deleting metafield: {e}')
                         query = f"""
                         UPDATE {Table.Middleware.products}
-                        SET {creds.meta_bloom_color} = NULL
+                        SET {Metafield.Product.bloom_color} = NULL
                         WHERE PRODUCT_ID = {self.product_id}
                         """
                         db.query(query)

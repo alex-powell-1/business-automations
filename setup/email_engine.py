@@ -265,6 +265,45 @@ class Email:
 
                 error_handler.logger.info(f'Administrative Report: Completed at {datetime.now():%H:%M:%S}')
 
+        class LowStockReport:
+            def send(recipients):
+                error_handler.logger.info(f'Generating Admin Report Data - Starting at {datetime.now():%H:%M:%S}')
+
+                subject = f'Low Stock Report - {today:%x}'
+
+                report_data = product_reports.report_generator(
+                    title='Low Stock Report',
+                    revenue=False,
+                    cogs_report=False,
+                    last_week_report=False,
+                    mtd_month_report=False,
+                    last_year_mtd_report=False,
+                    forecasting_report=False,
+                    top_items_by_category=False,
+                    missing_images_report=False,
+                    negatives_report=False,
+                    ecomm_category_report=False,
+                    non_web_enabled_report=False,
+                    low_stock_items_report=True,
+                    sales_rep_report=False,
+                    wholesale_report=False,
+                    inactive_items_report=False,
+                    missing_descriptions_report=False,
+                )
+                html_contents = boiler_plate + css + body_start + report_data + body_end
+
+                Email.send(
+                    recipients_list=recipients,
+                    subject=subject,
+                    content=html_contents,
+                    logo=True,
+                    mode='related',
+                    image=None,
+                    staff=True,
+                )
+
+                error_handler.logger.info(f'Low Stock Report: Completed at {datetime.now():%H:%M:%S}')
+
         class ItemReport:
             def send(recipients):
                 error_handler.logger.info(f'Items Report: Starting at {datetime.now():%H:%M:%S}')

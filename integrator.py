@@ -44,7 +44,7 @@ class Integrator:
         start_sync_time = datetime.now()
         self.logger.header('Sync Starting')
         self.customers.sync()
-        self.catalog.sync(initial=initial)
+        # self.catalog.sync(initial=initial)
         set_last_sync(file_name='last_sync_integrator.txt', start_time=start_sync_time)
         completion_time = (datetime.now() - start_sync_time).seconds
         Integrator.logger.info(f'Sync completion time: {completion_time} seconds')
@@ -74,7 +74,7 @@ def main_menu():
             integrator.initialize()
         # Get information about a product, brand, category, or customer
         elif input_command == 'get':
-            command = input('\nEnter command: \n' '- product\n' '- brands\n' '- categories\n' '- customer\n\n')
+            command = input('\nEnter command: \n' '- product\n' '- collections\n' '- customer\n\n')
             if command == 'product':
                 sku = input('Enter product sku: ')
                 payload = Catalog.get_product(item_no=sku)
@@ -82,11 +82,7 @@ def main_menu():
                 product.get()
                 print(product)
 
-            elif command == 'brands':
-                brands = integrator.catalog.Brands(last_sync=integrator.last_sync)
-                print(brands)
-
-            elif command == 'categories':
+            elif command == 'collections':
                 tree = Catalog.CategoryTree(last_sync=integrator.last_sync)
                 print(tree)
 

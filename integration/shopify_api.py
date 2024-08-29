@@ -1,4 +1,5 @@
 from setup import creds
+from setup.creds import Metafield, Route
 import requests
 import json
 from setup.error_handler import ProcessOutErrorHandler
@@ -11,7 +12,7 @@ from traceback import print_exc as tb
 from setup.utilities import PhoneNumber
 
 
-verbose_print = False
+verbose_print = True
 
 
 class Shopify:
@@ -20,16 +21,6 @@ class Shopify:
     token = creds.shopify_admin_token
     shop_url = creds.shopify_shop_url
     headers = {'X-Shopify-Access-Token': token, 'Content-Type': 'application/json'}
-
-    def get_all_products(Shopify):
-        url = f'https://{Shopify.shop_url}/admin/api/2024-07/products.json'
-        response = requests.get(url, headers=Shopify.headers)
-        return response.json()
-
-    def get_product(product_id: int):
-        url = f'https://{Shopify.shop_url}/admin/api/2024-07/products/{product_id}.json'
-        response = requests.get(url, headers=Shopify.headers)
-        return response.json()
 
     class Query:
         def __init__(self, document, variables=None, operation_name=None, verbose=True):
@@ -55,24 +46,39 @@ class Shopify:
                     f'User Error: {self.user_errors}\nResponse: {json.dumps(self.response, indent=4)}'
                 )
             if self.errors or self.user_errors:
+                print(f'\n\nVariables: \n\n{variables}\n\n')
                 if self.user_errors:
                     for i in self.user_errors:
+                        if operation_name == 'customerUpdate':
+                            if i == 'Key must be unique within this namespace on this resource':
+                                # Delete all customer metafields for this customer and resend the payload
+                                customer_id = variables['input']['id'].split('/')[-1]
+                                Shopify.Metafield.delete(customer_id=customer_id)
+                                Database.Shopify.Customer.Metafield.delete(shopify_cust_no=customer_id)
+                                for error in self.user_errors:
+                                    # This will remove any instances of this error from the user_errors list
+                                    if error == 'Key must be unique within this namespace on this resource':
+                                        self.user_errors.remove(error)
+                                # Re-run query
+                                self.__init__(document, variables, operation_name)
+
                         if operation_name == 'productUpdate':
                             if i == "Namespace can't be blank":
                                 break
                             elif i == "Type can't be blank":
                                 break
 
-                        elif i == 'Key must be unique within this namespace on this resource':
-                            product_id = variables['input']['id'].split('/')[-1]
-                            Shopify.Metafield.delete(product_id=product_id)
-                            Database.Shopify.Product.Metafield.delete(product_id=product_id)
-                            for error in self.user_errors:
-                                if error == 'Key must be unique within this namespace on this resource':
-                                    # Remove from user errors
-                                    self.user_errors.remove(error)
-                            # Re-run query
-                            self.__init__(document, variables, operation_name)
+                            elif i == 'Key must be unique within this namespace on this resource':
+                                product_id = variables['input']['id'].split('/')[-1]
+                                Shopify.Metafield.delete(product_id=product_id)
+                                Database.Shopify.Product.Metafield.delete(product_id=product_id)
+                                for error in self.user_errors:
+                                    # This will remove any instances of this error from the user_errors list
+                                    if error == 'Key must be unique within this namespace on this resource':
+                                        self.user_errors.remove(error)
+                                # Re-run query
+                                self.__init__(document, variables, operation_name)
+
                         elif i == 'Customer does not exist':
                             Database.Shopify.Customer.delete(
                                 shopify_cust_no=variables['input']['id'].split('/')[-1]
@@ -605,7 +611,7 @@ class Shopify:
         def get_customer_metafields(metafields: list):
             result = {}
             for x in metafields:
-                if x['node']['namespace'] == creds.meta_namespace_customer:
+                if x['node']['namespace'] == Metafield.Namespace.Customer.customer:
                     if x['node']['key'] == 'number':
                         result['cust_no_id'] = x['node']['id'].split('/')[-1]
                     elif x['node']['key'] == 'category':
@@ -734,6 +740,15 @@ class Shopify:
                                 meta_spouse_birth_month_id=meta_birth_month_spouse,
                                 meta_wholesale_price_tier_id=meta_wholesale_tier,
                             )
+
+        class Metafield:
+            def get(shopify_cust_no: int):
+                response = Shopify.Query(
+                    document=Shopify.Customer.queries,
+                    variables={'id': f'gid://shopify/Customer/{shopify_cust_no}'},
+                    operation_name='customerMetafields',
+                )
+                return response.data
 
         class StoreCredit:
             queries = './integration/queries/storeCredit.graphql'
@@ -1315,13 +1330,13 @@ class Shopify:
                 metafields = [x['node'] for x in response.data['product']['metafields']['edges']]
                 product_specifications = []
                 for x in metafields:
-                    if x['namespace'] == creds.meta_namespace_product_specs:
+                    if x['namespace'] == Metafield.Namespace.Product.specification:
                         product_specifications.append(
                             {'id': x['id'].split('/')[-1], 'key': x['key'], 'value': x['value']}
                         )
                 product_status = []
                 for x in metafields:
-                    if x['namespace'] == creds.meta_namespace_product_status:
+                    if x['namespace'] == Metafield.Namespace.Product.status:
                         product_status.append({'id': x['id'].split('/')[-1], 'key': x['key'], 'value': x['value']})
                 return {'product_specifications': product_specifications, 'product_status': product_status}
 
@@ -1654,19 +1669,30 @@ class Shopify:
             )
             return response.data
 
-        def delete(metafield_id: int = None, product_id: int = None):
+        def delete(metafield_id: int = None, product_id: int = None, customer_id: int = None):
             if metafield_id:
-                variables = {'input': {'id': f'{Shopify.Metafield.prefix}{metafield_id}'}}
+                target_id = f'{Shopify.Metafield.prefix}{metafield_id}'
+                print(f'Target ID: {target_id}')
+                variables = {'input': {'id': target_id}}
 
                 response = Shopify.Query(
                     document=Shopify.Metafield.queries, variables=variables, operation_name='metafieldDelete'
                 )
+                Shopify.logger.info(f'Metafield {metafield_id} deleted from Shopify.')
                 return response.data
+
             elif product_id:
                 response = Shopify.Product.get(product_id)
-                variables = {'metafields': [x['node']['id'] for x in response['product']['metafields']['edges']]}
-                for i in variables['metafields']:
-                    Shopify.Metafield.delete(metafield_id=i.split('/')[-1])
+                meta_ids = [x['node']['id'].split('/')[-1] for x in response['product']['metafields']['edges']]
+
+            elif customer_id:
+                # Get all metafield ids for this customer from shopify
+                response = Shopify.Customer.Metafield.get(customer_id)
+                meta_ids = [x['node']['id'].split('/')[-1] for x in response['customer']['metafields']['edges']]
+
+            if meta_ids:
+                for meta_id in meta_ids:
+                    Shopify.Metafield.delete(metafield_id=meta_id)
 
     class MetafieldDefinition:
         queries = './integration/queries/metafields.graphql'
@@ -1837,12 +1863,13 @@ class Shopify:
         prefix = 'gid://shopify/WebhookSubscription'
         format = 'JSON'
         topics = [
-            # {'topic': 'ORDERS_CREATE', 'url': f'{creds.ngrok_domain}{creds.route_shopify_order_create}'},
-            # {'topic': 'REFUNDS_CREATE', 'url': f'{creds.ngrok_domain}{creds.route_shopify_refund_create}'},
-            # {'topic': 'DRAFT_ORDERS_CREATE', 'url': f'{creds.ngrok_domain}{creds.route_shopify_draft_create}'},
-            # {'topic': 'DRAFT_ORDERS_UPDATE', 'url': f'{creds.ngrok_domain}{creds.route_shopify_draft_update}'},
-            {'topic': 'CUSTOMERS_UPDATE', 'url': f'{creds.ngrok_domain}{creds.route_shopify_customer_update}'},
-            {'topic': 'PRODUCTS_UPDATE', 'url': f'{creds.ngrok_domain}{creds.route_shopify_product_update}'},
+            {'topic': 'ORDERS_CREATE', 'url': f'{creds.api_endpoint}{Route.Shopify.order_create}'},
+            {'topic': 'REFUNDS_CREATE', 'url': f'{creds.api_endpoint}{Route.Shopify.refund_create}'},
+            {'topic': 'DRAFT_ORDERS_CREATE', 'url': f'{creds.api_endpoint}{Route.Shopify.draft_create}'},
+            {'topic': 'DRAFT_ORDERS_UPDATE', 'url': f'{creds.api_endpoint}{Route.Shopify.draft_update}'},
+            {'topic': 'CUSTOMERS_CREATE', 'url': f'{creds.api_endpoint}{Route.Shopify.customer_create}'},
+            {'topic': 'CUSTOMERS_UPDATE', 'url': f'{creds.api_endpoint}{Route.Shopify.customer_update}'},
+            {'topic': 'PRODUCTS_UPDATE', 'url': f'{creds.api_endpoint}{Route.Shopify.product_update}'},
         ]
 
         def get(id='', ids_only=False):
@@ -2053,4 +2080,4 @@ def refresh_order(tkt_no):
 
 
 if __name__ == '__main__':
-    Shopify.Discount.Automatic.activate(1165000671399)
+    Shopify.Webhook.create()

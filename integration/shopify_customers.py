@@ -2,7 +2,7 @@ from integration.database import Database
 import concurrent.futures
 from integration.shopify_api import Shopify
 from setup import creds
-from setup.creds import Table
+from setup.creds import Table, Metafield
 from datetime import datetime
 import integration.object_processor as object_processor
 import json
@@ -16,8 +16,9 @@ class Customers:
     logger = ProcessOutErrorHandler.logger
     error_handler = ProcessOutErrorHandler.error_handler
 
-    def __init__(self, last_sync=datetime(1970, 1, 1)):
+    def __init__(self, last_sync=datetime(1970, 1, 1), test_mode=False):
         self.last_sync = last_sync
+        self.test_mode = test_mode
         self.db = Database.db
         self.update_customer_timestamps()
         self.customers = self.get_updated_customers()
@@ -36,12 +37,17 @@ class Customers:
             Database.Counterpoint.Customer.update_timestamps(customer_list)
 
     def get_updated_customers(self):
-        response = Database.Counterpoint.Customer.get(last_sync=self.last_sync)
+        if self.test_mode:
+            test_customer = '115714'
+            response = Database.Counterpoint.Customer.get(customer_no=test_customer)
+        else:
+            response = Database.Counterpoint.Customer.get(last_sync=self.last_sync)
+
         return [self.Customer(x) for x in response] if response is not None else []
 
     def get_cp_customers(self):
         query = f"""
-        SELECT CUST_NO FROM {Database.Counterpoint.Customer.table}
+        SELECT CUST_NO FROM {Table.CP.customers}
         WHERE IS_ECOMM_CUST = 'Y'
         """
         response = self.db.query(query)
@@ -55,7 +61,8 @@ class Customers:
         return [x[0] for x in response] if response is not None else []
 
     def process_deletes(self):
-        cp_customers = self.get_cp_customers()
+        cp_customer_res = Database.Shopify.Customer.get(column='CUST_NO')
+        cp_customers = [x[0] for x in cp_customer_res] if cp_customer_res is not None else []
         mw_customers = self.get_mw_customers()
         deletes = list(set(mw_customers) - set(cp_customers))
         if deletes:
@@ -241,7 +248,7 @@ class Customers:
             if not self.meta_cust_no_id:
                 variables['input']['metafields'].append(
                     {
-                        'namespace': creds.meta_namespace_customer,
+                        'namespace': Metafield.Namespace.Customer.customer,
                         'key': 'number',
                         'type': 'single_line_text_field',
                         'value': self.cp_cust_no,
@@ -257,7 +264,7 @@ class Customers:
                 if not self.meta_category_id:
                     variables['input']['metafields'].append(
                         {
-                            'namespace': creds.meta_namespace_customer,
+                            'namespace': Metafield.Namespace.Customer.customer,
                             'key': 'category',
                             'type': 'single_line_text_field',
                             'value': self.category,
@@ -276,7 +283,7 @@ class Customers:
                 if not self.meta_birth_month_id:
                     variables['input']['metafields'].append(
                         {
-                            'namespace': creds.meta_namespace_customer,
+                            'namespace': Metafield.Namespace.Customer.customer,
                             'key': 'birth_month',
                             'type': 'number_integer',
                             'value': json.dumps(self.meta_birth_month),
@@ -298,7 +305,7 @@ class Customers:
                 if not self.meta_spouse_birth_month_id:
                     variables['input']['metafields'].append(
                         {
-                            'namespace': creds.meta_namespace_customer,
+                            'namespace': Metafield.Namespace.Customer.customer,
                             'key': 'birth_month_spouse',
                             'type': 'number_integer',
                             'value': json.dumps(self.meta_spouse_birth_month),
@@ -320,7 +327,7 @@ class Customers:
                 if not self.meta_wholesale_price_tier_id:
                     variables['input']['metafields'].append(
                         {
-                            'namespace': creds.meta_namespace_customer,
+                            'namespace': Metafield.Namespace.Customer.customer,
                             'key': 'wholesale_price_tier',
                             'type': 'number_integer',
                             'value': json.dumps(self.meta_wholesale_price_tier),
@@ -440,6 +447,7 @@ class Customers:
 
             if self.shopify_cust_no:
                 response = update()
+                print(f'\n\nUpdate Response:\n{response}')
             else:
                 response = create()
 
@@ -512,6 +520,6 @@ class Customers:
 
 
 if __name__ == '__main__':
-    customers = Customers()
+    customers = Customers(test_mode=True)
     # customers.backfill_middleware()
     customers.sync()
