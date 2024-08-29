@@ -1,14 +1,12 @@
 import secrets
 import string
 from datetime import datetime, timezone
-from setup.query_engine import QueryEngine as db
 
-from setup import creds
 from setup.error_handler import ScheduledTasksErrorHandler as error_handler
 
 from integration.shopify_api import Shopify
 
-from dateutil.relativedelta import relativedelta
+from integration.database import Database
 
 
 def utc_to_local(utc_dt: datetime):
@@ -32,7 +30,7 @@ def shopify_create_coupon(
     products_to_remove=[],
     enabled=True,
 ):
-    Shopify.Discount.Code.Basic.create(
+    return Shopify.Discount.Code.Basic.create(
         {
             'basicCodeDiscount': {
                 'appliesOncePerCustomer': True,
@@ -57,7 +55,8 @@ def shopify_create_coupon(
                 'title': name,
                 'usageLimit': max_uses,
             }
-        }
+        },
+        eh=error_handler,
     )
 
 
@@ -66,7 +65,7 @@ def cp_has_coupon(code):
     SELECT COUNT(*) FROM PS_DISC_COD WHERE DISC_COD = '{code}'
     """
     try:
-        response = db.query(query)
+        response = Database.db.query(query)
         if response is not None:
             return int(response[0][0]) > 0
 
@@ -87,7 +86,8 @@ def cp_create_coupon(code, description, amount, min_purchase, coupon_type='A', a
     for in-store only ('B' is default)"""
 
     top_id_query = 'SELECT MAX(DISC_ID) FROM PS_DISC_COD'
-    response = db.query(top_id_query)
+    response = Database.db.query(top_id_query)
+    top_id = None
     if response is not None:
         top_id = response[0][0]
         top_id += 1
@@ -96,7 +96,7 @@ def cp_create_coupon(code, description, amount, min_purchase, coupon_type='A', a
         VALUES ('{top_id}', '{code}', '{description}', '{coupon_type}', '{amount}', '{apply_to}', '{min_purchase}', '{store}')
         """
         try:
-            db.query(query)
+            Database.db.query(query)
         except Exception as e:
             error_handler.error_handler.add_error_v(error=f'CP Coupon Insertion Error: {e}', origin='coupons.py')
         else:
@@ -105,13 +105,42 @@ def cp_create_coupon(code, description, amount, min_purchase, coupon_type='A', a
     else:
         error_handler.logger.info('Error: Could not create coupon')
 
+    return top_id
+
+
+def cp_deactivate_coupon(shop_id):
+    query = f"""
+    SELECT DISC_ID FROM VI_SHOP_DISC WHERE SHOP_ID = '{shop_id}'
+    """
+
+    try:
+        response = Database.db.query(query)
+        for row in response:
+            disc_id = row[0]
+            query = f"""
+            UPDATE PS_DISC_COD
+            SET MIN_DISCNTBL_AMT = 100000
+            WHERE DISC_ID = '{disc_id}'
+            """
+            response = Database.db.query(query)
+            if response['code'] == 200:
+                error_handler.logger.success('Shopify Coupon Deactivated Successfully!')
+            else:
+                error_handler.error_handler.add_error_v(
+                    'Error deactivating shopify coupon', origin='stock_notification.py'
+                )
+    except Exception as e:
+        error_handler.error_handler.add_error_v(
+            f'Error deactivating shopify coupon: {e}', origin='stock_notification.py'
+        )
+
 
 def cp_delete_coupon(code):
     query = f"""
     DELETE FROM PS_DISC_COD WHERE DISC_COD = '{code}'
     """
     try:
-        response = db.query(query)
+        response = Database.db.query(query)
 
         if response['code'] == 200:
             error_handler.logger.success(f'Deleted Coupon: {code}')
@@ -126,8 +155,14 @@ def cp_delete_coupon(code):
 def generate_random_code(length):
     res = ''.join(secrets.choice(string.ascii_uppercase + string.digits) for i in range(length))
 
+    return res
+
+
+def generate_random_coupon(length=10):
+    res = generate_random_code(length)
+
     if cp_has_coupon(res):
-        return generate_random_code(length)
+        return generate_random_coupon(length)
 
     return res
 
@@ -167,13 +202,11 @@ def delete_expired_coupons():
     for id in ids:
         try:
             Shopify.Discount.Code.deactivate(id)
-            total += 0.5
+            cp_deactivate_coupon(id)
+            total += 1
         except Exception as e:
             error_handler.error_handler.add_error_v(
-                f'Error deleting coupon from Shopify: {e}', origin='delete_expired_coupons'
+                f'Error deactivating coupon: {e}', origin='delete_expired_coupons'
             )
 
-        if cp_delete_coupon(id):
-            total += 0.5
-
-    error_handler.logger.success(f'Expired Coupons Delete. {total} / {len(ids)}')
+    error_handler.logger.success(f'Expired Coupons Deactivated. {total} / {len(ids)}')

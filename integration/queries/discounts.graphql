@@ -660,6 +660,7 @@ mutation discountCodeDelete($id: ID!) {
 mutation discountCodeBasicCreate($basicCodeDiscount: DiscountCodeBasicInput!) {
     discountCodeBasicCreate(basicCodeDiscount: $basicCodeDiscount) {
         codeDiscountNode {
+            id
             codeDiscount {
                 ... on DiscountCodeBasic {
                     title

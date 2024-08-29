@@ -1837,12 +1837,12 @@ class Shopify:
         prefix = 'gid://shopify/WebhookSubscription'
         format = 'JSON'
         topics = [
-            # {'topic': 'ORDERS_CREATE', 'url': f'{creds.ngrok_domain}{creds.route_shopify_order_create}'},
-            # {'topic': 'REFUNDS_CREATE', 'url': f'{creds.ngrok_domain}{creds.route_shopify_refund_create}'},
-            # {'topic': 'DRAFT_ORDERS_CREATE', 'url': f'{creds.ngrok_domain}{creds.route_shopify_draft_create}'},
-            # {'topic': 'DRAFT_ORDERS_UPDATE', 'url': f'{creds.ngrok_domain}{creds.route_shopify_draft_update}'},
-            {'topic': 'CUSTOMERS_UPDATE', 'url': f'{creds.ngrok_domain}{creds.route_shopify_customer_update}'},
-            {'topic': 'PRODUCTS_UPDATE', 'url': f'{creds.ngrok_domain}{creds.route_shopify_product_update}'},
+            # {'topic': 'ORDERS_CREATE', 'url': f'{creds.api_endpoint}{creds.route_shopify_order_create}'},
+            # {'topic': 'REFUNDS_CREATE', 'url': f'{creds.api_endpoint}{creds.route_shopify_refund_create}'},
+            # {'topic': 'DRAFT_ORDERS_CREATE', 'url': f'{creds.api_endpoint}{creds.route_shopify_draft_create}'},
+            # {'topic': 'DRAFT_ORDERS_UPDATE', 'url': f'{creds.api_endpoint}{creds.route_shopify_draft_update}'},
+            {'topic': 'CUSTOMERS_UPDATE', 'url': f'{creds.api_endpoint}{creds.route_shopify_customer_update}'},
+            {'topic': 'PRODUCTS_UPDATE', 'url': f'{creds.api_endpoint}{creds.route_shopify_product_update}'},
         ]
 
         def get(id='', ids_only=False):
@@ -1950,7 +1950,7 @@ class Shopify:
                 return response.data
             else:
                 response = Shopify.Query(
-                    document=Shopify.Discount.queries, variables={'first': 100}, operation_name='discounts'
+                    document=Shopify.Discount.queries, variables={'first': 250}, operation_name='discounts'
                 )
                 return response.data
 
@@ -1982,20 +1982,25 @@ class Shopify:
 
             class Basic:
                 @staticmethod
-                def create(variables):
-                    if not variables:
-                        return
-                    response = Shopify.Query(
-                        document=Shopify.Discount.queries,
-                        variables=variables,
-                        operation_name='discountCodeBasicCreate',
-                    )
-                    # promotion_id = response.data['discountAutomaticBxgyCreate']['automaticDiscountNode'][
-                    #     'id'
-                    # ].split('/')[-1]
-                    print(response.data)
-                    # Shopify.logger.success(f'Promotion ID: {promotion_id} created on Shopify')
-                    # return promotion_id
+                def create(variables, eh=None):
+                    if eh is None:
+                        eh = Shopify.error_handler
+                    try:
+                        if not variables:
+                            return
+                        response = Shopify.Query(
+                            document=Shopify.Discount.queries,
+                            variables=variables,
+                            operation_name='discountCodeBasicCreate',
+                        )
+                        id = response.data['discountCodeBasicCreate']['codeDiscountNode']['id']
+                        discount_id = id.split('/')[-1]
+
+                        eh.logger.success(f'Discount ID: {discount_id} created on Shopify')
+                        return discount_id
+                    except:
+                        eh.add_error_v(f'Error creating discount: {variables}', origin='shopify_api.py')
+                        return None
 
         class Automatic:
             # Discounts that are automatically applied
