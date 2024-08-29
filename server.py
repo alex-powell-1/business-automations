@@ -1,4 +1,5 @@
 import json
+import re
 import time
 import hmac
 import base64
@@ -127,6 +128,10 @@ def stock_notification():
     a product comes back into stock."""
     ProcessInErrorHandler.logger.log_file = f'log_{datetime.now():%m_%d_%y}.log'
 
+    data = request.json
+    # Sanitize the input data
+    sanitized_data = {k: bleach.clean(v) for k, v in data.items()}
+
     token = request.headers.get('Authorization').split(' ')[1]
     url = 'https://www.google.com/recaptcha/api/siteverify'
     payload = {'secret': creds.recaptcha_secret, 'response': token}
@@ -134,32 +139,43 @@ def stock_notification():
     if not response.json()['success']:
         return 'Could not verify captcha.', 400
 
-    data = request.json
-    # Sanitize the input data
-    sanitized_data = {k: bleach.clean(v) for k, v in data.items()}
+    def validate_email(email: str) -> bool:
+        """Validates an email address using regex."""
+        pattern = r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}'
+        if re.match(pattern, email):
+            return True
+
+        return False
+
+    def validate_phone(phone: str) -> bool:
+        """Validates a phone number using regex."""
+        pattern = r'(\+\d{1,3})?[-.\s]?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}'
+        if re.match(pattern, phone):
+            return True
+
+        return False
 
     # Validate the input data
     try:
-        validate(
-            instance=sanitized_data,
-            schema={
-                'type': 'object',
-                'properties': {
-                    'email': {'type': 'string'},
-                    'phone': {'type': 'string'},
-                    'sku': {'type': 'string'},
-                    'ngrok-skip-browser-warning': {'type': 'string'},
-                },
-                'required': ['sku'],  # Add required fields here
-            },
-        )
-    except ValidationError as e:
+        email_empty = sanitized_data['email'] == ''
+        phone_empty = sanitized_data['phone'] == ''
+        email_valid = validate_email(sanitized_data['email'])
+        phone_valid = validate_phone(sanitized_data['phone'])
+
+        if email_empty and phone_empty or (not email_valid and not phone_valid):
+            return 'Invalid email or phone number.', 400
+        elif email_empty and not phone_empty and not phone_valid:
+            return 'Invalid phone number.', 400
+        elif not email_empty and phone_empty and not email_valid:
+            return 'Invalid email address.', 400
+    except Exception as e:
         ProcessInErrorHandler.error_handler.add_error_v(error=f'Invalid input data: {e}', origin='stock_notify')
         return f'An error occurred: {str(e)}', 500
     else:
-        email = sanitized_data.get('email')
-        phone = sanitized_data.get('phone')
-        item_no = sanitized_data.get('sku')
+        # Fix empty strings
+        email = None if email_empty else sanitized_data['email']
+        phone = None if phone_empty else sanitized_data['phone']
+        item_no = sanitized_data['sku']
 
         if phone is not None:
             phone = PhoneNumber(phone).to_cp()
