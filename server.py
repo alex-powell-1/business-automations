@@ -940,7 +940,7 @@ def get_commercial_availability():
         return jsonify({'data': response.text}), 200
     else:
         ProcessInErrorHandler.error_handler.add_error_v(
-            error='Error fetching data', origin='commercialAvailability'
+            error='Error fetching data', origin=Route.commercial_availability
         )
         return jsonify({'error': 'Error fetching data'}), 500
 
@@ -952,14 +952,15 @@ def get_availability():
     if response.status_code == 200:
         return jsonify({'data': response.text}), 200
     else:
-        ProcessInErrorHandler.error_handler.add_error_v(error='Error fetching data', origin='availability')
+        ProcessInErrorHandler.error_handler.add_error_v(
+            error='Error fetching data', origin=Route.retail_availability
+        )
         return jsonify({'error': 'Error fetching data'}), 500
 
 
 @app.route(Route.health_check, methods=['GET'])
 @limiter.limit('10/minute')  # 10 requests per minute
 def health_check():
-    ProcessInErrorHandler.logger.success('Server is running')
     return jsonify({'status': 'Server is running'}), 200
 
 
@@ -972,7 +973,7 @@ def serve_file(path):
     except BadRequest:
         return jsonify({'error': 'Bad request'}), 400
     except Exception as e:
-        ProcessOutErrorHandler.error_handler.add_error_v(error=f'Error serving file: {e}', origin='serve_file')
+        ProcessOutErrorHandler.error_handler.add_error_v(error=f'Error serving file: {e}', origin=Route.file_server)
         return jsonify({'error': 'Internal server error'}), 500
 
 
@@ -992,6 +993,11 @@ def robots():
     """,
         200,
     )
+
+
+@app.route('/', methods=['GET'])
+def index():
+    return jsonify({'status': 'Server is running'}), 200
 
 
 if __name__ == '__main__':
