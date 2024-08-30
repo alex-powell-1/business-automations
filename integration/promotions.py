@@ -162,7 +162,7 @@ class Promotions:
             FULL OUTER JOIN SN_PROMO MW on rul.GRP_COD = MW.GRP_COD
             WHERE RUL.GRP_COD = '{self.grp_cod}'
             """
-            response = Database.db.query(query)
+            response = Database.query(query)
             self.price_rules = [self.PriceRule(rule) for rule in response] if response else []
 
         def has_bogo(self):
@@ -584,7 +584,7 @@ class Promotions:
                         FROM IM_PRC_RUL_BRK
                         WHERE GRP_COD = '{self.grp_cod}' AND RUL_SEQ_NO = {self.rul_seq_no}
                         """
-                response = Database.db.query(query)
+                response = Database.query(query)
                 if response:
                     for break_data in response:
                         self.price_breaks.append(self.PriceBreak(break_data))
@@ -595,7 +595,7 @@ class Promotions:
                 else:
                     where_filter = ''
                 query = f'SELECT ITEM_NO FROM IM_ITEM {where_filter}'
-                response = Database.db.query(query)
+                response = Database.query(query)
                 if response:
                     for item in response:
                         item_no = item[0]

@@ -3,7 +3,6 @@ from datetime import datetime
 
 from customer_tools.customers import Customer
 from setup import creds
-from setup.query_engine import QueryEngine as db
 from integration.database import Database
 from setup.sms_engine import SMSEngine
 from sms import sms_queries
@@ -32,7 +31,7 @@ def create_customer_text(
         customer_list = creds.sms_automations['test_customer']['test_list']
     else:
         # Get List of Customers
-        response = db.query(sms_queries.query_start + query)
+        response = Database.query(sms_queries.query_start + query)
 
         if response is not None:
             customer_list = []
@@ -93,7 +92,7 @@ def remove_wholesale_from_loyalty(log_file):
     SET LOY_PGM_COD = NULL, LOY_PTS_BAL = '0', LOY_CARD_NO = 'VOID', LST_MAINT_DT = GETDATE()
     WHERE CATEG_COD = 'WHOLESALE'
     """
-    db.query(query)
+    Database.query(query)
 
     print(f'Remove Wholesale From Loyalty: Finished at {datetime.now():%H:%M:%S}', file=log_file)
     print('-----------------------', file=log_file)

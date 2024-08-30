@@ -1,7 +1,7 @@
 import pandas
 
 from setup.big_products import bc_get_variant, bc_update_product
-from setup.query_engine import QueryEngine
+from integration.database import Database
 from setup.log_engine import create_product_log
 from setup import creds
 from datetime import datetime
@@ -33,7 +33,7 @@ class Product:
         LEFT OUTER JOIN EC_CATEG ON EC_CATEG.CATEG_ID=EC_CATEG_ITEM.CATEG_ID
         WHERE ITEM.ITEM_NO = '{self.item_no}'
         """
-        response = QueryEngine.query(query)
+        response = Database.query(query)
         if response is not None:
             for x in response:
                 self.item_no = x[0] if x[0] is not None else None
@@ -105,7 +105,7 @@ class Product:
                 WHERE USR_PROF_ALPHA_16 = '{self.binding_key}' AND IS_ADM_TKT = 'N'
                 ORDER BY PRC_1
                 """
-                response = QueryEngine.query(query)
+                response = Database.query(query)
                 if response is not None:
                     child_products = []
                     for x in response:
@@ -147,7 +147,7 @@ class Product:
             SELECT TOP 1 PRODUCT_ID FROM CPI_BC_PRODUCTS
             WHERE ITEM_NO = '{self.item_no}' AND WEB_ID = '1'
             ORDER BY CREATE_DATE DESC"""
-        response = QueryEngine.query(query)
+        response = Database.query(query)
         if response is not None:
             return response[0][0]
 
@@ -158,7 +158,7 @@ class Product:
         WHERE SKU = '{self.item_no}' AND WEB_ID = '1'
         """
         if self.binding_key is not None:
-            response = QueryEngine.query(query)
+            response = Database.query(query)
             if response is not None:
                 return response[0][0]
 
@@ -173,7 +173,7 @@ class Product:
             SET PROF_NO_1 = '{buffer}', LST_MAINT_DT = '{str(datetime.now())[:-6] + "000"}'
             WHERE ITEM_NO = '{self.item_no}'"""
             # Update SQL Table
-            QueryEngine.query(query)
+            Database.query(query)
             # Update Object Properties
             self.get_product_details()
             # Check for success
@@ -219,7 +219,7 @@ class Product:
             SET USR_PROF_ALPHA_27 = '{target_sort_order}', LST_MAINT_DT = '{str(datetime.now())[:-6] + "000"}'
             WHERE ITEM_NO = '{self.item_no}'
             """
-            QueryEngine.query(query)
+            Database.query(query)
             self.get_product_details()
             # Check if write was successful
             if self.sort_order == target_sort_order:
@@ -268,7 +268,7 @@ class Product:
             SET ECOMM_NEW = '{status}', LST_MAINT_DT = '{str(datetime.now())[:-6] + "000"}'
             WHERE USR_PROF_ALPHA_16 = '{self.binding_key}' AND IS_ADM_TKT = 'Y'
             """
-        QueryEngine.query(query)
+        Database.query(query)
         # Update the item details
         self.get_product_details()
         if status == 'Y':
@@ -322,7 +322,7 @@ class Product:
         SET PRC_2 = '{sale_price}', LST_MAINT_DT = GETDATE()
         WHERE ITEM_NO = '{self.item_no}'
         """
-        QueryEngine.query(query)
+        Database.query(query)
         print(f'updated {self.long_descr} from ${self.price_1} to ${sale_price}')
 
     # def get_top_child_product(self):
@@ -345,7 +345,7 @@ def get_ecomm_items(mode=1):
         FROM IM_ITEM
         WHERE IS_ECOMM_ITEM = 'Y'
         """
-        response = QueryEngine.query(query)
+        response = Database.query(query)
         if response is not None:
             return response[0][0]
         else:
@@ -357,7 +357,7 @@ def get_ecomm_items(mode=1):
         FROM IM_ITEM
         WHERE IS_ECOMM_ITEM = 'Y'
         """
-        response = QueryEngine.query(query)
+        response = Database.query(query)
         if response is not None:
             result = []
             for x in response:
@@ -372,7 +372,7 @@ def get_ecomm_items(mode=1):
             FROM CPI_BC_PRODUCTS
             WHERE WEB_ID = '1'
             """
-        response = QueryEngine.query(query)
+        response = Database.query(query)
         if response is not None:
             result = []
             for x in response:
@@ -391,7 +391,7 @@ def get_zero_stock_ecomm_products():
     INNER JOIN IM_INV INV ON ITEM.ITEM_NO = INV.ITEM_NO
     WHERE ITEM.IS_ECOMM_ITEM = 'Y' AND (INV.QTY_AVAIL - ISNULL(ITEM.PROF_NO_1, 0)) < 1
     """
-    response = QueryEngine.query(query)
+    response = Database.query(query)
     if response is not None:
         result_list = []
         for x in response:
@@ -406,7 +406,7 @@ def get_ecomm_products_with_stock():
     INNER JOIN IM_INV INV ON ITEM.ITEM_NO = INV.ITEM_NO
     WHERE ITEM.IS_ECOMM_ITEM = 'Y' AND (INV.QTY_AVAIL - ISNULL(ITEM.PROF_NO_1, 0)) > 0
     """
-    response = QueryEngine.query(query)
+    response = Database.query(query)
     if response is not None:
         result_list = []
         for x in response:
@@ -420,7 +420,7 @@ def get_variant_names(binding_id):
     FROM IM_ITEM
     WHERE USR_PROF_ALPHA_16 = '{binding_id}'
     """
-    response = QueryEngine.query(query)
+    response = Database.query(query)
     result = []
     if response is not None:
         for x in response:
@@ -439,7 +439,7 @@ def get_variant_info_from_big(sku):
     WHERE WEB_ID = '1' AND SKU = '{sku}'
     ORDER BY PRODUCT_ID
     """
-    response = QueryEngine.query(query)
+    response = Database.query(query)
     if response is not None:
         product_id = int(response[0][0])
         variant_id = int(response[0][1])
@@ -454,7 +454,7 @@ def get_binding_ids():
     ORDER BY USR_PROF_ALPHA_16
     """
     result = []
-    response = QueryEngine.query(query)
+    response = Database.query(query)
     if response is not None:
         for x in response:
             result.append(x[0])
@@ -469,7 +469,7 @@ def get_parent_product(binding_id):
     FROM IM_ITEM
     WHERE USR_PROF_ALPHA_16 = '{binding_id}' AND IS_ADM_TKT = 'Y'
     """
-    response = QueryEngine.query(query)
+    response = Database.query(query)
     if response is not None:
         if len(response) > 1:
             result = []
@@ -487,7 +487,7 @@ def get_all_child_products(binding_id):
     FROM IM_ITEM
     WHERE USR_PROF_ALPHA_16 = '{binding_id}'    
     """
-    response = QueryEngine.query(query)
+    response = Database.query(query)
     if response is not None:
         child_products = []
         for x in response:
@@ -521,7 +521,7 @@ def get_new_items(start_date, end_date, min_price):
     AND ITEM.PRC_1 >= '{min_price}'
     ORDER BY RECVR_DAT DESC
     """
-    response = QueryEngine.query(query)
+    response = Database.query(query)
     if response is not None:
         result = []
         for x in response:
@@ -544,7 +544,7 @@ def get_qty_sold_all_items():
     (VI_PS_TKT_HIST.POST_DAT >= ''2020-01-01'') and (VI_PS_TKT_HIST.POST_DAT <= ''2024-02-18'')', ' 
     (1=0) ', ' (1=0) ', 0, 0, 'SLS_QTY_A - RTN_QTY_VALID_A - RTN_QTY_NONVALID_A', 2
     """
-    response = QueryEngine.query(query)
+    response = Database.query(query)
     if response is not None:
         item_dict = {}
         for x in response:
@@ -599,7 +599,7 @@ def get_products_by_category(category, subcat='', ecomm_only=False):
     FROM IM_ITEM
     WHERE CATEG_COD = '{category}' {subcat_filter} {ecomm_filter}
     """
-    response = QueryEngine.query(query)
+    response = Database.query(query)
     if response is not None:
         items = []
         for x in response:
@@ -613,7 +613,7 @@ def get_bc_product_id(sku):
     FROM CPI_BC_PROD
     WHERE WEB_ID = '1' AND SKU = '{sku}'
     """
-    response = QueryEngine.query(query)
+    response = Database.query(query)
     if response is not None:
         return int(response[0][0])
 
@@ -623,7 +623,7 @@ def get_product_categories_cp():
     SELECT CATEG_COD
     FROM IM_CATEG_COD
     """
-    response = QueryEngine.query(query)
+    response = Database.query(query)
     if response is not None:
         categories = []
         for x in response:
@@ -637,7 +637,7 @@ def fix_html_trash():
     FROM EC_ITEM_DESCR
     WHERE HTML_DESCR like '%<div%'
     """
-    response = QueryEngine.query(query)
+    response = Database.query(query)
     if response is not None:
         items = []
 
@@ -665,7 +665,7 @@ def export_html_descr():
     FROM EC_ITEM_DESCR
     WHERE HTML_DESCR IS NOT NULL
     """
-    response = QueryEngine.query(query)
+    response = Database.query(query)
     if response is not None:
         items = []
 
@@ -685,7 +685,7 @@ def export_html_descr():
 
 def set_sale_price(query, discount_percentage):
     """takes a sql query and discount percentage and sets PRC_2 and updates lst_modified."""
-    response = QueryEngine.query(query)
+    response = Database.query(query)
     if response is not None:
         for x in response:
             item = Product(x[0])

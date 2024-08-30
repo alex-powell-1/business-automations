@@ -126,7 +126,7 @@ class Customers:
                     query = f"""
                     DELETE FROM {creds.bc_customer_table} WHERE BC_CUST_ID in ({batch_string})
                     """
-                    sql_response = Database.db.query(query)
+                    sql_response = Database.query(query)
 
                     if sql_response['code'] == 200:
                         self.logger.success(f'Customers:\n{batch_string}\nDeleted from Middleware.')
@@ -142,7 +142,7 @@ class Customers:
 
         # Get all customer ids from Middleware
         query = f'SELECT DISTINCT BC_CUST_ID FROM {creds.bc_customer_table}'
-        response = Database.db.query(query)
+        response = Database.query(query)
         customer_id_list = [x[0] for x in response] if response is not None else []
 
         if customer_id_list:
@@ -179,7 +179,7 @@ class Customers:
                         print(f'Customer found in counterpoint: {email} {phone} {cp_cust_id}')
                         query = f"""
 						INSERT INTO {creds.bc_customer_table} (CUST_NO, BC_CUST_ID) VALUES ('{cp_cust_id}', '{bc_cust_id}')"""
-                        response = Database.db.query(query)
+                        response = Database.query(query)
 
                         if response['code'] == 200:
                             self.logger.success(f'Customer {cp_cust_id} added to Middleware.')

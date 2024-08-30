@@ -248,7 +248,7 @@ def gift_card_recipient():
                 {f"'{recipient['name']}'" if recipient['name'] != '' else 'NULL'}, 
                 GETDATE())
                 """
-            response = Database.db.query(query=query)
+            response = Database.query(query=query)
             if response['code'] != 200:
                 ProcessInErrorHandler.error_handler.add_error_v(
                     error=f"""Error creating recipient.\n
@@ -270,7 +270,7 @@ def gift_card_recipient():
         # Update database entry for uuid -> gift_card_recipient, lst_maint_dt
 
         try:
-            response = Database.db.query(
+            response = Database.query(
                 f"""
                 UPDATE SN_GFC_RECPS
                 SET RECPT_EMAIL = {f"'{recipient['email']}'" if recipient['email'] != '' else 'NULL'}, 
@@ -314,7 +314,7 @@ def update_uuid_email():
 
     # Update database entry for uuid -> email, lst_maint_dt
     try:
-        response = Database.db.query(
+        response = Database.query(
             f"""
             UPDATE SN_GFC_RECPS
             SET EMAIL = '{email}', LST_MAINT_DT = GETDATE()
@@ -351,7 +351,7 @@ def update_uuid_name():
 
     # Update database entry for uuid -> name, lst_maint_dt
     try:
-        Database.db.query(
+        Database.query(
             f"""
             UPDATE SN_GFC_RECPS
             SET NAME = '{name}', LST_MAINT_DT = GETDATE()
@@ -482,11 +482,10 @@ def incoming_sms():
     # Get Customer Name and Category from SQL
     customer_number, full_name, category = SMSEngine.lookup_customer_data(from_phone)
 
-    log_data = [[date, to_phone, from_phone, body, full_name, category.title(), media_url]]
-
-    # Write dataframe to CSV file
-    df = pandas.DataFrame(log_data, columns=['date', 'to_phone', 'from_phone', 'body', 'name', 'category', 'media'])
-    log_engine.write_log(df, creds.incoming_sms_log)
+    # log_data = [[date, to_phone, from_phone, body, full_name, category.title(), media_url]]
+    # # Write dataframe to CSV file
+    # df = pandas.DataFrame(log_data, columns=['date', 'to_phone', 'from_phone', 'body', 'name', 'category', 'media'])
+    # log_engine.write_log(df, creds.incoming_sms_log)
 
     Database.SMS.insert(
         origin='Webhook',
@@ -956,12 +955,6 @@ def get_availability():
             error='Error fetching data', origin=Route.retail_availability
         )
         return jsonify({'error': 'Error fetching data'}), 500
-
-
-@app.route(Route.health_check, methods=['GET'])
-@limiter.limit('10/minute')  # 10 requests per minute
-def health_check():
-    return jsonify({'status': 'Server is running'}), 200
 
 
 @app.route(f'{Route.file_server}/<path:path>', methods=['GET'])

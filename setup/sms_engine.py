@@ -7,10 +7,8 @@ from twilio.rest import Client
 from setup import creds
 from setup.creds import Table
 from integration.database import Database
-from setup.query_engine import QueryEngine as db
-from setup.utilities import format_phone
 from setup.error_handler import SMSErrorHandler, SMSEventHandler
-from setup.utilities import convert_timezone
+from setup.utilities import convert_timezone, PhoneNumber
 
 est = pytz.timezone('US/Eastern')
 utc = pytz.utc
@@ -40,7 +38,7 @@ class SMSEngine:
         test_mode=False,
     ):
         # Format phone for Twilio API
-        formatted_phone = format_phone(to_phone, mode='twilio')
+        formatted_phone = PhoneNumber(to_phone).to_twilio()
 
         if category is None:
             if origin != 'SERVER':
@@ -105,13 +103,13 @@ class SMSEngine:
 
     @staticmethod
     def move_phone_1_to_landline(origin, campaign, cust_no, name, category, phone):
-        cp_phone = format_phone(phone, mode='counterpoint')
+        cp_phone = PhoneNumber(phone).to_cp()
         move_landline_query = f"""
             UPDATE AR_CUST
             SET MBL_PHONE_1 = '{cp_phone}', SET PHONE_1 = NULL
             WHERE PHONE_1 = '{cp_phone}'
         """
-        response = db.query(move_landline_query)
+        response = Database.query(move_landline_query)
 
         if response['code'] == 200:
             query = f"""
@@ -119,7 +117,7 @@ class SMSEngine:
             VALUES ('{origin}', '{campaign}', '{phone}', '{cust_no}', '{name}', '{category}', 
             'Landline', 'SET MBL_PHONE_1 = {cp_phone}, SET PHONE_1 = NULL')"""
 
-            response = db.query(query)
+            response = Database.query(query)
             if response['code'] != 200:
                 SMSEventHandler.error_handler.add_error_v(f'Error moving {phone} to landline')
 
@@ -128,14 +126,14 @@ class SMSEngine:
 
     @staticmethod
     def subscribe(origin, campaign, cust_no, name, category, phone):
-        phone = format_phone(phone, mode='counterpoint')
+        phone = PhoneNumber(phone).to_cp()
         query = f"""
         UPDATE AR_CUST
         SET {creds.sms_subscribe_status} = 'Y'
         WHERE PHONE_1 = '{phone}' OR PHONE_2 = '{phone}'
         """
         print(query)
-        response = db.query(query=query)
+        response = Database.query(query=query)
         print(response)
         if response['code'] == 200:
             query = f"""
@@ -143,7 +141,7 @@ class SMSEngine:
             VALUES ('{origin}', '{campaign}', '{phone}', '{cust_no}', '{name}', '{category}',
             'Subscribe', 'SET {creds.sms_subscribe_status} = Y')"""
             print(query)
-            response = db.query(query)
+            response = Database.query(query)
             print(response)
             if response['code'] != 200:
                 SMSEventHandler.error_handler.add_error_v(f'Error subscribing {phone} to SMS')
@@ -153,14 +151,14 @@ class SMSEngine:
 
     @staticmethod
     def unsubscribe(origin, campaign, cust_no, name, category, phone):
-        phone = format_phone(phone, mode='counterpoint')
+        phone = PhoneNumber(phone).to_cp()
         query = f"""
         UPDATE AR_CUST
         SET {creds.sms_subscribe_status} = 'N'
         WHERE PHONE_1 = '{phone}' OR PHONE_2 = '{phone}'
         """
         print(query)
-        response = db.query(query=query)
+        response = Database.query(query=query)
         print(response)
         if response['code'] == 200:
             query = f"""
@@ -168,7 +166,7 @@ class SMSEngine:
             VALUES ('{origin}', '{campaign}', '{phone}', '{cust_no}', '{name}', '{category}',
             'Unsubscribe', 'SET {creds.sms_subscribe_status} = N')"""
             print(query)
-            response = db.query(query)
+            response = Database.query(query)
             print(response)
             if response['code'] != 200:
                 SMSEventHandler.error_handler.add_error_v(f'Error unsubscribing {phone} from SMS')
@@ -179,13 +177,13 @@ class SMSEngine:
     @staticmethod
     def lookup_customer_data(phone):
         # Format phone for Counterpoint masking ###-###-####
-        cp_phone_input = format_phone(phone, mode='counterpoint')
+        cp_phone_input = PhoneNumber(phone).to_cp()
         query = f"""
 			SELECT CUST_NO, FST_NAM, LST_NAM, CATEG_COD
 			FROM AR_CUST
 			WHERE PHONE_1 = '{cp_phone_input}'
 			"""
-        response = db.query(query)
+        response = Database.query(query)
 
         if response is not None:
             customer_no = response[0][0]
@@ -212,7 +210,7 @@ class SMSEngine:
             f'Interested in: {interested_in}\n'
             f'Timeline: {timeline}\n'
             f'Email: {email} \n'
-            f'Phone: {format_phone(phone)} \n'
+            f'Phone: {PhoneNumber(phone).to_cp()} \n'
             f'Address: {address} \n'
             f'Comments: {comments}'
         )

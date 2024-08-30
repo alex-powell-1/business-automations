@@ -415,7 +415,7 @@ class Promotions:
                         FROM IM_PRC_RUL_BRK
                         WHERE GRP_COD = '{self.grp_cod}' AND RUL_SEQ_NO = {self.seq_no}
                         """
-                response = Database.db.query(query)
+                response = Database.query(query)
                 if response:
                     for break_data in response:
                         self.price_breaks.append(self.PriceBreak(break_data))
@@ -426,7 +426,7 @@ class Promotions:
                 else:
                     where_filter = ''
                 query = f'SELECT ITEM_NO FROM IM_ITEM {where_filter}'
-                response = Database.db.query(query)
+                response = Database.query(query)
                 if response:
                     for item in response:
                         item_no = item[0]
@@ -445,7 +445,7 @@ class Promotions:
                 """Get the discount amount of the final price break."""
                 if fixed_price:
                     retail_price = None
-                    response = Database.db.query(f"SELECT PRC_1 FROM IM_ITEM WHERE ITEM_NO = '{self.items[0]}'")
+                    response = Database.query(f"SELECT PRC_1 FROM IM_ITEM WHERE ITEM_NO = '{self.items[0]}'")
                     retail_price = response[0][0] if response else None
                     if retail_price:
                         if self.price_breaks[-1].amt_or_pct:

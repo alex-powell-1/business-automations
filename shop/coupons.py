@@ -65,7 +65,7 @@ def cp_has_coupon(code):
     SELECT COUNT(*) FROM PS_DISC_COD WHERE DISC_COD = '{code}'
     """
     try:
-        response = Database.db.query(query)
+        response = Database.query(query)
         if response is not None:
             return int(response[0][0]) > 0
 
@@ -86,7 +86,7 @@ def cp_create_coupon(code, description, amount, min_purchase, coupon_type='A', a
     for in-store only ('B' is default)"""
 
     top_id_query = 'SELECT MAX(DISC_ID) FROM PS_DISC_COD'
-    response = Database.db.query(top_id_query)
+    response = Database.query(top_id_query)
     top_id = None
     if response is not None:
         top_id = response[0][0]
@@ -96,7 +96,7 @@ def cp_create_coupon(code, description, amount, min_purchase, coupon_type='A', a
         VALUES ('{top_id}', '{code}', '{description}', '{coupon_type}', '{amount}', '{apply_to}', '{min_purchase}', '{store}')
         """
         try:
-            Database.db.query(query)
+            Database.query(query)
         except Exception as e:
             error_handler.error_handler.add_error_v(error=f'CP Coupon Insertion Error: {e}', origin='coupons.py')
         else:
@@ -114,7 +114,7 @@ def cp_deactivate_coupon(shop_id):
     """
 
     try:
-        response = Database.db.query(query)
+        response = Database.query(query)
         for row in response:
             disc_id = row[0]
             query = f"""
@@ -122,7 +122,7 @@ def cp_deactivate_coupon(shop_id):
             SET MIN_DISCNTBL_AMT = 100000
             WHERE DISC_ID = '{disc_id}'
             """
-            response = Database.db.query(query)
+            response = Database.query(query)
             if response['code'] == 200:
                 error_handler.logger.success('Shopify Coupon Deactivated Successfully!')
             else:
@@ -140,7 +140,7 @@ def cp_delete_coupon(code):
     DELETE FROM PS_DISC_COD WHERE DISC_COD = '{code}'
     """
     try:
-        response = Database.db.query(query)
+        response = Database.query(query)
 
         if response['code'] == 200:
             error_handler.logger.success(f'Deleted Coupon: {code}')
