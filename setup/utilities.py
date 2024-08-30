@@ -3,7 +3,6 @@ import os
 import re
 import time
 from setup import creds
-from integration.database import Database
 from datetime import datetime
 from email.utils import formatdate
 import base64
@@ -168,21 +167,6 @@ def convert_timezone(timestamp, from_zone, to_zone):
 def pretty_print(response):
     """Takes in a JSON object and returns an indented"""
     print(json.dumps(response, indent=4))
-
-
-def get_all_binding_ids():
-    """Returns a list of unique and validated binding IDs from the IM_ITEM table."""
-
-    response = Database.query(
-        'SELECT DISTINCT USR_PROF_ALPHA_16 '
-        "FROM IM_ITEM WHERE IS_ECOMM_ITEM = 'Y'"
-        'AND USR_PROF_ALPHA_16 IS NOT NULL'
-    )
-
-    def valid(binding_id):
-        return re.match(creds.binding_id_format, binding_id)
-
-    return [binding[0] for binding in response if valid(binding[0])]
 
 
 def encode_base64(input_string):

@@ -13,7 +13,7 @@ from integration.database import Database
 from setup import creds
 from setup.creds import Column, Table, Metafield
 from setup.query_engine import QueryEngine as db
-from setup.utilities import get_all_binding_ids, get_product_images, convert_to_utc, parse_custom_url, get_filesize
+from setup.utilities import get_product_images, convert_to_utc, parse_custom_url, get_filesize
 
 from setup.error_handler import Logger, ErrorHandler
 
@@ -21,7 +21,7 @@ from traceback import format_exc as tb
 
 
 class Catalog:
-    all_binding_ids = get_all_binding_ids()
+    all_binding_ids = Database.Counterpoint.Product.get_all_binding_ids()
     metafields = Database.Shopify.Metafield_Definition.get()
     logger = Logger(f"{creds.log_main}/integration/process_out/log_{datetime.now().strftime("%m_%d_%y")}.log")
     error_handler = ErrorHandler(logger)
@@ -2298,20 +2298,6 @@ class Catalog:
             response = db.query(query)
             if response is not None:
                 return response[0][0] == 1
-
-        @staticmethod
-        def get_all_binding_ids():
-            binding_ids = set()
-            query = f"""
-            SELECT {Column.CP.Product.binding_id}
-            FROM {Table.CP.items}
-            WHERE {Column.CP.Product.binding_id} IS NOT NULL
-            """
-            response = db.query(query)
-            if response is not None:
-                for x in response:
-                    binding_ids.add(x[0])
-            return list(binding_ids)
 
         @staticmethod
         def get_product_id(sku):

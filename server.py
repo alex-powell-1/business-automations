@@ -465,7 +465,7 @@ def incoming_sms():
         media_url = None
 
     # Get Customer Name and Category from SQL
-    customer_number, full_name, category = SMSEngine.lookup_customer_data(from_phone)
+    customer_number, full_name, category = Database.Counterpoint.Customer.get_customer_by_phone(from_phone)
 
     Database.SMS.insert(
         origin='Webhook',
@@ -483,7 +483,7 @@ def incoming_sms():
 
     # Unsubscribe user from SMS marketing
     if body.lower() in ['stop', 'unsubscribe', 'stop please', 'please stop', 'cancel', 'opt out', 'remove me']:
-        SMSEngine.unsubscribe(
+        Database.SMS.unsubscribe(
             origin='WEBHOOK',
             campaign=Route.sms,
             cust_no=customer_number,
@@ -497,7 +497,7 @@ def incoming_sms():
 
     # Subscribe user to SMS marketing
     elif body.lower() in ['start', 'subscribe', 'start please', 'please start', 'opt in', 'add me']:
-        SMSEngine.subscribe(
+        Database.SMS.subscribe(
             origin='WEBHOOK',
             campaign=Route.sms,
             cust_no=customer_number,
