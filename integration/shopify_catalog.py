@@ -1301,7 +1301,7 @@ class Catalog:
                 WHERE ITEM_NO = '{self.sku}'
                 """
 
-                response = Database.db.query(query)
+                response = Database.query(query)
 
                 try:
                     return [int(x) for x in response[0][0].split(',')]

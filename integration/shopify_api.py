@@ -303,7 +303,7 @@ class Shopify:
                         WHERE GFC_NO = '{code}'
                         """
 
-                        response = Database.db.query(query)
+                        response = Database.query(query)
                         try:
                             return response[0][0] is not None
                         except:
@@ -473,7 +473,7 @@ class Shopify:
             FETCH NEXT 300 ROWS ONLY
             """
 
-            response = Database.db.query(query)
+            response = Database.query(query)
 
             try:
                 tkt_nos = [x[0].replace('S', '') for x in response]

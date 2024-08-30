@@ -56,7 +56,9 @@ dev = False
 @app.errorhandler(ValidationError)
 def handle_validation_error(e):
     # Return a JSON response with a message indicating that the input data is invalid
-    ProcessInErrorHandler.error_handler.add_error_v(error=f'Invalid input data: {e}', origin='validation_error')
+    ProcessInErrorHandler.error_handler.add_error_v(
+        error=f'Invalid input data: {e}', origin='validation_error', traceback=tb()
+    )
     return jsonify({'error': 'Invalid input data'}), 400
 
 
@@ -246,7 +248,7 @@ def gift_card_recipient():
                 {f"'{recipient['name']}'" if recipient['name'] != '' else 'NULL'}, 
                 GETDATE())
                 """
-            response = Database.db.query(query=query)
+            response = Database.query(query=query)
             if response['code'] != 200:
                 ProcessInErrorHandler.error_handler.add_error_v(
                     error=f"""Error creating recipient.\n
@@ -268,7 +270,7 @@ def gift_card_recipient():
         # Update database entry for uuid -> gift_card_recipient, lst_maint_dt
 
         try:
-            response = Database.db.query(
+            response = Database.query(
                 f"""
                 UPDATE SN_GFC_RECPS
                 SET RECPT_EMAIL = {f"'{recipient['email']}'" if recipient['email'] != '' else 'NULL'}, 
@@ -312,7 +314,7 @@ def update_uuid_email():
 
     # Update database entry for uuid -> email, lst_maint_dt
     try:
-        response = Database.db.query(
+        response = Database.query(
             f"""
             UPDATE SN_GFC_RECPS
             SET EMAIL = '{email}', LST_MAINT_DT = GETDATE()
@@ -349,7 +351,7 @@ def update_uuid_name():
 
     # Update database entry for uuid -> name, lst_maint_dt
     try:
-        Database.db.query(
+        Database.query(
             f"""
             UPDATE SN_GFC_RECPS
             SET NAME = '{name}', LST_MAINT_DT = GETDATE()
@@ -480,11 +482,10 @@ def incoming_sms():
     # Get Customer Name and Category from SQL
     customer_number, full_name, category = SMSEngine.lookup_customer_data(from_phone)
 
-    log_data = [[date, to_phone, from_phone, body, full_name, category.title(), media_url]]
-
-    # Write dataframe to CSV file
-    df = pandas.DataFrame(log_data, columns=['date', 'to_phone', 'from_phone', 'body', 'name', 'category', 'media'])
-    log_engine.write_log(df, creds.incoming_sms_log)
+    # log_data = [[date, to_phone, from_phone, body, full_name, category.title(), media_url]]
+    # # Write dataframe to CSV file
+    # df = pandas.DataFrame(log_data, columns=['date', 'to_phone', 'from_phone', 'body', 'name', 'category', 'media'])
+    # log_engine.write_log(df, creds.incoming_sms_log)
 
     Database.SMS.insert(
         origin='Webhook',
@@ -692,23 +693,23 @@ def shopify_customer_create():
                 first_name=webhook_data['first_name'],
                 last_name=webhook_data['last_name'],
                 phone_number=webhook_data['phone'],
-                email=webhook_data['email'],
+                email_address=webhook_data['email'],
                 street_address=street,
                 city=city,
                 state=state,
                 zip_code=zip_code,
             )
         except Exception as e:
-            error_handler.add_error_v(error=f'Error adding customer {id}: {e}', origin='shopify_customer_create')
+            error_handler.add_error_v(
+                error=f'Error adding customer {id}: {e}', origin='shopify_customer_create', traceback=tb()
+            )
             return jsonify({'error': 'Error adding customer'}), 500
         else:
             logger.success(f'Customer {id} added successfully.')
             return jsonify({'success': True}), 200
 
     logger.success(f'Customer Create Finished: {id}')
-
-    # with open('./logs/customer_create.json', 'a') as f:
-    #     json.dump(webhook_data, f)
+    return jsonify({'success': True}), 200
 
 
 @app.route(Route.Shopify.customer_update, methods=['POST'])
@@ -938,7 +939,7 @@ def get_commercial_availability():
         return jsonify({'data': response.text}), 200
     else:
         ProcessInErrorHandler.error_handler.add_error_v(
-            error='Error fetching data', origin='commercialAvailability'
+            error='Error fetching data', origin=Route.commercial_availability
         )
         return jsonify({'error': 'Error fetching data'}), 500
 
@@ -950,15 +951,10 @@ def get_availability():
     if response.status_code == 200:
         return jsonify({'data': response.text}), 200
     else:
-        ProcessInErrorHandler.error_handler.add_error_v(error='Error fetching data', origin='availability')
+        ProcessInErrorHandler.error_handler.add_error_v(
+            error='Error fetching data', origin=Route.retail_availability
+        )
         return jsonify({'error': 'Error fetching data'}), 500
-
-
-@app.route(Route.health_check, methods=['GET'])
-@limiter.limit('10/minute')  # 10 requests per minute
-def health_check():
-    ProcessInErrorHandler.logger.success('Server is running')
-    return jsonify({'status': 'Server is running'}), 200
 
 
 @app.route(f'{Route.file_server}/<path:path>', methods=['GET'])
@@ -970,7 +966,7 @@ def serve_file(path):
     except BadRequest:
         return jsonify({'error': 'Bad request'}), 400
     except Exception as e:
-        ProcessOutErrorHandler.error_handler.add_error_v(error=f'Error serving file: {e}', origin='serve_file')
+        ProcessOutErrorHandler.error_handler.add_error_v(error=f'Error serving file: {e}', origin=Route.file_server)
         return jsonify({'error': 'Internal server error'}), 500
 
 
@@ -990,6 +986,11 @@ def robots():
     """,
         200,
     )
+
+
+@app.route('/', methods=['GET'])
+def index():
+    return jsonify({'status': 'Server is running'}), 200
 
 
 if __name__ == '__main__':

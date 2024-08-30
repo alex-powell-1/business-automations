@@ -32,7 +32,6 @@ class Catalog:
 
     def __init__(self, last_sync=datetime(1970, 1, 1)):
         self.last_sync = last_sync
-        self.db = Database.db
         self.category_tree = self.CategoryTree(last_sync=last_sync)
         self.brands = self.Brands(last_sync=last_sync)
         # Used to process preliminary deletions of products and images
@@ -48,10 +47,10 @@ class Catalog:
 
     def get_products(self, test_mode=False):
         # Get data for self.cp_items and self.mw_items
-        counterpoint_items = self.db.query("SELECT ITEM_NO FROM IM_ITEM WHERE IS_ECOMM_ITEM = 'Y'")
+        counterpoint_items = Database.query("SELECT ITEM_NO FROM IM_ITEM WHERE IS_ECOMM_ITEM = 'Y'")
         self.cp_items = [x[0] for x in counterpoint_items] if counterpoint_items else []
 
-        middleware_items = self.db.query(f'SELECT ITEM_NO FROM {creds.bc_product_table}')
+        middleware_items = Database.query(f'SELECT ITEM_NO FROM {creds.bc_product_table}')
         self.mw_items = [x[0] for x in middleware_items] if middleware_items else []
 
         # Create the Sync Queue
@@ -65,7 +64,7 @@ class Catalog:
         ITEM.IS_ECOMM_ITEM = 'Y'
         ORDER BY {creds.cp_field_binding_id} DESC
         """
-        response = self.db.query(query)
+        response = Database.query(query)
         print(response)
         if response is not None:
             result = []
@@ -89,7 +88,7 @@ class Catalog:
                         FROM IM_ITEM
                         WHERE {creds.cp_field_binding_id} = '{binding_id}' AND IS_ECOMM_ITEM = 'Y' AND IS_ADM_TKT = 'Y'"""
 
-                        get_parent_response = self.db.query(query)
+                        get_parent_response = Database.query(query)
 
                         if get_parent_response is not None:
                             # Parent(s) found
@@ -138,7 +137,7 @@ class Catalog:
                     SET IS_ADM_TKT = 'N', LST_MAINT_DT = GETDATE()
                     WHERE {creds.cp_field_binding_id} = '{binding_id}'
                     """
-            remove_parent_response = self.db.query(remove_parent_query)
+            remove_parent_response = Database.query(remove_parent_query)
             if remove_parent_response['code'] == 200:
                 Catalog.logger.success(f'Parent status removed from all children of binding: {binding_id}.')
             else:
@@ -152,7 +151,7 @@ class Catalog:
         SET IS_ADM_TKT = 'Y'
         WHERE ITEM_NO = '{parent_sku}'
         """
-        set_parent_response = self.db.query(query)
+        set_parent_response = Database.query(query)
 
         if set_parent_response['code'] == 200:
             Catalog.logger.success(f'Parent status set for {parent_sku}')
@@ -187,7 +186,7 @@ class Catalog:
                     FROM {creds.bc_product_table}
                     WHERE ITEM_NO = '{member}'
                     """
-                    response = self.db.query(query)
+                    response = Database.query(query)
 
                     if response is not None:
                         exists_in_mw = True if response[0][0] else False
@@ -249,14 +248,14 @@ class Catalog:
 
         def get_middleware_images():
             query = f'SELECT IMAGE_NAME, SIZE FROM {creds.bc_image_table}'
-            response = self.db.query(query)
+            response = Database.query(query)
             return [[x[0], x[1]] for x in response] if response else []
 
         def delete_image(image_name) -> bool:
             """Takes in an image name and looks for matching image file in middleware. If found, deletes from BC and SQL."""
             Catalog.logger.info(f'Deleting {image_name}')
             image_query = f"SELECT PRODUCT_ID, IMAGE_ID, IS_VARIANT_IMAGE, IMAGE_URL FROM {creds.bc_image_table} WHERE IMAGE_NAME = '{image_name}'"
-            img_id_res = self.db.query(image_query)
+            img_id_res = Database.query(image_query)
             if img_id_res is not None:
                 product_id, image_id, is_variant, image_url = (
                     img_id_res[0][0],
@@ -269,7 +268,7 @@ class Catalog:
                 # Get Variant ID
                 item_number = image_name.split('.')[0].split('^')[0]
                 variant_query = f"SELECT VARIANT_ID FROM {creds.bc_product_table} WHERE ITEM_NO = '{item_number}'"
-                variant_id_res = self.db.query(variant_query)
+                variant_id_res = Database.query(variant_query)
                 if variant_id_res is not None:
                     variant_id = variant_id_res[0][0]
                 else:
@@ -301,7 +300,7 @@ class Catalog:
                     error=f'Error deleting image {image_name} from BigCommerce.', origin='Catalog.delete_image()'
                 )
             delete_images_query = f'DELETE FROM {creds.bc_image_table} ' f"WHERE IMAGE_ID = '{image_id}'"
-            response = self.db.query(delete_images_query)
+            response = Database.query(delete_images_query)
             if response['code'] == 200:
                 Catalog.logger.success(f'Image {image_name} deleted from SQL.')
             else:
@@ -365,7 +364,7 @@ class Catalog:
                 f"WHERE (ITEM_NO in {sku_list} {where_filter}) and IS_ECOMM_ITEM = 'Y'"
             )
 
-            self.db.query(query)
+            Database.query(query)
 
         Catalog.logger.info(f'Image Add/Delete Processing Complete. Time: {time.time() - start_time}')
 
@@ -460,7 +459,7 @@ class Catalog:
         SET LST_MAINT_DT = GETDATE()
         WHERE ITEM_NO = '{sku}'
         """
-        response = Database.db.query(query)
+        response = Database.query(query)
         if response['code'] == 200:
             Catalog.logger.success(f'Timestamp updated for {sku}.')
         else:
@@ -469,7 +468,7 @@ class Catalog:
     @staticmethod
     def get_product(item_no):
         query = f"SELECT ITEM_NO, {creds.cp_field_binding_id} FROM IM_ITEM WHERE ITEM_NO = '{item_no}'"
-        response = Database.db.query(query)
+        response = Database.query(query)
         if response is not None:
             sku = response[0][0]
             binding_id = response[0][1]
@@ -538,14 +537,14 @@ class Catalog:
             FROM IM_ITEM
             WHERE ITEM_NO = '{sku}'
             """
-        response = Database.db.query(query)
+        response = Database.query(query)
         if response is not None:
             return response[0][0]
 
     @staticmethod
     def get_product_id_from_sku(sku):
         query = f"SELECT PRODUCT_ID FROM {creds.bc_product_table} WHERE ITEM_NO = '{sku}'"
-        response = Database.db.query(query)
+        response = Database.query(query)
         if response is not None:
             return response[0][0]
 
@@ -591,7 +590,7 @@ class Catalog:
                     query = f"""
                     DELETE FROM {creds.bc_category_table} WHERE BC_CATEG_ID in ({batch_string})
                     """
-                    sql_response = Database.db.query(query)
+                    sql_response = Database.query(query)
                     if sql_response['code'] == 200:
                         Catalog.logger.success(f'Categories {batch_string} deleted from Middleware.')
                     else:
@@ -606,7 +605,7 @@ class Catalog:
                     Catalog.logger.log(bc_response)
 
             query = f'DELETE FROM {creds.bc_category_table}'
-            response = Database.db.query(query)
+            response = Database.query(query)
 
             if response['code'] == 200:
                 Catalog.logger.success(f'Category: {batch_string} deleted from Middleware.')
@@ -615,7 +614,7 @@ class Catalog:
 
         # Get all parent categories from Middleware
         query = f'SELECT DISTINCT BC_CATEG_ID FROM {creds.bc_category_table} WHERE CP_PARENT_ID = 0'
-        response = Database.db.query(query)
+        response = Database.query(query)
         parent_category_list = [x[0] for x in response] if response else []
 
         # Delete all categories from BigCommerce and Middleware
@@ -668,7 +667,7 @@ class Catalog:
                     DELETE FROM {creds.bc_product_table} WHERE PRODUCT_ID in ({batch_string})
                     DELETE FROM {creds.bc_image_table} WHERE PRODUCT_ID in ({batch_string})
                     """
-                    sql_response = Database.db.query(query)
+                    sql_response = Database.query(query)
                     if sql_response['code'] == 200:
                         Catalog.logger.success(f'Products {batch_string} deleted from Middleware.')
                     else:
@@ -684,7 +683,7 @@ class Catalog:
 
         # Get all product IDs from Middleware
         query = f'SELECT DISTINCT PRODUCT_ID FROM {creds.bc_product_table}'
-        response = Database.db.query(query)
+        response = Database.query(query)
         product_id_list = [x[0] for x in response] if response else []
 
         if product_id_list:
@@ -729,7 +728,7 @@ class Catalog:
                 if bc_response.status_code == 204:
                     Catalog.logger.success(f'Brand:\n{batch_string}\ndeleted from BigCommerce.')
                     query = f'DELETE FROM {creds.bc_brands_table} WHERE BC_BRAND_ID in ({batch_string})'
-                    response = Database.db.query(query)
+                    response = Database.query(query)
                     if response['code'] == 200:
                         Catalog.logger.success(f'Brand:\n{batch_string}\ndeleted from Middleware.')
                     else:
@@ -742,7 +741,7 @@ class Catalog:
                     )
 
         query = f'SELECT DISTINCT BC_BRAND_ID FROM {creds.bc_brands_table}'
-        response = Database.db.query(query)
+        response = Database.query(query)
         brand_id_list = [x[0] for x in response] if response else []
 
         # Delete all brands from Middleware and BigCommerce
@@ -779,9 +778,7 @@ class Catalog:
 
     class CategoryTree:
         def __init__(self, last_sync):
-            self.db = Database.db
             self.last_sync = last_sync
-
             self.categories = set()
             self.heads = []
             self.get_cp_updates()
@@ -820,7 +817,7 @@ class Catalog:
             FROM EC_CATEG cp
             FULL OUTER JOIN SN_CATEG sn on cp.CATEG_ID=sn.CP_CATEG_ID
             """
-            response = self.db.query(query)
+            response = Database.query(query)
             if response:
                 for x in response:
                     print(f'Processing: {x[2]}')
@@ -848,7 +845,7 @@ class Catalog:
                         VALUES({cp_categ_id}, {cp_parent_id}, '{category_name}',
                         {sort_order}, 1, '{lst_maint_dt}')
                         """
-                        response = self.db.query(query)
+                        response = Database.query(query)
                         print(response)
 
                     else:
@@ -867,7 +864,7 @@ class Catalog:
                             LST_MAINT_DT = '{lst_maint_dt}'
                             WHERE CP_CATEG_ID = {sn_cp_categ_id}
                             """
-                            update_res = self.db.query(query)
+                            update_res = Database.query(query)
 
                             if update_res['code'] == 200:
                                 Catalog.logger.success(f'Category {category_name} updated in Middleware.')
@@ -883,7 +880,7 @@ class Catalog:
                 FROM EC_CATEG
                 WHERE CATEG_ID != '0'
                 """
-                response = self.db.query(query)
+                response = Database.query(query)
                 if response is not None:
                     for ec_cat in response:
                         category = self.Category(
@@ -939,7 +936,7 @@ class Catalog:
             FROM SN_CATEG
             WHERE CP_CATEG_ID = {cp_categ_id}
             """
-            response = self.db.query(query)
+            response = Database.query(query)
             if response:
                 bc_category_id = response[0][0]
                 print(bc_category_id)
@@ -961,7 +958,7 @@ class Catalog:
                                         WHERE CP_CATEG_ID = {cp_categ_id}
                                         """
                         try:
-                            self.db.query(query)
+                            Database.query(query)
                         except Exception as e:
                             print(f'Error deleting category from middleware: {e}')
                         else:
@@ -972,7 +969,7 @@ class Catalog:
                 else:
                     Catalog.logger.warn(f'BC Category {cp_categ_id} not found in Middleware.')
                     query = f'DELETE FROM {creds.bc_category_table} WHERE CP_CATEG_ID = {cp_categ_id}'
-                    del_res = self.db.query(query)
+                    del_res = Database.query(query)
                     if del_res['code'] == 200:
                         Catalog.logger.success(f'Category {cp_categ_id} deleted from Middleware.')
                     else:
@@ -1037,7 +1034,7 @@ class Catalog:
                 FROM {creds.bc_category_table}
                 WHERE CP_CATEG_ID = {self.cp_categ_id}
                 """
-                response = Database.db.query(query)
+                response = Database.query(query)
                 if response is not None:
                     bc_category_id = response[0][0]
                     if bc_category_id is not None:
@@ -1188,7 +1185,6 @@ class Catalog:
 
     class Brands:
         def __init__(self, last_sync=datetime(1970, 1, 1)):
-            self.db = Database.db
             self.last_sync = last_sync
             self.cp_brands = set()
             self.mw_brands = set()
@@ -1292,7 +1288,7 @@ class Catalog:
                 SELECT PROF_COD, DESCR, LST_MAINT_DT
                 FROM IM_ITEM_PROF_COD
                 """
-                response = self.db.query(query)
+                response = Database.query(query)
                 if response:
                     for x in response:
                         self.cp_brands.add((x[0], x[1], x[2]))
@@ -1302,7 +1298,7 @@ class Catalog:
                 SELECT CP_BRAND_ID, NAME, BC_BRAND_ID
                 FROM {creds.bc_brands_table}
                 """
-                response = self.db.query(query)
+                response = Database.query(query)
                 if response:
                     for x in response:
                         Catalog.mw_brands.add((x[0], x[1], x[2]))
@@ -1339,7 +1335,7 @@ class Catalog:
                 DELETE FROM {creds.bc_brands_table}
                 WHERE CP_BRAND_ID = '{target}'
                 """
-                mw_brand_del_res = self.db.query(query)
+                mw_brand_del_res = Database.query(query)
                 if mw_brand_del_res['code'] != 200:
                     Catalog.error_handler.add_error_v(
                         error=f'Brand {target} deleted from middleware.',
@@ -1352,7 +1348,7 @@ class Catalog:
                 FROM {creds.bc_brands_table}
                 WHERE CP_BRAND_ID = '{cp_brand_id}'
                 """
-                response = self.db.query(query)
+                response = Database.query(query)
                 if response:
                     return response[0][0]
                 else:
@@ -1370,7 +1366,6 @@ class Catalog:
 
         class Brand:
             def __init__(self, cp_brand_id, description, last_maint_dt, last_sync):
-                self.db = Database.db
                 self.db_id = None
                 self.cp_brand_id = cp_brand_id
                 self.bc_brand_id = None
@@ -1395,7 +1390,7 @@ class Catalog:
                 ON {creds.bc_brands_table}.CP_BRAND_ID = IM_ITEM_PROF_COD.PROF_COD
                 WHERE CP_BRAND_ID = '{self.cp_brand_id}'"""
 
-                response = self.db.query(query)
+                response = Database.query(query)
                 if response is not None:
                     self.db_id = response[0][0]
                     self.bc_brand_id = response[0][2]
@@ -1445,7 +1440,7 @@ class Catalog:
                 query = f"""
                 SELECT * FROM {creds.bc_brands_table}
                 WHERE CP_BRAND_ID = '{self.cp_brand_id}'"""
-                response = self.db.query(query)
+                response = Database.query(query)
                 if response:
                     self.update()
                 else:
@@ -1485,7 +1480,7 @@ class Catalog:
                     {f"'{self.custom_url}'" if self.custom_url else "NULL"})
                     """
                     try:
-                        response = self.db.query(query)
+                        response = Database.query(query)
                     except Exception as e:
                         print(f'MIDDLEWARE: Brand {self.name} INSERT: FAILED.\n')
                         print(e)
@@ -1530,7 +1525,7 @@ class Catalog:
                     WHERE CP_BRAND_ID = '{self.cp_brand_id}'
                     """
                     try:
-                        response = self.db.query(query)
+                        response = Database.query(query)
                     except Exception as e:
                         print(f'MIDDLEWARE: Brand {self.name} UPDATE: FAILED.\n')
                         print(e)
@@ -1599,7 +1594,6 @@ class Catalog:
 
     class Product:
         def __init__(self, product_data, last_sync):
-            self.db = Database.db
             self.sku = product_data['sku']
             self.binding_id = product_data['binding_id'] if 'binding_id' in product_data else None
             # Will be set to True if product gets a success response from BigCommerce API on POST or PUT
@@ -1724,7 +1718,7 @@ class Catalog:
                 ORDER BY PRC_1
                 """
                 # Get children and append to child list in order of price
-                response = self.db.query(query)
+                response = Database.query(query)
                 if response is not None:
                     # Create Product objects for each child and add object to bound parent list
                     for item in response:
@@ -1908,7 +1902,7 @@ class Catalog:
                 SET IS_ADM_TKT = '{flag}', LST_MAINT_DT = GETDATE()
                 WHERE ITEM_NO = '{target_item}'
                 """
-                self.db.query(query)
+                Database.query(query)
                 Catalog.logger.info(f'Parent status set to {flag} for {target_item}')
                 return self.get_product_details(last_sync=self.last_sync)
 
@@ -1953,7 +1947,7 @@ class Catalog:
                             SET ADDL_DESCR_1 = '{self.long_descr}'
                             WHERE ITEM_NO = '{self.sku}'"""
 
-                            self.db.query(query)
+                            Database.query(query)
                             Catalog.logger.info(f'Web Title set to {self.web_title}')
                             self.web_title = self.long_descr
 
@@ -1972,7 +1966,7 @@ class Catalog:
                         FROM IM_ITEM
                         WHERE ADDL_DESCR_1 = '{self.web_title.replace("'", "''")}' AND IS_ECOMM_ITEM = 'Y'"""
 
-                    response = self.db.query(query)
+                    response = Database.query(query)
 
                     if response:
                         if response[0][0] > 1:
@@ -2002,7 +1996,7 @@ class Catalog:
                                 UPDATE IM_ITEM
                                 SET ADDL_DESCR_1 = '{self.web_title.replace("'", "''")}'
                                 WHERE ITEM_NO = '{self.sku}'"""
-                            self.db.query(query)
+                            Database.query(query)
 
             # Test for missing html description
             if check_html_description:
@@ -2084,7 +2078,7 @@ class Catalog:
                                 UPDATE IM_ITEM
                                 SET ADDL_DESCR_1 = NULL
                                 WHERE ITEM_NO = '{child.sku}'"""
-                                self.db.query(query)
+                                Database.query(query)
 
             # Need validations for character counts on all fields
             # print(f"Product {self.sku} has passed validation.")
@@ -2105,7 +2099,7 @@ class Catalog:
                 INNER JOIN IM_ITEM_PROF_COD COD on BRANDS.CP_BRAND_ID = COD.PROF_COD
                 WHERE CP_BRAND_ID = '{self.brand}'
                 """
-                response = self.db.query(query)
+                response = Database.query(query)
                 if response is not None:
                     return response[0][0]
                 else:
@@ -2401,7 +2395,7 @@ class Catalog:
                     FROM {table}
                     WHERE ITEM_NO = '{self.sku}'"""
 
-            response = self.db.query(query)
+            response = Database.query(query)
 
             if response is None:
                 # Product Not Found, Create New Product
@@ -2438,7 +2432,7 @@ class Catalog:
                         FROM SN_CATEG
                         WHERE CP_CATEG_ID = '{category}'
                         """
-                    cat_response = Database.db.query(categ_query)
+                    cat_response = Database.query(categ_query)
                     if cat_response is not None:
                         result.append(cat_response[0][0])
 
@@ -2626,7 +2620,7 @@ class Catalog:
                 SET CUSTOM_FIELDS = NULL, LST_MAINT_DT = GETDATE() 
                 WHERE PRODUCT_ID = '{self.product_id}' AND IS_PARENT = 1
                 """
-            self.db.query(update_cf1_query)
+            Database.query(update_cf1_query)
 
         def bc_get_option_id(self):
             url = f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/products/{self.product_id}/options'
@@ -2706,7 +2700,7 @@ class Catalog:
                     delete_query = f"""DELETE FROM {creds.bc_product_table} WHERE PRODUCT_ID = '{product_id}' 
                     DELETE FROM {creds.bc_image_table} WHERE PRODUCT_ID = '{product_id}'"""
 
-                sql_del_res = self.db.query(delete_query)
+                sql_del_res = Database.query(delete_query)
                 if sql_del_res['code'] == 200:
                     Catalog.logger.success(f'Product {sku} deleted from BigCommerce and Middleware.')
                     return True
@@ -2738,7 +2732,7 @@ class Catalog:
                     f'SELECT PRODUCT_ID, VARIANT_ID, OPTION_ID, OPTION_VALUE_ID '
                     f"FROM {creds.bc_product_table} WHERE ITEM_NO = '{sku}'"
                 )
-                response = self.db.query(item_query)
+                response = Database.query(item_query)
                 if response is not None:
                     product_id = response[0][0]
                     variant_id = response[0][1]
@@ -2773,7 +2767,7 @@ class Catalog:
                             FROM {creds.bc_image_table}
                             WHERE ITEM_NO = '{sku}'
                             """
-                            image_response = self.db.query(image_query)
+                            image_response = Database.query(image_query)
                             if image_response is not None:
                                 for image_id in image_response:
                                     image_id = image_id[0]
@@ -2785,7 +2779,7 @@ class Catalog:
 
                             # Step 4: Delete Variant from Middleware (Product and Image Tables)
                             delete_query = f"DELETE FROM {creds.bc_product_table} WHERE VARIANT_ID = '{variant_id}'"
-                            response = self.db.query(delete_query)
+                            response = Database.query(delete_query)
 
                             if response['code'] == 200:
                                 Catalog.logger.success(f'Variant {sku} deleted from Big Commerce and Middleware.')
@@ -2823,7 +2817,7 @@ class Catalog:
                 if img_del_res.status_code == 204:
                     Catalog.logger.success(f'Image {image_id} deleted from BigCommerce.')
                     delete_images_query = f'DELETE FROM {creds.bc_image_table} ' f"WHERE IMAGE_ID = '{image_id}'"
-                    sql_res = self.db.query(delete_images_query)
+                    sql_res = Database.query(delete_images_query)
                     if sql_res['code'] == 200:
                         Catalog.logger.success(f'Image {image_id} deleted from SQL.')
                     else:
@@ -2903,7 +2897,7 @@ class Catalog:
                 f"{f"'{custom_field_string}'" if custom_field_string else "NULL"})"
             )
 
-            insert_product_response = self.db.query(insert_query)
+            insert_product_response = Database.query(insert_query)
             if insert_product_response['code'] == 200:
                 # Catalog.logger.success(
                 #     f"SKU: {variant.sku}, Binding ID: {variant.binding_id} - INSERT Variant {self.sku}: Success"
@@ -2943,7 +2937,7 @@ class Catalog:
                 f"WHERE ID = {variant.db_id}"
             )
 
-            update_product_response = self.db.query(update_query)
+            update_product_response = Database.query(update_query)
             if update_product_response['code'] == 200:
                 # Catalog.logger.success(
                 #     f"SKU: {variant.sku}, Binding ID: {variant.binding_id} - UPDATE Variant {self.sku}: Success"
@@ -2971,7 +2965,7 @@ class Catalog:
                 SET PROF_COD_1 = NULL, LST_MOD_DT = GETDATE()
                 WHERE ITEM_NO = '{self.sku}'
                 """
-            self.db.query(reset_brand_query)
+            Database.query(reset_brand_query)
 
         def get_product_id(self, item_no=None, binding_id=None, image_id=None):
             """Get product ID from SQL using image ID. If not found, return None."""
@@ -2983,14 +2977,14 @@ class Catalog:
                 product_query = f"SELECT PRODUCT_ID FROM {creds.bc_product_table} WHERE BINDING_ID = '{binding_id}'"
 
             if item_no or image_id or binding_id:
-                prod_id_res = self.db.query(product_query)
+                prod_id_res = Database.query(product_query)
                 if prod_id_res is not None:
                     return prod_id_res[0][0]
 
         def get_image_id(self, target):
             """Get image ID from SQL using filename. If not found, return None."""
             image_query = f"SELECT IMAGE_ID FROM {creds.bc_image_table} WHERE IMAGE_NAME = '{target}'"
-            img_id_res = self.db.query(image_query)
+            img_id_res = Database.query(image_query)
             if img_id_res is not None:
                 return img_id_res[0][0]
 
@@ -3026,7 +3020,7 @@ class Catalog:
             {f"'{image.description.replace("'", "''")}'" if image.description != '' else 'NULL'},
             {image.size})"""
 
-            insert_img_response = self.db.query(img_insert)
+            insert_img_response = Database.query(img_insert)
             if insert_img_response['code'] == 200:
                 # Catalog.logger.success(f"SQL INSERT Image {image.image_name}: Success")
                 pass
@@ -3057,7 +3051,7 @@ class Catalog:
                 SIZE = '{image.size}'
                 WHERE ID = {image.id}"""
 
-            update_img_response = self.db.query(img_update)
+            update_img_response = Database.query(img_update)
 
             if update_img_response['code'] == 200:
                 # Catalog.logger.success(f"SQL UPDATE Image {image.image_name}: Success")
@@ -3111,7 +3105,7 @@ class Catalog:
             FROM {creds.bc_product_table}
             WHERE ITEM_NO = '{sku}'
             """
-            response = self.db.query(query)
+            response = Database.query(query)
             if response is not None:
                 return response[0][0] == 1
 
@@ -3123,7 +3117,7 @@ class Catalog:
                     SET IS_ADM_TKT = 'N', LST_MAINT_DT = GETDATE()
                     WHERE {creds.cp_field_binding_id} = '{self.binding_id}'
                     """
-            self.db.query(query)
+            Database.query(query)
             print('Parent status removed from all children.')
 
         def is_last_variant(self, binding_id):
@@ -3133,7 +3127,7 @@ class Catalog:
             query = f"""SELECT COUNT(*) 
             FROM {creds.bc_product_table} 
             WHERE BINDING_ID = '{binding_id}'"""
-            response = self.db.query(query)
+            response = Database.query(query)
             if response is not None:
                 return response[0][0] == 1
 
@@ -3145,7 +3139,7 @@ class Catalog:
             FROM IM_ITEM
             WHERE {creds.cp_field_binding_id} IS NOT NULL
             """
-            response = Database.db.query(query)
+            response = Database.query(query)
             if response is not None:
                 for x in response:
                     binding_ids.add(x[0])
@@ -3153,7 +3147,6 @@ class Catalog:
 
         class Variant:
             def __init__(self, sku, last_run_date, get_images=True):
-                self.db = Database.db
                 self.sku = sku
                 self.last_run_date = last_run_date
 
@@ -3311,7 +3304,7 @@ class Catalog:
                 LEFT OUTER JOIN IM_ITEM_PROF_COD COD ON ITEM.PROF_COD_1 = COD.PROF_COD
                 WHERE ITEM.ITEM_NO = '{self.sku}'"""
 
-                item = Database.db.query(query)
+                item = Database.query(query)
                 if item is not None:
                     details = {
                         'sku': item[0][48],
@@ -3518,7 +3511,7 @@ class Catalog:
                     f"{f"'{custom_field_string}'" if custom_field_string else "NULL"})"
                 )
 
-                insert_product_response = self.db.query(insert_query)
+                insert_product_response = Database.query(insert_query)
                 if insert_product_response['code'] == 200:
                     # Catalog.logger.success(
                     #     f"SKU: {variant.sku}, Binding ID: {variant.binding_id} - INSERT Variant {self.sku}: Success"
@@ -3609,10 +3602,10 @@ class Catalog:
                     delete_product_query = f"DELETE FROM {creds.bc_product_table} WHERE ITEM_NO = '{self.sku}'"
 
                     print('Deleting Product from SQL')
-                    self.db.query(delete_product_query)
+                    Database.query(delete_product_query)
                     print('Deleting Product Images from SQL')
                     delete_images_query = f"DELETE FROM {creds.bc_image_table} WHERE ITEM_NO = '{self.sku}'"
-                    self.db.query(delete_images_query)
+                    Database.query(delete_images_query)
 
                 self.variant_id = None
                 self.product_id = None
@@ -3631,7 +3624,6 @@ class Catalog:
 
         class Image:
             def __init__(self, image_name: str):
-                self.db = Database.db
                 self.id = None
                 self.image_name = image_name  # This is the file name
                 self.sku = ''
@@ -3660,7 +3652,7 @@ class Catalog:
             def get_image_details(self):
                 """Get image details from SQL"""
                 query = f"SELECT * FROM {creds.bc_image_table} WHERE IMAGE_NAME = '{self.image_name}'"
-                response = self.db.query(query)
+                response = Database.query(query)
                 print(f'\n\n\nImage Response: {response}\n\n\n')
 
                 if response is not None:
@@ -3785,7 +3777,7 @@ class Catalog:
                                SELECT {creds.cp_field_binding_id} FROM IM_ITEM
                                WHERE ITEM_NO = '{item_no}'
                                """
-                        response = self.db.query(query)
+                        response = Database.query(query)
                         if response is not None:
                             return response[0][0] if response[0][0] else ''
 

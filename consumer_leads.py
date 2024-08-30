@@ -10,7 +10,7 @@ from docxtpl import DocxTemplate
 
 from setup import creds
 from setup.email_engine import Email
-from setup.utilities import format_phone
+from setup.utilities import PhoneNumber
 from setup.sms_engine import SMSEngine
 from integration.database import Database
 from setup.error_handler import LeadFormErrorHandler
@@ -38,7 +38,7 @@ class RabbitMQConsumer:
         first_name = json_body['first_name']
         last_name = json_body['last_name']
         email = json_body['email']
-        phone = format_phone(json_body['phone'], mode='counterpoint')
+        phone = PhoneNumber(json_body['phone']).to_cp()
         timeline = json_body['timeline']
         interested_in = json_body['interested_in']
         street = str(json_body['street']).replace(',', '')

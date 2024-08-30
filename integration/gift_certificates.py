@@ -118,7 +118,7 @@ class GiftCertificates:
             WHERE CUST_NO = '{self.cust_no}'
             """
 
-            response = Database.db.query(query)
+            response = Database.query(query)
 
             blank_user = {'name': f'{self.cust_no}', 'email': f'{self.cust_no}@store.com'}
 

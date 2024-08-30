@@ -89,12 +89,24 @@ class Printer:
 
     class Order:
         def print(order_id):
+            """Takes Shopify Order ID ex. 5642506862759 and pulls data, converts to a BigCommerce Order (for parsing)
+            and prints a Word Document with the order details. The document is then printed to the default printer."""
             order = Shopify.Order.as_bc_order(order_id)
             cust_no = OrderAPI.get_cust_no(order)
-            ProcessInErrorHandler.logger.info(f'Customer Number: {cust_no}')
+
+            # Get Basic Customer Info from Counterpoint if available
             customer_res = Database.Counterpoint.Customer.get(customer_no=cust_no)
-            first_name = customer_res[0][1]
-            last_name = customer_res[0][2]
+            if not customer_res:
+                Printer.logger.warn(f'Customer {cust_no} not found in Counterpoint')
+                first_name = 'Web'
+                last_name = 'Customer'
+                email = 'No Email'
+                phone = 'No Phone'
+            else:
+                first_name = customer_res[0][1] or 'Web'
+                last_name = customer_res[0][2] or 'Customer'
+                email = customer_res[0][3] or 'No Email'
+                phone = customer_res[0][4] or 'No Phone'
 
             # Get Product List
             products = order['products']['url']
@@ -115,7 +127,10 @@ class Printer:
                 }
 
                 product_list.append(product_details)
-            if not gift_card_only:
+            # Filter out orders that only contain gift cards
+            if gift_card_only:
+                Printer.logger.info(f'Order {order_id} contains only gift cards. Skipping print.')
+            else:
                 # Create Barcode
                 barcode_filename = 'barcode'
                 Printer.logger.info('Creating barcode')
@@ -156,12 +171,12 @@ class Printer:
                         'cust_no': str(cust_no),
                         # Customer Billing
                         'cb_name': first_name + ' ' + last_name,
-                        'cb_phone': order['billing_address']['phone'],
-                        'cb_email': order['billing_address']['email'],
-                        'cb_street': order['billing_address']['street_1'],
-                        'cb_city': order['billing_address']['city'],
-                        'cb_state': order['billing_address']['state'],
-                        'cb_zip': order['billing_address']['zip'],
+                        'cb_phone': phone,
+                        'cb_email': email,
+                        'cb_street': order['billing_address']['street_1'] or '',
+                        'cb_city': order['billing_address']['city'] or '',
+                        'cb_state': order['billing_address']['state'] or '',
+                        'cb_zip': order['billing_address']['zip'] or '',
                         # Customer Shipping
                         'shipping_method': 'Delivery' if float(order['base_shipping_cost']) > 0 else 'Pickup',
                         'cs_name': (order['shipping_addresses']['url'][0]['first_name'] or '')
@@ -175,7 +190,7 @@ class Printer:
                         'cs_zip': order['shipping_addresses']['url'][0]['zip'] or '',
                         # Product Details
                         'number_of_items': order['items_total'],
-                        'ticket_notes': order['customer_message'],
+                        'ticket_notes': order['customer_message'] or '',
                         'products': product_list,
                         'coupon_code': ', '.join(order['order_coupons']),
                         'coupon_discount': float(order['coupons']['url'][0]['amount'])

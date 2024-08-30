@@ -1,9 +1,9 @@
 import json
 import os
-from setup.query_engine import QueryEngine as db
 import re
 import time
 from setup import creds
+from integration.database import Database
 from datetime import datetime
 from email.utils import formatdate
 import base64
@@ -12,12 +12,26 @@ from setup.error_handler import ProcessOutErrorHandler
 
 class PhoneNumber:
     def __init__(self, phone_number: str):
-        self.raw = self.strip_number(phone_number)
-        self.area_code = self.raw[0:3]
-        self.exchange = self.raw[3:6]
-        self.subscriber_number = self.raw[6:]
+        self.raw = phone_number
+        if not PhoneNumber.is_valid(self.raw):
+            raise ValueError(f'Invalid phone number format. Input: {phone_number}')
+        self.stripped = PhoneNumber.strip_number(phone_number)
+        self.area_code = self.stripped[0:3]
+        self.exchange = self.stripped[3:6]
+        self.subscriber_number = self.stripped[6:]
 
-    def strip_number(self, phone_number: str):
+    def __str__(self):
+        return f'({self.area_code}) {self.exchange}-{self.subscriber_number}'
+
+    @staticmethod
+    def is_valid(phone_number) -> bool:
+        """Validates a phone number using regex."""
+        pattern = r'(\+\d{1,3})?[-.\s]?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}'
+        if re.match(pattern, phone_number):
+            return True
+
+    @staticmethod
+    def strip_number(phone_number: str):
         return (
             phone_number.replace('+1', '')
             .replace('-', '')
@@ -32,26 +46,6 @@ class PhoneNumber:
 
     def to_twilio(self):
         return f'+1{self.area_code}{self.exchange}{self.subscriber_number}'
-
-    def __str__(self):
-        return f'({self.area_code}) {self.exchange}-{self.subscriber_number}'
-
-
-def format_phone(phone_number, mode='clickable'):
-    """Cleanses input data and returns masked phone for either Twilio or Counterpoint configuration"""
-    phone = PhoneNumber(phone_number)
-
-    if mode == 'counterpoint':
-        # Masking ###-###-####
-        return phone.to_cp()
-
-    elif mode == 'clickable':
-        # Masking (###) ###-####
-        return str(phone)
-
-    elif mode == 'twilio':
-        # Masking +###########
-        return phone.to_twilio()
 
 
 def parse_custom_url(string: str):
@@ -169,7 +163,7 @@ def pretty_print(response):
 def get_all_binding_ids():
     """Returns a list of unique and validated binding IDs from the IM_ITEM table."""
 
-    response = db.query(
+    response = Database.query(
         'SELECT DISTINCT USR_PROF_ALPHA_16 '
         "FROM IM_ITEM WHERE IS_ECOMM_ITEM = 'Y'"
         'AND USR_PROF_ALPHA_16 IS NOT NULL'
@@ -279,4 +273,5 @@ class VirtualRateLimiter:
 
 if '__main__' == __name__:
     # Example usage
-    print(convert_utc_to_local('2024-08-14T14:30:00Z'))
+    phone = PhoneNumber('828-234-1265').to_twilio()
+    print(phone)

@@ -1,16 +1,68 @@
 from setup import creds
 from setup.creds import Column, Table, Metafield
 from setup import query_engine
+from setup.utilities import PhoneNumber
 from setup.error_handler import ProcessOutErrorHandler
 from datetime import datetime, timedelta
-from setup.utilities import format_phone
 from traceback import format_exc as tb
+from time import sleep
+import pyodbc
 
 
 class Database:
     db = query_engine.QueryEngine
+    SERVER = creds.SERVER
+    DATABASE = creds.DATABASE
+    USERNAME = creds.USERNAME
+    PASSWORD = creds.PASSWORD
     error_handler = ProcessOutErrorHandler.error_handler
     logger = ProcessOutErrorHandler.logger
+
+    def query(query):
+        """Runs Query Against SQL Database. Use Commit Kwarg for updating database"""
+        connection = pyodbc.connect(
+            f'DRIVER={{ODBC Driver 18 for SQL Server}};SERVER={Database.SERVER};PORT=1433;DATABASE={Database.DATABASE};'
+            f'UID={Database.USERNAME};PWD={Database.PASSWORD};TrustServerCertificate=yes;timeout=3;ansi=True;',
+            autocommit=True,
+        )
+
+        connection.setdecoding(pyodbc.SQL_CHAR, encoding='utf-16-le')
+        connection.setencoding('utf-16-le')
+
+        cursor = connection.cursor()
+        query = str(query).strip()
+        try:
+            response = cursor.execute(query)
+            sql_data = response.fetchall()
+        except pyodbc.ProgrammingError as e:
+            if e.args[0] == 'No results.  Previous SQL was not a query.':
+                if cursor.rowcount > 0:
+                    sql_data = {'code': 200, 'affected rows': cursor.rowcount, 'message': 'success'}
+                else:
+                    # No rows affected
+                    sql_data = {
+                        'code': 201,
+                        'affected rows': cursor.rowcount,
+                        'message': 'No rows affected',
+                        'query': query,
+                    }
+            else:
+                if len(e.args) > 1:
+                    sql_data = {'code': f'{e.args[0]}', 'message': f'{e.args[1]}', 'query': query}
+                else:
+                    sql_data = {'code': f'{e.args[0]}', 'query': query, 'message': 'Unknown Error'}
+
+        except pyodbc.Error as e:
+            if e.args[0] == '40001':
+                print('Deadlock Detected. Retrying Query')
+                sleep(1)
+                Database.query(query)
+            else:
+                sql_data = {'code': f'{e.args[0]}', 'message': f'{e.args[1]}', 'query': query}
+
+        cursor.close()
+        connection.close()
+        return sql_data if sql_data else None
 
     def create_tables():
         tables = {
@@ -87,9 +139,18 @@ class Database:
                                         EVENT_TYPE varchar(20),
                                         MESSAGE varchar(255)
                                         )""",
+            'stock_notify': f"""
+                                        CREATE TABLE {Table.stock_notify}(
+                                        ID int IDENTITY(1,1) primary key,
+                                        ITEM_NO varchar(16) NOT NULL,
+                                        EMAIL varchar(64),
+                                        PHONE varchar(16),
+                                        CREATED_DT DATETIME DEFAULT(current_timestamp)
+                                        );""",
         }
+
         for table in tables:
-            Database.db.query(tables[table])
+            Database.query(tables[table])
 
     class DesignLead:
         def get(yesterday=True):
@@ -102,7 +163,7 @@ class Database:
                 query = f"""
                     SELECT * FROM {Table.design_leads}
                     """
-            return Database.db.query(query)
+            return Database.query(query)
 
         def insert(
             date,
@@ -142,7 +203,7 @@ class Database:
                 {scaled}, {digital}, {on_site}, {delivery}, {install}, '{timeline}', 
                 '{street}', '{city}', '{state}', '{zip_code}', '{comments}')
                 """
-            response = Database.db.query(query)
+            response = Database.query(query)
             if response['code'] == 200:
                 Database.logger.success(f'Design Lead {first_name} {last_name} added to Middleware.')
             else:
@@ -160,7 +221,7 @@ class Database:
                 query = f"""
                 SELECT * FROM {Table.sms}
                 """
-            return Database.db.query(query)
+            return Database.query(query)
 
         def insert(
             origin,
@@ -182,10 +243,10 @@ class Database:
             if name is not None:
                 name = name.replace("'", "''")
 
-            to_phone = format_phone(to_phone, mode='counterpoint')
-            from_phone = format_phone(from_phone, mode='counterpoint')
+            to_phone = PhoneNumber(to_phone).to_cp()
+            from_phone = PhoneNumber(from_phone).to_cp()
 
-            if from_phone == format_phone(creds.twilio_phone_number, mode='counterpoint'):
+            if from_phone == PhoneNumber(creds.twilio_phone_number).to_cp():
                 direction = 'OUTBOUND'
             else:
                 direction = 'INBOUND'
@@ -197,7 +258,7 @@ class Database:
                 {f"'{category}'" if category else 'NULL'}, {f"'{media}'" if media else 'NULL'}, {f"'{sid}'" if sid else 'NULL'}, 
                 {f"'{error_code}'" if error_code else 'NULL'}, {f"'{error_message}'" if error_message else 'NULL'})
                 """
-            response = Database.db.query(query)
+            response = Database.query(query)
             if response['code'] == 200:
                 if direction == 'OUTBOUND':
                     Database.logger.success(f'SMS sent to {to_phone} added to Database.')
@@ -222,7 +283,7 @@ class Database:
                 query += f" AND PHONE = '{phone}'"
 
             try:
-                response = Database.db.query(query)
+                response = Database.query(query)
                 return response[0][0] is not None
             except:
                 return False
@@ -246,7 +307,7 @@ class Database:
             ({values})
             """
 
-            response = Database.db.query(query)
+            response = Database.query(query)
             return response
 
     class Counterpoint:
@@ -264,7 +325,7 @@ class Database:
                 else:
                     return
 
-                response = Database.db.query(query)
+                response = Database.query(query)
                 if response['code'] == 200:
                     Database.logger.success(f'Order {doc_id or tkt_no} deleted from PS_DOC_HDR.')
                 elif response['code'] == 201:
@@ -281,7 +342,7 @@ class Database:
                 SET PRC_2 = {price}, LST_MAINT_DT = GETDATE()
                 WHERE ITEM_NO = '{sku}'				
                 """
-                response = Database.db.query(query)
+                response = Database.query(query)
                 if response['code'] == 200:
                     Database.logger.success(f'Sale price set for {sku}.')
                 elif response['code'] == 201:
@@ -307,7 +368,7 @@ class Database:
                     {where_filter}
                     """
                     # Removing Sale Price, Last Maintenance Date, and Removing from On Sale Category
-                    response = Database.db.query(query)
+                    response = Database.query(query)
 
                     if response['code'] == 200:
                         Database.logger.success(f'Sale Price removed successfully from {items}.')
@@ -336,7 +397,7 @@ class Database:
                 query += where_filter
 
                 # Updating Sale Price, Sale Flag, Sale Description, Last Maintenance Date
-                response = Database.db.query(query)
+                response = Database.query(query)
                 if response['code'] == 200:
                     Database.logger.success(f'Sale status updated for {items}.')
                 elif response['code'] == 201:
@@ -433,7 +494,7 @@ class Database:
 
                 query += f" WHERE ITEM_NO = '{payload['item_no']}'"
 
-                response = Database.db.query(query)
+                response = Database.query(query)
                 if response['code'] == 200:
                     Database.logger.success(f'Product {payload["item_no"]} updated in Middleware.')
                 elif response['code'] == 201:
@@ -452,7 +513,7 @@ class Database:
                     FROM {Database.Counterpoint.Product.HTMLDescription.table} 
                     WHERE ITEM_NO = '{item_no}'
                     """
-                    return Database.db.query(query)
+                    return Database.query(query)
 
                 def update(item_no, description):
                     description = description.replace("'", "''")
@@ -461,7 +522,7 @@ class Database:
                     SET HTML_DESCR = '{description}'
                     WHERE ITEM_NO = '{item_no}'
                     """
-                    response = Database.db.query(query)
+                    response = Database.query(query)
                     if response['code'] == 200:
                         Database.logger.success(f'HTML Description updated for item {item_no}.')
                     elif response['code'] == 201:
@@ -479,7 +540,7 @@ class Database:
                     LST_MAINT_USR_ID)
                     VALUES ('{item_no}', '{description}', GETDATE(), 'AP')
                     """
-                    response = Database.db.query(query)
+                    response = Database.query(query)
                     if response['code'] == 200:
                         Database.logger.success(f'INSERT: HTML Description for {item_no}.')
                     else:
@@ -497,7 +558,7 @@ class Database:
                         WHERE {Column.CP.Product.videos} IS NOT NULL AND
                         {Column.CP.Product.web_enabled} = 'Y'
                         """
-                        response = Database.db.query(query)
+                        response = Database.query(query)
                         all_videos = [[x[0], x[1]] for x in response] if response else []
                         temp_videos = []
 
@@ -524,7 +585,7 @@ class Database:
                         WHERE ITEM_NO = '{i}'
                         """
                         # Updating Sale Price, Last Maintenance Date, and Adding to On Sale Category
-                        response = Database.db.query(query)
+                        response = Database.query(query)
                         if response['code'] == 200:
                             Database.logger.success(f'Item: {i} Sale Status and Description Added Successfully.')
                         elif response['code'] == 201:
@@ -551,7 +612,7 @@ class Database:
                 FULL OUTER JOIN {Table.Middleware.customers} MW on CP.CUST_NO = MW.cust_no
                 WHERE IS_ECOMM_CUST = 'Y' AND CP.LST_MAINT_DT > '{last_sync}' and CUST_NAM_TYP = 'P' {customer_filter}
                 """
-                return Database.db.query(query)
+                return Database.query(query)
 
             def update_timestamps(customer_list: list = None, customer_no: str = None):
                 if not customer_list and not customer_no:
@@ -569,7 +630,7 @@ class Database:
                 SET LST_MAINT_DT = GETDATE()
                 WHERE CUST_NO IN {customer_list}"""
 
-                response = Database.db.query(query)
+                response = Database.query(query)
 
                 if response['code'] == 200:
                     Database.logger.success('Customer timestamps updated.')
@@ -586,7 +647,7 @@ class Database:
                     SELECT FST_NAM, LST_NAM, ADRS_1, ADRS_2, CITY, STATE, ZIP_COD, CNTRY, PHONE_1
                     FROM {Table.CP.customer_ship_addresses}
                     WHERE CUST_NO = '{cust_no}'"""
-                    return Database.db.query(query)
+                    return Database.query(query)
 
         class Promotion:
             def get(group_code=None, ids_only=False):
@@ -594,7 +655,7 @@ class Database:
                     promotions = [group_code]
                 else:
                     # Get list of promotions from IM_PRC_GRP
-                    response = Database.db.query('SELECT GRP_COD FROM IM_PRC_GRP')
+                    response = Database.query('SELECT GRP_COD FROM IM_PRC_GRP')
                     promotions = [x[0] for x in response] if response else []
                     if ids_only:
                         return promotions
@@ -606,10 +667,10 @@ class Database:
                         query = f"""
                         SELECT TOP 1 GRP.GRP_TYP, GRP.GRP_COD, GRP.GRP_SEQ_NO, GRP.DESCR, GRP.CUST_FILT, GRP.BEG_DAT, 
                         GRP.END_DAT, GRP.LST_MAINT_DT, GRP.ENABLED, GRP.MIX_MATCH_COD, MW.SHOP_ID
-                        FROM IM_PRC_GRP GRP FULL OUTER JOIN {Table.Middleware.discounts} MW ON GRP.GRP_COD = MW.GRP_COD
+                        FROM IM_PRC_GRP GRP FULL OUTER JOIN {Table.Middleware.promotions} MW ON GRP.GRP_COD = MW.GRP_COD
                         WHERE GRP.GRP_COD = '{promo}' and GRP.GRP_TYP = 'P'
                         """
-                        response = Database.db.query(query=query)
+                        response = Database.query(query=query)
                         try:
                             promotion = [x for x in response[0]] if response else None
                         except Exception as e:
@@ -634,7 +695,7 @@ class Database:
                     FULL OUTER JOIN SN_PROMO MW on rul.GRP_COD = MW.GRP_COD
                     WHERE RUL.GRP_COD = '{group_code}'
                     """
-                    response = Database.db.query(query)
+                    response = Database.query(query)
                     result = [rule for rule in response] if response else []
                     # if result:
                     #     # Remove duplicates
@@ -754,6 +815,13 @@ class Database:
                                             DOC_ID bigint,
                                             STATUS bit DEFAULT(0)
                                             )""",
+                    'draft_orders': f"""
+                                            CREATE TABLE {Table.Middleware.draft_orders} (  
+                                            ID int IDENTITY(1,1) primary key,
+                                            DOC_ID bigint not NULL,
+                                            DRAFT_ID varchar(64) not NULL,
+                                            CREATED_DT DATETIME DEFAULT(current_timestamp)
+                                            );""",
                     'gift': f"""
                                             CREATE TABLE {Table.Middleware.gift_certificates} (
                                             ID int IDENTITY(1, 1) PRIMARY KEY,
@@ -762,13 +830,20 @@ class Database:
                                             LST_MAINT_DT datetime NOT NULL DEFAULT(current_timestamp)
                                             )""",
                     'promo': f""" 
-                                            CREATE TABLE {Table.Middleware.discounts}(
+                                            CREATE TABLE {Table.Middleware.promotions}(
                                             ID int IDENTITY(1,1) PRIMARY KEY,
                                             GRP_COD nvarchar(50) NOT NULL,
                                             RUL_SEQ_NO int,
                                             SHOP_ID bigint,
                                             ENABLED bit DEFAULT(0),
                                             LST_MAINT_DT datetime NOT NULL DEFAULT(current_timestamp)
+                                            );""",
+                    'discount': f"""
+                                            CREATE TABLE {Table.Middleware.discounts} (
+                                            ID int IDENTITY(1,1) primary key,
+                                            SHOP_ID bigint,
+                                            DISC_ID bigint,
+                                            CREATED_DT DATETIME DEFAULT(current_timestamp)
                                             );""",
                     'metafields': f""" 
                                             CREATE TABLE {Table.Middleware.metafields}(
@@ -786,7 +861,7 @@ class Database:
                 }
 
                 for table in tables:
-                    Database.db.query(tables[table])
+                    Database.query(tables[table])
 
             # Drop Tables
             def drop_tables():
@@ -801,7 +876,7 @@ class Database:
                 ]
 
                 def drop_table(table_name):
-                    Database.db.query(f'DROP TABLE {table_name}')
+                    Database.query(f'DROP TABLE {table_name}')
 
                 for table in tables:
                     drop_table(table)
@@ -826,14 +901,14 @@ class Database:
                     query = f"""
                             SELECT {query_column} FROM {Table.Middleware.customers}
                             """
-                return Database.db.query(query)
+                return Database.query(query)
 
             def get_id(cp_cust_no):
                 query = f"""
                         SELECT SHOP_CUST_ID FROM {Table.Middleware.customers}
                         WHERE CUST_NO = '{cp_cust_no}'
                         """
-                response = Database.db.query(query)
+                response = Database.query(query)
                 return response[0][0] if response else None
 
             def exists(shopify_cust_no):
@@ -841,7 +916,7 @@ class Database:
                         SELECT * FROM {Table.Middleware.customers}
                         WHERE SHOP_CUST_ID = {shopify_cust_no}
                         """
-                return Database.db.query(query)
+                return Database.query(query)
 
             def insert(
                 cp_cust_no,
@@ -864,7 +939,7 @@ class Database:
                         {meta_spouse_birth_month_id if meta_spouse_birth_month_id else "NULL"}, 
                         {meta_wholesale_price_tier_id if meta_wholesale_price_tier_id else "NULL"})
                         """
-                response = Database.db.query(query)
+                response = Database.query(query)
                 if response['code'] == 200:
                     Database.logger.success(f'Customer {cp_cust_no} added to Middleware.')
                 else:
@@ -897,7 +972,7 @@ class Database:
                         WHERE CUST_NO = '{cp_cust_no}'
                         """
 
-                response = Database.db.query(query)
+                response = Database.query(query)
                 if response['code'] == 200:
                     Database.logger.success(f'Customer {cp_cust_no} updated in Middleware.')
                 elif response['code'] == 201:
@@ -939,7 +1014,7 @@ class Database:
                 if not shopify_cust_no:
                     return
                 query = f'DELETE FROM {Table.Middleware.customers} WHERE SHOP_CUST_ID = {shopify_cust_no}'
-                response = Database.db.query(query)
+                response = Database.query(query)
                 if response['code'] == 200:
                     Database.logger.success(f'Customer {shopify_cust_no} deleted from Middleware.')
                 elif response['code'] == 201:
@@ -978,7 +1053,7 @@ class Database:
                     elif shopify_cust_no:
                         query += f' WHERE SHOP_CUST_ID = {shopify_cust_no}'
 
-                    response = Database.db.query(query)
+                    response = Database.query(query)
                     if response['code'] == 200:
                         Database.logger.success(
                             f'Metafields for CUST: {cp_cust_no or shopify_cust_no} deleted from Middleware.'
@@ -1001,7 +1076,7 @@ class Database:
                         SELECT CP_CATEG_ID FROM {Table.Middleware.collections}
                         WHERE COLLECTION_ID = {collection_id}
                         """
-                response = Database.db.query(query)
+                response = Database.query(query)
                 try:
                     return response[0][0]
                 except:
@@ -1018,7 +1093,7 @@ class Database:
                 {category.image_size if category.image_size else 'NULL'},
                 '{category.lst_maint_dt:%Y-%m-%d %H:%M:%S}')
                 """
-                response = Database.db.query(query)
+                response = Database.query(query)
                 if response['code'] == 200:
                     Database.logger.success(f'Category {category.name} added to Middleware.')
                 else:
@@ -1038,7 +1113,7 @@ class Database:
                 LST_MAINT_DT = '{category.lst_maint_dt:%Y-%m-%d %H:%M:%S}'
                 WHERE CP_CATEG_ID = {category.cp_categ_id}
                 """
-                response = Database.db.query(query)
+                response = Database.query(query)
                 if response['code'] == 200:
                     Database.logger.success(f'Category {category.name} updated in Middleware.')
                 else:
@@ -1057,7 +1132,7 @@ class Database:
                         DELETE FROM {Table.Middleware.collections}
                         WHERE CP_CATEG_ID = {cp_categ_id}
                         """
-                response = Database.db.query(query)
+                response = Database.query(query)
                 if response['code'] == 200:
                     Database.logger.success(f'Category {cp_categ_id} deleted from Middleware.')
                 else:
@@ -1072,7 +1147,7 @@ class Database:
                         SET HTML_DESCR = '{description}'
                         WHERE CATEG_ID = '{cp_categ_id}'
                         """
-                response = Database.db.query(query)
+                response = Database.query(query)
                 if response['code'] != 200:
                     raise Exception(response['message'])
 
@@ -1091,7 +1166,7 @@ class Database:
                     if cp_subcategory:
                         query += f" SUBCAT_COD = '{cp_subcategory}'"
 
-                response = Database.db.query(query)
+                response = Database.query(query)
                 try:
                     sku_list = [x[0] for x in response] if response else None
                 except:
@@ -1107,7 +1182,7 @@ class Database:
                 """Get product ID from SQL using image ID. If not found, return None."""
                 if all:
                     query = f"""SELECT PRODUCT_ID FROM {Table.Middleware.products} """
-                    prod_id_res = Database.db.query(query)
+                    prod_id_res = Database.query(query)
                     if prod_id_res is not None:
                         return [x[0] for x in prod_id_res]
 
@@ -1127,7 +1202,7 @@ class Database:
                     )
 
                 if product_query:
-                    prod_id_res = Database.db.query(product_query)
+                    prod_id_res = Database.query(product_query)
                     if prod_id_res is not None:
                         return prod_id_res[0][0]
 
@@ -1144,7 +1219,7 @@ class Database:
                 else:
                     Database.logger.warn('No product ID provided for parent item number lookup.')
                     return
-                response = Database.db.query(query)
+                response = Database.query(query)
                 if response is not None:
                     try:
                         return response[0][0]
@@ -1160,7 +1235,7 @@ class Database:
                 else:
                     Database.logger.warn('No product ID provided for SKU lookup.')
                     return
-                response = Database.db.query(query)
+                response = Database.query(query)
                 if response is not None:
                     try:
                         return response[0][0]
@@ -1176,7 +1251,7 @@ class Database:
                 else:
                     Database.logger.warn('No product ID provided for binding ID lookup.')
                     return
-                response = Database.db.query(query)
+                response = Database.query(query)
                 if response is not None:
                     try:
                         return response[0][0]
@@ -1214,7 +1289,7 @@ class Database:
                     Database.logger.warn('No product ID provided for deletion.')
                     return
 
-                response = Database.db.query(query)
+                response = Database.query(query)
 
                 if response['code'] == 200:
                     Database.logger.success(f'Product {product_id} deleted from Middleware.')
@@ -1238,7 +1313,7 @@ class Database:
                     else:
                         Database.logger.warn('No SKU provided for variant ID lookup.')
                         return
-                    response = Database.db.query(query)
+                    response = Database.query(query)
                     if response is not None:
                         return response[0][0]
 
@@ -1251,7 +1326,7 @@ class Database:
                     else:
                         Database.logger.warn('No SKU provided for option ID lookup.')
                         return
-                    response = Database.db.query(query)
+                    response = Database.query(query)
                     if response is not None:
                         return response[0][0]
 
@@ -1264,7 +1339,7 @@ class Database:
                     else:
                         Database.logger.warn('No SKU provided for option value ID lookup.')
                         return
-                    response = Database.db.query(query)
+                    response = Database.query(query)
                     if response is not None:
                         return response[0][0]
 
@@ -1311,7 +1386,7 @@ class Database:
                         {product.meta_sale_description['id'] if product.meta_sale_description['id'] else "NULL"}
                         )
                         """
-                    response = Database.db.query(insert_query)
+                    response = Database.query(insert_query)
                     if response['code'] == 200:
                         Database.logger.success(
                             f'SKU: {variant.sku}, Binding ID: {variant.binding_id} - INSERT Variant {product.sku}'
@@ -1363,7 +1438,7 @@ class Database:
                         LST_MAINT_DT = GETDATE() 
                         WHERE ID = {variant.mw_db_id}
                         """
-                    response = Database.db.query(update_query)
+                    response = Database.query(update_query)
                     if response['code'] == 200:
                         Database.logger.success(
                             f'SKU: {variant.sku}, Binding ID: {variant.binding_id} - UPDATE Variant'
@@ -1385,7 +1460,7 @@ class Database:
                     else:
                         Database.logger.warn('No variant ID provided for deletion.')
                         return
-                    response = Database.db.query(query)
+                    response = Database.query(query)
 
                     if response['code'] == 200:
                         Database.logger.success(f'Variant {variant_id} deleted from Middleware.')
@@ -1406,7 +1481,7 @@ class Database:
                             else:
                                 Database.logger.warn('No SKU provided for image ID lookup.')
                                 return
-                            response = Database.db.query(query)
+                            response = Database.query(query)
                             if response:
                                 return [x[0] for x in response] if response else None
 
@@ -1430,7 +1505,7 @@ class Database:
                         FROM {Table.Middleware.images}
                         {where_filter}
                         """
-                        response = Database.db.query(query)
+                        response = Database.query(query)
                         if column == '*' or ',' in column or where_filter == '':  # Return all columns
                             return response
                         else:
@@ -1448,7 +1523,7 @@ class Database:
                             Database.logger.warn('No file name provided for image ID lookup.')
                             return
                         try:
-                            img_id_res = Database.db.query(query)
+                            img_id_res = Database.query(query)
                             return img_id_res[0][0]
                         except:
                             return None
@@ -1465,7 +1540,7 @@ class Database:
                         {f"'{image.binding_id}'" if image.binding_id else 'NULL'}, '{image.is_variant_image}',
                         {f"'{image.description.replace("'", "''")}'" if image.description != '' else 'NULL'},
                         {image.size})"""
-                        insert_img_response = Database.db.query(img_insert)
+                        insert_img_response = Database.query(img_insert)
                         if insert_img_response['code'] == 200:
                             Database.logger.success(f'SQL INSERT Image {image.name}: Success')
                         else:
@@ -1488,7 +1563,7 @@ class Database:
                                     image.description != '' else 'NULL'}, SIZE = '{image.size}'
                         WHERE ID = {image.db_id}"""
 
-                        res = Database.db.query(q)
+                        res = Database.query(q)
                         if res['code'] == 200:
                             Database.logger.success(f'SQL UPDATE Image {image.name}: Success')
                         elif res['code'] == 201:
@@ -1532,7 +1607,7 @@ class Database:
                             Database.logger.warn('No image or image_id provided for deletion.')
                             return
 
-                        res = Database.db.query(q)
+                        res = Database.query(q)
                         if res['code'] == 200:
                             Database.logger.success(f'{res['affected rows']} images deleted from Middleware.')
                             if (image_id or image) and prod_id:
@@ -1542,7 +1617,7 @@ class Database:
                                 SET SORT_ORDER = SORT_ORDER - 1
                                 WHERE PRODUCT_ID = {prod_id} AND SORT_ORDER > {sort_order}
                                 """
-                                response = Database.db.query(query)
+                                response = Database.query(query)
                                 if response['code'] == 200:
                                     Database.logger.success('Decrement Photos: Success')
                                 elif response['code'] == 201:
@@ -1588,7 +1663,7 @@ class Database:
                         {where_filter}
                         """
 
-                        response = Database.db.query(query)
+                        response = Database.query(query)
                         if response:
                             if product_id:
                                 return response
@@ -1614,7 +1689,7 @@ class Database:
                         {video.sort_order}, {f"'{video.binding_id}'" if video.binding_id else 'NULL'}, 
                         {f"'{video.description}'" if video.description else 'NULL'}, {video.size if video.size else 'NULL'})
                         """
-                        response = Database.db.query(query)
+                        response = Database.query(query)
                         if response['code'] == 200:
                             Database.logger.success(f'Video {video.shopify_id} added to Middleware.')
                         else:
@@ -1638,7 +1713,7 @@ class Database:
                         SIZE = {video.size if video.size else 'NULL'}
                         WHERE ID = {video.db_id}
                         """
-                        response = Database.db.query(query)
+                        response = Database.query(query)
                         if response['code'] == 200:
                             Database.logger.success(f'Video {video.shopify_id} updated in Middleware.')
                         elif response['code'] == 201:
@@ -1674,7 +1749,7 @@ class Database:
                                 raise Exception('No video_id or product_id provided for deletion.')
 
                         query = f'DELETE FROM {Table.Middleware.videos} {where_filter}'
-                        response = Database.db.query(query)
+                        response = Database.query(query)
                         if response['code'] == 200:
                             if video_id:
                                 Database.logger.success(f'Video {video_id} deleted from Middleware.')
@@ -1690,7 +1765,7 @@ class Database:
                                 SET SORT_ORDER = SORT_ORDER - 1
                                 WHERE PRODUCT_ID = {product_id} AND SORT_ORDER > {sort_order}
                                 """
-                                decrement_response = Database.db.query(query)
+                                decrement_response = Database.query(query)
                                 if decrement_response['code'] == 200:
                                     Database.logger.success('Sort order decremented for remaining videos.')
                                 elif decrement_response['code'] == 201:
@@ -1747,7 +1822,7 @@ class Database:
                     elif sku:
                         query += f" WHERE ITEM_NO = '{sku}'"
 
-                    response = Database.db.query(query)
+                    response = Database.query(query)
                     if response['code'] == 200:
                         Database.logger.success(
                             f'Metafield {column} deleted from product {shopify_product_id or sku}.'
@@ -1767,7 +1842,7 @@ class Database:
                     where_filter = ''
 
                 query = f'SELECT * FROM {Table.Middleware.metafields} {where_filter}'
-                response = Database.db.query(query)
+                response = Database.query(query)
                 if response is not None:
                     result = {}
                     for row in response:
@@ -1822,7 +1897,7 @@ class Database:
                         {values['PIN']}, {values['PINNED_POS']}, '{values['OWNER_TYPE']}' {validation_values})
                         """
 
-                response = Database.db.query(query)
+                response = Database.query(query)
                 if response['code'] != 200:
                     error = f'Error inserting metafield definition {values["META_ID"]}. \nQuery: {query}\nResponse: {response}'
                     raise Exception(error)
@@ -1843,7 +1918,7 @@ class Database:
                         WHERE META_ID = {values['META_ID']}
 
                         """
-                response = Database.db.query(query)
+                response = Database.query(query)
                 if response['code'] != 200:
                     raise Exception(response['message'])
 
@@ -1853,7 +1928,7 @@ class Database:
                 else:
                     where_filter = ''
                 query = f'DELETE FROM {Table.Middleware.metafields} {where_filter}'
-                response = Database.db.query(query)
+                response = Database.query(query)
                 if response['code'] not in [200, 201]:
                     raise Exception(response['message'])
 
@@ -1861,12 +1936,12 @@ class Database:
             def get(id='', ids_only=False):
                 if id:
                     query = f'SELECT * FROM {Table.Middleware.webhooks} WHERE HOOK_ID = {id}'
-                    response = Database.db.query(query)
+                    response = Database.query(query)
                     if response is not None:
                         return response
                 else:
                     query = f'SELECT * FROM {Table.Middleware.webhooks}'
-                    response = Database.db.query(query)
+                    response = Database.query(query)
                     if response is not None:
                         if ids_only:
                             return [hook['id'] for hook in response]
@@ -1877,7 +1952,7 @@ class Database:
                         INSERT INTO {Table.Middleware.webhooks} (HOOK_ID, TOPIC, DESTINATION, FORMAT, DOMAIN)
                         VALUES ({webhook_data['HOOK_ID']}, '{webhook_data['TOPIC']}', '{webhook_data['DESTINATION']}', '{webhook_data['FORMAT']}', '{webhook_data['DOMAIN']}')
                         """
-                response = Database.db.query(query)
+                response = Database.query(query)
                 if response['code'] != 200:
                     raise Exception(response['message'])
 
@@ -1890,50 +1965,50 @@ class Database:
                         DOMAIN = '{webhook_data['DOMAIN']}'
                         WHERE HOOK_ID = {webhook_data['HOOK_ID']}
                         """
-                response = Database.db.query(query)
+                response = Database.query(query)
                 if response['code'] != 200:
                     raise Exception(response['message'])
 
             def delete(hook_id=None, all=False):
                 if all:
-                    response = Database.db.query(f'DELETE FROM {Table.Middleware.webhooks}')
+                    response = Database.query(f'DELETE FROM {Table.Middleware.webhooks}')
                     if response['code'] != 200:
                         raise Exception(response['message'])
                     else:
                         return 'All webhooks deleted'
                 elif hook_id:
-                    response = Database.db.query(
-                        f'DELETE FROM {Table.Middleware.webhooks} WHERE HOOK_ID = {hook_id}'
-                    )
+                    response = Database.query(f'DELETE FROM {Table.Middleware.webhooks} WHERE HOOK_ID = {hook_id}')
                     if response['code'] != 200:
                         raise Exception(response['message'])
                     else:
                         return f'Webhook {hook_id} deleted'
 
-        class Discount:
+        class Promotion:
+            """Promotion Prices translated into Automatic Discounts in Shopify."""
+
             def get(group_code=None):
                 if group_code:
-                    query = f"SELECT SHOP_ID FROM {Table.Middleware.discounts} WHERE GRP_COD = '{group_code}'"
+                    query = f"SELECT SHOP_ID FROM {Table.Middleware.promotions} WHERE GRP_COD = '{group_code}'"
                 else:
-                    query = f'SELECT GRP_COD FROM {Table.Middleware.discounts}'
-                response = Database.db.query(query)
+                    query = f'SELECT GRP_COD FROM {Table.Middleware.promotions}'
+                response = Database.query(query)
                 return [x[0] for x in response] if response else None
 
             def sync(rule):
                 if rule.db_id:
-                    Database.Shopify.Discount.update(rule)
+                    Database.Shopify.Promotion.update(rule)
                 else:
-                    Database.Shopify.Discount.insert(rule)
+                    Database.Shopify.Promotion.insert(rule)
 
-                Database.Shopify.Discount.Line.sync(rule)
+                Database.Shopify.Promotion.Line.sync(rule)
 
             def insert(rule):
                 """Insert a new discount rule into the Middleware."""
                 query = f"""
-                INSERT INTO SN_PROMO(GRP_COD, RUL_SEQ_NO, SHOP_ID, ENABLED)
+                INSERT INTO {Table.Middleware.promotions}(GRP_COD, RUL_SEQ_NO, SHOP_ID, ENABLED)
                 VALUES('{rule.grp_cod}', {rule.seq_no},{rule.shopify_id}, {1 if rule.is_enabled_cp else 0})
                 """
-                response = Database.db.query(query)
+                response = Database.query(query)
                 if response['code'] == 200:
                     Database.logger.success(
                         f'Promotion {rule.grp_cod}-Rule: {rule.seq_no} inserted successfully into Middleware.'
@@ -1946,13 +2021,13 @@ class Database:
 
             def update(rule):
                 query = f"""
-                UPDATE SN_PROMO
+                UPDATE {Table.Middleware.promotions}
                 SET SHOP_ID = {rule.shopify_id}, 
                 ENABLED = {1 if rule.is_enabled_cp else 0}, 
                 LST_MAINT_DT = GETDATE()
                 WHERE GRP_COD = '{rule.grp_cod}' and RUL_SEQ_NO = {rule.seq_no}
                 """
-                response = Database.db.query(query)
+                response = Database.query(query)
                 if response['code'] == 200:
                     Database.logger.success(
                         f'Promotion {rule.grp_cod}-Rule: {rule.seq_no} updated successfully in Middleware.'
@@ -1971,8 +2046,8 @@ class Database:
                 if not shopify_id:
                     Database.logger.warn('No Shopify ID provided for deletion.')
                     return
-                query = f'DELETE FROM SN_PROMO WHERE SHOP_ID = {shopify_id}'
-                response = Database.db.query(query)
+                query = f'DELETE FROM {Table.Middleware.promotions} WHERE SHOP_ID = {shopify_id}'
+                response = Database.query(query)
 
                 if response['code'] == 200:
                     Database.logger.success(f'DELETE: Promotion {shopify_id} deleted successfully from Middleware.')
@@ -1989,8 +2064,8 @@ class Database:
                     if not shopify_id:
                         Database.logger.warn('No Shopify ID provided for line item lookup.')
                         return
-                    query = f'SELECT ITEM_NO FROM {Table.Middleware.discount_lines} WHERE SHOP_ID = {shopify_id}'
-                    response = Database.db.query(query)
+                    query = f'SELECT ITEM_NO FROM {Table.Middleware.promotion_lines} WHERE SHOP_ID = {shopify_id}'
+                    response = Database.query(query)
                     return [x[0] for x in response] if response else None
 
                 def sync(rule):
@@ -2002,15 +2077,15 @@ class Database:
                                 if item in mw_items:
                                     continue
                                 else:
-                                    Database.Shopify.Discount.Line.insert(item, rule.shopify_id)
+                                    Database.Shopify.Promotion.Line.insert(item, rule.shopify_id)
                             else:
-                                Database.Shopify.Discount.Line.insert(item, rule.shopify_id)
+                                Database.Shopify.Promotion.Line.insert(item, rule.shopify_id)
                     if mw_items:
                         for item in mw_items:
                             if item in cp_items:
                                 continue
                             else:
-                                Database.Shopify.Discount.Line.delete(item_no_list=[item])
+                                Database.Shopify.Promotion.Line.delete(item_no_list=[item])
 
                 def insert(item, shopify_promo_id):
                     """Insert Items affected by BOGO promos into middleware."""
@@ -2018,9 +2093,9 @@ class Database:
                         Database.logger.warn('No item provided for insertion.')
                         return
                     query = f"""
-                    INSERT INTO {Table.Middleware.discount_lines} (SHOP_ID, ITEM_NO)
+                    INSERT INTO {Table.Middleware.promotion_lines} (SHOP_ID, ITEM_NO)
                     VALUES ({shopify_promo_id}, '{item}')"""
-                    response = Database.db.query(query)
+                    response = Database.query(query)
                     if response['code'] == 200:
                         Database.logger.success(f'Promotion {item} inserted successfully into Middleware.')
                     else:
@@ -2034,11 +2109,11 @@ class Database:
                         Database.logger.warn('No item number provided for update.')
                         return
                     query = f"""
-                    UPDATE {Table.Middleware.discount_lines}
+                    UPDATE {Table.Middleware.promotion_lines}
                     SET SHOP_ID = {shopify_id}
                     WHERE ITEM_NO = '{line.item_no}'
                     """
-                    response = Database.db.query(query)
+                    response = Database.query(query)
                     if response['code'] == 200:
                         Database.logger.success(f'Promotion {line.item_no} updated successfully in Middleware.')
                     elif response['code'] == 201:
@@ -2055,8 +2130,8 @@ class Database:
                         return
                     if shopify_id:
                         # Delete all line items for a specific promotion
-                        query = f'DELETE FROM {Table.Middleware.discount_lines} WHERE SHOP_ID = {shopify_id}'
-                        response = Database.db.query(query)
+                        query = f'DELETE FROM {Table.Middleware.promotion_lines} WHERE SHOP_ID = {shopify_id}'
+                        response = Database.query(query)
                         if response['code'] == 200:
                             Database.logger.success(
                                 f'DELETE: Promotion {shopify_id} deleted successfully from Middleware.'
@@ -2075,8 +2150,8 @@ class Database:
                             where_filter = f'ITEM_NO = {item_no_list[0]}'
                         else:
                             where_filter = f'ITEM_NO IN {tuple(item_no_list)}'
-                        query = f'DELETE FROM {Table.Middleware.discount_lines} WHERE {where_filter}'
-                        response = Database.db.query(query)
+                        query = f'DELETE FROM {Table.Middleware.promotion_lines} WHERE {where_filter}'
+                        response = Database.query(query)
                         if response['code'] == 200:
                             Database.logger.success(
                                 f'DELETE: Promotion {item_no_list} deleted successfully from Middleware.'
@@ -2091,9 +2166,25 @@ class Database:
                                 origin='Middleware Promotion Line Item Deletion',
                             )
 
+        class Discount:
+            """Basic Discount Codes"""
+
+            def get(discount_id):
+                if not discount_id:
+                    Database.logger.warn('No discount ID provided for lookup.')
+                    return
+                query = f'SELECT * FROM {Table.Middleware.discounts} WHERE SHOP_ID = {discount_id}'
+                response = Database.query(query)
+                if response:
+                    db_id = response[0][0]
+                    shop_id = response[0][1]
+                    cp_id = response[0][2]
+                    lst_maint_dt = response[0][3]
+                    return {'db_id': db_id, 'shop_id': shop_id, 'cp_id': cp_id, 'lst_maint_dt': lst_maint_dt}
+
         class Gift_Certificate:
             pass
 
 
 if __name__ == '__main__':
-    print(Database.Shopify.Discount.get('TEST'))
+    print(Database.Shopify.Discount.get(1165344506023))

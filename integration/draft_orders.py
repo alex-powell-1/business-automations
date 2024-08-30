@@ -32,7 +32,7 @@ def get_hold_id(draft_id):
     """
 
     try:
-        response = Database.db.query(query)
+        response = Database.query(query)
         return response[0][0]
     except Exception as e:
         error_handler.add_error_v(
@@ -49,7 +49,7 @@ def get_draft_id(hold_id):
     """
 
     try:
-        response = Database.db.query(query)
+        response = Database.query(query)
         return response[0][0]
     except Exception as e:
         error_handler.add_error_v(
@@ -72,8 +72,8 @@ def delete_hold(hold_id):
     """
 
     try:
-        Database.db.query(query1)
-        Database.db.query(query2)
+        Database.query(query1)
+        Database.query(query2)
 
         logger.success(f'Hold order {hold_id} deleted.')
 
@@ -96,7 +96,7 @@ def get_doc_id_from_hold_id(hold_id):
         """
 
         try:
-            response = Database.db.query(query)
+            response = Database.query(query)
             try:
                 return (response[0][0], response[0][1])
             except:
@@ -120,7 +120,7 @@ def get_doc_id_from_hold_id(hold_id):
     # """
 
     # try:
-    #     response = Database.db.query(query)
+    #     response = Database.query(query)
 
     #     logger.success(f'Doc id from hold order {hold_id} retrieved.')
 
@@ -152,7 +152,7 @@ def check_cp_closed_orders():
     """
 
     try:
-        response = Database.db.query(query)
+        response = Database.query(query)
 
         if response is None:
             logger.info('No hold orders found.')
@@ -179,7 +179,7 @@ def check_cp_closed_orders():
             WHERE DOC_ID = '{hold_id}'
             """
 
-            Database.db.query(query)
+            Database.query(query)
 
             logger.success(f'Associated draft deleted for hold order: {hold_id}')
     except Exception as e:
@@ -269,7 +269,7 @@ def on_draft_created(draft_id):
             ('{doc_id}', '{draft_id}')
         """
 
-        return Database.db.query(query)
+        return Database.query(query)
     except Exception as e:
         error_handler.add_error_v(
             error=f'Error creating draft order {draft_id}: {e}', origin='draft_orders', traceback=tb()
@@ -295,14 +295,14 @@ def on_draft_updated(draft_id):
         WHERE DOC_ID = '{doc_id}'
     """
 
-    Database.db.query(query)
+    Database.query(query)
 
     query = f"""
         DELETE FROM SN_DRAFT_ORDERS
         WHERE DOC_ID = '{doc_id}'
     """
 
-    Database.db.query(query)
+    Database.query(query)
 
     logger.success(f'Deleted hold order for draft order {draft_id}')
 

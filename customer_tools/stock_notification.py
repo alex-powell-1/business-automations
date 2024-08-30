@@ -194,7 +194,7 @@ def create_coupon(item_no, customer):
             """
 
             try:
-                response = Database.db.query(query)
+                response = Database.query(query)
                 if response['code'] == 200:
                     error_handler.logger.success('Shopify Coupon Added Successfully!')
                 else:
@@ -223,7 +223,7 @@ def send_stock_notifications():
     query = f'SELECT {cols} FROM VI_STOCK_NOTIFY WHERE QTY_AVAIL > 0'
 
     try:
-        response = Database.db.query(query)
+        response = Database.query(query)
     except:
         error_handler.error_handler.add_error_v('Error querying database', origin='stock_notification.py')
         return
@@ -307,7 +307,7 @@ def send_stock_notifications():
         #################################################################
 
         try:
-            response = Database.db.query(query)
+            response = Database.query(query)
 
             if response['code'] == 200:
                 error_handler.logger.success('Successfully removed.')
