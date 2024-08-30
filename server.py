@@ -36,7 +36,7 @@ from traceback import format_exc as tb
 
 import uuid_utils as uuidu
 
-from setup.utilities import PhoneNumber
+from setup.utilities import PhoneNumber, EmailAddress
 
 from integration.customers import Customers
 
@@ -144,29 +144,12 @@ def stock_notification():
     response = requests.post(url, data=payload)
     if not response.json()['success']:
         return 'Could not verify captcha.', 400
-
-    def validate_email(email: str) -> bool:
-        """Validates an email address using regex."""
-        pattern = r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}'
-        if re.match(pattern, email):
-            return True
-
-        return False
-
-    def validate_phone(phone: str) -> bool:
-        """Validates a phone number using regex."""
-        pattern = r'(\+\d{1,3})?[-.\s]?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}'
-        if re.match(pattern, phone):
-            return True
-
-        return False
-
     # Validate the input data
     try:
         email_empty = sanitized_data['email'] == ''
         phone_empty = sanitized_data['phone'] == ''
-        email_valid = validate_email(sanitized_data['email'])
-        phone_valid = validate_phone(sanitized_data['phone'])
+        email_valid = EmailAddress.is_valid(sanitized_data['email'])
+        phone_valid = PhoneNumber.is_valid(sanitized_data['phone'])
 
         if (email_empty and phone_empty) or (not email_valid and not phone_valid):
             return 'Invalid email or phone number.', 400
@@ -175,7 +158,9 @@ def stock_notification():
         elif not email_valid and not email_empty:
             return 'Invalid email address.', 400
     except Exception as e:
-        ProcessInErrorHandler.error_handler.add_error_v(error=f'Invalid input data: {e}', origin='stock_notify')
+        ProcessInErrorHandler.error_handler.add_error_v(
+            error=f'Invalid input data: {e}', origin=Route.stock_notify, traceback=tb()
+        )
         return f'An error occurred: {str(e)}', 500
     else:
         # Fix empty strings
@@ -360,7 +345,9 @@ def update_uuid_name():
             commit=True,
         )
     except Exception as e:
-        ProcessInErrorHandler.error_handler.add_error_v(error=f'Error updating: {e}', origin='update-uuid-name')
+        ProcessInErrorHandler.error_handler.add_error_v(
+            error=f'Error updating: {e}', origin='update-uuid-name', traceback=tb()
+        )
         return jsonify({'error': 'Error updating'}), 400
 
     return jsonify({'message': 'Name updated.'}), 200
@@ -454,8 +441,6 @@ def incoming_sms():
     # Parse to dictionary
     msg = urllib.parse.parse_qs(string_code)
 
-    date = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-
     from_phone = msg['From'][0]
     to_phone = msg['To'][0]
     if 'Body' in msg:
@@ -482,11 +467,6 @@ def incoming_sms():
     # Get Customer Name and Category from SQL
     customer_number, full_name, category = SMSEngine.lookup_customer_data(from_phone)
 
-    # log_data = [[date, to_phone, from_phone, body, full_name, category.title(), media_url]]
-    # # Write dataframe to CSV file
-    # df = pandas.DataFrame(log_data, columns=['date', 'to_phone', 'from_phone', 'body', 'name', 'category', 'media'])
-    # log_engine.write_log(df, creds.incoming_sms_log)
-
     Database.SMS.insert(
         origin='Webhook',
         to_phone=to_phone,
@@ -505,7 +485,7 @@ def incoming_sms():
     if body.lower() in ['stop', 'unsubscribe', 'stop please', 'please stop', 'cancel', 'opt out', 'remove me']:
         SMSEngine.unsubscribe(
             origin='WEBHOOK',
-            campaign='/SMS',
+            campaign=Route.sms,
             cust_no=customer_number,
             name=full_name,
             category=category,
@@ -519,7 +499,7 @@ def incoming_sms():
     elif body.lower() in ['start', 'subscribe', 'start please', 'please start', 'opt in', 'add me']:
         SMSEngine.subscribe(
             origin='WEBHOOK',
-            campaign='/SMS',
+            campaign=Route.sms,
             cust_no=customer_number,
             name=full_name,
             category=category,
@@ -571,7 +551,9 @@ def shopify():
         connection.close()
     except Exception as e:
         ProcessInErrorHandler.error_handler.add_error_v(
-            error=f'Error sending order {order_id} to RabbitMQ: {e}', origin='shopify_orders'
+            error=f'Error sending order {order_id} to RabbitMQ: {e}',
+            origin=Route.Shopify.order_create,
+            traceback=tb(),
         )
 
     return jsonify({'success': True}), 200
@@ -607,7 +589,9 @@ def shopify_draft_create():
         connection.close()
     except Exception as e:
         ProcessInErrorHandler.error_handler.add_error_v(
-            error=f'Error sending order {order_id} to RabbitMQ: {e}', origin='shopify_orders'
+            error=f'Error sending order {order_id} to RabbitMQ: {e}',
+            origin=Route.Shopify.draft_create,
+            traceback=tb(),
         )
 
     return jsonify({'success': True}), 200
@@ -643,7 +627,9 @@ def shopify_draft_update():
         connection.close()
     except Exception as e:
         ProcessInErrorHandler.error_handler.add_error_v(
-            error=f'Error sending order {order_id} to RabbitMQ: {e}', origin='shopify_orders'
+            error=f'Error sending order {order_id} to RabbitMQ: {e}',
+            origin=Route.Shopify.draft_update,
+            traceback=tb(),
         )
 
     return jsonify({'success': True}), 200
@@ -701,7 +687,7 @@ def shopify_customer_create():
             )
         except Exception as e:
             error_handler.add_error_v(
-                error=f'Error adding customer {id}: {e}', origin='shopify_customer_create', traceback=tb()
+                error=f'Error adding customer {id}: {e}', origin=Route.Shopify.customer_create, traceback=tb()
             )
             return jsonify({'error': 'Error adding customer'}), 500
         else:
@@ -745,7 +731,7 @@ def shopify_customer_update():
     #     connection.close()
     # except Exception as e:
     #     ProcessInErrorHandler.error_handler.add_error_v(
-    #         error=f'Error sending customer {customer_id} to RabbitMQ: {e}', origin='shopify_customer_update'
+    #         error=f'Error sending customer {customer_id} to RabbitMQ: {e}', origin=Route.Shopify.customer_update
     #     )
 
     return jsonify({'success': True}), 200
@@ -903,7 +889,7 @@ def shopify_product_update():
             Database.Counterpoint.Product.update(update_payload)
         except Exception as e:
             ProcessInErrorHandler.error_handler.add_error_v(
-                error=f'Error updating product {item_no}: {e}', origin='shopify_product_update', traceback=tb()
+                error=f'Error updating product {item_no}: {e}', origin=Route.Shopify.product_update, traceback=tb()
             )
 
     return jsonify({'success': True}), 200
@@ -919,7 +905,7 @@ def get_token():
         authorization.SESSIONS.append(session)
         return jsonify({'token': session.token, 'expires': session.expires}), 200
 
-    ProcessInErrorHandler.error_handler.add_error_v(error=f'Invalid password: {password} ', origin='get_token')
+    ProcessInErrorHandler.error_handler.add_error_v(error=f'Invalid password: {password} ', origin=Route.token)
     return jsonify({'error': 'Invalid username or password'}), 401
 
 
@@ -939,7 +925,7 @@ def get_commercial_availability():
         return jsonify({'data': response.text}), 200
     else:
         ProcessInErrorHandler.error_handler.add_error_v(
-            error='Error fetching data', origin=Route.commercial_availability
+            error='Error fetching data', origin=Route.commercial_availability, traceback=tb()
         )
         return jsonify({'error': 'Error fetching data'}), 500
 
@@ -966,7 +952,9 @@ def serve_file(path):
     except BadRequest:
         return jsonify({'error': 'Bad request'}), 400
     except Exception as e:
-        ProcessOutErrorHandler.error_handler.add_error_v(error=f'Error serving file: {e}', origin=Route.file_server)
+        ProcessOutErrorHandler.error_handler.add_error_v(
+            error=f'Error serving file: {e}', origin=Route.file_server, traceback=tb()
+        )
         return jsonify({'error': 'Internal server error'}), 500
 
 
@@ -1005,7 +993,7 @@ if __name__ == '__main__':
             except Exception as e:
                 print('Error serving Flask app: ', e)
                 ProcessInErrorHandler.error_handler.add_error_v(
-                    error=f'Error serving Flask app: {e}', origin='server'
+                    error=f'Error serving Flask app: {e}', origin='server', traceback=tb()
                 )
                 time.sleep(5)
             # Stop the server if Keyboard Interrupt

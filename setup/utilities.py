@@ -48,6 +48,16 @@ class PhoneNumber:
         return f'+1{self.area_code}{self.exchange}{self.subscriber_number}'
 
 
+class EmailAddress:
+    @staticmethod
+    def is_valid(email: str) -> bool:
+        """Validates an email address using regex."""
+        pattern = r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}'
+        if re.match(pattern, email):
+            return True
+        return False
+
+
 def parse_custom_url(string: str):
     """Uses regular expression to parse a string into a URL-friendly format."""
     return '-'.join(str(re.sub('[^A-Za-z0-9 ]+', '', string)).lower().split(' '))
