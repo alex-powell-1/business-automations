@@ -323,7 +323,7 @@ def send_stock_notifications():
             error_handler.error_handler.add_error_v('Error querying database', origin='stock_notification.py')
 
         if included:
-            os.remove(f'{coupon_code}.png')
+            os.remove(f'./{coupon_code}.png')
 
     error_handler.logger.success('Completed: Send Stock Notification Text')
     error_handler.logger.info(f'Total Messages Sent: {messages_sent}')
