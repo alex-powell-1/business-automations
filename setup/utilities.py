@@ -3,11 +3,11 @@ import os
 import re
 import time
 from setup import creds
-from integration.database import Database
 from datetime import datetime
 from email.utils import formatdate
 import base64
 from setup.error_handler import ProcessOutErrorHandler
+from PIL import Image
 
 
 class PhoneNumber:
@@ -170,21 +170,6 @@ def pretty_print(response):
     print(json.dumps(response, indent=4))
 
 
-def get_all_binding_ids():
-    """Returns a list of unique and validated binding IDs from the IM_ITEM table."""
-
-    response = Database.query(
-        'SELECT DISTINCT USR_PROF_ALPHA_16 '
-        "FROM IM_ITEM WHERE IS_ECOMM_ITEM = 'Y'"
-        'AND USR_PROF_ALPHA_16 IS NOT NULL'
-    )
-
-    def valid(binding_id):
-        return re.match(creds.binding_id_format, binding_id)
-
-    return [binding[0] for binding in response if valid(binding[0])]
-
-
 def encode_base64(input_string):
     # Ensure the string is in bytes, then encode it
     encoded_string = base64.b64encode(input_string.encode())
@@ -285,3 +270,37 @@ if '__main__' == __name__:
     # Example usage
     phone = PhoneNumber('828-234-1265').to_twilio()
     print(phone)
+
+
+def combine_images(product_image_path, barcode_image_path, combined_image_path=None):
+    # Open the product and barcode images
+    product_image = Image.open(product_image_path)
+    barcode_image = Image.open(barcode_image_path)
+
+    # Get the width of the wider image
+    target_width = max(product_image.width, barcode_image.width)
+
+    # Scale images to have the same width
+    if product_image.width != target_width:
+        product_image = product_image.resize(
+            (target_width, int(product_image.height * target_width / product_image.width))
+        )
+    if barcode_image.width != target_width:
+        barcode_image = barcode_image.resize(
+            (target_width, int(barcode_image.height * target_width / barcode_image.width))
+        )
+
+    # Calculate combined height
+    combined_height = product_image.height + barcode_image.height
+
+    # Create a new image for combined output
+    combined_image = Image.new('RGB', (target_width, combined_height))
+
+    # Paste product image and barcode image into the combined image
+    combined_image.paste(product_image, (0, 0))
+    combined_image.paste(barcode_image, (0, product_image.height))
+
+    if combined_image_path is not None:
+        combined_image.save(combined_image_path)
+
+    return combined_image

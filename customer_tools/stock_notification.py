@@ -23,7 +23,7 @@ from setup.error_handler import ScheduledTasksErrorHandler as error_handler
 
 from setup import barcode_engine as barcode_engine
 
-from setup.utilities import PhoneNumber
+from setup.utilities import PhoneNumber, combine_images
 from setup.sms_engine import SMSEngine
 
 from integration.database import Database
@@ -220,7 +220,7 @@ def send_stock_notifications():
     photos_to_remove = []
 
     cols = 'EMAIL, PHONE, ITEM_NO, DESCR, QTY_AVAIL'
-    query = f'SELECT {cols} FROM VI_STOCK_NOTIFY WHERE QTY_AVAIL > 0'
+    query = f"SELECT {cols} FROM VI_STOCK_NOTIFY WHERE QTY_AVAIL > 0 and ITEM_NO != '202825'"
 
     try:
         response = Database.query(query)
@@ -268,11 +268,15 @@ def send_stock_notifications():
                 continue
 
         item_photo = creds.photo_path + f'/{item_no}.jpg'
-        product_path = creds.public_files
 
-        copy_file(item_photo, product_path)
+        if included:
+            combine_images(
+                item_photo, f'{coupon_code}.png', combined_image_path=creds.public_files + f'/{item_no}.jpg'
+            )
+        else:
+            copy_file(item_photo, creds.public_files)
 
-        local_photo = product_path + f'/{item_no}.jpg'
+        local_photo = creds.public_files + f'/{item_no}.jpg'
         product_photo = creds.api_public_files + f'{item_no}.jpg'
 
         photos_to_remove.append(local_photo)
