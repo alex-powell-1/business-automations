@@ -1,14 +1,12 @@
-import pandas
 import pytz
 from dateutil import tz
 from twilio.base.exceptions import TwilioRestException
 from twilio.rest import Client
 
 from setup import creds
-from setup.creds import Table
 from integration.database import Database
-from setup.error_handler import SMSErrorHandler, SMSEventHandler
-from setup.utilities import convert_timezone, PhoneNumber
+from setup.error_handler import SMSErrorHandler
+from setup.utilities import PhoneNumber
 
 est = pytz.timezone('US/Eastern')
 utc = pytz.utc
@@ -42,7 +40,7 @@ class SMSEngine:
 
         if category is None:
             if origin != 'SERVER':
-                category = (SMSEngine.lookup_customer_data(to_phone))[2]
+                category = (Database.Counterpoint.Customer.get_customer_by_phone(to_phone))[2]
 
         error_code = None
         error_message = None
@@ -67,7 +65,7 @@ class SMSEngine:
                     SMSEngine.error_handler.add_error_v(
                         f'Code: {err.code} - Error sending SMS to {name}: {err.msg}'
                     )
-                    SMSEngine.move_phone_1_to_landline(
+                    Database.SMS.move_phone_1_to_landline(
                         origin=origin,
                         campaign=campaign,
                         cust_no=cust_no,
@@ -102,104 +100,6 @@ class SMSEngine:
                 )
 
     @staticmethod
-    def move_phone_1_to_landline(origin, campaign, cust_no, name, category, phone):
-        cp_phone = PhoneNumber(phone).to_cp()
-        move_landline_query = f"""
-            UPDATE AR_CUST
-            SET MBL_PHONE_1 = '{cp_phone}', SET PHONE_1 = NULL
-            WHERE PHONE_1 = '{cp_phone}'
-        """
-        response = Database.query(move_landline_query)
-
-        if response['code'] == 200:
-            query = f"""
-            INSERT INTO {creds.sms_event_log} (ORIGIN, CAMPAIGN, PHONE, CUST_NO, NAME, CATEGORY, EVENT_TYPE, MESSAGE)
-            VALUES ('{origin}', '{campaign}', '{phone}', '{cust_no}', '{name}', '{category}', 
-            'Landline', 'SET MBL_PHONE_1 = {cp_phone}, SET PHONE_1 = NULL')"""
-
-            response = Database.query(query)
-            if response['code'] != 200:
-                SMSEventHandler.error_handler.add_error_v(f'Error moving {phone} to landline')
-
-        else:
-            SMSEventHandler.error_handler.add_error_v(f'Error moving {phone} to landline')
-
-    @staticmethod
-    def subscribe(origin, campaign, cust_no, name, category, phone):
-        phone = PhoneNumber(phone).to_cp()
-        query = f"""
-        UPDATE AR_CUST
-        SET {creds.sms_subscribe_status} = 'Y'
-        WHERE PHONE_1 = '{phone}' OR PHONE_2 = '{phone}'
-        """
-        print(query)
-        response = Database.query(query=query)
-        print(response)
-        if response['code'] == 200:
-            query = f"""
-            INSERT INTO {Table.sms_event} (ORIGIN, CAMPAIGN, PHONE, CUST_NO, NAME, CATEGORY, EVENT_TYPE, MESSAGE)
-            VALUES ('{origin}', '{campaign}', '{phone}', '{cust_no}', '{name}', '{category}',
-            'Subscribe', 'SET {creds.sms_subscribe_status} = Y')"""
-            print(query)
-            response = Database.query(query)
-            print(response)
-            if response['code'] != 200:
-                SMSEventHandler.error_handler.add_error_v(f'Error subscribing {phone} to SMS')
-
-        else:
-            SMSEventHandler.error_handler.add_error_v(f'Error subscribing {phone} to SMS')
-
-    @staticmethod
-    def unsubscribe(origin, campaign, cust_no, name, category, phone):
-        phone = PhoneNumber(phone).to_cp()
-        query = f"""
-        UPDATE AR_CUST
-        SET {creds.sms_subscribe_status} = 'N'
-        WHERE PHONE_1 = '{phone}' OR PHONE_2 = '{phone}'
-        """
-        print(query)
-        response = Database.query(query=query)
-        print(response)
-        if response['code'] == 200:
-            query = f"""
-            INSERT INTO {Table.sms_event} (ORIGIN, CAMPAIGN, PHONE, CUST_NO, NAME, CATEGORY, EVENT_TYPE, MESSAGE)
-            VALUES ('{origin}', '{campaign}', '{phone}', '{cust_no}', '{name}', '{category}',
-            'Unsubscribe', 'SET {creds.sms_subscribe_status} = N')"""
-            print(query)
-            response = Database.query(query)
-            print(response)
-            if response['code'] != 200:
-                SMSEventHandler.error_handler.add_error_v(f'Error unsubscribing {phone} from SMS')
-
-        else:
-            SMSEventHandler.error_handler.add_error_v(f'Error unsubscribing {phone} from SMS')
-
-    @staticmethod
-    def lookup_customer_data(phone):
-        # Format phone for Counterpoint masking ###-###-####
-        cp_phone_input = PhoneNumber(phone).to_cp()
-        query = f"""
-			SELECT CUST_NO, FST_NAM, LST_NAM, CATEG_COD
-			FROM AR_CUST
-			WHERE PHONE_1 = '{cp_phone_input}'
-			"""
-        response = Database.query(query)
-
-        if response is not None:
-            customer_no = response[0][0]
-            first_name = response[0][1]
-            last_name = response[0][2]
-            full_name = first_name + ' ' + last_name
-            category = response[0][3]
-        else:
-            # For people with no phone in our database
-            customer_no = 'Unknown'
-            full_name = 'Unknown'
-            category = 'Unknown'
-
-        return customer_no, full_name, category
-
-    @staticmethod
     def design_text(
         first_name, last_name, email, phone, interested_in, timeline, address, comments, test_mode=False
     ):
@@ -221,57 +121,3 @@ class SMSEngine:
 
         for k, v in recipient.items():
             SMSEngine.send_text(origin='SERVER', campaign='DESIGN FORM', name=name, to_phone=v, message=message)
-
-    @staticmethod
-    def write_all_twilio_messages_to_share():
-        """Gets all messages from twilio API and writes to .csv on share drive"""
-        client = Client(creds.twilio_account_sid, creds.twilio_auth_token)
-        messages = client.messages.list(to=creds.twilio_phone_number)
-
-        # Empty List
-        message_list = []
-
-        # Loop through message response in reverse order and format data
-        for record in messages[-1::-1]:
-            customer_number, customer_name, customer_category = SMSEngine.lookup_customer_data(record.from_)
-            # [-1::-1] Twilio supplies data newest to oldest. This reverses that.
-            if record.date_sent is not None:
-                local_datetime = convert_timezone(timestamp=record.date_sent, from_zone=FROM_ZONE, to_zone=TO_ZONE)
-            else:
-                continue
-            # get rid of extra whitespace
-            while '  ' in record.body:
-                record.body = record.body.replace('  ', ' ')
-
-            media_url = 'No Media'
-
-            if int(record.num_media) > 0:
-                for media in record.media.list():
-                    media_url = 'https://api.twilio.com' + media.uri[:-5]  # Strip off the '.json'
-                    # Add authorization header
-                    media_url = (
-                        media_url[0:8]
-                        + creds.twilio_account_sid
-                        + ':'
-                        + creds.twilio_auth_token
-                        + '@'
-                        + media_url[8:]
-                    )
-
-            message_list.append(
-                [
-                    local_datetime,
-                    creds.twilio_phone_number,
-                    record.from_,
-                    record.body.strip().replace('\n', ' ').replace('\r', ''),
-                    customer_name.title(),
-                    customer_category.title(),
-                    media_url,
-                ]
-            )
-
-        # Write dataframe to csv
-        df = pandas.DataFrame(
-            message_list, columns=['date', 'to_phone', 'from_phone', 'body', 'name', 'category', 'media']
-        )
-        df.to_csv(creds.incoming_sms_log, index=False)

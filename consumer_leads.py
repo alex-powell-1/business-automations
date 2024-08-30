@@ -182,7 +182,9 @@ class RabbitMQConsumer:
         }
         try:
             # Try block stands to decouple our implementation from API changes that might impact app.
-            requests.post(url=creds.sheety_design_url, headers=creds.sheety_header, json=sheety_post_body)
+            requests.post(
+                url=creds.sheety_design_url, headers={'authorization': creds.sheety_token}, json=sheety_post_body
+            )
         except Exception as err:
             LeadFormErrorHandler.error_handler.add_error_v(error=f'Error (sheety): {err}', origin='design_lead')
         else:

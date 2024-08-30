@@ -6,6 +6,7 @@ from setup.error_handler import ProcessOutErrorHandler
 from datetime import datetime, timedelta
 from traceback import format_exc as tb
 from time import sleep
+import re
 import pyodbc
 
 
@@ -147,6 +148,12 @@ class Database:
                                         PHONE varchar(16),
                                         CREATED_DT DATETIME DEFAULT(current_timestamp)
                                         );""",
+            'newsletter': f"""
+                                        CREATE TABLE {Table.newsletter} (
+                                        ID int identity(1,1) primary key,
+                                        EMAIL varchar(50),
+                                        CREATED_DT DATETIME DEFAULT(current_timestamp)
+                                        );""",
         }
 
         for table in tables:
@@ -211,6 +218,7 @@ class Database:
                 Database.error_handler.add_error_v(error=error, origin='insert_design_lead')
 
     class SMS:
+        @staticmethod
         def get(cust_no=None):
             if cust_no:
                 query = f"""
@@ -223,6 +231,7 @@ class Database:
                 """
             return Database.query(query)
 
+        @staticmethod
         def insert(
             origin,
             to_phone,
@@ -239,6 +248,7 @@ class Database:
             username=None,
         ):
             body = body.replace("'", "''")
+            body = body[:1000]  # 1000 char limit
 
             if name is not None:
                 name = name.replace("'", "''")
@@ -267,6 +277,79 @@ class Database:
             else:
                 error = f'Error adding SMS sent to {to_phone} to Middleware. \nQuery: {query}\nResponse: {response}'
                 Database.error_handler.add_error_v(error=error, origin='insert_sms')
+
+        @staticmethod
+        def move_phone_1_to_landline(origin, campaign, cust_no, name, category, phone):
+            cp_phone = PhoneNumber(phone).to_cp()
+            move_landline_query = f"""
+                UPDATE AR_CUST
+                SET MBL_PHONE_1 = '{cp_phone}', SET PHONE_1 = NULL
+                WHERE PHONE_1 = '{cp_phone}'
+            """
+            response = Database.query(move_landline_query)
+
+            if response['code'] == 200:
+                query = f"""
+                INSERT INTO {creds.sms_event_log} (ORIGIN, CAMPAIGN, PHONE, CUST_NO, NAME, CATEGORY, EVENT_TYPE, MESSAGE)
+                VALUES ('{origin}', '{campaign}', '{phone}', '{cust_no}', '{name}', '{category}', 
+                'Landline', 'SET MBL_PHONE_1 = {cp_phone}, SET PHONE_1 = NULL')"""
+
+                response = Database.query(query)
+                if response['code'] != 200:
+                    Database.error_handler.add_error_v(f'Error moving {phone} to landline')
+
+            else:
+                Database.error_handler.add_error_v(f'Error moving {phone} to landline')
+
+        @staticmethod
+        def subscribe(origin, campaign, cust_no, name, category, phone):
+            phone = PhoneNumber(phone).to_cp()
+            query = f"""
+            UPDATE AR_CUST
+            SET {creds.sms_subscribe_status} = 'Y'
+            WHERE PHONE_1 = '{phone}' OR PHONE_2 = '{phone}'
+            """
+            print(query)
+            response = Database.query(query=query)
+            print(response)
+            if response['code'] == 200:
+                query = f"""
+                INSERT INTO {Table.sms_event} (ORIGIN, CAMPAIGN, PHONE, CUST_NO, NAME, CATEGORY, EVENT_TYPE, MESSAGE)
+                VALUES ('{origin}', '{campaign}', '{phone}', '{cust_no}', '{name}', '{category}',
+                'Subscribe', 'SET {creds.sms_subscribe_status} = Y')"""
+                print(query)
+                response = Database.query(query)
+                print(response)
+                if response['code'] != 200:
+                    Database.error_handler.add_error_v(f'Error subscribing {phone} to SMS')
+
+            else:
+                Database.error_handler.add_error_v(f'Error subscribing {phone} to SMS')
+
+        @staticmethod
+        def unsubscribe(origin, campaign, cust_no, name, category, phone):
+            phone = PhoneNumber(phone).to_cp()
+            query = f"""
+            UPDATE AR_CUST
+            SET {creds.sms_subscribe_status} = 'N'
+            WHERE PHONE_1 = '{phone}' OR PHONE_2 = '{phone}'
+            """
+            print(query)
+            response = Database.query(query=query)
+            print(response)
+            if response['code'] == 200:
+                query = f"""
+                INSERT INTO {Table.sms_event} (ORIGIN, CAMPAIGN, PHONE, CUST_NO, NAME, CATEGORY, EVENT_TYPE, MESSAGE)
+                VALUES ('{origin}', '{campaign}', '{phone}', '{cust_no}', '{name}', '{category}',
+                'Unsubscribe', 'SET {creds.sms_subscribe_status} = N')"""
+                print(query)
+                response = Database.query(query)
+                print(response)
+                if response['code'] != 200:
+                    Database.error_handler.add_error_v(f'Error unsubscribing {phone} from SMS')
+
+            else:
+                Database.error_handler.add_error_v(f'Error unsubscribing {phone} from SMS')
 
     class StockNotification:
         def has_info(item_no, email=None, phone=None):
@@ -310,6 +393,9 @@ class Database:
             response = Database.query(query)
             return response
 
+    class Newsletter:
+        pass
+
     class Counterpoint:
         class Order:
             def delete(doc_id=None, tkt_no=None):
@@ -336,6 +422,20 @@ class Database:
                     raise Exception(error)
 
         class Product:
+            def get_all_binding_ids():
+                """Returns a list of unique and validated binding IDs from the IM_ITEM table."""
+
+                response = Database.query(
+                    f'SELECT DISTINCT {Column.CP.Product.binding_id} '
+                    f"FROM {Table.CP.items} WHERE {Column.CP.Product.web_enabled} = 'Y'"
+                    f'AND {Column.CP.Product.binding_id} IS NOT NULL'
+                )
+
+                def valid(binding_id):
+                    return re.match(creds.binding_id_format, binding_id)
+
+                return [binding[0] for binding in response if valid(binding[0])] if response else []
+
             def set_sale_price(sku, price):
                 query = f"""
                 UPDATE {Table.CP.item_prices}
@@ -614,6 +714,30 @@ class Database:
                 """
                 return Database.query(query)
 
+            @staticmethod
+            def get_customer_by_phone(phone):
+                cp_phone_input = PhoneNumber(phone).to_cp()
+                query = f"""
+                    SELECT CUST_NO, FST_NAM, LST_NAM, CATEG_COD
+                    FROM {Table.CP.customers}
+                    WHERE PHONE_1 = '{cp_phone_input}'
+                    """
+                response = Database.query(query)
+
+                if response is not None:
+                    customer_no = response[0][0]
+                    first_name = response[0][1]
+                    last_name = response[0][2]
+                    full_name = first_name + ' ' + last_name
+                    category = response[0][3]
+                else:
+                    # For people with no phone in our database
+                    customer_no = 'Unknown'
+                    full_name = 'Unknown'
+                    category = 'Unknown'
+
+                return customer_no, full_name, category
+
             def update_timestamps(customer_list: list = None, customer_no: str = None):
                 if not customer_list and not customer_no:
                     return
@@ -687,19 +811,16 @@ class Database:
             class PriceRule:
                 def get(group_code):
                     query = f"""
-                    SELECT RUL.GRP_TYP, RUL.GRP_COD, RUL.RUL_SEQ_NO, RUL.DESCR, RUL.CUST_FILT, RUL.ITEM_FILT, 
-                    RUL.SAL_FILT, RUL.IS_CUSTOM, RUL.USE_BOGO_TWOFER, RUL.REQ_FULL_GRP_FOR_BOGO_TWOFER, 
+                    SELECT RUL.GRP_TYP, RUL.GRP_COD, RUL.RUL_SEQ_NO, RUL.DESCR, RUL.CUST_FILT, ITEM_FILT, 
+                    SAL_FILT, IS_CUSTOM, USE_BOGO_TWOFER, REQ_FULL_GRP_FOR_BOGO_TWOFER,
                     MW.SHOP_ID, GRP.ENABLED, MW.ENABLED, MW.ID
                     FROM IM_PRC_RUL RUL
-					INNER JOIN IM_PRC_GRP GRP on GRP.GRP_COD = RUL.GRP_COD
-                    FULL OUTER JOIN SN_PROMO MW on rul.GRP_COD = MW.GRP_COD
+                    FULL OUTER JOIN SN_PROMO MW on RUL.RUL_SEQ_NO = MW.RUL_SEQ_NO
+                    FULL OUTER JOIN IM_PRC_GRP GRP on GRP.GRP_COD = MW.GRP_COD
                     WHERE RUL.GRP_COD = '{group_code}'
                     """
                     response = Database.query(query)
                     result = [rule for rule in response] if response else []
-                    # if result:
-                    #     # Remove duplicates
-                    #     result = [x for x in result if x not in result[0:]]
                     return result
 
     class Shopify:
@@ -2062,7 +2183,6 @@ class Database:
             class Line:
                 def get(shopify_id):
                     if not shopify_id:
-                        Database.logger.warn('No Shopify ID provided for line item lookup.')
                         return
                     query = f'SELECT ITEM_NO FROM {Table.Middleware.promotion_lines} WHERE SHOP_ID = {shopify_id}'
                     response = Database.query(query)

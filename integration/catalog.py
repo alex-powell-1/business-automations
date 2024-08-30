@@ -17,7 +17,7 @@ from integration.database import Database
 
 from setup import creds
 from setup.query_engine import QueryEngine as db
-from setup.utilities import get_all_binding_ids, convert_to_utc
+from setup.utilities import convert_to_utc
 from setup.utilities import VirtualRateLimiter
 
 from setup.error_handler import ProcessOutErrorHandler
@@ -27,7 +27,7 @@ class Catalog:
     error_handler = ProcessOutErrorHandler.error_handler
     logger = error_handler.logger
 
-    all_binding_ids = get_all_binding_ids()
+    all_binding_ids = Database.Counterpoint.Product.get_all_binding_ids()
     mw_brands = set()
 
     def __init__(self, last_sync=datetime(1970, 1, 1)):
@@ -3130,20 +3130,6 @@ class Catalog:
             response = Database.query(query)
             if response is not None:
                 return response[0][0] == 1
-
-        @staticmethod
-        def get_all_binding_ids():
-            binding_ids = set()
-            query = """
-            SELECT {creds.cp_field_binding_id}
-            FROM IM_ITEM
-            WHERE {creds.cp_field_binding_id} IS NOT NULL
-            """
-            response = Database.query(query)
-            if response is not None:
-                for x in response:
-                    binding_ids.add(x[0])
-            return list(binding_ids)
 
         class Variant:
             def __init__(self, sku, last_run_date, get_images=True):
