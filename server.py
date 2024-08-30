@@ -727,14 +727,14 @@ def shopify_customer_update():
     if not verified:
         return jsonify({'error': 'Unauthorized'}), 401
 
-    #######################################################################################################
-    #######################################################################################################
-    ####################### Im concerned about a potential loop here. If a customer #######################
-    ############### is updated via integration it triggers the webhook. It will be updated, ###############
-    ##################### changing its LST_MAINT_DT and marking it for the next sync, #####################
-    ##################################### starting the process again. #####################################
-    #######################################################################################################
-    #######################################################################################################
+    #############################################################################
+    #############################################################################
+    ########## Im concerned about a potential loop here. If a customer ##########
+    ## is updated via integration it triggers the webhook. It will be updated, ##
+    ######## changing its LST_MAINT_DT and marking it for the next sync, ########
+    ######################## starting the process again. ########################
+    #############################################################################
+    #############################################################################
 
     # error_handler = ProcessInErrorHandler.error_handler
     # logger = error_handler.logger
