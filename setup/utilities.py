@@ -7,7 +7,7 @@ from datetime import datetime
 from email.utils import formatdate
 import base64
 from setup.error_handler import ProcessOutErrorHandler
-from PIL import Image
+from PIL import Image, ImageOps
 
 
 class PhoneNumber:
@@ -272,7 +272,7 @@ if '__main__' == __name__:
     print(phone)
 
 
-def combine_images(product_image_path, barcode_image_path, combined_image_path=None):
+def combine_images(product_image_path, barcode_image_path, combined_image_path=None, padding=30):
     # Open the product and barcode images
     product_image = Image.open(product_image_path)
     barcode_image = Image.open(barcode_image_path)
@@ -290,15 +290,20 @@ def combine_images(product_image_path, barcode_image_path, combined_image_path=N
             (target_width, int(barcode_image.height * target_width / barcode_image.width))
         )
 
-    # Calculate combined height
-    combined_height = product_image.height + barcode_image.height
+    # Add padding around the images
+    product_image = ImageOps.expand(product_image, border=padding, fill='white')
+    barcode_image = ImageOps.expand(barcode_image, border=padding, fill='white')
+
+    # Calculate combined height with margin between images
+    margin = padding
+    combined_height = product_image.height + barcode_image.height + margin
 
     # Create a new image for combined output
-    combined_image = Image.new('RGB', (target_width, combined_height))
+    combined_image = Image.new('RGB', (target_width + 2 * padding, combined_height + 3 * padding), 'white')
 
     # Paste product image and barcode image into the combined image
-    combined_image.paste(product_image, (0, 0))
-    combined_image.paste(barcode_image, (0, product_image.height))
+    combined_image.paste(product_image, (padding, padding))
+    combined_image.paste(barcode_image, (padding, product_image.height + margin + padding))
 
     if combined_image_path is not None:
         combined_image.save(combined_image_path)

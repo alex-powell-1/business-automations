@@ -219,121 +219,136 @@ def send_stock_notifications():
 
     photos_to_remove = []
 
-    cols = 'EMAIL, PHONE, ITEM_NO, DESCR, QTY_AVAIL'
-    query = f"SELECT {cols} FROM VI_STOCK_NOTIFY WHERE QTY_AVAIL > 0 and ITEM_NO != '202825'"
-
     try:
-        response = Database.query(query)
-    except:
-        error_handler.error_handler.add_error_v('Error querying database', origin='stock_notification.py')
-        return
-
-    if response is None:
-        error_handler.logger.info('No rows to send')
-        return
-
-    for row in response:
-        email = row[0]
-        phone = row[1]
-        item_no = row[2]
-        description = row[3]
-        qty = row[4]
-
-        query = f"""
-        DELETE FROM SN_STOCK_NOTIFY
-        WHERE ITEM_NO = '{item_no}'
-        """
-        ################################################################
-        ############## Create variables for SMS and Email ##############
-        ################################################################
-
-        cust_no = customer_tools.customers.lookup_customer(email_address=email, phone_number=phone)
-
-        greeting = 'Hey there'
-
-        customer = None
-
-        if cust_no is not None:
-            customer = customer_tools.customers.Customer(cust_no)
-            greeting = f'Hey {customer.first_name}'
-
-        coupon_code = None
-        coupon_exclusions = ['45', '804', 'HB', 'BOSTON']
-        included = item_no not in coupon_exclusions
-
-        if included:
-            coupon_code = create_coupon(item_no, customer)
-            if coupon_code is None:
-                error_handler.error_handler.add_error_v(f'Coupon Code Could Not Be Generated for {item_no}')
-                continue
-
-        item_photo = creds.photo_path + f'/{item_no}.jpg'
-
-        if included:
-            combine_images(
-                item_photo, f'{coupon_code}.png', combined_image_path=creds.public_files + f'/{item_no}.jpg'
-            )
-        else:
-            copy_file(item_photo, creds.public_files)
-
-        local_photo = creds.public_files + f'/{item_no}.jpg'
-        product_photo = creds.api_public_files + f'{item_no}.jpg'
-
-        photos_to_remove.append(local_photo)
-
-        ###############################################################
-        ###################### Send Text / Email ######################
-        ###############################################################
-
-        if phone is not None:
-            query += f" AND PHONE = '{phone}'"
-            send_sms(
-                greeting=greeting,
-                phone=phone,
-                item=description,
-                qty=qty,
-                coupon_code=coupon_code,
-                webtitle=Product(item_no).web_title,
-                photo=product_photo,
-            )
-            messages_sent += 1
-
-        if email is not None:
-            query += f" AND EMAIL = '{email}'"
-            send_email(
-                greeting=greeting, email=email, item_number=item_no, coupon_code=coupon_code, photo=local_photo
-            )
-            if phone is None:
-                messages_sent += 1
-
-        #################################################################
-        ##################### Remove Database Entry #####################
-        #################################################################
+        cols = 'EMAIL, PHONE, ITEM_NO, DESCR, QTY_AVAIL'
+        query = f'SELECT {cols} FROM VI_STOCK_NOTIFY WHERE QTY_AVAIL > 0'
 
         try:
             response = Database.query(query)
-
-            if response['code'] == 200:
-                error_handler.logger.success('Successfully removed.')
-            else:
-                error_handler.error_handler.add_error_v(
-                    'Error removing from database', origin='stock_notification.py'
-                )
         except:
             error_handler.error_handler.add_error_v('Error querying database', origin='stock_notification.py')
+            return
 
-        if included:
-            os.remove(f'./{coupon_code}.png')
+        if response is None:
+            error_handler.logger.info('No rows to send')
+            return
+
+        for row in response:
+            email = row[0]
+            phone = row[1]
+            item_no = row[2]
+            description = row[3]
+            qty = row[4]
+
+            query = f"""
+            DELETE FROM SN_STOCK_NOTIFY
+            WHERE ITEM_NO = '{item_no}'
+            """
+            ################################################################
+            ############## Create variables for SMS and Email ##############
+            ################################################################
+
+            cust_no = customer_tools.customers.lookup_customer(email_address=email, phone_number=phone)
+
+            greeting = 'Hey there'
+
+            customer = None
+
+            if cust_no is not None:
+                customer = customer_tools.customers.Customer(cust_no)
+                greeting = f'Hey {customer.first_name}'
+
+            coupon_code = None
+            coupon_exclusions = ['45', '804', 'HB', 'BOSTON']
+            included = item_no not in coupon_exclusions
+
+            if included:
+                coupon_code = create_coupon(item_no, customer)
+                if coupon_code is None:
+                    error_handler.error_handler.add_error_v(f'Coupon Code Could Not Be Generated for {item_no}')
+                    continue
+
+            item_photo = creds.photo_path + f'/{item_no}.jpg'
+
+            if included:
+                combine_images(
+                    item_photo,
+                    f'{coupon_code}.png',
+                    combined_image_path=creds.public_files + f'/{item_no}-BARCODE.jpg',
+                )
+
+            copy_file(item_photo, creds.public_files)
+
+            local_photo = creds.public_files + f'/{item_no}.jpg'
+            product_photo = creds.api_public_files + f'{item_no}.jpg'
+
+            photos_to_remove.append(local_photo)
+
+            if included:
+                photos_to_remove.append(creds.public_files + f'/{item_no}-BARCODE.jpg')
+                product_photo = creds.api_public_files + f'{item_no}-BARCODE.jpg'
+
+            ###############################################################
+            ###################### Send Text / Email ######################
+            ###############################################################
+
+            if phone is not None:
+                query += f" AND PHONE = '{phone}'"
+                send_sms(
+                    greeting=greeting,
+                    phone=phone,
+                    item=description,
+                    qty=qty,
+                    coupon_code=coupon_code,
+                    webtitle=Product(item_no).web_title,
+                    photo=product_photo,
+                )
+                messages_sent += 1
+
+            if email is not None:
+                query += f" AND EMAIL = '{email}'"
+                send_email(
+                    greeting=greeting, email=email, item_number=item_no, coupon_code=coupon_code, photo=local_photo
+                )
+                if phone is None:
+                    messages_sent += 1
+
+            #################################################################
+            ##################### Remove Database Entry #####################
+            #################################################################
+
+            try:
+                response = Database.query(query)
+
+                if response['code'] == 200:
+                    error_handler.logger.success('Successfully removed.')
+                else:
+                    error_handler.error_handler.add_error_v(
+                        'Error removing from database', origin='stock_notification.py'
+                    )
+            except:
+                error_handler.error_handler.add_error_v('Error querying database', origin='stock_notification.py')
+
+            if included:
+                os.remove(f'./{coupon_code}.png')
+
+        error_handler.logger.success('Completed: Send Stock Notification Text')
+        error_handler.logger.info(f'Total Messages Sent: {messages_sent}')
+
+        delete_expired_coupons()
+    except Exception as e:
+        error_handler.error_handler.add_error_v('Error sending stock notifications')
+        error_handler.error_handler.add_error_v(f'Error: {e}', origin='stock_notification.py')
+
+    if len(photos_to_remove) > 0:
+        error_handler.logger.info('Removing photos (Waiting 10 seconds...)')
+        sleep(5)
+        for photo in photos_to_remove:
+            remove_file(photo)
+    else:
+        error_handler.logger.info('No photos to remove.')
 
     error_handler.logger.success('Completed: Send Stock Notification Text')
-    error_handler.logger.info(f'Total Messages Sent: {messages_sent}')
-
-    delete_expired_coupons()
-
-    error_handler.logger.info('Removing photos (Waiting 10 seconds...)')
-    sleep(5)
-    for photo in photos_to_remove:
-        remove_file(photo)
 
 
 if __name__ == '__main__':
