@@ -725,21 +725,7 @@ def shopify_customer_update():
     # error_handler = ProcessInErrorHandler.error_handler
     # logger = error_handler.logger
 
-<<<<<<< HEAD
     # logger.info(f'Processing Customer Update: {id}')
-=======
-    #     channel.basic_publish(
-    #         exchange='',
-    #         routing_key='shopify_customer_update',
-    #         body=str(customer_id),
-    #         properties=pika.BasicProperties(delivery_mode=pika.DeliveryMode.Persistent),
-    #     )
-    #     connection.close()
-    # except Exception as e:
-    #     ProcessInErrorHandler.error_handler.add_error_v(
-    #         error=f'Error sending customer {customer_id} to RabbitMQ: {e}', origin=Route.Shopify.customer_update
-    #     )
->>>>>>> origin/master
 
     # update_customer()
 
