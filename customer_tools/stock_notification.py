@@ -104,7 +104,7 @@ def send_email(greeting, email, item_number, coupon_code, photo=None):
     )
 
 
-def send_sms(greeting, phone, item, qty, webtitle, coupon_code, photo=None):
+def send_sms(greeting, phone, item, qty, webtitle, coupon_code, expiration_str, photo=None):
     """Send SMS text message to customer"""
     phone = PhoneNumber(phone).to_twilio()
 
@@ -124,9 +124,9 @@ def send_sms(greeting, phone, item, qty, webtitle, coupon_code, photo=None):
     coupon_message = ''
 
     if coupon_code is not None:
-        coupon_message = f'\n\nUse code: { coupon_code } online or in-store to { coupon_offer }!'
+        coupon_message = f'\n\nUse code: { coupon_code } online or in-store to { coupon_offer }! { expiration_str }'
 
-    message = f'{greeting}!\n\nYou requested to be notified when { item } was back in stock. We are excited to share that we have { int(qty) } available now!{ coupon_message }\n\n{ link }'
+    message = f'{greeting}!\n\nYou requested to be notified when { item } was back in stock. We are excited to share that we have { int(qty) } available now!{ coupon_message } { link }'
     SMSEngine.send_text(
         origin='SERVER',
         campaign='STOCK NOTIFY',
@@ -271,10 +271,14 @@ def send_stock_notifications():
             item_photo = creds.photo_path + f'/{item_no}.jpg'
 
             if included:
+                expiration_date = datetime.datetime.now() + relativedelta(days=+5)
+
                 combine_images(
                     item_photo,
                     f'{coupon_code}.png',
                     combined_image_path=creds.public_files + f'/{item_no}-BARCODE.jpg',
+                    barcode_text=coupon_code,
+                    expires_text=f'Expires {expiration_date:%b %d, %Y}',
                 )
 
             copy_file(item_photo, creds.public_files)
@@ -302,6 +306,7 @@ def send_stock_notifications():
                     coupon_code=coupon_code,
                     webtitle=Product(item_no).web_title,
                     photo=product_photo,
+                    expiration_str=f'Expires {expiration_date:%b %d, %Y}.',
                 )
                 messages_sent += 1
 
@@ -341,8 +346,8 @@ def send_stock_notifications():
         error_handler.error_handler.add_error_v(f'Error: {e}', origin='stock_notification.py')
 
     if len(photos_to_remove) > 0:
-        error_handler.logger.info('Removing photos (Waiting 10 seconds...)')
-        sleep(5)
+        error_handler.logger.info('Removing photos')
+        sleep(3)
         for photo in photos_to_remove:
             remove_file(photo)
     else:

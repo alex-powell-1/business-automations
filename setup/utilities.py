@@ -7,7 +7,7 @@ from datetime import datetime
 from email.utils import formatdate
 import base64
 from setup.error_handler import ProcessOutErrorHandler
-from PIL import Image, ImageOps
+from PIL import Image, ImageOps, ImageDraw, ImageFont
 
 
 class PhoneNumber:
@@ -272,7 +272,14 @@ if '__main__' == __name__:
     print(phone)
 
 
-def combine_images(product_image_path, barcode_image_path, combined_image_path=None, padding=30):
+def combine_images(
+    product_image_path,
+    barcode_image_path,
+    combined_image_path=None,
+    padding=100,
+    barcode_text=None,
+    expires_text=None,
+):
     # Open the product and barcode images
     product_image = Image.open(product_image_path)
     barcode_image = Image.open(barcode_image_path)
@@ -290,20 +297,63 @@ def combine_images(product_image_path, barcode_image_path, combined_image_path=N
             (target_width, int(barcode_image.height * target_width / barcode_image.width))
         )
 
+    target_width = target_width + 2 * padding
+
     # Add padding around the images
     product_image = ImageOps.expand(product_image, border=padding, fill='white')
     barcode_image = ImageOps.expand(barcode_image, border=padding, fill='white')
 
     # Calculate combined height with margin between images
-    margin = padding
-    combined_height = product_image.height + barcode_image.height + margin
+    combined_height = product_image.height + barcode_image.height
+
+    global curr_height
+    curr_height = combined_height
+
+    def add_text(text, size):
+        size *= 2
+
+        def textsize(text, font):
+            im = Image.new(mode='P', size=(0, 0))
+            draw = ImageDraw.Draw(im)
+            _, _, width, height = draw.textbbox((0, 0), text=text, font=font)
+            return width, height
+
+        # Add small centered text under the barcode
+        # draw = ImageDraw.Draw(combined_image)
+        font = ImageFont.load_default()
+        font = font.font_variant(size=size)
+        text = text  # Replace with desired text
+        text_width, text_height = textsize(text, font=font)
+        text_x = (target_width - text_width) // 2
+
+        global curr_height
+        text_y = curr_height
+        curr_height = curr_height + text_height + (padding // 2)
+
+        def draw_text(fill='black'):
+            draw = ImageDraw.Draw(combined_image)
+            draw.text((text_x, text_y), text, font=font, fill=fill)
+
+        return draw_text
+
+    if barcode_text is not None:
+        draw_code_text = add_text(barcode_text, size=64)
+
+    if expires_text is not None:
+        draw_expires_text = add_text(expires_text, size=50)
 
     # Create a new image for combined output
-    combined_image = Image.new('RGB', (target_width + 2 * padding, combined_height + 3 * padding), 'white')
+    combined_image = Image.new('RGB', (target_width, curr_height + padding // 2), 'white')
 
     # Paste product image and barcode image into the combined image
-    combined_image.paste(product_image, (padding, padding))
-    combined_image.paste(barcode_image, (padding, product_image.height + margin + padding))
+    combined_image.paste(product_image, (0, 0))
+    combined_image.paste(barcode_image, (0, product_image.height))
+
+    if barcode_text is not None:
+        draw_code_text()
+
+    if expires_text is not None:
+        draw_expires_text()
 
     if combined_image_path is not None:
         combined_image.save(combined_image_path)
