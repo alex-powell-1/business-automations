@@ -40,7 +40,7 @@ from setup.utilities import PhoneNumber, EmailAddress
 
 from integration.customers import Customers
 
-from customer_tools.customers import add_new_customer
+from customer_tools.customers import add_new_customer, update_customer
 
 app = flask.Flask(__name__)
 
@@ -658,7 +658,7 @@ def shopify_customer_create():
     logger.info(f'Processing Customer Create: {id}')
 
     if Customers.Customer.has_metafield(cust_id=id, key='number'):
-        ProcessInErrorHandler.logger.info(f'Customer {id} already has metafields. Skipping.')
+        logger.info(f'Customer {id} has customer number metafield. Skipping.')
     else:
         try:
             street = None
@@ -713,27 +713,23 @@ def shopify_customer_update():
     if not verified:
         return jsonify({'error': 'Unauthorized'}), 401
 
-    with open('./logs/customer_update.json', 'a') as f:
-        json.dump(webhook_data, f)
-    # customer_id = webhook_data['id']
-    # try:
-    #     connection = pika.BlockingConnection(pika.ConnectionParameters('localhost'))
-    #     channel = connection.channel()
+    #############################################################################
+    #############################################################################
+    ########## Im concerned about a potential loop here. If a customer ##########
+    ## is updated via integration it triggers the webhook. It will be updated, ##
+    ######## changing its LST_MAINT_DT and marking it for the next sync, ########
+    ######################## starting the process again. ########################
+    #############################################################################
+    #############################################################################
 
-    #     channel.queue_declare(queue='shopify_customer_update', durable=True)
+    # error_handler = ProcessInErrorHandler.error_handler
+    # logger = error_handler.logger
 
-    #     channel.basic_publish(
-    #         exchange='',
-    #         routing_key='shopify_customer_update',
-    #         body=str(customer_id),
-    #         properties=pika.BasicProperties(delivery_mode=pika.DeliveryMode.Persistent),
-    #     )
-    #     connection.close()
-    # except Exception as e:
-    #     ProcessInErrorHandler.error_handler.add_error_v(
-    #         error=f'Error sending customer {customer_id} to RabbitMQ: {e}', origin=Route.Shopify.customer_update
-    #     )
+    # logger.info(f'Processing Customer Update: {id}')
 
+    # update_customer()
+
+    # logger.success(f'Customer Update Finished: {id}')
     return jsonify({'success': True}), 200
 
 
