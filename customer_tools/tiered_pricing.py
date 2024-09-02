@@ -110,9 +110,9 @@ def reassess_tiered_pricing(start_date, end_date, demote=False):
                     #       f"Level: {customer.pricing_tier}. Skipping...", file=log_file)
                     continue
 
-                # Check if this is a pricing tier 0 customer. If so, skip. Level 0 doesn't promote or demote.
+                # Check if this is a pricing tier 1 customer. If so, skip. Level 1 doesn't promote or demote.
                 if customer.pricing_tier == 1:
-                    # print(f"{customer.name}({customer_number}) is at level 0. Skipping...", file=log_file)
+                    # print(f"{customer.name}({customer_number}) is at level 1. Skipping...", file=log_file)
                     continue
                 # All other customers are valid for tiered pricing
                 else:
@@ -145,14 +145,15 @@ def reassess_tiered_pricing(start_date, end_date, demote=False):
                             # print(f"Demote set to false. Skipping demotion", file=log_file)
                             continue
                         else:
-                            target_pricing_tier = 2  # base target is 2
+                            # Demote Customer Tier
+                            customer.set_pricing_tier(target_tier=target_pricing_tier)
                             error_handler.logger.info(
                                 f'Demoting {customer.name}(Cust No: {customer_number} from level: '
                                 f'{customer.pricing_tier} to level: {target_pricing_tier}'
                             )
-
-                    # If there has been a change, set new tiered pricing level
-                    customer.set_pricing_tier(target_tier=target_pricing_tier)
+                    else:
+                        # Promote Customer Tier
+                        customer.set_pricing_tier(target_tier=target_pricing_tier)
 
         error_handler.logger.info(
             f'Tiered pricing set For all wholesale accounts with history from '

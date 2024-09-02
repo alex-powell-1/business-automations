@@ -945,8 +945,8 @@ class Database:
                     SAL_FILT, IS_CUSTOM, USE_BOGO_TWOFER, REQ_FULL_GRP_FOR_BOGO_TWOFER,
                     MW.SHOP_ID, GRP.ENABLED, MW.ENABLED, MW.ID
                     FROM IM_PRC_RUL RUL
+					FULL OUTER JOIN IM_PRC_GRP GRP on GRP.GRP_COD = RUL.GRP_COD
                     FULL OUTER JOIN SN_PROMO MW on RUL.RUL_SEQ_NO = MW.RUL_SEQ_NO
-                    FULL OUTER JOIN IM_PRC_GRP GRP on GRP.GRP_COD = MW.GRP_COD
                     WHERE RUL.GRP_COD = '{group_code}'
                     """
                     response = Database.query(query)
@@ -1085,9 +1085,21 @@ class Database:
                                             ID int IDENTITY(1,1) PRIMARY KEY,
                                             GRP_COD nvarchar(50) NOT NULL,
                                             RUL_SEQ_NO int,
-                                            SHOP_ID bigint,
+                                            SHOP_ID bigint PRIMARY KEY,
                                             ENABLED bit DEFAULT(0),
                                             LST_MAINT_DT datetime NOT NULL DEFAULT(current_timestamp)
+                                            );""",
+                    'promo_line_bogo': f"""
+                                            CREATE TABLE {Table.Middleware.promotion_lines_bogo}(
+                                            SHOP_ID bigint FOREIGN KEY REFERENCES {Table.Middleware.promotions}(SHOP_ID),
+                                            ITEM_NO nvarchar(50),
+                                            LST_MAINT_DT datetime NOT NULL DEFAULT(current_timestamp)
+                                            );""",
+                    'promo_line_fixed': f"""
+                                            CREATE TABLE {Table.Middleware.promotion_lines_fixed}(
+                                            GRP_COD nvarchar(50) NOT NULL,
+                                            RUL_SEQ_NO int,
+                                            ITEM_NO nvarchar(50)
                                             );""",
                     'discount': f"""
                                             CREATE TABLE {Table.Middleware.discounts} (
@@ -2252,7 +2264,7 @@ class Database:
                 else:
                     Database.Shopify.Promotion.insert(rule)
 
-                Database.Shopify.Promotion.Line.sync(rule)
+                Database.Shopify.Promotion.BxgyLine.sync(rule)
 
             def insert(rule):
                 """Insert a new discount rule into the Middleware."""
@@ -2311,7 +2323,9 @@ class Database:
                         origin='Middleware Promotion Deletion',
                     )
 
-            class Line:
+            class BxgyLine:
+                """Buy X Get Y Line Items"""
+
                 def get(shopify_id):
                     if not shopify_id:
                         return
@@ -2328,15 +2342,15 @@ class Database:
                                 if item in mw_items:
                                     continue
                                 else:
-                                    Database.Shopify.Promotion.Line.insert(item, rule.shopify_id)
+                                    Database.Shopify.Promotion.BxgyLine.insert(item, rule.shopify_id)
                             else:
-                                Database.Shopify.Promotion.Line.insert(item, rule.shopify_id)
+                                Database.Shopify.Promotion.BxgyLine.insert(item, rule.shopify_id)
                     if mw_items:
                         for item in mw_items:
                             if item in cp_items:
                                 continue
                             else:
-                                Database.Shopify.Promotion.Line.delete(item_no_list=[item])
+                                Database.Shopify.Promotion.BxgyLine.delete(item_no_list=[item])
 
                 def insert(item, shopify_promo_id):
                     """Insert Items affected by BOGO promos into middleware."""
@@ -2418,6 +2432,54 @@ class Database:
                                 error=f'Error: {response["code"]}\n\nQuery: {query}\n\nResponse:{response["message"]}',
                                 origin='Middleware Promotion Line Item Deletion',
                             )
+
+            class FixLine:
+                """Fixed Price Discount Line Items"""
+
+                def get(group_cod, rul_seq_no) -> list[str]:
+                    query = f"""
+                    SELECT ITEM_NO FROM {Table.Middleware.promotion_lines_fixed}
+                    WHERE GRP_COD = '{group_cod}' AND RUL_SEQ_NO = {rul_seq_no}
+                    """
+                    response = Database.query(query)
+                    return [x[0] for x in response] if response else None
+
+                def insert(group_cod, rul_seq_no, item_no):
+                    query = f"""
+                    INSERT INTO {Table.Middleware.promotion_lines_fixed} (GRP_COD, RUL_SEQ_NO, ITEM_NO)
+                    VALUES ('{group_cod}', {rul_seq_no}, '{item_no}')
+                    """
+                    response = Database.query(query)
+                    if response['code'] == 200:
+                        Database.logger.success(
+                            f'Promotion {group_cod}-Rule: {rul_seq_no} Item: {item_no} inserted successfully into Middleware.'
+                        )
+                    else:
+                        Database.error_handler.add_error_v(
+                            error=f'Error: {response["code"]}\n\nQuery: {query}\n\nResponse:{response["message"]}',
+                            origin='Middleware Promotion Line Item Insertion',
+                        )
+
+                def delete(group_cod, rul_seq_no, item_no):
+                    query = f"""
+                    DELETE FROM {Table.Middleware.promotion_lines_fixed}
+                    WHERE GRP_COD = '{group_cod}' AND RUL_SEQ_NO = {rul_seq_no} AND ITEM_NO = '{item_no}'
+                    """
+                    response = Database.query(query)
+
+                    if response['code'] == 200:
+                        Database.logger.success(
+                            f'Promotion {group_cod}-Rule: {rul_seq_no} Item: {item_no} deleted successfully from Middleware.'
+                        )
+                    elif response['code'] == 201:
+                        Database.logger.warn(
+                            f'Promotion {group_cod}-Rule: {rul_seq_no} Item: {item_no} not found for deletion in Middleware.'
+                        )
+                    else:
+                        Database.error_handler.add_error_v(
+                            error=f'Error: {response["code"]}\n\nQuery: {query}\n\nResponse:{response["message"]}',
+                            origin='Middleware Promotion Line Item Deletion',
+                        )
 
         class Discount:
             """Basic Discount Codes"""

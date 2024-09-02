@@ -475,7 +475,7 @@ def incoming_sms():
             channel.basic_publish(
                 exchange='',
                 routing_key=creds.consumer_sync_on_demand,
-                body='sync',
+                body=from_phone,
                 properties=pika.BasicProperties(delivery_mode=pika.DeliveryMode.Persistent),
             )
             connection.close()

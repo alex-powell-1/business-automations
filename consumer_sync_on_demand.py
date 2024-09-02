@@ -6,6 +6,9 @@ import pika
 
 from setup import creds
 from setup.error_handler import ProcessOutErrorHandler
+from datetime import datetime
+from setup.sms_engine import SMSEngine
+from setup.utilities import PhoneNumber
 
 test_mode = False
 
@@ -24,6 +27,15 @@ class RabbitMQConsumer:
         self.channel.queue_declare(queue=self.queue_name, durable=True)
 
     def callback(self, ch, method, properties, body):
+        phone_number = PhoneNumber(body.decode()).to_twilio()
+        SMSEngine.send_text(
+            origin='SERVER',
+            campaign='SYNC_ON_DEMAND',
+            to_phone=phone_number,
+            message='Syncing data. Please wait...',
+        )
+        phone_response = None
+
         try:
             file = creds.sync_batch_file
             path = creds.batch_file_path
@@ -32,7 +44,12 @@ class RabbitMQConsumer:
 
         except Exception as e:
             ProcessOutErrorHandler.error_handler.add_error_v(error=f'Error: {e}', origin='sync_on_demand')
+            phone_response = 'Sync failed. Please check logs.'
 
+        else:
+            phone_response = f'Sync completed successfully at {datetime.now():%m/%d/%Y %H:%M:%S}'
+        finally:
+            SMSEngine.send_text(origin='sync_on_demand', to_phone=phone_number, message=phone_response)
         # Send acknowledgement for RabbitMQ to delete from Queue
         ch.basic_ack(delivery_tag=method.delivery_tag)
 

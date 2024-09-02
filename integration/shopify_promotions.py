@@ -260,7 +260,13 @@ class Promotions:
 
         def process(self):
             for rule in self.price_rules:
-                if rule.is_bogo_twoofer:
+                if not rule.is_retail:
+                    Promotions.logger.info(
+                        f'Promotion: {self.grp_cod} Rule: {rule.seq_no} is a Wholesale Promotion. Skipping...'
+                    )
+                    continue
+
+                if rule.is_bogo_twoofer():
                     self.process_line_deletes(rule)
                     # process BOGO Twoofers
                     variables = self.get_bxgy_payload(rule)
@@ -288,7 +294,7 @@ class Promotions:
             if mw_rule_items:
                 delete_list = [x for x in mw_rule_items if x not in cp_rule_items]
                 if delete_list:
-                    Database.Shopify.Promotion.Line.delete(item_no_list=delete_list)
+                    Database.Shopify.Promotion.BxgyLine.delete(item_no_list=delete_list)
 
         def set_sale_status(self, rule):
             status = 'Y' if rule.is_enabled_cp else 'N'
@@ -349,14 +355,23 @@ class Promotions:
                     target_method = target_price_break.prc_meth
                     target_amount = target_price_break.amt_or_pct
                     for i in rule.items:
+                        print(f'Processing Item: {i}')
                         item = Product(i)
-                        current_sale_price = round(float(item.price_2), 2)
+                        try:
+                            current_sale_price = round(float(item.price_2), 2)
+                        except:
+                            current_sale_price = None
+
                         target_sale_price = get_target_price(item, target_method, target_amount)
 
                         if current_sale_price == target_sale_price:
-                            continue
+                            print(f'Sale Price Already Set for {i}')
+                            continue  # Skip if the sale price is already set
                         else:
                             Database.Counterpoint.Product.set_sale_price(sku=i, price=target_sale_price)
+                            Database.Shopify.Promotion.FixLine.insert(
+                                group_cod=self.grp_cod, rul_seq_no=rule.seq_no, item_no=i
+                            )
 
         def remove_sale_price(self):
             """Removes the sale price for Non BOGO TWOOFER items in the promotion.
@@ -387,7 +402,7 @@ class Promotions:
                     Promotions.logger.warn(f'No Shopify ID found for Group Code: {group_code}')
                     return
                 for shopify_id in rules:
-                    items = Database.Shopify.Promotion.Line.get(shopify_id)
+                    items = Database.Shopify.Promotion.BxgyLine.get(shopify_id)
                     if items:
                         Database.Counterpoint.Product.set_sale_status(items=items, status='N')
 
@@ -405,7 +420,8 @@ class Promotions:
                 self.seq_no = rule[2]
                 self.descr = rule[3]
                 self.shopify_title = f'{self.grp_cod} - {self.descr}'
-                self.cust_filt = rule[4]
+                self.cust_filt = rule[4] or ''
+                self.is_retail = True if 'wholesale' not in self.cust_filt.lower() else False
                 self.item_filt = rule[5]
                 self.sal_filt = rule[6]
                 self.is_custom = rule[7]
@@ -417,8 +433,11 @@ class Promotions:
                 self.db_id = rule[13]
 
                 self.price_breaks: list[self.PriceBreak] = self.get_price_breaks()
-                self.items: list[str] = self.get_cp_items()
-                self.mw_items: list[str] = Database.Shopify.Promotion.Line.get(self.shopify_id)
+                self.items: list[str] = self.get_cp_items()  # List of CP Item Numbers
+                self.mw_bogo_items: list[str] = Database.Shopify.Promotion.BxgyLine.get(self.shopify_id)
+                self.mw_fixed_price_items: list[str] = Database.Shopify.Promotion.FixLine.get(
+                    group_cod=self.grp_cod, rul_seq_no=self.seq_no
+                )
                 self.badge_text = self.get_badge_text()
 
             def __str__(self) -> str:
@@ -574,12 +593,15 @@ class Promotions:
                     result += f'\t\tAmount or Percentage: {self.amt_or_pct}\n'
                     return result
 
+            class FixedPriceItem:
+                def __init__(self, item_no):
+                    self.item_no = item_no
+
 
 if __name__ == '__main__':
     promo = Promotions(last_sync=datetime(2024, 7, 15))
     for p in promo.promotions:
-        # print(p)
-        if p.grp_cod == 'TEST':
-            # print(p)
+        if p.grp_cod == 'SEPT-RETAI':
+            print(p)
             p.process()
-            # Promotions.Promotion.delete(p.grp_cod)
+            # Promotions.Promotion.delete(group_code='TEST')
