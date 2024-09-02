@@ -16,7 +16,7 @@ class Promotions:
     def __init__(self, last_sync=None):
         self.last_sync = last_sync
         self.db = Database.db
-        self.promotions = []
+        self.promotions: self.Promotion = []
         self.sync_queue = []
         self.update_count = 0
         self.sale_badges = {}
@@ -30,16 +30,12 @@ class Promotions:
                 self.promotions.append(self.Promotion(promo=promo))
 
     def process_deletes(self):
-        # List of Group Codes from Counterpoint
         cp_promotions = [x.grp_cod for x in self.promotions]
-        # List of Group Codes from Middleware
         mw_promotions = Database.Shopify.Promotion.get()
-
         if mw_promotions:
             delete_count = 0
             for mw_promotion in mw_promotions:
                 if mw_promotion not in cp_promotions:
-                    # Promotion has been deleted in Counterpoint. Delete in Shopify and Middleware
                     shopify_id = Database.Shopify.Promotion.get_id(mw_promotion)
                     Promotions.Promotion.delete(shopify_id)
                     delete_count += 1
@@ -120,7 +116,7 @@ class Promotions:
             self.mix_match_code = promo[9]
             self.shopify_id = promo[10]
             self.max_uses = None
-            self.price_rules = []
+            self.price_rules: Promotions.Promotion.PriceRule = []
             self.get_price_rules()
 
         def __str__(self) -> str:
@@ -174,7 +170,14 @@ class Promotions:
                     'combinesWith': {'orderDiscounts': True, 'productDiscounts': True, 'shippingDiscounts': True},
                     'customerBuys': {
                         'value': {'quantity': str(required_qty)},
-                        'items': {'products': {'productsToAdd': [], 'productsToRemove': []}},
+                        'items': {
+                            'products': {
+                                'productsToAdd': [],
+                                'productsToRemove': [],
+                                'productVariantsToAdd': [],
+                                'productVariantsToRemove': [],
+                            }
+                        },
                     },
                     'customerGets': {
                         'value': {
@@ -183,7 +186,14 @@ class Promotions:
                                 'effect': {'percentage': discount_amount},
                             }
                         },
-                        'items': {'products': {'productsToAdd': [], 'productsToRemove': []}},
+                        'items': {
+                            'products': {
+                                'productsToAdd': [],
+                                'productsToRemove': [],
+                                'productVariantsToAdd': [],
+                                'productVariantsToRemove': [],
+                            }
+                        },
                     },
                 }
             }
@@ -194,25 +204,49 @@ class Promotions:
             if rule.items:
                 for i in rule.items:
                     shopify_id = Database.Shopify.Product.get_id(item_no=i)
+                    variant_id = Database.Shopify.Product.Variant.get_id(sku=i)
                     if shopify_id:
-                        payload['automaticBxgyDiscount']['customerBuys']['items']['products'][
-                            'productsToAdd'
-                        ].append(f'gid://shopify/Product/{shopify_id}')
-                        payload['automaticBxgyDiscount']['customerGets']['items']['products'][
-                            'productsToAdd'
-                        ].append(f'gid://shopify/Product/{shopify_id}')
+                        if variant_id:
+                            # Individual Variants for Bound Products
+                            payload['automaticBxgyDiscount']['customerBuys']['items']['products'][
+                                'productVariantsToAdd'
+                            ].append(f'gid://shopify/ProductVariant/{variant_id}')
+
+                            payload['automaticBxgyDiscount']['customerGets']['items']['products'][
+                                'productVariantsToAdd'
+                            ].append(f'gid://shopify/ProductVariant/{variant_id}')
+                        else:
+                            # Single Product
+                            payload['automaticBxgyDiscount']['customerBuys']['items']['products'][
+                                'productsToAdd'
+                            ].append(f'gid://shopify/Product/{shopify_id}')
+                            payload['automaticBxgyDiscount']['customerGets']['items']['products'][
+                                'productsToAdd'
+                            ].append(f'gid://shopify/Product/{shopify_id}')
 
             if rule.mw_items:
                 for i in rule.mw_items:
                     if i not in rule.items:
                         shopify_id = Database.Shopify.Product.get_id(item_no=i)
+                        variant_id = Database.Shopify.Product.Variant.get_id(sku=i)
                         if shopify_id:
-                            payload['automaticBxgyDiscount']['customerBuys']['items']['products'][
-                                'productsToRemove'
-                            ].append(f'gid://shopify/Product/{shopify_id}')
-                            payload['automaticBxgyDiscount']['customerGets']['items']['products'][
-                                'productsToRemove'
-                            ].append(f'gid://shopify/Product/{shopify_id}')
+                            if variant_id:
+                                # Individual Variants for Bound Products
+                                payload['automaticBxgyDiscount']['customerBuys']['items']['products'][
+                                    'productVariantsToRemove'
+                                ].append(f'gid://shopify/ProductVariant/{variant_id}')
+
+                                payload['automaticBxgyDiscount']['customerGets']['items']['products'][
+                                    'productVariantsToRemove'
+                                ].append(f'gid://shopify/ProductVariant/{variant_id}')
+                            else:
+                                # Single Product
+                                payload['automaticBxgyDiscount']['customerBuys']['items']['products'][
+                                    'productsToRemove'
+                                ].append(f'gid://shopify/Product/{shopify_id}')
+                                payload['automaticBxgyDiscount']['customerGets']['items']['products'][
+                                    'productsToRemove'
+                                ].append(f'gid://shopify/Product/{shopify_id}')
 
             if self.beg_dat:
                 payload['automaticBxgyDiscount']['startsAt'] = convert_to_utc(self.beg_dat)
@@ -220,8 +254,8 @@ class Promotions:
             if self.end_dat:
                 payload['automaticBxgyDiscount']['endsAt'] = convert_to_utc(self.end_dat)
 
-            for k, v in payload.items():
-                print(f'{k}: {v}')
+            # for k, v in payload.items():
+            #     print(f'{k}: {v}')
             return payload
 
         def process(self):
@@ -231,7 +265,7 @@ class Promotions:
                     # process BOGO Twoofers
                     variables = self.get_bxgy_payload(rule)
                     if rule.shopify_id:
-                        print(f'Updating BOGO Twoofer: {rule.shopify_id}')
+                        Promotions.logger.info(f'Updating BOGO Twoofer: {rule.shopify_id}')
                         Shopify.Discount.Automatic.Bxgy.update(variables)
                     else:
                         rule.shopify_id = Shopify.Discount.Automatic.Bxgy.create(variables)
@@ -382,11 +416,9 @@ class Promotions:
                 self.is_enabled_mw = True if rule[12] == 1 else False
                 self.db_id = rule[13]
 
-                self.price_breaks = []
-                self.items = []
-                self.mw_items = Database.Shopify.Promotion.Line.get(self.shopify_id)
-                self.get_price_breaks()
-                self.get_cp_items()
+                self.price_breaks: list[self.PriceBreak] = self.get_price_breaks()
+                self.items: list[str] = self.get_cp_items()
+                self.mw_items: list[str] = Database.Shopify.Promotion.Line.get(self.shopify_id)
                 self.badge_text = self.get_badge_text()
 
             def __str__(self) -> str:
@@ -408,7 +440,7 @@ class Promotions:
             def is_bogo_twoofer(self) -> bool:
                 return self.use_bogo_twoofer == 'Y' and self.req_full_group_for_bogo == 'Y'
 
-            def get_price_breaks(self):
+            def get_price_breaks(self) -> list[object]:
                 query = f"""
                         SELECT MIN_QTY, PRC_METH, PRC_BASIS, AMT_OR_PCT
                         FROM IM_PRC_RUL_BRK
@@ -416,10 +448,13 @@ class Promotions:
                         """
                 response = Database.query(query)
                 if response:
+                    result = []
                     for break_data in response:
-                        self.price_breaks.append(self.PriceBreak(break_data))
+                        result.append(self.PriceBreak(break_data))
+                    return result
 
-            def get_cp_items(self):
+            def get_cp_items(self) -> list[str]:
+                result = []
                 if self.item_filt:
                     where_filter = f'WHERE {self.item_filt}'
                 else:
@@ -429,9 +464,10 @@ class Promotions:
                 if response:
                     for item in response:
                         item_no = item[0]
-                        self.items.append(item_no)
+                        result.append(item_no)
+                return result
 
-            def get_reward_quantity(self):
+            def get_reward_quantity(self) -> tuple:
                 """Calculates the number of reward products given to a customer after a condition is met.
                 Example: Buy 1 Get 1 Free = 1 reward product, Buy 2 Get 1 Free = 1 reward product, etc.
                 """
@@ -456,7 +492,7 @@ class Promotions:
                 else:
                     return int(self.price_breaks[-1].amt_or_pct)
 
-            def get_badge_text(self):
+            def get_badge_text(self) -> str:
                 # Create sale description to be used on items in catalog view and search view
                 if self.is_bogo_twoofer():
                     required_qty, reward_qty = self.get_reward_quantity()
@@ -509,13 +545,16 @@ class Promotions:
                 return message
 
             @staticmethod
-            def get_shopify_items(rule):
+            def get_shopify_items(rule) -> list[dict]:
                 """Takes in a rule sequence number and returns a list of associated Item Shopify Product IDs."""
                 result = []
                 for item in rule.items:
                     shopify_prod_id = Database.Shopify.Product.get_id(item_no=item)
+                    shopify_variant_id = Database.Shopify.Product.Variant.get_id(sku=item)
                     if shopify_prod_id:
-                        result.append({'sku': item, 'shopify_id': shopify_prod_id})
+                        result.append(
+                            {'sku': item, 'shopify_id': shopify_prod_id, 'variant_id': shopify_variant_id}
+                        )
                 return result
 
             class PriceBreak:
@@ -541,6 +580,6 @@ if __name__ == '__main__':
     for p in promo.promotions:
         # print(p)
         if p.grp_cod == 'TEST':
-            print(p)
-            # p.process()
+            # print(p)
+            p.process()
             # Promotions.Promotion.delete(p.grp_cod)

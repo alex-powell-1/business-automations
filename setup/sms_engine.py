@@ -7,6 +7,7 @@ from setup import creds
 from integration.database import Database
 from setup.error_handler import SMSErrorHandler
 from setup.utilities import PhoneNumber
+from traceback import format_exc as tb
 
 est = pytz.timezone('US/Eastern')
 utc = pytz.utc
@@ -98,6 +99,55 @@ class SMSEngine:
                     error_code=error_code,
                     error_message=error_message,
                 )
+
+    @staticmethod
+    def send_text_v2(cust_txt: Database.SMS.CustomerText):
+        # Format phone for Twilio API
+        formatted_phone = PhoneNumber(cust_txt.phone).to_twilio()
+
+        if cust_txt.test_mode:
+            SMSEngine.logger.info(f'Sending test sms text to {cust_txt.name}: {cust_txt.message}')
+        else:
+            # for SMS Messages
+            client = Client(SMSEngine.sid, SMSEngine.token)
+            try:
+                # MMS
+                if cust_txt.media:
+                    twilio_message = client.messages.create(
+                        from_=SMSEngine.phone, media_url=cust_txt.media, to=formatted_phone, body=cust_txt.message
+                    )
+                else:
+                    # SMS
+                    twilio_message = client.messages.create(
+                        from_=SMSEngine.phone, to=formatted_phone, body=cust_txt.message
+                    )
+
+            except TwilioRestException as err:
+                cust_txt.response_code = err.code
+                cust_txt.response_text = err.msg
+
+                SMSErrorHandler.error_handler.add_error(
+                    error=f'Phone Number: {cust_txt.phone}, Code: {err.code}, Message:{err.msg}',
+                    origin='SMS-Campaigns->send_text()',
+                )
+
+                if err.code == 21614:
+                    # From Twilio: You have attempted to send a SMS with a 'To' number that is not a valid
+                    # mobile number. It is likely that the number is a landline number or is an invalid number.
+                    Database.SMS.move_phone_1_to_landline(customer_text=cust_txt)
+
+                elif err.code == 21610:  # Previously unsubscribed
+                    Database.SMS.unsubscribe(customer_text=cust_txt)
+
+            except Exception as err:
+                SMSErrorHandler.error_handler.add_error(
+                    error=f'Uncaught Exception: {err}', origin='SMSEngine.send_text()', traceback=tb()
+                )
+                cust_txt.response_text = str(err)
+
+            else:
+                cust_txt.sid = twilio_message.sid
+                Database.SMS.insert_v2(cust_txt)
 
     @staticmethod
     def design_text(

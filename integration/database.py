@@ -218,6 +218,91 @@ class Database:
                 Database.error_handler.add_error_v(error=error, origin='insert_design_lead')
 
     class SMS:
+        class TextMessage:
+            """Work in Progress"""
+
+            def __init__(
+                self,
+                to_phone,
+                from_phone=None,
+                cust_no=None,
+                name=None,
+                category=None,
+                points=None,
+                message=None,
+                media=None,
+            ):
+                self.to_phone = to_phone
+                self.from_phone = from_phone or creds.twilio_phone_number
+                self.cust_no = cust_no
+                self.name = name or Database.Counterpoint.Customer.get_name(cust_no)
+                self.first_name = self.name.split(' ')[0] or None
+                self.category = category or Database.Counterpoint.Customer.get_category(cust_no)
+                self.points = points or Database.Counterpoint.Customer.get_loyalty_balance(cust_no)
+                self.message = message
+                self.media = media  # URL of the media
+                self.origin = None  # Origin of the text ('SERVER, AUTOMATIONS, MASS_CAMPAIGN, MESSENGER')
+                self.campaign = None  # Campaign Name
+                self.username = None  # Username of the user sending the text
+                self.sid = None  # Twilio message response SID
+                self.response_code = None  # Twilio message error code
+                self.response_text: str = None  # Twilio message error text
+                self.count = None
+                self.test_mode = False
+
+            def __str__(self):
+                return f'Customer {self.cust_no}: {self.name} - {self.phone}'
+
+            def insert(self):
+                verbose = False
+
+                if self.name:
+                    name = self.name.replace("'", "''")
+                    name = name[:80]  # Truncate name to 80 characters
+
+                if self.message:
+                    body = self.message.replace("'", "''")
+                    body = body[:1000]  # Truncate body to 1000 characters
+
+                if self.response_text:
+                    error_message = str(self.response_text)
+                    error_message = error_message.replace("'", "''")
+                    error_message = error_message[:255]
+
+                if self.media:
+                    media = self.media[:500]  # Truncate media to 500 characters
+
+                to_phone = PhoneNumber(self.to_phone).to_cp()
+                from_phone = PhoneNumber(self.from_phone).to_cp()
+
+                if from_phone == PhoneNumber(creds.twilio_phone_number).to_cp():
+                    direction = 'OUTBOUND'
+                else:
+                    direction = 'INBOUND'
+
+                query = f"""
+                    INSERT INTO {creds.sms_table} (ORIGIN, CAMPAIGN, DIRECTION, TO_PHONE, FROM_PHONE, CUST_NO, NAME, BODY, 
+                    USERNAME, CATEGORY, MEDIA, SID, ERROR_CODE, ERROR_MESSAGE)
+                    VALUES ('{self.origin}', {f"'{self.campaign}'" if self.campaign else 'NULL'}, '{direction}', '{to_phone}', '{from_phone}', 
+                    {f"'{self.cust_no}'" if self.cust_no else 'NULL'}, {f"'{name}'" if name else 'NULL'},'{body}', {f"'{self.username}'" if self.username else 'NULL'},
+                    {f"'{self.category}'" if self.category else 'NULL'}, {f"'{media}'" if media else 'NULL'}, {f"'{self.sid}'" if self.sid else 'NULL'}, 
+                    {f"'{self.response_code}'" if self.response_code else 'NULL'}, {f"'{error_message}'" if error_message else 'NULL'})
+                    """
+
+                response = Database.query(query)
+
+                if response['code'] == 200:
+                    if verbose:
+                        if direction == 'OUTBOUND':
+                            Database.logger.success(f'SMS sent to {to_phone} added to Database.')
+                        else:
+                            Database.logger.success(f'SMS received from {from_phone} added to Database.')
+                else:
+                    error = (
+                        f'Error adding SMS sent to {to_phone} to Middleware. \nQuery: {query}\nResponse: {response}'
+                    )
+                    Database.error_handler.add_error_v(error=error, origin='insert_sms')
+
         @staticmethod
         def get(cust_no=None):
             if cust_no:
@@ -290,7 +375,7 @@ class Database:
 
             if response['code'] == 200:
                 query = f"""
-                INSERT INTO {creds.sms_event_log} (ORIGIN, CAMPAIGN, PHONE, CUST_NO, NAME, CATEGORY, EVENT_TYPE, MESSAGE)
+                INSERT INTO {Table.sms_event} (ORIGIN, CAMPAIGN, PHONE, CUST_NO, NAME, CATEGORY, EVENT_TYPE, MESSAGE)
                 VALUES ('{origin}', '{campaign}', '{phone}', '{cust_no}', '{name}', '{category}', 
                 'Landline', 'SET MBL_PHONE_1 = {cp_phone}, SET PHONE_1 = NULL')"""
 
@@ -764,6 +849,51 @@ class Database:
                         origin='update_customer_timestamps',
                     )
                     raise Exception(response['message'])
+
+            def get_cust_no(phone_no):
+                phone = PhoneNumber(phone_no).to_cp()
+                query = f"""
+                SELECT CUST_NO FROM AR_CUST
+                WHERE PHONE_1 = '{phone}''
+                """
+                response = Database.query(query)
+                if response:
+                    return response[0][0]
+                else:
+                    return None
+
+            def get_category(cust_no):
+                query = f"""
+                SELECT CATEG_COD FROM AR_CUST
+                WHERE CUST_NO = '{cust_no}'
+                """
+                response = Database.query(query)
+                if response:
+                    return response[0][0]
+                else:
+                    return None
+
+            def get_loyalty_balance(cust_no):
+                query = f"""
+                SELECT LOY_PTS_BAL FROM AR_CUST
+                WHERE CUST_NO = '{cust_no}'
+                """
+                response = Database.query(query)
+                if response:
+                    return response[0][0]
+                else:
+                    return None
+
+            def get_name(cust_no):
+                query = f"""
+                SELECT NAM FROM AR_CUST
+                WHERE CUST_NO = '{cust_no}'
+                """
+                response = Database.query(query)
+                if response:
+                    return response[0][0]
+                else:
+                    return None
 
             class Address:
                 def get(cust_no):
@@ -1428,7 +1558,7 @@ class Database:
                 def get_id(sku):
                     if sku:
                         query = f"""
-                            SELECT VARIANT_ID FROM {creds.shopify_product_table}
+                            SELECT VARIANT_ID FROM {Table.Middleware.products}
                             WHERE ITEM_NO = '{sku}'
                             """
                     else:
@@ -1698,8 +1828,9 @@ class Database:
                             )
                             raise Exception(error)
 
-                    def delete(image=None, image_id=None, product_id=None):
+                    def delete(image=None, image_id=None, image_name=None, product_id=None):
                         prod_id = None
+
                         if image_id:
                             # Delete Single Image from Image ID
                             prod_id = Database.Shopify.Product.Media.Image.get(
@@ -2217,7 +2348,9 @@ class Database:
                     VALUES ({shopify_promo_id}, '{item}')"""
                     response = Database.query(query)
                     if response['code'] == 200:
-                        Database.logger.success(f'Promotion {item} inserted successfully into Middleware.')
+                        Database.logger.success(
+                            f'Promotion {shopify_promo_id} Item: {item} inserted successfully into Middleware.'
+                        )
                     else:
                         Database.error_handler.add_error_v(
                             error=f'Error: {response["code"]}\n\nQuery: {query}\n\nResponse:{response["message"]}',

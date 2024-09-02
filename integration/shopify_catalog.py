@@ -40,6 +40,7 @@ class Catalog:
         self.cp_items = []
         self.mw_items = []
         self.product_images = []
+        self.mw_image_list = []
         self.product_videos = []
         self.sync_queue = []
         self.queue_binding_ids = set()
@@ -215,10 +216,10 @@ class Catalog:
             start_time = time.time()
             self.product_images = get_product_images()
             mw_images = Database.Shopify.Product.Media.Image.get(column='IMAGE_NAME, SIZE')
-            mw_image_list = [[x[0], x[1]] for x in mw_images] if mw_images else []
+            self.mw_image_list = [[x[0], x[1]] for x in mw_images] if mw_images else []
 
             delete_targets = Catalog.get_deletion_target(
-                primary_source=self.product_images, secondary_source=mw_image_list
+                primary_source=self.product_images, secondary_source=self.mw_image_list
             )
 
             if delete_targets:
@@ -229,39 +230,39 @@ class Catalog:
             else:
                 Catalog.logger.info('No image deletions found.')
 
-            # Update Item LST_MAINT_DT if new images have been deleted/added/changed.
-            update_list = delete_targets
+            # # Update Item LST_MAINT_DT if new images have been deleted/added/changed.
+            # update_list = delete_targets
 
-            addition_targets = Catalog.get_deletion_target(
-                primary_source=mw_image_list, secondary_source=self.product_images
-            )
+            # addition_targets = Catalog.get_deletion_target(
+            #     primary_source=self.mw_image_list, secondary_source=self.product_images
+            # )
 
-            if addition_targets:
-                for x in addition_targets:
-                    update_list.append(x)
+            # if addition_targets:
+            #     for x in addition_targets:
+            #         update_list.append(x)
 
-            if update_list:
-                sku_list = [x[0].split('.')[0].split('^')[0] for x in update_list]
-                binding_list = [x for x in sku_list if x in Catalog.all_binding_ids]
+            # if update_list:
+            #     sku_list = [x[0].split('.')[0].split('^')[0] for x in update_list]
+            #     binding_list = [x for x in sku_list if x in Catalog.all_binding_ids]
 
-                sku_list = tuple(sku_list)
-                if binding_list:
-                    if len(binding_list) > 1:
-                        binding_list = tuple(binding_list)
-                        where_filter = f' or {Column.CP.Product.binding_id} in {binding_list}'
-                    else:
-                        where_filter = f" or {Column.CP.Product.binding_id} = '{binding_list[0]}'"
-                else:
-                    where_filter = ''
-                query = f"""
-                    UPDATE {Table.CP.items}
-                    SET LST_MAINT_DT = GETDATE()
-                    WHERE (ITEM_NO in {sku_list} {where_filter}) AND 
-                    {Column.CP.Product.web_enabled} = 'Y'"""
+            #     sku_list = tuple(sku_list)
+            #     if binding_list:
+            #         if len(binding_list) > 1:
+            #             binding_list = tuple(binding_list)
+            #             where_filter = f' or {Column.CP.Product.binding_id} in {binding_list}'
+            #         else:
+            #             where_filter = f" or {Column.CP.Product.binding_id} = '{binding_list[0]}'"
+            #     else:
+            #         where_filter = ''
+            #     query = f"""
+            #         UPDATE {Table.CP.items}
+            #         SET LST_MAINT_DT = GETDATE()
+            #         WHERE (ITEM_NO in {sku_list} {where_filter}) AND
+            #         {Column.CP.Product.web_enabled} = 'Y'"""
 
-                db.query(query)
+            #     db.query(query)
 
-            Catalog.logger.info(f'Image Add/Delete Processing Complete. Time: {time.time() - start_time}')
+            # Catalog.logger.info(f'Image Add/Delete Processing Complete. Time: {time.time() - start_time}')
 
         def process_videos():
             Catalog.logger.info('Processing Video Updates.')
@@ -3352,20 +3353,15 @@ class Catalog:
                 is_variant = False
 
                 image_query = f"""
-                SELECT img.PRODUCT_ID, prod.VARIANT_ID, IMAGE_ID, IS_VARIANT_IMAGE 
-                FROM SN_SHOP_IMAGES img
-                INNER JOIN SN_SHOP_PROD prod on img.ITEM_NO = prod.ITEM_NO
+                SELECT IMG.PRODUCT_ID, PROD.VARIANT_ID, IMAGE_ID, IS_VARIANT_IMAGE 
+                FROM {Table.Middleware.images} IMG
+                FULL OUTER JOIN {Table.Middleware.products} PROD on IMG.ITEM_NO = PROD.ITEM_NO
                 WHERE IMAGE_NAME = '{image_name}'
                 """
 
-                img_id_res = db.query(image_query)
-                if img_id_res is not None:
-                    product_id, variant_id, image_id, is_variant = (
-                        img_id_res[0][0],
-                        img_id_res[0][1],
-                        img_id_res[0][2],
-                        img_id_res[0][3],
-                    )
+                res = db.query(image_query)
+                if res is not None:
+                    product_id, variant_id, image_id, is_variant = (res[0][0], res[0][1], res[0][2], res[0][3])
 
                 if is_variant:
                     Shopify.Product.Variant.Image.delete(
@@ -3486,9 +3482,6 @@ if __name__ == '__main__':
     #     Catalog.Product.delete(sku=x['sku'])
     # for x in Catalog.metafields:
     #     print(x)
-    cat = Catalog(
-        last_sync=datetime(2024, 8, 14, 15, 20, 0),
-        test_mode=True,
-        test_queue=[{'sku': 'APTEST', 'binding_id': 'B0400'}],
-    )
-    cat.sync()
+    cat = Catalog(last_sync=datetime(2024, 8, 14, 15, 20, 0))
+
+    cat.process_media()

@@ -464,6 +464,33 @@ def incoming_sms():
     else:
         media_url = None
 
+    if body.lower() == creds.sms_sync_keyword:
+        # Run sync process
+        try:
+            connection = pika.BlockingConnection(pika.ConnectionParameters('localhost'))
+            channel = connection.channel()
+
+            channel.queue_declare(queue=creds.consumer_sync_on_demand, durable=True)
+
+            channel.basic_publish(
+                exchange='',
+                routing_key=creds.consumer_sync_on_demand,
+                body='sync',
+                properties=pika.BasicProperties(delivery_mode=pika.DeliveryMode.Persistent),
+            )
+            connection.close()
+
+        except Exception as e:
+            ProcessInErrorHandler.error_handler.add_error_v(
+                error=f'Error sending sync request  to RabbitMQ: {e}',
+                origin=Route.Shopify.order_create,
+                traceback=tb(),
+            )
+
+        # Return Response to Twilio
+        resp = MessagingResponse()
+        return str(resp)
+
     # Get Customer Name and Category from SQL
     customer_number, full_name, category = Database.Counterpoint.Customer.get_customer_by_phone(from_phone)
 
@@ -491,9 +518,6 @@ def incoming_sms():
             category=category,
             phone=from_phone,
         )
-        # Return Response to Twilio
-        resp = MessagingResponse()
-        return str(resp)
 
     # Subscribe user to SMS marketing
     elif body.lower() in ['start', 'subscribe', 'start please', 'please start', 'opt in', 'add me']:
@@ -505,9 +529,6 @@ def incoming_sms():
             category=category,
             phone=from_phone,
         )
-        # Return Response to Twilio
-        resp = MessagingResponse()
-        return str(resp)
 
     # Return Response to Twilio
     resp = MessagingResponse()

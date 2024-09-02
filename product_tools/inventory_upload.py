@@ -1,10 +1,9 @@
 from datetime import datetime
 
 import pandas as pd
-
+import csv
 from setup import creds
 from setup.query_engine import QueryEngine as db
-from setup.webDAV_engine import WebDAVClient
 from setup.error_handler import ScheduledTasksErrorHandler as error_handler
 
 
@@ -34,24 +33,21 @@ def create_inventory_csv(retail=True):
         for x in response:
             item_number = x[0]
             item_descr = x[1]
-
-            try:
-                item_descr.replace('"', '')
-            except:
-                pass
-
             item_price = round(float(x[2]), 2)
             item_qty_avail = int(x[3])
             category = x[4]
             item_list.append([item_number, item_descr, item_price, item_qty_avail, category])
 
+        df = pd.DataFrame(item_list)
+
         if retail:
-            df = pd.DataFrame(item_list)
-            df.to_csv(creds.retail_inventory_csv, mode='w', header=False, index=False)
+            dir = creds.retail_inventory_csv
         else:
-            # WHOLESALE
-            df = pd.DataFrame(item_list)
-            df.to_csv(creds.wholesale_inventory_csv, mode='w', header=False, index=False)
+            dir = creds.wholesale_inventory_csv
+
+        df.to_csv(
+            dir, mode='w', header=False, index=False, quoting=csv.QUOTE_NONE
+        )  # quoting fixes double quotes issue
         error_handler.logger.info('CSV file created.')
 
 
@@ -69,4 +65,5 @@ def upload_inventory():
     error_handler.logger.info(f'Inventory Upload: Finished at {datetime.now():%H:%M:%S}')
 
 
-upload_inventory()
+if __name__ == '__main__':
+    upload_inventory()
