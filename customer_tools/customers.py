@@ -334,14 +334,10 @@ def lookup_customer_by_email(email_address):
         return response[0][0]
 
 
-def format_phone_number(phone_number: str):
-    return PhoneNumber(phone_number).to_cp()
-
-
 def lookup_customer_by_phone(phone_number):
     if phone_number is None:
         return
-    phone_number = format_phone_number(phone_number)
+    phone_number = PhoneNumber(phone_number).to_cp()
     query = f"""
     SELECT TOP 1 CUST_NO
     FROM AR_CUST
@@ -416,7 +412,7 @@ def add_new_customer(first_name, last_name, phone_number, email_address, street_
     }
 
     if phone_number is not None:
-        phone_number = format_phone_number(phone_number)
+        phone_number = PhoneNumber(phone_number).to_cp()
 
     if not is_customer(email_address=email_address, phone_number=phone_number):
         url = f'{creds.cp_api_server}/CUSTOMER/'
@@ -548,7 +544,7 @@ def update_customer(
                 state = None
 
     if phone_number is not None:
-        phone_number = format_phone_number(phone_number)
+        phone_number = PhoneNumber(phone_number).to_cp()
 
     query = 'UPDATE AR_CUST SET LST_MAINT_DT = GETDATE()'
 
@@ -664,7 +660,7 @@ def update_customer_shipping(
 
     state = states[state] or state
 
-    phone_number = format_phone_number(phone_number)
+    phone_number = PhoneNumber(phone_number).to_cp()
 
     FST_NAM = first_name.title().strip()
     LST_NAM = last_name.title().strip()

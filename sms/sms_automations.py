@@ -27,6 +27,8 @@ def create_customer_text(
     if msg_prefix:
         prefix = f'{creds.company_name}: '
 
+    customer_list = []
+
     if test_customer:
         customer_list = creds.sms_automations['test_customer']['test_list']
     else:
