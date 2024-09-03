@@ -502,7 +502,15 @@ def incoming_sms():
     )
 
     # Unsubscribe user from SMS marketing
-    if body.lower() in ['stop', 'unsubscribe', 'stop please', 'please stop', 'cancel', 'opt out', 'remove me']:
+    if body.lower().strip() in [
+        'stop',
+        'unsubscribe',
+        'stop please',
+        'please stop',
+        'cancel',
+        'opt out',
+        'remove me',
+    ]:
         Database.SMS.unsubscribe(
             origin='WEBHOOK',
             campaign=Route.sms,
@@ -513,7 +521,7 @@ def incoming_sms():
         )
 
     # Subscribe user to SMS marketing
-    elif body.lower() in ['start', 'subscribe', 'start please', 'please start', 'opt in', 'add me']:
+    elif body.lower().strip() in ['start', 'subscribe', 'start please', 'please start', 'opt in', 'add me']:
         Database.SMS.subscribe(
             origin='WEBHOOK',
             campaign=Route.sms,

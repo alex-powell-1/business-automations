@@ -34,7 +34,8 @@ class PhoneNumber:
     @staticmethod
     def strip_number(phone_number: str):
         return (
-            phone_number.replace('+1', '')
+            (phone_number)
+            .replace('+1', '')
             .replace('-', '')
             .replace('(', '')
             .replace(')', '')

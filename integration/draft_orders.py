@@ -35,9 +35,7 @@ def get_hold_id(draft_id):
         response = Database.query(query)
         return response[0][0]
     except Exception as e:
-        error_handler.add_error_v(
-            error=f'Error getting hold id for draft order {draft_id}: {e}', origin='draft_orders', traceback=tb()
-        )
+        logger.warn(f'Error getting hold id for draft order {draft_id}: {e}')
         return
 
 
