@@ -10,7 +10,8 @@ from shortuuid import ShortUUID
 from setup.email_engine import Email
 from customer_tools.customers import lookup_customer
 from traceback import print_exc as tb
-from setup.utilities import PhoneNumber
+from setup.utilities import PhoneNumber, local_to_utc
+from datetime import datetime
 
 
 verbose_print = False
@@ -2047,12 +2048,53 @@ class Shopify:
 
             class Basic:
                 @staticmethod
-                def create(variables, eh=None):
+                def create(
+                    name,
+                    amount,
+                    min_purchase,
+                    code,
+                    max_uses,
+                    expiration,
+                    product_variants_to_add=[],
+                    product_variants_to_remove=[],
+                    products_to_add=[],
+                    products_to_remove=[],
+                    enabled=True,
+                    eh=None,
+                ):
                     if eh is None:
                         eh = Shopify.error_handler
                     try:
-                        if not variables:
-                            return
+                        variables = {
+                            'basicCodeDiscount': {
+                                'appliesOncePerCustomer': True,
+                                'code': code,
+                                'combinesWith': {
+                                    'orderDiscounts': False,
+                                    'productDiscounts': False,
+                                    'shippingDiscounts': False,
+                                },
+                                'customerGets': {
+                                    'items': {
+                                        'all': True,
+                                        'products': {
+                                            'productVariantsToAdd': product_variants_to_add,
+                                            'productVariantsToRemove': product_variants_to_remove,
+                                            'productsToAdd': products_to_add,
+                                            'productsToRemove': products_to_remove,
+                                        },
+                                    },
+                                    'value': {'discountAmount': {'amount': amount, 'appliesOnEachItem': False}},
+                                },
+                                'customerSelection': {'all': True},
+                                'endsAt': local_to_utc(expiration).strftime('%Y-%m-%dT%H:%M:%SZ'),
+                                'minimumRequirement': {'subtotal': {'greaterThanOrEqualToSubtotal': min_purchase}},
+                                'startsAt': local_to_utc(datetime.now()).strftime('%Y-%m-%dT%H:%M:%SZ'),
+                                'title': name,
+                                'usageLimit': max_uses,
+                            }
+                        }
+
                         response = Shopify.Query(
                             document=Shopify.Discount.queries,
                             variables=variables,

@@ -3,11 +3,12 @@ import os
 import re
 import time
 from setup import creds
-from datetime import datetime
+from datetime import datetime, timezone
 from email.utils import formatdate
 import base64
 from setup.error_handler import ProcessOutErrorHandler
 from PIL import Image, ImageOps, ImageDraw, ImageFont
+import pytz
 
 
 class PhoneNumber:
@@ -113,8 +114,12 @@ def convert_to_utc(date: datetime):
     return date.astimezone().isoformat()
 
 
-from datetime import datetime
-import pytz
+def local_to_utc(local_dt: datetime):
+    return local_dt.astimezone(tz=timezone.utc)
+
+
+def utc_to_local(utc_dt: datetime):
+    return utc_dt.replace(tzinfo=timezone.utc).astimezone(tz=None)
 
 
 def convert_utc_to_local(utc_dt):

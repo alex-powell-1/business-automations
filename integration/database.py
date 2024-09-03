@@ -953,6 +953,126 @@ class Database:
                     result = [rule for rule in response] if response else []
                     return result
 
+        class Discount:
+            """Discounts are stored in the PS_DISC_COD table in CounterPoint. These codes are
+            used to apply discounts to orders. Discounts can be applied to the entire order or to
+            individual items. Discounts can be a fixed amount, a percentage, or a prompted amount or percentage."""
+
+            def has_coupon(code):
+                query = f"""
+                SELECT COUNT(*) FROM PS_DISC_COD WHERE DISC_COD = '{code}'
+                """
+                try:
+                    response = Database.query(query)
+                    if response is not None:
+                        return int(response[0][0]) > 0
+
+                    return False
+                except Exception as e:
+                    Database.error_handler.add_error_v(
+                        error=f'CP Coupon Check Error: {e}\nCode: {code}',
+                        origin='Database.Counterpoint.Discount.cp_has_coupon',
+                    )
+                    return False
+
+            def create(code, description, amount, min_purchase, coupon_type='A', apply_to='H', store='B'):
+                """Will create a coupon code in SQL Database.
+                Code is the coupon code, Description is the description of the coupon, Coupon Type is the type of
+                coupon, Coupon Types: Amount ('A'), Prompted Amount ('B'), Percentage ('P'), Prompted Percent ('Q')
+                Amount is the amount of the coupon, Min Purchase is the minimum purchase amount for the coupon to
+                be valid. Apply to is either 'H' for Document or 'L' for Line ('H' is default), Store is either 'B'
+                for Both instore and online or 'I' for in-store only ('B' is default)"""
+
+                top_id_query = 'SELECT MAX(DISC_ID) FROM PS_DISC_COD'
+                response = Database.query(top_id_query)
+                top_id = None
+                if response is not None:
+                    top_id = response[0][0]
+                    top_id += 1
+                    query = f"""
+                    INSERT INTO PS_DISC_COD(DISC_ID, DISC_COD, DISC_DESCR, DISC_TYP, DISC_AMT, APPLY_TO, 
+                    MIN_DISCNTBL_AMT, DISC_VAL_FOR)
+                    VALUES ('{top_id}', '{code}', '{description}', '{coupon_type}', '{amount}', '{apply_to}', 
+                    '{min_purchase}', '{store}')
+                    """
+                    try:
+                        Database.query(query)
+                    except Exception as e:
+                        Database.error_handler.add_error_v(
+                            error=f'CP Coupon Insertion Error: {e}', origin='Database.Counterpoint.Discount.create'
+                        )
+                    else:
+                        Database.logger.success('CP Coupon Insertion Success!')
+
+                else:
+                    Database.logger.info('Error: Could not create coupon')
+
+                return top_id
+
+            def deactivate(shop_id: int = None, discount_code: str = None):
+                """Deactivates a coupon in CounterPoint. Since there is no way to deactivate a discount code,
+                the minimum discountable amount is set to $100,000. This will effectively deactivate the coupon."""
+                if not shop_id and not discount_code:
+                    Database.error_handler.add_error_v(
+                        'No shop_id or discount_code provided', origin='Database.Counterpoint.Discount.deactivate'
+                    )
+                    return
+                if shop_id:
+                    where = f'WHERE SHOP_ID = {shop_id}'
+                elif discount_code:
+                    where = f"WHERE DISC_COD = '{discount_code}'"
+
+                query = f"""
+                SELECT DISC_ID FROM {Table.Middleware.discounts_view} {where}
+                """
+                try:
+                    response = Database.query(query)
+                    for row in response:
+                        disc_id = row[0]
+                        query = f"""
+                        UPDATE {Table.CP.discounts}
+                        SET MIN_DISCNTBL_AMT = 100000
+                        WHERE DISC_ID = '{disc_id}'
+                        """
+                        response = Database.query(query)
+                        if response['code'] == 200:
+                            Database.logger.success('Shopify Coupon Deactivated Successfully!')
+                        else:
+                            Database.error_handler.add_error_v(
+                                'Error deactivating coupon', origin='Database.Counterpoint.Discount.deactivate'
+                            )
+                except Exception as e:
+                    Database.error_handler.add_error_v(
+                        f'Error deactivating coupon: {e}', origin='Database.Counterpoint.Discount.deactivate'
+                    )
+
+            def delete(discount_code):
+                """Deletes a discount code from CounterPoint."""
+                query = f"""
+                DELETE FROM {Table.CP.discounts} WHERE DISC_COD = '{discount_code}'
+                """
+                try:
+                    response = Database.query(query)
+
+                    if response['code'] == 200:
+                        Database.logger.success(f'Deleted Coupon: {discount_code}')
+                        return True
+                    elif response['code'] == 201:
+                        Database.error_handler.add_error_v(
+                            f'Could not find coupon in CounterPoint: {discount_code}'
+                        )
+                        return False
+                    else:
+                        Database.error_handler.add_error_v(
+                            error=f'CP Coupon Deletion Error: {response}',
+                            origin='Database.Counterpoint.Discount.delete',
+                        )
+                        return False
+                except Exception as e:
+                    Database.error_handler.add_error_v(
+                        error=f'CP Coupon Deletion Error: {e}', origin='Database.Counterpoint.Discount.delete'
+                    )
+
     class Shopify:
         def rebuild_tables(self):
             def create_tables():
