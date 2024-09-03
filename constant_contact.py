@@ -13,30 +13,68 @@ from integration.database import Database
 
 from setup.error_handler import Logger, ErrorHandler
 
+import multiprocessing
+
+from promise import Promise
+
 REDIRECT_URI = 'http://localhost:41022'
 REQUEST_TIMEOUT = 350
 
-logger = Logger(file_name=f'{creds.log_main}/constant_contact.log')
+logger = Logger(log_file=f'{creds.log_main}/constant_contact.log')
 error_handler = ErrorHandler(logger=logger)
 
+
+def CUSTOMER_ADDED(name, email, error):
+    return f'CUSTOMER_ADD | Name: {name} | Email: {email}'
+
+
+def CUSTOMER_ERROR(name, email, error):
+    return f'CUSTOMER_ERROR | Name: {name} | Email: {email or ""} | Error: {error}'
+
+
+def EXECUTION_ERROR(name, email, error):
+    return f'EXECUTION_ERROR | Error: {error}'
+
+
+def NO_RESULTS(name, email, error):
+    return 'NO_RESULTS | No results found'
+
+
+def CUSTOMER_UPDATE(name, email, error):
+    return f'CUSTOMER_UPDATE | Name: {name} | Email: {email}'
+
+
+def AUTHORIZATION_REQUESTED(name, email, error):
+    return 'AUTH_REQ | Authorization Requested'
+
+
+def AUTHORIZATION_SUCCESS(name, email, error):
+    return 'AUTH_SUCC | Authorization Success'
+
+
+def AUTHORIZATION_ERROR(name, email, error):
+    return f'AUTH_ERR | Error: {error}'
+
+
+def REFRESH_REQUESTED(name, email, error):
+    return 'REFRESH_REQ | Refresh Requested'
+
+
 EVENTS = {
-    'customerAdded': lambda name, email: f'CUSTOMER_ADD,{name},{email}',
-    'customerError': lambda name, email, error: f'CUSTOMER_ERROR,{name},{email or ""},{error}',
-    'executionError': lambda error: f'EXECUTION_ERROR,,,{error}',
-    'noResults': lambda: 'NO_RESULTS,,,No results found',
-    'customerUpdated': lambda name, email: f'CUSTOMER_UPDATE,{name},{email}',
-    'authorizationRequested': lambda: 'AUTH_REQ,,,',
-    'authorizationSuccess': lambda: 'AUTH_SUCC,,,',
-    'authorizationError': lambda err='': f'AUTH_ERR,,,{err}',
-    'refreshRequested': lambda: 'REFRESH_REQ,,,',
+    'customerAdded': CUSTOMER_ADDED,
+    'customerError': CUSTOMER_ERROR,
+    'executionError': EXECUTION_ERROR,
+    'noResults': NO_RESULTS,
+    'customerUpdated': CUSTOMER_UPDATE,
+    'authorizationRequested': AUTHORIZATION_REQUESTED,
+    'authorizationSuccess': AUTHORIZATION_SUCCESS,
+    'authorizationError': AUTHORIZATION_ERROR,
+    'refreshRequested': REFRESH_REQUESTED,
 }
 
 
-def invoke_event(event, name='', email='', error=None):
-    if error:
-        logger.log(EVENTS[event](name, email, error))
-    else:
-        logger.log(EVENTS[event](name, email))
+def invoke_event(event, name=None, email=None, error=None):
+    logger.log(EVENTS[event](name=name, email=email, error=error))
 
 
 app = Flask(__name__)
@@ -48,25 +86,12 @@ def access_token():
     return 'Access token endpoint'
 
 
-def date_to_sql_date_string(date):
-    return date.strftime('%Y-%m-%dT00:00:00.000Z')
+def date_to_sql_date_string(date: datetime):
+    return date.strftime('%Y-%m-%d 00:00:00')
 
 
-def get_sql_date_string(date):
-    if isinstance(date, str):
-        date = datetime.fromisoformat(date)
-    return date_to_sql_date_string(date)
-
-
-def query_date(date):
-    sale_date = get_sql_date_string(date)
-    # query = (
-    #     Query('ar_cust')
-    #     .select(['FST_NAM', 'LST_NAM', 'EMAIL_ADRS_1', 'PHONE_1', 'LOY_PTS_BAL', 'PROF_COD_2', 'PROF_COD_3'])
-    #     .where('LST_SAL_DAT', sale_date)
-    #     .build()
-    # )
-    # return execute_query(query)
+def query_date(date: datetime):
+    sale_date = date_to_sql_date_string(date)
 
     query = f"""
     SELECT FST_NAM, LST_NAM, EMAIL_ADRS_1, PHONE_1, LOY_PTS_BAL, PROF_COD_2, PROF_COD_3 FROM AR_CUST
@@ -119,7 +144,10 @@ db = JSONdb('persist.json')
 
 
 def access_token_expired():
-    expires = db.get('refresh', {}).get('expires', 0)
+    try:
+        expires = db.get('refresh', {}).get('expires')
+    except:
+        expires = 0
     return time.time() > expires - 1000 * 60 * 20
 
 
@@ -131,44 +159,48 @@ def refresh_access_token():
     invoke_event('refreshRequested')
     url = 'https://authz.constantcontact.com/oauth2/default/v1/token'
     headers = {'Content-Type': 'application/x-www-form-urlencoded', 'Accept': 'application/json'}
-    data = {'refresh_token': db.get('refresh', {}).get('token'), 'grant_type': 'refresh_token'}
+
+    url += f'?refresh_token={db.get("refresh", {"token": ""}).get("token")}&grant_type=refresh_token'
+
     bearer_token = base64.b64encode(f'{API_KEY}:{CLIENT_SECRET}'.encode()).decode()
     headers['Authorization'] = f'Basic {bearer_token}'
 
-    response = requests.post(url, headers=headers, data=data)
+    response = requests.post(url, headers=headers)
     return response.json()
 
 
 def get_authorized():
-    invoke_event('authorizationRequested')
+    def get_authorization(resolve, reject):
+        invoke_event('authorizationRequested')
 
-    code = ''
+        @app.route('/')
+        def authorize():
+            if not request.args.get('code'):
+                invoke_event('authorizationError', error='ConstantContact API did not return authorization code.')
+                reject(None)
+                return '', 400
 
-    @app.route('/')
-    def authorize():
-        if not request.args.get('code'):
-            invoke_event('authorizationError', 'ConstantContact API did not return authorization code.')
-            return '', 400
-        
-            code = query.get('code')
+            resolve(request.args.get('code'))
 
-        invoke_event('authorizationSuccess')
-        return '<script>window.close();</script>'
+            invoke_event('authorizationSuccess')
+            return '<script>window.close();</script>'
 
-    return code # ''
+        # Open Authorization URL in browser
+        webbrowser.open(get_authorization_url(API_KEY, REDIRECT_URI))
 
-    # Open Authorization URL in browser
-    webbrowser.open(get_authorization_url(API_KEY, REDIRECT_URI))
+    return Promise(get_authorization)
 
 
 def get_access_token(authorization_code):
     url = 'https://authz.constantcontact.com/oauth2/default/v1/token'
     headers = {'Content-Type': 'application/x-www-form-urlencoded', 'Accept': 'application/json'}
-    data = {'grant_type': 'authorization_code', 'code': authorization_code, 'redirect_uri': REDIRECT_URI}
+
+    url += f'?code={authorization_code}&redirect_uri={REDIRECT_URI}'
+
     bearer_token = base64.b64encode(f'{API_KEY}:{CLIENT_SECRET}'.encode()).decode()
     headers['Authorization'] = f'Basic {bearer_token}'
 
-    response = requests.post(url, headers=headers, data=data)
+    response = requests.post(url, headers=headers)
     return response.json()
 
 
@@ -194,7 +226,11 @@ def get_access_token_without_code(force_refresh=False):
     if not force_refresh and CUR_ACCESS_TOKEN:
         return CUR_ACCESS_TOKEN
 
-    authorization_code = get_authorized()
+    authorization_code = get_authorized().get()
+    if authorization_code is None:
+        invoke_event('authorizationError', error='ConstantContact API did not return authorization code.')
+        return None
+
     data = get_access_token(authorization_code)
     access_token = data.get('access_token')
     refresh_token = data.get('refresh_token')
@@ -220,7 +256,11 @@ def get_contact_lists():
         'Authorization': f'Bearer {access_token}',
     }
     response = requests.get(url, headers=headers).json()
-    return response.get('lists', [])
+
+    try:
+        return response['lists']
+    except:
+        return []
 
 
 LISTS = {}
@@ -246,7 +286,10 @@ def get_custom_fields():
         'Authorization': f'Bearer {access_token}',
     }
     response = requests.get(url, headers=headers).json()
-    return response.get('custom_fields', [])
+    try:
+        return response['custom_fields']
+    except:
+        return []
 
 
 FIELDS = {}
@@ -333,31 +376,31 @@ def handle_results(results):
             if 'error_message' in data or ('action' in data and data['action'] == 'created'):
                 invoke_event(
                     'customerError',
-                    f"{results[index]['FST_NAM']} {results[index]['LST_NAM']}",
-                    results[index]['EMAIL_ADRS_1'],
-                    err_msg,
+                    name=f"{results[index]['FST_NAM']} {results[index]['LST_NAM']}",
+                    email=results[index]['EMAIL_ADRS_1'],
+                    error=err_msg,
                 )
             elif data['action'] == 'created':
                 invoke_event(
                     'customerAdded',
-                    f"{results[index]['FST_NAM']} {results[index]['LST_NAM']}",
-                    results[index]['EMAIL_ADRS_1'],
+                    name=f"{results[index]['FST_NAM']} {results[index]['LST_NAM']}",
+                    email=results[index]['EMAIL_ADRS_1'],
                 )
             elif data['action'] == 'updated':
                 invoke_event(
                     'customerUpdated',
-                    f"{results[index]['FST_NAM']} {results[index]['LST_NAM']}",
-                    results[index]['EMAIL_ADRS_1'],
+                    name=f"{results[index]['FST_NAM']} {results[index]['LST_NAM']}",
+                    email=results[index]['EMAIL_ADRS_1'],
                 )
             else:
                 invoke_event(
                     'customerError',
-                    f"{results[index]['FST_NAM']} {results[index]['LST_NAM']}",
-                    results[index]['EMAIL_ADRS_1'],
-                    'Unknown error',
+                    name=f"{results[index]['FST_NAM']} {results[index]['LST_NAM']}",
+                    email=results[index]['EMAIL_ADRS_1'],
+                    error='Unknown error',
                 )
         except Exception as error:
-            invoke_event('executionError', error)
+            invoke_event('executionError', error=error)
             print(error)
 
         do_next(index + 1)
@@ -401,17 +444,12 @@ def test_add_function():
     print(response)
 
 
-from threading import Thread
-
-
 def run():
     app.run(port=41022)
 
 
 def main():
-    # app.run(port=41022)
-
-    server = Thread(target=run)
+    server = multiprocessing.Process(target=run)
 
     server.start()
 
@@ -431,4 +469,8 @@ def main():
 
     print('Newsletter data complete. Check logs for more information.')
 
-    server.
+    server.terminate()
+
+
+if __name__ == '__main__':
+    main()
