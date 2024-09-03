@@ -8,7 +8,6 @@ import urllib.parse
 from datetime import datetime
 import bleach
 import flask
-import pandas
 import pika
 import requests
 from flask import request, jsonify, abort, send_from_directory
@@ -26,7 +25,6 @@ from setup import creds, authorization
 from setup.creds import Route
 from setup.email_engine import Email
 from setup.error_handler import ProcessInErrorHandler, ProcessOutErrorHandler, LeadFormErrorHandler
-from setup import log_engine
 from integration.shopify_api import Shopify
 from qr.qr_codes import QR
 
