@@ -479,7 +479,25 @@ class Database:
             return response
 
     class Newsletter:
-        pass
+        def is_subscribed(email):
+            query = f"""
+            SELECT EMAIL
+            FROM {Table.newsletter}
+            WHERE EMAIL = '{email}'
+            """
+            response = Database.query(query)
+            if response:
+                return response[0][0] is not None
+            else:
+                return False
+
+        def insert(email):
+            query = f"""
+            INSERT INTO {Table.newsletter} (EMAIL)
+            VALUES ('{email}')
+            """
+            response = Database.query(query)
+            return response
 
     class Counterpoint:
         class Order:
@@ -945,13 +963,133 @@ class Database:
                     SAL_FILT, IS_CUSTOM, USE_BOGO_TWOFER, REQ_FULL_GRP_FOR_BOGO_TWOFER,
                     MW.SHOP_ID, GRP.ENABLED, MW.ENABLED, MW.ID
                     FROM IM_PRC_RUL RUL
+					FULL OUTER JOIN IM_PRC_GRP GRP on GRP.GRP_COD = RUL.GRP_COD
                     FULL OUTER JOIN SN_PROMO MW on RUL.RUL_SEQ_NO = MW.RUL_SEQ_NO
-                    FULL OUTER JOIN IM_PRC_GRP GRP on GRP.GRP_COD = MW.GRP_COD
                     WHERE RUL.GRP_COD = '{group_code}'
                     """
                     response = Database.query(query)
                     result = [rule for rule in response] if response else []
                     return result
+
+        class Discount:
+            """Discounts are stored in the PS_DISC_COD table in CounterPoint. These codes are
+            used to apply discounts to orders. Discounts can be applied to the entire order or to
+            individual items. Discounts can be a fixed amount, a percentage, or a prompted amount or percentage."""
+
+            def has_coupon(code):
+                query = f"""
+                SELECT COUNT(*) FROM PS_DISC_COD WHERE DISC_COD = '{code}'
+                """
+                try:
+                    response = Database.query(query)
+                    if response is not None:
+                        return int(response[0][0]) > 0
+
+                    return False
+                except Exception as e:
+                    Database.error_handler.add_error_v(
+                        error=f'CP Coupon Check Error: {e}\nCode: {code}',
+                        origin='Database.Counterpoint.Discount.cp_has_coupon',
+                    )
+                    return False
+
+            def create(code, description, amount, min_purchase, coupon_type='A', apply_to='H', store='B'):
+                """Will create a coupon code in SQL Database.
+                Code is the coupon code, Description is the description of the coupon, Coupon Type is the type of
+                coupon, Coupon Types: Amount ('A'), Prompted Amount ('B'), Percentage ('P'), Prompted Percent ('Q')
+                Amount is the amount of the coupon, Min Purchase is the minimum purchase amount for the coupon to
+                be valid. Apply to is either 'H' for Document or 'L' for Line ('H' is default), Store is either 'B'
+                for Both instore and online or 'I' for in-store only ('B' is default)"""
+
+                top_id_query = 'SELECT MAX(DISC_ID) FROM PS_DISC_COD'
+                response = Database.query(top_id_query)
+                top_id = None
+                if response is not None:
+                    top_id = response[0][0]
+                    top_id += 1
+                    query = f"""
+                    INSERT INTO PS_DISC_COD(DISC_ID, DISC_COD, DISC_DESCR, DISC_TYP, DISC_AMT, APPLY_TO, 
+                    MIN_DISCNTBL_AMT, DISC_VAL_FOR)
+                    VALUES ('{top_id}', '{code}', '{description}', '{coupon_type}', '{amount}', '{apply_to}', 
+                    '{min_purchase}', '{store}')
+                    """
+                    try:
+                        Database.query(query)
+                    except Exception as e:
+                        Database.error_handler.add_error_v(
+                            error=f'CP Coupon Insertion Error: {e}', origin='Database.Counterpoint.Discount.create'
+                        )
+                    else:
+                        Database.logger.success('CP Coupon Insertion Success!')
+
+                else:
+                    Database.logger.info('Error: Could not create coupon')
+
+                return top_id
+
+            def deactivate(shop_id: int = None, discount_code: str = None):
+                """Deactivates a coupon in CounterPoint. Since there is no way to deactivate a discount code,
+                the minimum discountable amount is set to $100,000. This will effectively deactivate the coupon."""
+                if not shop_id and not discount_code:
+                    Database.error_handler.add_error_v(
+                        'No shop_id or discount_code provided', origin='Database.Counterpoint.Discount.deactivate'
+                    )
+                    return
+                if shop_id:
+                    where = f'WHERE SHOP_ID = {shop_id}'
+                elif discount_code:
+                    where = f"WHERE DISC_COD = '{discount_code}'"
+
+                query = f"""
+                SELECT DISC_ID FROM {Table.Middleware.discounts_view} {where}
+                """
+                try:
+                    response = Database.query(query)
+                    for row in response:
+                        disc_id = row[0]
+                        query = f"""
+                        UPDATE {Table.CP.discounts}
+                        SET MIN_DISCNTBL_AMT = 100000
+                        WHERE DISC_ID = '{disc_id}'
+                        """
+                        response = Database.query(query)
+                        if response['code'] == 200:
+                            Database.logger.success('Shopify Coupon Deactivated Successfully!')
+                        else:
+                            Database.error_handler.add_error_v(
+                                'Error deactivating coupon', origin='Database.Counterpoint.Discount.deactivate'
+                            )
+                except Exception as e:
+                    Database.error_handler.add_error_v(
+                        f'Error deactivating coupon: {e}', origin='Database.Counterpoint.Discount.deactivate'
+                    )
+
+            def delete(discount_code):
+                """Deletes a discount code from CounterPoint."""
+                query = f"""
+                DELETE FROM {Table.CP.discounts} WHERE DISC_COD = '{discount_code}'
+                """
+                try:
+                    response = Database.query(query)
+
+                    if response['code'] == 200:
+                        Database.logger.success(f'Deleted Coupon: {discount_code}')
+                        return True
+                    elif response['code'] == 201:
+                        Database.error_handler.add_error_v(
+                            f'Could not find coupon in CounterPoint: {discount_code}'
+                        )
+                        return False
+                    else:
+                        Database.error_handler.add_error_v(
+                            error=f'CP Coupon Deletion Error: {response}',
+                            origin='Database.Counterpoint.Discount.delete',
+                        )
+                        return False
+                except Exception as e:
+                    Database.error_handler.add_error_v(
+                        error=f'CP Coupon Deletion Error: {e}', origin='Database.Counterpoint.Discount.delete'
+                    )
 
     class Shopify:
         def rebuild_tables(self):
@@ -1085,9 +1223,21 @@ class Database:
                                             ID int IDENTITY(1,1) PRIMARY KEY,
                                             GRP_COD nvarchar(50) NOT NULL,
                                             RUL_SEQ_NO int,
-                                            SHOP_ID bigint,
+                                            SHOP_ID bigint PRIMARY KEY,
                                             ENABLED bit DEFAULT(0),
                                             LST_MAINT_DT datetime NOT NULL DEFAULT(current_timestamp)
+                                            );""",
+                    'promo_line_bogo': f"""
+                                            CREATE TABLE {Table.Middleware.promotion_lines_bogo}(
+                                            SHOP_ID bigint FOREIGN KEY REFERENCES {Table.Middleware.promotions}(SHOP_ID),
+                                            ITEM_NO nvarchar(50),
+                                            LST_MAINT_DT datetime NOT NULL DEFAULT(current_timestamp)
+                                            );""",
+                    'promo_line_fixed': f"""
+                                            CREATE TABLE {Table.Middleware.promotion_lines_fixed}(
+                                            GRP_COD nvarchar(50) NOT NULL,
+                                            RUL_SEQ_NO int,
+                                            ITEM_NO nvarchar(50)
                                             );""",
                     'discount': f"""
                                             CREATE TABLE {Table.Middleware.discounts} (
@@ -2252,7 +2402,7 @@ class Database:
                 else:
                     Database.Shopify.Promotion.insert(rule)
 
-                Database.Shopify.Promotion.Line.sync(rule)
+                Database.Shopify.Promotion.BxgyLine.sync(rule)
 
             def insert(rule):
                 """Insert a new discount rule into the Middleware."""
@@ -2311,7 +2461,9 @@ class Database:
                         origin='Middleware Promotion Deletion',
                     )
 
-            class Line:
+            class BxgyLine:
+                """Buy X Get Y Line Items"""
+
                 def get(shopify_id):
                     if not shopify_id:
                         return
@@ -2328,15 +2480,15 @@ class Database:
                                 if item in mw_items:
                                     continue
                                 else:
-                                    Database.Shopify.Promotion.Line.insert(item, rule.shopify_id)
+                                    Database.Shopify.Promotion.BxgyLine.insert(item, rule.shopify_id)
                             else:
-                                Database.Shopify.Promotion.Line.insert(item, rule.shopify_id)
+                                Database.Shopify.Promotion.BxgyLine.insert(item, rule.shopify_id)
                     if mw_items:
                         for item in mw_items:
                             if item in cp_items:
                                 continue
                             else:
-                                Database.Shopify.Promotion.Line.delete(item_no_list=[item])
+                                Database.Shopify.Promotion.BxgyLine.delete(item_no_list=[item])
 
                 def insert(item, shopify_promo_id):
                     """Insert Items affected by BOGO promos into middleware."""
@@ -2419,6 +2571,54 @@ class Database:
                                 origin='Middleware Promotion Line Item Deletion',
                             )
 
+            class FixLine:
+                """Fixed Price Discount Line Items"""
+
+                def get(group_cod, rul_seq_no) -> list[str]:
+                    query = f"""
+                    SELECT ITEM_NO FROM {Table.Middleware.promotion_lines_fixed}
+                    WHERE GRP_COD = '{group_cod}' AND RUL_SEQ_NO = {rul_seq_no}
+                    """
+                    response = Database.query(query)
+                    return [x[0] for x in response] if response else None
+
+                def insert(group_cod, rul_seq_no, item_no):
+                    query = f"""
+                    INSERT INTO {Table.Middleware.promotion_lines_fixed} (GRP_COD, RUL_SEQ_NO, ITEM_NO)
+                    VALUES ('{group_cod}', {rul_seq_no}, '{item_no}')
+                    """
+                    response = Database.query(query)
+                    if response['code'] == 200:
+                        Database.logger.success(
+                            f'Promotion {group_cod}-Rule: {rul_seq_no} Item: {item_no} inserted successfully into Middleware.'
+                        )
+                    else:
+                        Database.error_handler.add_error_v(
+                            error=f'Error: {response["code"]}\n\nQuery: {query}\n\nResponse:{response["message"]}',
+                            origin='Middleware Promotion Line Item Insertion',
+                        )
+
+                def delete(group_cod, rul_seq_no, item_no):
+                    query = f"""
+                    DELETE FROM {Table.Middleware.promotion_lines_fixed}
+                    WHERE GRP_COD = '{group_cod}' AND RUL_SEQ_NO = {rul_seq_no} AND ITEM_NO = '{item_no}'
+                    """
+                    response = Database.query(query)
+
+                    if response['code'] == 200:
+                        Database.logger.success(
+                            f'Promotion {group_cod}-Rule: {rul_seq_no} Item: {item_no} deleted successfully from Middleware.'
+                        )
+                    elif response['code'] == 201:
+                        Database.logger.warn(
+                            f'Promotion {group_cod}-Rule: {rul_seq_no} Item: {item_no} not found for deletion in Middleware.'
+                        )
+                    else:
+                        Database.error_handler.add_error_v(
+                            error=f'Error: {response["code"]}\n\nQuery: {query}\n\nResponse:{response["message"]}',
+                            origin='Middleware Promotion Line Item Deletion',
+                        )
+
         class Discount:
             """Basic Discount Codes"""
 
@@ -2440,4 +2640,4 @@ class Database:
 
 
 if __name__ == '__main__':
-    print(Database.Shopify.Discount.get(1165344506023))
+    print(Database.Newsletter.is_subscribed('mclarkvazquez@gmail.com'))

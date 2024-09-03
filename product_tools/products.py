@@ -61,7 +61,15 @@ class Product:
         self.e_comm_category = ''
         self.web_description = ''
         self.featured = ''
+        self.is_on_sale = False
+        self.sale_description = ''
         self.get_product_details()
+
+    def __str__(self):
+        result = ''
+        for k, v in self.__dict__.items():
+            result += f'{k}: {v}\n'
+        return result
 
     def get_product_details(self):
         query = f"""
@@ -74,7 +82,7 @@ class Product:
         ITEM.USR_PROF_ALPHA_8,  ITEM.USR_PROF_ALPHA_9,  ITEM.USR_PROF_ALPHA_10,  ITEM.USR_PROF_ALPHA_11,
         ITEM.USR_PROF_ALPHA_12, ITEM.USR_PROF_ALPHA_13, ITEM.USR_PROF_ALPHA_14, ITEM.USR_PROF_ALPHA_15, 
         USR_PROF_ALPHA_26, USR_PROF_ALPHA_27, USR_PROF_ALPHA_18, USR_PROF_ALPHA_19, USR_PROF_ALPHA_20, 
-        EC_CATEG.DESCR, EC_ITEM_DESCR.HTML_DESCR, ITEM.ECOMM_NEW
+        EC_CATEG.DESCR, EC_ITEM_DESCR.HTML_DESCR, ITEM.ECOMM_NEW, ITEM.IS_ON_SALE, ITEM.SALE_DESCR
         FROM IM_ITEM ITEM
         INNER JOIN IM_PRC PRC ON ITEM.ITEM_NO=PRC.ITEM_NO
         LEFT OUTER JOIN IM_INV INV ON ITEM.ITEM_NO=INV.ITEM_NO
@@ -85,61 +93,63 @@ class Product:
         """
         response = db.query(query)
         if response is not None:
-            for x in response:
-                self.item_no = x[0]
-                self.binding_key = x[1]
-                self.variant_name = x[2]
-                self.is_parent = x[3]
-                self.descr = x[4]
-                self.long_descr = x[5]
-                self.brand = x[6]
-                self.price_1 = x[7]
-                self.price_2 = x[8]
-                self.reg_price = x[9]
-                self.quantity_available = int(x[10])
-                self.buffer = int(x[11])
-                if self.quantity_available - self.buffer < 0:
-                    self.buffered_quantity_available = 0
-                else:
-                    self.buffered_quantity_available = self.quantity_available - self.buffer
-                self.web_enabled = x[12]
-                self.web_visible = x[13]
-                self.always_online = x[14]
-                self.gift_wrap = x[15]
-                self.in_store_only = x[16]
-                self.web_title = x[17]
-                self.meta_title = x[18]
-                self.meta_description = x[19]
-                self.item_type = x[20]
-                self.parent_category = x[21]
-                self.sub_category = x[22]
-                self.status = x[23]
-                self.vendor = x[24]
-                self.custom_field_botanical_name = x[25]
-                self.custom_field_climate_zone = x[26]
-                self.custom_field_plant_type = x[27]
-                self.custom_field_type = x[28]
-                self.custom_field_height = x[29]
-                self.custom_field_width = x[30]
-                self.custom_field_sun_exposure = x[31]
-                self.custom_field_bloom_time = x[32]
-                self.custom_field_flower_color = x[33]
-                self.custom_field_attracts_pollinators = x[34]
-                self.custom_field_growth_rate = x[35]
-                self.custom_field_deer_resistant = x[36]
-                self.custom_field_soil_type = x[37]
-                self.custom_field_color = x[38]
-                self.custom_field_size = x[39]
-                self.search_key = x[40]
-                if x[41] is not None:
-                    self.sort_order = int(x[41])
-                self.preorder_message = x[43]
-                self.availability_description = x[44]
-                self.e_comm_category = x[45]
-                self.web_description = x[46]
-                self.featured = x[47]
-                self.product_id = self.get_product_id()
-                self.variant_id = self.get_variant_id()
+            x = response[0]
+            self.item_no = x[0]
+            self.binding_key = x[1]
+            self.variant_name = x[2]
+            self.is_parent = x[3]
+            self.descr = x[4]
+            self.long_descr = x[5]
+            self.brand = x[6]
+            self.price_1 = x[7]
+            self.price_2 = x[8]
+            self.reg_price = x[9]
+            self.quantity_available = int(x[10])
+            self.buffer = int(x[11])
+            if self.quantity_available - self.buffer < 0:
+                self.buffered_quantity_available = 0
+            else:
+                self.buffered_quantity_available = self.quantity_available - self.buffer
+            self.web_enabled = x[12]
+            self.web_visible = x[13]
+            self.always_online = x[14]
+            self.gift_wrap = x[15]
+            self.in_store_only = x[16]
+            self.web_title = x[17]
+            self.meta_title = x[18]
+            self.meta_description = x[19]
+            self.item_type = x[20]
+            self.parent_category = x[21]
+            self.sub_category = x[22]
+            self.status = x[23]
+            self.vendor = x[24]
+            self.custom_field_botanical_name = x[25]
+            self.custom_field_climate_zone = x[26]
+            self.custom_field_plant_type = x[27]
+            self.custom_field_type = x[28]
+            self.custom_field_height = x[29]
+            self.custom_field_width = x[30]
+            self.custom_field_sun_exposure = x[31]
+            self.custom_field_bloom_time = x[32]
+            self.custom_field_flower_color = x[33]
+            self.custom_field_attracts_pollinators = x[34]
+            self.custom_field_growth_rate = x[35]
+            self.custom_field_deer_resistant = x[36]
+            self.custom_field_soil_type = x[37]
+            self.custom_field_color = x[38]
+            self.custom_field_size = x[39]
+            self.search_key = x[40]
+            if x[41] is not None:
+                self.sort_order = int(x[41])
+            self.preorder_message = x[43]
+            self.availability_description = x[44]
+            self.e_comm_category = x[45]
+            self.web_description = x[46]
+            self.featured = x[47]
+            self.product_id = self.get_product_id()
+            self.variant_id = self.get_variant_id()
+            self.is_on_sale = True if x[48] == 'Y' else False
+            self.sale_description = x[49]
 
         else:
             return 'No Item Matching that SKU'
@@ -886,4 +896,5 @@ def get_binding_id_issues():
 
 
 if __name__ == '__main__':
-    update_total_sold(batch_update=True)
+    test = Product('ANTGHF2')
+    print(test)

@@ -1,20 +1,11 @@
 import datetime
-from email import utils
-
 import os
 
-import pandas
 from dateutil.relativedelta import relativedelta
 from jinja2 import Template
 
 import customer_tools
-from shop.coupons import (
-    generate_random_code,
-    generate_random_coupon,
-    shopify_create_coupon,
-    cp_create_coupon,
-    delete_expired_coupons,
-)
+from shop.coupons import generate_random_code, generate_random_coupon, delete_expired_coupons
 import customer_tools.customers
 from product_tools.products import Product
 from setup import creds
@@ -25,7 +16,7 @@ from setup import barcode_engine as barcode_engine
 
 from setup.utilities import PhoneNumber, combine_images
 from setup.sms_engine import SMSEngine
-
+from integration.shopify_api import Shopify
 from integration.database import Database
 
 from shutil import copy
@@ -151,7 +142,7 @@ def create_coupon(item_no, customer):
             first_name = customer.first_name.title()
             last_name = customer.last_name.title()
 
-        cp_id = cp_create_coupon(
+        cp_id = Database.Counterpoint.Discount.create(
             description=f'{first_name} ' f'{last_name}-Stock:{item_no}',
             code=coupon_code,
             amount=10,
@@ -173,13 +164,14 @@ def create_coupon(item_no, customer):
 
         try:
             # Send to Shopify. Create Coupon.
-            shop_id = shopify_create_coupon(
+            shop_id = Shopify.Discount.Code.Basic.create(
                 name=f'Back in Stock({item_no}, {first_name+' '+last_name})',
                 amount=10,
                 min_purchase=100,
                 code=coupon_code,
                 max_uses=1,
                 expiration=expiration_date,
+                eh=error_handler,
             )
         except Exception as e:
             error_handler.error_handler.add_error_v(

@@ -8,7 +8,6 @@ import urllib.parse
 from datetime import datetime
 import bleach
 import flask
-import pandas
 import pika
 import requests
 from flask import request, jsonify, abort, send_from_directory
@@ -25,9 +24,7 @@ from setup.utilities import convert_utc_to_local
 from setup import creds, authorization
 from setup.creds import Route
 from setup.email_engine import Email
-from setup.sms_engine import SMSEngine
 from setup.error_handler import ProcessInErrorHandler, ProcessOutErrorHandler, LeadFormErrorHandler
-from setup import log_engine
 from integration.shopify_api import Shopify
 from qr.qr_codes import QR
 
@@ -38,9 +35,9 @@ import uuid_utils as uuidu
 
 from setup.utilities import PhoneNumber, EmailAddress
 
-from integration.customers import Customers
+from integration.shopify_customers import Customers
 
-from customer_tools.customers import add_new_customer, update_customer
+from customer_tools.customers import add_new_customer
 
 app = flask.Flask(__name__)
 
@@ -377,16 +374,9 @@ def newsletter_signup():
         abort(400, description=e.message)
     else:
         email = data.get('email')
-        try:
-            df = pandas.read_csv(creds.newsletter_log)
-        except FileNotFoundError:
-            ProcessInErrorHandler.error_handler.add_error_v(error='File not found', origin='newsletter')
-        else:
-            entries = df.to_dict('records')
-            for x in entries:
-                if x['email'] == email:
-                    print(f'{email} is already on file')
-                    return 'This email address is already on file.', 400
+        if Database.Newsletter.is_subscribed(email):
+            print(f'{email} is already on file')
+            return 'This email address is already on file.', 400
 
         recipient = {'': email}
         with open('./templates/new10.html', 'r') as file:
@@ -424,9 +414,12 @@ def newsletter_signup():
             )
             return 'Error sending welcome email.', 500
         else:
-            newsletter_data = [[f'{datetime.now():%Y-%m-%d %H:%M:%S}', email]]
-            df = pandas.DataFrame(newsletter_data, columns=['date', 'email'])
-            log_engine.write_log(df, creds.newsletter_log)
+            res = Database.Newsletter.insert(email)
+            if res['code'] != 200:
+                ProcessInErrorHandler.error_handler.add_error_v(
+                    error=f'Error adding {email} to newsletter: {res["message"]}', origin=Route.newsletter
+                )
+                return 'Error adding email to newsletter.', 500
             return 'OK', 200
 
 
@@ -475,7 +468,7 @@ def incoming_sms():
             channel.basic_publish(
                 exchange='',
                 routing_key=creds.consumer_sync_on_demand,
-                body='sync',
+                body=from_phone,
                 properties=pika.BasicProperties(delivery_mode=pika.DeliveryMode.Persistent),
             )
             connection.close()
@@ -723,7 +716,6 @@ def shopify_customer_create():
 @limiter.limit('60/minute')
 def shopify_customer_update():
     """Webhook route for updated customers. Sends to RabbitMQ queue for asynchronous processing"""
-    webhook_data = request.json
     headers = request.headers
     data = request.get_data()
     hmac_header = headers.get('X-Shopify-Hmac-Sha256')

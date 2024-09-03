@@ -4,7 +4,6 @@ from integration.shopify_api import Shopify
 from setup import creds
 from setup.creds import Table, Metafield
 from datetime import datetime
-import integration.object_processor as object_processor
 import json
 from traceback import format_exc as tb
 
@@ -24,7 +23,6 @@ class Customers:
         self.customers = self.get_updated_customers()
         for x in self.customers:
             print(x)
-        self.processor = object_processor.ObjectProcessor(objects=self.customers)
 
     def update_customer_timestamps(self):
         """Update the last maintenance date for all customers in the Middleware who have been updated in
@@ -518,6 +516,18 @@ class Customers:
                 Customers.error_handler.add_error_v(
                     error=f'Error setting customer {self.cp_cust_no} loyalty points to 0.'
                 )
+
+        @staticmethod
+        def get_metafields(cust_id):
+            return Shopify.Customer.Metafield.get(shopify_cust_no=cust_id)['customer']['metafields']['edges']
+
+        @staticmethod
+        def get_metafield_keys(cust_id):
+            return [x['node']['key'] for x in Customers.Customer.get_metafields(cust_id)]
+
+        @staticmethod
+        def has_metafield(cust_id, key):
+            return key in Customers.Customer.get_metafield_keys(cust_id)
 
 
 if __name__ == '__main__':

@@ -26,9 +26,9 @@ class SMSEngine:
     @staticmethod
     def send_text(
         origin,
-        campaign,
         to_phone,
         message,
+        campaign=None,
         category=None,
         username=None,
         name=None,
@@ -101,7 +101,7 @@ class SMSEngine:
                 )
 
     @staticmethod
-    def send_text_v2(cust_txt: Database.SMS.CustomerText):
+    def send_text_v2(cust_txt: Database.SMS.TextMessage):
         # Format phone for Twilio API
         formatted_phone = PhoneNumber(cust_txt.phone).to_twilio()
 

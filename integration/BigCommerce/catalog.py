@@ -7,7 +7,7 @@ from datetime import datetime
 import time
 import aiohttp
 
-from integration.requests_handler import BCRequests
+from integration.BigCommerce.requests_handler import BCRequests
 import requests
 from PIL import Image, ImageOps
 from requests.auth import HTTPDigestAuth
