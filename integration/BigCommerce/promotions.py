@@ -6,7 +6,7 @@ from setup.error_handler import ProcessOutErrorHandler
 import requests
 from setup import creds
 from setup.utilities import convert_to_utc
-from integration.catalog import Catalog
+from integration.BigCommerce.catalog import Catalog
 from product_tools.products import Product
 from setup.utilities import VirtualRateLimiter
 

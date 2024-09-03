@@ -5,7 +5,7 @@ from integration.database import Database
 from setup import creds
 import setup.date_presets as date_presets
 
-import integration.object_processor as object_processor
+import integration.BigCommerce.object_processor as object_processor
 
 from setup.error_handler import ErrorHandler, Logger, ProcessOutErrorHandler
 

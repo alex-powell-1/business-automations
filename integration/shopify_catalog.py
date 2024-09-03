@@ -375,7 +375,7 @@ class Catalog:
         return [element for element in secondary_source if element not in primary_source]
 
     def delete(products=True, collections=True):
-        """Deletes all products, categories from BigCommerce and Middleware."""
+        """Deletes all products, categories from Shopify and Middleware."""
 
         def delete_products():
             # Get all product IDs from Middleware
@@ -697,8 +697,8 @@ class Catalog:
                     f'---------------------------------------\n'
                     f'Counterpoint Category ID: {self.cp_categ_id}\n'
                     f'Counterpoint Parent ID: {self.cp_parent_id}\n'
-                    f'BigCommerce Category ID: {self.collection_id}\n'
-                    f'BigCommerce Parent ID: {self.shopify_parent_id}\n'
+                    f'Shopify Category ID: {self.collection_id}\n'
+                    f'Shopify Parent ID: {self.shopify_parent_id}\n'
                     f'Sort Order: {self.sort_order}\n'
                     f'Last Maintenance Date: {self.lst_maint_dt}\n\n'
                 )
@@ -1333,7 +1333,7 @@ class Catalog:
                 return []
 
         def get_payload(self):
-            """Build the payload for creating a product in BigCommerce.
+            """Build the payload for creating a product in Shopify.
             This will include all variants, images, and custom fields."""
 
             def get_custom_fields():
@@ -2050,7 +2050,7 @@ class Catalog:
                 Shopify.Inventory.update(self.get_inventory_payload())
 
         def replace_image(self, image) -> bool:
-            """Replace image in BigCommerce and SQL."""
+            """Replace image in Shopify and SQL."""
             self.delete_image(image)
             image.shopify_id = Shopify.Product.Media.Image.create(image)
             Database.Shopify.Product.Media.Image.insert(image)
@@ -2200,7 +2200,7 @@ class Catalog:
 
         @staticmethod
         def delete(sku, update_timestamp=False):
-            """Delete Product from BigCommerce and Middleware."""
+            """Delete Product from Shopify and Middleware."""
             print(f'Deleting Product {sku}.')
 
             def delete_product(sku, product_id, update_timestamp=False):

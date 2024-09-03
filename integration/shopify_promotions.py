@@ -2,7 +2,7 @@ from datetime import datetime
 from integration.database import Database
 from setup.error_handler import ProcessOutErrorHandler
 from setup.utilities import convert_to_utc
-from integration.catalog import Catalog
+from integration.BigCommerce.catalog import Catalog
 from product_tools.products import Product
 from integration.shopify_api import Shopify
 from traceback import format_exc as tb

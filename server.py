@@ -25,7 +25,6 @@ from setup.utilities import convert_utc_to_local
 from setup import creds, authorization
 from setup.creds import Route
 from setup.email_engine import Email
-from setup.sms_engine import SMSEngine
 from setup.error_handler import ProcessInErrorHandler, ProcessOutErrorHandler, LeadFormErrorHandler
 from setup import log_engine
 from integration.shopify_api import Shopify
@@ -38,9 +37,9 @@ import uuid_utils as uuidu
 
 from setup.utilities import PhoneNumber, EmailAddress
 
-from integration.customers import Customers
+from integration.shopify_customers import Customers
 
-from customer_tools.customers import add_new_customer, update_customer
+from customer_tools.customers import add_new_customer
 
 app = flask.Flask(__name__)
 
@@ -723,7 +722,6 @@ def shopify_customer_create():
 @limiter.limit('60/minute')
 def shopify_customer_update():
     """Webhook route for updated customers. Sends to RabbitMQ queue for asynchronous processing"""
-    webhook_data = request.json
     headers = request.headers
     data = request.get_data()
     hmac_header = headers.get('X-Shopify-Hmac-Sha256')

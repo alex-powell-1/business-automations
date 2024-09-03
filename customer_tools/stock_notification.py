@@ -1,9 +1,6 @@
 import datetime
-from email import utils
-
 import os
 
-import pandas
 from dateutil.relativedelta import relativedelta
 from jinja2 import Template
 
