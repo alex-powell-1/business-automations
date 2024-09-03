@@ -479,7 +479,25 @@ class Database:
             return response
 
     class Newsletter:
-        pass
+        def is_subscribed(email):
+            query = f"""
+            SELECT EMAIL
+            FROM {Table.newsletter}
+            WHERE EMAIL = '{email}'
+            """
+            response = Database.query(query)
+            if response:
+                return response[0][0] is not None
+            else:
+                return False
+
+        def insert(email):
+            query = f"""
+            INSERT INTO {Table.newsletter} (EMAIL)
+            VALUES ('{email}')
+            """
+            response = Database.query(query)
+            return response
 
     class Counterpoint:
         class Order:
@@ -2622,4 +2640,4 @@ class Database:
 
 
 if __name__ == '__main__':
-    print(Database.Shopify.Discount.get(1165344506023))
+    print(Database.Newsletter.is_subscribed('mclarkvazquez@gmail.com'))
