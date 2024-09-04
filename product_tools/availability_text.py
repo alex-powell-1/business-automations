@@ -1,4 +1,4 @@
-from setup.query_engine import QueryEngine as db
+from database import Database as db
 from datetime import datetime
 
 text = 'Ready for pickup in 1-2 business hours.'

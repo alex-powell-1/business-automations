@@ -16,7 +16,7 @@ import random
 from database import Database
 
 from setup import creds
-from setup.query_engine import QueryEngine as db
+from database import Database as db
 from setup.utilities import convert_to_utc
 from setup.utilities import VirtualRateLimiter
 

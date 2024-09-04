@@ -4,7 +4,7 @@ import pandas
 
 from customer_tools.customers import is_current_customer, Customer
 from setup import creds
-from setup.query_engine import QueryEngine as db
+from database import Database as db
 from setup.error_handler import ScheduledTasksErrorHandler as error_handler
 
 console_logging = True

@@ -1,4 +1,4 @@
-from setup.query_engine import QueryEngine as db
+from database import Database as db
 
 
 def get_redemptions(card_no, start_date, end_date=None, before=False, log_individually=False):

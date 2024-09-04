@@ -32,7 +32,8 @@ class RabbitMQConsumer:
         self.logger.info(f'Beginning processing for Draft #{draft_id}')
 
         try:
-            on_draft_created(draft_id)
+            # on_draft_created(draft_id)
+            pass
         except Exception as err:
             error_type = 'General Catch'
             self.error_handler.add_error_v(

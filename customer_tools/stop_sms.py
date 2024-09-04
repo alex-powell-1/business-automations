@@ -2,7 +2,7 @@ from datetime import datetime
 
 import setup.date_presets
 from setup import date_presets
-from setup.query_engine import QueryEngine as db
+from database import Database as db
 
 
 def remove_refunds_from_sms_funnel(log_file):

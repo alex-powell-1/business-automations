@@ -12,7 +12,7 @@ from database import Database
 
 from setup import creds
 from setup.creds import Column, Table, Metafield
-from setup.query_engine import QueryEngine as db
+from database import Database as db
 from setup.utilities import get_product_images, convert_to_utc, parse_custom_url, get_filesize
 
 from setup.error_handler import Logger, ErrorHandler

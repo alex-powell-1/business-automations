@@ -1,4 +1,4 @@
-from setup.query_engine import QueryEngine as db
+from database import Database as db
 import pandas as pd
 from mlxtend.preprocessing import TransactionEncoder
 from mlxtend.frequent_patterns import apriori

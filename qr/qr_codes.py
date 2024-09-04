@@ -1,6 +1,5 @@
-from setup import creds
 from setup.creds import Table
-from setup.query_engine import QueryEngine as db
+from database import Database as db
 from setup.error_handler import ProcessInErrorHandler
 
 

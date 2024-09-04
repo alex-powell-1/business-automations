@@ -14,7 +14,7 @@ from setup.utilities import PhoneNumber, local_to_utc
 from datetime import datetime
 
 
-verbose_print = False
+verbose_print = True
 
 
 class Shopify:
@@ -1988,12 +1988,8 @@ class Shopify:
             )
             return response.data
 
-        def delete(id='', all=False):
-            if all:
-                ids = Shopify.Webhook.get(ids_only=True)
-                for i in ids:
-                    Shopify.Webhook.delete(i)
-            else:
+        def delete(id: int = None):
+            if id:
                 response = Shopify.Query(
                     document=Shopify.Webhook.queries,
                     variables={'id': f'{Shopify.Webhook.prefix}/{id}'},
@@ -2001,6 +1997,17 @@ class Shopify:
                 )
                 Database.Shopify.Webhook.delete(id)
                 return response.data
+            # Delete all webhooks
+            ids = Shopify.Webhook.get(ids_only=True)
+            for i in ids:
+                Shopify.Webhook.delete(i)
+
+        def refresh():
+            """Delete all webhooks and create all default webhooks"""
+            # Delete all webhooks from Shopify
+            Shopify.Webhook.delete()
+            # Create all default webhooks
+            Shopify.Webhook.create()
 
     class Discount:
         queries = './integration/queries/discounts.graphql'
@@ -2182,4 +2189,4 @@ def refresh_order(tkt_no):
 
 
 if __name__ == '__main__':
-    pass
+    Shopify.Webhook.refresh()

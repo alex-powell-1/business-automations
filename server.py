@@ -24,7 +24,7 @@ from setup.utilities import convert_utc_to_local
 from setup import creds, authorization
 from setup.creds import Route
 from setup.email_engine import Email
-from setup.error_handler import ProcessInErrorHandler, ProcessOutErrorHandler, LeadFormErrorHandler
+from setup.error_handler import ProcessInErrorHandler, ProcessOutErrorHandler, LeadFormErrorHandler, Logger
 from integration.shopify_api import Shopify
 from qr.qr_codes import QR
 
@@ -47,6 +47,24 @@ CORS(app)
 
 # When False, app is served by Waitress
 dev = False
+
+
+class EventID:
+    """Shopify Event ID class to prevent duplicate processing of webhooks."""
+
+    draft_update = 0
+    draft_create = 0
+    order_create = 0
+    customer_create = 0
+    customer_update = 0
+    product_update = 0
+
+
+@app.before_request
+def log_request():
+    """Log incoming requests to the console."""
+    logger = Logger(log_file=f'{creds.log_main}/server/log_.log')
+    logger.info(f'{request.method} - {request.url}')
 
 
 # Error handling functions
@@ -424,7 +442,7 @@ def newsletter_signup():
 
 
 @app.route(Route.sms, methods=['POST'])
-@limiter.limit('40/minute')  # rate limiter
+@limiter.limit('10/second')  # rate limiter
 def incoming_sms():
     """Webhook route for incoming SMS/MMS messages to be used with client messenger application.
     Saves all incoming SMS/MMS messages to share drive csv file."""
@@ -537,11 +555,17 @@ def incoming_sms():
 
 
 @app.route(Route.Shopify.order_create, methods=['POST'])
-@limiter.limit('20/minute')
+@limiter.limit('10/second')
 def shopify():
     """Webhook route for incoming orders. Sends to RabbitMQ queue for asynchronous processing"""
     webhook_data = request.json
     headers = request.headers
+
+    event_id = headers.get('X-Shopify-Event-Id')
+    if event_id == EventID.order_create:
+        return jsonify({'success': True}), 200
+    EventID.order_create = event_id
+
     data = request.get_data()
     hmac_header = headers.get('X-Shopify-Hmac-Sha256')
     if not hmac_header:
@@ -582,13 +606,20 @@ def shopify():
 
 
 @app.route(Route.Shopify.draft_create, methods=['POST'])
-@limiter.limit('20/minute')
+@limiter.limit('10/second')
 def shopify_draft_create():
     """Webhook route for newly created draft orders. Sends to RabbitMQ queue for asynchronous processing"""
     webhook_data = request.json
     headers = request.headers
+
+    event_id = headers.get('X-Shopify-Event-Id')
+    if event_id == EventID.draft_create:
+        return jsonify({'success': True}), 200
+    EventID.draft_create = event_id
+
     data = request.get_data()
     hmac_header = headers.get('X-Shopify-Hmac-Sha256')
+    print('DRAFT ORDER RECEIVED.')
     if not hmac_header:
         return jsonify({'error': 'Unauthorized'}), 401
     verified = verify_webhook(data, hmac_header)
@@ -620,11 +651,17 @@ def shopify_draft_create():
 
 
 @app.route(Route.Shopify.draft_update, methods=['POST'])
-@limiter.limit('20/minute')
+@limiter.limit('10/second')
 def shopify_draft_update():
     """Webhook route for updated draft orders. Sends to RabbitMQ queue for asynchronous processing"""
     webhook_data = request.json
     headers = request.headers
+
+    event_id = headers.get('X-Shopify-Event-Id')
+    if event_id == EventID.draft_update:
+        return jsonify({'success': True}), 200
+    EventID.draft_update = event_id
+
     data = request.get_data()
     hmac_header = headers.get('X-Shopify-Hmac-Sha256')
     if not hmac_header:
@@ -658,11 +695,17 @@ def shopify_draft_update():
 
 
 @app.route(Route.Shopify.customer_create, methods=['POST'])
-@limiter.limit('60/minute')
+@limiter.limit('10/second')
 def shopify_customer_create():
     """Webhook route for updated customers. Sends to RabbitMQ queue for asynchronous processing"""
     webhook_data = request.json
     headers = request.headers
+
+    event_id = headers.get('X-Shopify-Event-Id')
+    if event_id == EventID.customer_create:
+        return jsonify({'success': True}), 200
+    EventID.customer_create = event_id
+
     data = request.get_data()
     hmac_header = headers.get('X-Shopify-Hmac-Sha256')
 
@@ -721,10 +764,16 @@ def shopify_customer_create():
 
 
 @app.route(Route.Shopify.customer_update, methods=['POST'])
-@limiter.limit('60/minute')
+@limiter.limit('10/second')
 def shopify_customer_update():
     """Webhook route for updated customers. Sends to RabbitMQ queue for asynchronous processing"""
     headers = request.headers
+
+    event_id = headers.get('X-Shopify-Event-Id')
+    if event_id == EventID.customer_update:
+        return jsonify({'success': True}), 200
+    EventID.customer_update = event_id
+
     data = request.get_data()
     hmac_header = headers.get('X-Shopify-Hmac-Sha256')
 
@@ -755,11 +804,17 @@ def shopify_customer_update():
 
 
 @app.route(Route.Shopify.product_update, methods=['POST'])
-@limiter.limit('60/minute')
+@limiter.limit('10/second')
 def shopify_product_update():
     """Webhook route for updated products. Sends to RabbitMQ queue for asynchronous processing"""
     webhook_data = request.json
     headers = request.headers
+
+    event_id = headers.get('X-Shopify-Event-Id')
+    if event_id == EventID.product_update:
+        return jsonify({'success': True}), 200
+    EventID.product_update = event_id
+
     data = request.get_data()
     hmac_header = headers.get('X-Shopify-Hmac-Sha256')
     if not hmac_header:
@@ -1006,7 +1061,15 @@ if __name__ == '__main__':
         while running:
             try:
                 print('Flask Server Running')
-                serve(app, host='localhost', port=creds.flask_port)
+                serve(
+                    app,
+                    host='localhost',
+                    port=creds.flask_port,
+                    threads=8,
+                    max_request_body_size=1073741824,  # 1 GB
+                    max_request_header_size=8192,  # 8 KB
+                    connection_limit=1000,  # Increase the connection limit
+                )
             except Exception as e:
                 print('Error serving Flask app: ', e)
                 ProcessInErrorHandler.error_handler.add_error_v(

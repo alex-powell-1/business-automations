@@ -1,6 +1,6 @@
 from reporting import product_reports
 import matplotlib.pyplot as plt
-from setup.query_engine import QueryEngine as db
+from database import Database as db
 from setup.date_presets import *
 
 

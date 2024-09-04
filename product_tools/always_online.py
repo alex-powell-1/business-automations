@@ -1,4 +1,4 @@
-from setup.query_engine import QueryEngine as db
+from database import Database as db
 from setup import create_log
 from setup import creds
 from setup.date_presets import *

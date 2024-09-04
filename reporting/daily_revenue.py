@@ -1,12 +1,5 @@
-import datetime
-
-from dateutil.relativedelta import relativedelta
-from jinja2 import Template
-
-from setup import creds
 from setup import date_presets
-from setup import email_engine
-from setup.query_engine import QueryEngine as db
+from database import Database as db
 
 
 def get_stores():

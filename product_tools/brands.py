@@ -1,4 +1,4 @@
-from setup.query_engine import QueryEngine as db
+from database import Database as db
 from setup import creds
 from datetime import datetime
 from setup.error_handler import ScheduledTasksErrorHandler as error_handler

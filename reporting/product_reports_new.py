@@ -6,7 +6,7 @@ from setup import creds
 from setup import email_engine
 from setup.admin_report_html import boiler_plate, css, body_start, body_end
 from setup.date_presets import *
-from setup.query_engine import QueryEngine as db
+from database import Database as db
 
 
 def get_quantity_available(item):

@@ -1,7 +1,6 @@
 from database import Database
 import concurrent.futures
 from integration.shopify_api import Shopify
-from setup import creds
 from setup.creds import Table, Metafield
 from datetime import datetime
 import json
@@ -15,29 +14,26 @@ class Customers:
     logger = ProcessOutErrorHandler.logger
     error_handler = ProcessOutErrorHandler.error_handler
 
-    def __init__(self, last_sync=datetime(1970, 1, 1), test_mode=False):
+    def __init__(self, last_sync=datetime(1970, 1, 1), test_mode=False, test_customer=None):
         self.last_sync = last_sync
         self.test_mode = test_mode
-        self.db = Database.db
+        self.test_customer = test_customer
         self.update_customer_timestamps()
         self.customers = self.get_updated_customers()
-        for x in self.customers:
-            print(x)
 
     def update_customer_timestamps(self):
         """Update the last maintenance date for all customers in the Middleware who have been updated in
         the AR_LOY_PT_ADJ_HIST table since the last sync."""
 
         query = f"""SELECT CUST_NO FROM AR_LOY_PT_ADJ_HIST WHERE LST_MAINT_DT > '{self.last_sync}'"""
-        response = self.db.query(query)
+        response = Database.query(query)
         customer_list = [x[0] for x in response] if response is not None else []
         if customer_list:
             Database.Counterpoint.Customer.update_timestamps(customer_list)
 
     def get_updated_customers(self):
         if self.test_mode:
-            test_customer = '115714'
-            response = Database.Counterpoint.Customer.get(customer_no=test_customer)
+            response = Database.Counterpoint.Customer.get(customer_no=self.test_customer)
         else:
             response = Database.Counterpoint.Customer.get(last_sync=self.last_sync)
 
@@ -48,14 +44,14 @@ class Customers:
         SELECT CUST_NO FROM {Table.CP.customers}
         WHERE IS_ECOMM_CUST = 'Y'
         """
-        response = self.db.query(query)
+        response = Database.query(query)
         return [x[0] for x in response] if response is not None else []
 
     def get_mw_customers(self):
         query = f"""
         SELECT CUST_NO FROM {Table.Middleware.customers}
         """
-        response = self.db.query(query)
+        response = Database.query(query)
         return [x[0] for x in response] if response is not None else []
 
     def process_deletes(self):
@@ -75,9 +71,9 @@ class Customers:
         if self.customers:
             success_count = 0
             fail_count = {'number': 0, 'customer': []}
-            Customers.logger.header(f'Syncing Customers: {len(self.customers)}')
+            queue_size = len(self.customers)
+            Customers.logger.header(f'Syncing Customers: {queue_size}')
             for customer in self.customers:
-                # customer.process()
                 try:
                     with concurrent.futures.ThreadPoolExecutor(max_workers=40) as executor:
                         executor.submit(customer.process())
@@ -91,6 +87,8 @@ class Customers:
                     fail_count['customer'].append(customer.cp_cust_no)
                 else:
                     success_count += 1
+                finally:
+                    queue_size -= 1
 
             if fail_count['number'] > 0:
                 Customers.logger.warn(f'Customers failed to sync: {fail_count["number"]}')
@@ -103,13 +101,11 @@ class Customers:
 
     class Customer:
         def __init__(self, cust_result):
-            self.db = Database.db
             self.cp_cust_no = cust_result[0]
             self.fst_nam = str(cust_result[1]).title()
             self.lst_nam = str(cust_result[2]).title()
             self.email = cust_result[3] if cust_result[3] else f'{self.cp_cust_no}@store.com'
             self.phone = cust_result[4]
-            print(self.phone, type(self.phone))
             self.loyalty_points = float(cust_result[5])
             self.loyalty_point_id = cust_result[6]
             self.address_line_1: str = cust_result[7]
@@ -446,7 +442,6 @@ class Customers:
 
             if self.shopify_cust_no:
                 response = update()
-                print(f'\n\nUpdate Response:\n{response}')
             else:
                 response = create()
 
@@ -509,7 +504,7 @@ class Customers:
             SET LOY_PTS_BAL = 0, LST_MAINT_DT = GETDATE()
             WHERE CUST_NO = '{self.cp_cust_no}'
             """
-            response = self.db.query(query)
+            response = Database.query(query)
             if response['code'] == 200:
                 Customers.logger.success(f'Customer {self.cp_cust_no} loyalty points set to 0.')
             else:
@@ -531,7 +526,5 @@ class Customers:
 
 
 if __name__ == '__main__':
-    # customers = Customers()
-    # # customers.backfill_middleware()
-    # customers.sync()
-    pass
+    customers = Customers()
+    customers.sync()

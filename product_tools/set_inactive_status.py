@@ -3,7 +3,7 @@ from datetime import datetime
 from product_tools.products import Product
 from setup.create_log import create_product_log
 from setup.creds import inactive_product_log
-from setup.query_engine import QueryEngine as db
+from database import Database as db
 from setup.error_handler import ScheduledTasksErrorHandler as error_handler
 
 # Inactive Product Automation

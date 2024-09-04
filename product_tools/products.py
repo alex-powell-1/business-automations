@@ -4,7 +4,7 @@ from big_commerce import big_products
 from setup import creds
 from setup import date_presets
 from setup.create_log import *
-from setup.query_engine import QueryEngine as db
+from database import Database as db
 from setup.error_handler import ScheduledTasksErrorHandler as error_handler
 
 

@@ -3,7 +3,7 @@ import secrets
 import string
 from datetime import datetime, timezone
 from email import utils
-from setup.query_engine import QueryEngine as db
+from database import Database as db
 import requests
 
 from setup import creds

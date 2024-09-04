@@ -1,4 +1,4 @@
-from setup.query_engine import QueryEngine as db
+from database import Database as db
 from docxtpl import DocxTemplate, InlineImage
 from datetime import datetime as dt
 from setup.error_handler import LeadFormErrorHandler, ProcessInErrorHandler
@@ -12,7 +12,6 @@ from datetime import datetime
 from product_tools.products import Product
 from traceback import format_exc as tb
 from setup.order_engine import utc_to_local
-from email import utils
 from integration.cp_api import OrderAPI
 from database import Database
 

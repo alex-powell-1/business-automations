@@ -1,7 +1,7 @@
 from setup import creds
 from setup.create_log import *
 from setup.date_presets import *
-from setup.query_engine import QueryEngine as db
+from database import Database as db
 
 
 def get_ecomm_flags(item_number):

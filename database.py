@@ -1,6 +1,5 @@
 from setup import creds
-from setup.creds import Column, Table, Metafield
-from setup import query_engine
+from setup.creds import Table, Metafield
 from setup.utilities import PhoneNumber
 from setup.error_handler import ProcessOutErrorHandler
 from datetime import datetime, timedelta
@@ -11,7 +10,6 @@ import pyodbc
 
 
 class Database:
-    db = query_engine.QueryEngine
     SERVER = creds.SERVER
     DATABASE = creds.DATABASE
     USERNAME = creds.USERNAME

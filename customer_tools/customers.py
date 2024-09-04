@@ -6,7 +6,7 @@ import requests
 from setup import creds
 from setup import date_presets
 from setup.create_log import create_customer_log
-from setup.query_engine import QueryEngine as db
+from database import Database as db
 from setup.error_handler import ScheduledTasksErrorHandler as error_handler
 from database import Database
 
@@ -809,5 +809,40 @@ def set_contact_1():
     error_handler.logger.info(f'Set Contact 1: Finished at {datetime.now():%H:%M:%S}')
 
 
+def get_duplicate_customers(email=False, phone=False):
+    if not email and not phone:
+        return 'Please select email or phone'
+    if email:
+        query = """
+        SELECT *
+        FROM AR_CUST 
+        WHERE EMAIL_ADRS_1 in (SELECT EMAIL_ADRS_1
+                                FROM AR_CUST
+                                GROUP BY EMAIL_ADRS_1
+                                HAVING COUNT(EMAIL_ADRS_1) > 1)
+        ORDER BY EMAIL_ADRS_1
+        """
+        response = db.query(query, mapped=True)
+        if response is not None:
+            return response
+        else:
+            return 'No Duplicates Found'
+    if phone:
+        query = """
+        SELECT *
+        FROM AR_CUST 
+        WHERE PHONE_1 in (SELECT PHONE_1
+                            FROM AR_CUST
+                            GROUP BY PHONE_1
+                            HAVING COUNT(PHONE_1) > 1)
+        ORDER BY PHONE_1
+        """
+        response = db.query(query, mapped=True)
+        if response is not None:
+            return response
+        else:
+            return 'No Duplicates Found'
+
+
 if __name__ == '__main__':
-    print(lookup_customer(phone_number='828-234-2265', email_address='alexpoddw@gmail.com'))
+    print(get_duplicate_customers(email=True))

@@ -10,9 +10,9 @@ class Logger:
             self.log_file += '.log'
 
     def update_log_file(self):
-        # Replace the last part of old log file with the new log file
-        new_ending = f'{datetime.now():%m_%d_%y}.log'
-        self.log_file = f'{'_'.join(self.log_file.split('_')[0:-3])}_{new_ending}'
+        new_ending = f'log_{datetime.now():%m_%d_%y}.log'
+        last_ending = self.log_file.split('/')[-1]
+        self.log_file = self.log_file.replace(last_ending, new_ending)
 
     def header(self, message: str):
         self.update_log_file()

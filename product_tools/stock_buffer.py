@@ -1,4 +1,4 @@
-from setup.query_engine import QueryEngine as db
+from database import Database as db
 from product_tools.products import get_products_by_category, Product
 from datetime import datetime
 from setup import creds
