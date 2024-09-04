@@ -8,7 +8,7 @@ from setup.barcode_engine import generate_barcode
 from setup import utilities
 from datetime import datetime
 from reporting import product_reports
-from integration.database import Database
+from database import Database
 
 from setup.admin_report_html import boiler_plate, css, body_start, body_end
 from setup.date_presets import today

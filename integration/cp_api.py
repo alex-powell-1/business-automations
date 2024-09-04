@@ -3,7 +3,7 @@ import requests
 import json
 import math
 from datetime import datetime, timezone
-from integration.database import Database
+from database import Database
 from setup.error_handler import ProcessInErrorHandler
 from customer_tools import customers
 from integration.shopify_api import Shopify

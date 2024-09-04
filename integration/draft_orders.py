@@ -1,6 +1,6 @@
 from integration.shopify_api import Shopify
 from integration.cp_api import HoldOrder
-from integration.database import Database
+from database import Database
 
 from traceback import format_exc as tb
 

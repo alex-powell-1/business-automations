@@ -4,7 +4,7 @@ from twilio.base.exceptions import TwilioRestException
 from twilio.rest import Client
 
 from setup import creds
-from integration.database import Database
+from database import Database
 from setup.error_handler import SMSErrorHandler
 from setup.utilities import PhoneNumber
 from traceback import format_exc as tb

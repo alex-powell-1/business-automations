@@ -17,7 +17,7 @@ from setup import barcode_engine as barcode_engine
 from setup.utilities import PhoneNumber, combine_images
 from setup.sms_engine import SMSEngine
 from integration.shopify_api import Shopify
-from integration.database import Database
+from database import Database
 
 from shutil import copy
 

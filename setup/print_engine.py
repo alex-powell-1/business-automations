@@ -14,7 +14,7 @@ from traceback import format_exc as tb
 from setup.order_engine import utc_to_local
 from email import utils
 from integration.cp_api import OrderAPI
-from integration.database import Database
+from database import Database
 
 test_mode = False
 

@@ -1,7 +1,7 @@
 from datetime import datetime
 from time import sleep
 from setup.webDAV_engine import WebDAVJsonClient
-from integration.database import Database
+from database import Database
 from setup.error_handler import ProcessOutErrorHandler
 import requests
 from setup import creds

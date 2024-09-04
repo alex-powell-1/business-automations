@@ -12,7 +12,7 @@ from setup import creds
 from setup.email_engine import Email
 from setup.utilities import PhoneNumber
 from setup.sms_engine import SMSEngine
-from integration.database import Database
+from database import Database
 from setup.error_handler import LeadFormErrorHandler
 from customer_tools.customers import lookup_customer, add_new_customer
 

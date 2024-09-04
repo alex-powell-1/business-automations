@@ -8,7 +8,7 @@ from setup import date_presets
 from setup.create_log import create_customer_log
 from setup.query_engine import QueryEngine as db
 from setup.error_handler import ScheduledTasksErrorHandler as error_handler
-from integration.database import Database
+from database import Database
 
 from setup.utilities import PhoneNumber
 

@@ -1,4 +1,4 @@
-from integration.database import Database
+from database import Database
 import concurrent.futures
 from integration.shopify_api import Shopify
 from setup import creds

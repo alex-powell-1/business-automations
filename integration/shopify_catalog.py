@@ -8,7 +8,7 @@ import requests
 from integration.shopify_api import Shopify
 from PIL import Image, ImageOps
 
-from integration.database import Database
+from database import Database
 
 from setup import creds
 from setup.creds import Column, Table, Metafield
@@ -51,7 +51,7 @@ class Catalog:
 
     def get_products(self):
         # Get data for self.cp_items and self.mw_items
-        counterpoint_items = db.query(f"SELECT ITEM_NO FROM {Table.CP.items} WHERE IS_ECOMM_ITEM = 'Y'")
+        counterpoint_items = db.query(f"SELECT ITEM_NO FROM {Table.CP.Item.table} WHERE IS_ECOMM_ITEM = 'Y'")
         self.cp_items = [x[0] for x in counterpoint_items] if counterpoint_items else []
 
         middleware_items = db.query(f'SELECT ITEM_NO FROM {Table.Middleware.products}')
@@ -63,19 +63,19 @@ class Catalog:
         # Get all products that have been updated since the last sync
         if self.inventory_only:
             query = f"""
-            SELECT ITEM.ITEM_NO, ITEM.{Column.CP.Product.binding_id} as 'Binding ID'
-            FROM {Table.CP.items} ITEM
+            SELECT ITEM.ITEM_NO, ITEM.{Table.CP.Item.Column.binding_id} as 'Binding ID'
+            FROM {Table.CP.Item.table} ITEM
             INNER JOIN IM_INV INV on ITEM.ITEM_NO = INV.ITEM_NO
             WHERE INV.LST_MAINT_DT > '{self.last_sync: %Y-%m-%d %H:%M:%S}' and
-            ITEM.{Column.CP.Product.web_enabled} = 'Y'
-            ORDER BY {Column.CP.Product.binding_id} DESC"""
+            ITEM.{Table.CP.Item.Column.web_enabled} = 'Y'
+            ORDER BY {Table.CP.Item.Column.binding_id} DESC"""
         else:
             query = f"""
-            SELECT ITEM_NO, ITEM.{Column.CP.Product.binding_id} as 'Binding ID'
-            FROM {Table.CP.items} ITEM
+            SELECT ITEM_NO, ITEM.{Table.CP.Item.Column.binding_id} as 'Binding ID'
+            FROM {Table.CP.Item.table} ITEM
             WHERE ITEM.LST_MAINT_DT > '{self.last_sync: %Y-%m-%d %H:%M:%S}' and
-            ITEM.{Column.CP.Product.web_enabled} = 'Y'
-            ORDER BY {Column.CP.Product.binding_id} DESC
+            ITEM.{Table.CP.Item.Column.web_enabled} = 'Y'
+            ORDER BY {Table.CP.Item.Column.binding_id} DESC
             """
         response = db.query(query)
         if response is not None:
@@ -97,10 +97,10 @@ class Catalog:
                         # Get Parent to Process.
                         query = f"""
                         SELECT ITEM_NO
-                        FROM {Table.CP.items}
-                        WHERE {Column.CP.Product.binding_id} = '{binding_id}' AND 
-                        {Column.CP.Product.web_enabled} = 'Y' 
-                        AND {Column.CP.Product.is_parent} = 'Y'"""
+                        FROM {Table.CP.Item.table}
+                        WHERE {Table.CP.Item.Column.binding_id} = '{binding_id}' AND 
+                        {Table.CP.Item.Column.web_enabled} = 'Y' 
+                        AND {Table.CP.Item.Column.is_parent} = 'Y'"""
 
                         get_parent_response = db.query(query)
 
@@ -249,16 +249,16 @@ class Catalog:
             #     if binding_list:
             #         if len(binding_list) > 1:
             #             binding_list = tuple(binding_list)
-            #             where_filter = f' or {Column.CP.Product.binding_id} in {binding_list}'
+            #             where_filter = f' or {Table.CP.Item.Column.binding_id} in {binding_list}'
             #         else:
-            #             where_filter = f" or {Column.CP.Product.binding_id} = '{binding_list[0]}'"
+            #             where_filter = f" or {Table.CP.Item.Column.binding_id} = '{binding_list[0]}'"
             #     else:
             #         where_filter = ''
             #     query = f"""
-            #         UPDATE {Table.CP.items}
+            #         UPDATE {Table.CP.Item.table}
             #         SET LST_MAINT_DT = GETDATE()
             #         WHERE (ITEM_NO in {sku_list} {where_filter}) AND
-            #         {Column.CP.Product.web_enabled} = 'Y'"""
+            #         {Table.CP.Item.Column.web_enabled} = 'Y'"""
 
             #     db.query(query)
 
@@ -891,8 +891,8 @@ class Catalog:
 
                 query = f"""
                 SELECT ITEM_NO
-                FROM {Table.CP.items}
-                WHERE {Column.CP.Product.binding_id} = '{self.binding_id}' and IS_ECOMM_ITEM = 'Y'
+                FROM {Table.CP.Item.table}
+                WHERE {Table.CP.Item.Column.binding_id} = '{self.binding_id}' and IS_ECOMM_ITEM = 'Y'
                 ORDER BY PRC_1
                 """
                 # Get children and append to child list in order of price
@@ -1130,8 +1130,8 @@ class Catalog:
                 target_item = min(self.variants, key=lambda x: x.price_1).sku
 
                 query = f"""
-                UPDATE {Table.CP.items}
-                SET {Column.CP.Product.is_parent} = '{flag}', LST_MAINT_DT = GETDATE()
+                UPDATE {Table.CP.Item.table}
+                SET {Table.CP.Item.Column.is_parent} = '{flag}', LST_MAINT_DT = GETDATE()
                 WHERE ITEM_NO = '{target_item}'
                 """
                 db.query(query)
@@ -1174,15 +1174,15 @@ class Catalog:
                         if self.is_bound:
                             # Bound product: use binding key and parent variant
                             query = f"""
-                            UPDATE {Table.CP.items}
-                            SET {Column.CP.Product.web_title} = '{self.long_descr}'
-                            WHERE {Column.CP.Product.binding_id} = '{self.binding_id}' and {Column.CP.Product.is_parent} = 'Y'"""
+                            UPDATE {Table.CP.Item.table}
+                            SET {Table.CP.Item.Column.web_title} = '{self.long_descr}'
+                            WHERE {Table.CP.Item.Column.binding_id} = '{self.binding_id}' and {Table.CP.Item.Column.is_parent} = 'Y'"""
 
                         # Single Product use sku
                         else:
                             query = f"""
-                            UPDATE {Table.CP.items}
-                            SET {Column.CP.Product.web_title} = '{self.long_descr}'
+                            UPDATE {Table.CP.Item.table}
+                            SET {Table.CP.Item.Column.web_title} = '{self.long_descr}'
                             WHERE ITEM_NO = '{self.sku}'"""
 
                             db.query(query)
@@ -1195,14 +1195,14 @@ class Catalog:
                         # For bound products, look for matching web titles OUTSIDE of the current binding id
                         query = f"""
                         SELECT COUNT(ITEM_NO)
-                        FROM {Table.CP.items}
-                        WHERE {Column.CP.Product.web_title} = '{self.web_title.replace("'", "''")}' AND {Column.CP.Product.binding_id} != '{self.binding_id}' AND IS_ECOMM_ITEM = 'Y'"""
+                        FROM {Table.CP.Item.table}
+                        WHERE {Table.CP.Item.Column.web_title} = '{self.web_title.replace("'", "''")}' AND {Table.CP.Item.Column.binding_id} != '{self.binding_id}' AND IS_ECOMM_ITEM = 'Y'"""
 
                     else:
                         query = f"""
                         SELECT COUNT(ITEM_NO)
-                        FROM {Table.CP.items}
-                        WHERE {Column.CP.Product.web_title} = '{self.web_title.replace("'", "''")}' AND IS_ECOMM_ITEM = 'Y'"""
+                        FROM {Table.CP.Item.table}
+                        WHERE {Table.CP.Item.Column.web_title} = '{self.web_title.replace("'", "''")}' AND IS_ECOMM_ITEM = 'Y'"""
 
                     response = db.query(query)
 
@@ -1223,16 +1223,16 @@ class Catalog:
                             if self.is_bound:
                                 # Update Parent Variant
                                 query = f"""
-                                UPDATE {Table.CP.items}
-                                SET {Column.CP.Product.web_title} = '{self.web_title.replace("'", "''")}'
-                                WHERE {Column.CP.Product.binding_id} = '{self.binding_id}' and {Column.CP.Product.is_parent} = 'Y'
+                                UPDATE {Table.CP.Item.table}
+                                SET {Table.CP.Item.Column.web_title} = '{self.web_title.replace("'", "''")}'
+                                WHERE {Table.CP.Item.Column.binding_id} = '{self.binding_id}' and {Table.CP.Item.Column.is_parent} = 'Y'
                                 
                                 """
                             else:
                                 # Update Single Product
                                 query = f"""
-                                UPDATE {Table.CP.items}
-                                SET {Column.CP.Product.web_title} = '{self.web_title.replace("'", "''")}'
+                                UPDATE {Table.CP.Item.table}
+                                SET {Table.CP.Item.Column.web_title} = '{self.web_title.replace("'", "''")}'
                                 WHERE ITEM_NO = '{self.sku}'"""
                             db.query(query)
 
@@ -1288,8 +1288,8 @@ class Catalog:
                                 )
                                 child.web_title = ''
                                 query = f"""
-                                UPDATE {Table.CP.items}
-                                SET {Column.CP.Product.web_title} = NULL
+                                UPDATE {Table.CP.Item.table}
+                                SET {Table.CP.Item.Column.web_title} = NULL
                                 WHERE ITEM_NO = '{child.sku}'"""
                                 db.query(query)
 
@@ -2282,9 +2282,9 @@ class Catalog:
             print('Entering Remove Parent Function of Product Class')
             """Remove parent status from all children"""
             query = f"""
-                    UPDATE {Table.CP.items} 
-                    SET {Column.CP.Product.is_parent} = 'N', LST_MAINT_DT = GETDATE()
-                    WHERE {Column.CP.Product.binding_id} = '{self.binding_id}'
+                    UPDATE {Table.CP.Item.table} 
+                    SET {Table.CP.Item.Column.is_parent} = 'N', LST_MAINT_DT = GETDATE()
+                    WHERE {Table.CP.Item.Column.binding_id} = '{self.binding_id}'
                     """
             db.query(query)
             print('Parent status removed from all children.')
@@ -2316,8 +2316,8 @@ class Catalog:
                 """
             else:
                 query = f"""
-                SELECT {Column.CP.Product.binding_id}
-                FROM {Table.CP.items}
+                SELECT {Table.CP.Item.Column.binding_id}
+                FROM {Table.CP.Item.table}
                 WHERE ITEM_NO = '{sku}'
                 """
             response = db.query(query)
@@ -2334,10 +2334,10 @@ class Catalog:
             if remove_current:
                 # Remove Parent Status from all children.
                 remove_parent_query = f"""
-                        UPDATE {Table.CP.items} 
-                        SET {Column.CP.Product.is_parent} = 'N', 
+                        UPDATE {Table.CP.Item.table} 
+                        SET {Table.CP.Item.Column.is_parent} = 'N', 
                         LST_MAINT_DT = GETDATE()
-                        WHERE {Column.CP.Product.binding_id} = '{binding_id}'
+                        WHERE {Table.CP.Item.Column.binding_id} = '{binding_id}'
                         """
                 remove_parent_response = db.query(remove_parent_query)
                 if remove_parent_response['code'] == 200:
@@ -2349,8 +2349,8 @@ class Catalog:
 
             # Set Parent Status for new parent.
             query = f"""
-            UPDATE {Table.CP.items}
-            SET {Column.CP.Product.is_parent} = 'Y'
+            UPDATE {Table.CP.Item.table}
+            SET {Table.CP.Item.Column.is_parent} = 'Y'
             WHERE ITEM_NO = '{parent_sku}'
             """
             set_parent_response = db.query(query)
@@ -2391,9 +2391,9 @@ class Catalog:
                     # include retail price for each item
                     query = f"""
                     SELECT ITEM_NO, PRC_1
-                    FROM {Table.CP.items}
-                    WHERE {Column.CP.Product.binding_id} = '{binding_id}' AND 
-                    {Column.CP.Product.web_enabled} = 'Y'
+                    FROM {Table.CP.Item.table}
+                    WHERE {Table.CP.Item.Column.binding_id} = '{binding_id}' AND 
+                    {Table.CP.Item.Column.web_enabled} = 'Y'
                     """
                     response = db.query(query)
                     if response is not None:
@@ -2402,9 +2402,9 @@ class Catalog:
                 elif counterpoint:
                     query = f"""
                     SELECT ITEM_NO
-                    FROM {Table.CP.items}
-                    WHERE {Column.CP.Product.binding_id} = '{binding_id}' AND
-                    {Column.CP.Product.web_enabled} = 'Y'
+                    FROM {Table.CP.Item.table}
+                    WHERE {Table.CP.Item.Column.binding_id} = '{binding_id}' AND
+                    {Table.CP.Item.Column.web_enabled} = 'Y'
                     """
                     response = db.query(query)
                     if response is not None:
@@ -2424,7 +2424,7 @@ class Catalog:
         def update_timestamp(sku):
             """Updates the LST_MAINT_DT field in Counterpoint for a given SKU."""
             query = f"""
-            UPDATE {Table.CP.items}
+            UPDATE {Table.CP.Item.table}
             SET LST_MAINT_DT = GETDATE()
             WHERE ITEM_NO = '{sku}'
             """
@@ -2765,7 +2765,7 @@ class Catalog:
                 
                 SELECT MW.ID as 'mw_db_id(0)', 
                 ITEM.USR_PROF_ALPHA_16 as 'Binding ID(1)', 
-                ISNULL(ITEM.{Column.CP.Product.is_parent}, 'N') as 'Is Parent(2)', 
+                ISNULL(ITEM.{Table.CP.Item.Column.is_parent}, 'N') as 'Is Parent(2)', 
                 MW.PRODUCT_ID as 'Product ID (3)', 
                 MW.VARIANT_ID as 'Variant ID(4)', 
                 ITEM.USR_PROF_ALPHA_17 as 'VARIANT NAME(5)', 
@@ -2783,7 +2783,7 @@ class Catalog:
                                 
                 ITEM.USR_PROF_ALPHA_27 as 'SORT ORDER(13)', 
                                 
-                ITEM.{Column.CP.Product.web_title} as 'WEB_TITLE(14)', 
+                ITEM.{Table.CP.Item.Column.web_title} as 'WEB_TITLE(14)', 
                 ITEM.ADDL_DESCR_2 as 'META_TITLE(15)', 
                 USR_PROF_ALPHA_21 as 'META_DESCRIPTION(16)', 
                 EC_ITEM_DESCR.HTML_DESCR as 'HTML_DESCRIPTION(17)', 
@@ -2805,12 +2805,12 @@ class Catalog:
                 ITEM.LONG_DESCR as 'LONG_DESCR(28)', 
                 USR_PROF_ALPHA_26 as 'TAGS(29)', 
                                 
-                {Column.CP.Product.alt_text_1} as 'ALT_TEXT_1(30)', 
-                {Column.CP.Product.alt_text_2} as 'ALT_TEXT_2(31)', 
-                {Column.CP.Product.alt_text_3} as 'ALT_TEXT_3(32)', 
-                {Column.CP.Product.alt_text_4} as 'ALT_TEXT_4(33)', 
+                {Table.CP.Item.Column.alt_text_1} as 'ALT_TEXT_1(30)', 
+                {Table.CP.Item.Column.alt_text_2} as 'ALT_TEXT_2(31)', 
+                {Table.CP.Item.Column.alt_text_3} as 'ALT_TEXT_3(32)', 
+                {Table.CP.Item.Column.alt_text_4} as 'ALT_TEXT_4(33)', 
                                 
-                {Column.CP.Product.botanical_name} as 'BOTANICAL_NAM(34)', 
+                {Table.CP.Item.Column.botanical_name} as 'BOTANICAL_NAM(34)', 
                 ZONE_MIN as 'CLIMATE_ZONE MIN(35)',
                 ZONE_MAX as 'CLIMATE_ZONE MAX(36)',
                 PROF_ALPHA_3 as 'PLANT_TYPE(37)', 
@@ -2893,12 +2893,12 @@ class Catalog:
                 MW.CF_IN_STORE_ONLY as 'CUSTOM_IN_STORE_ONLY_ID(106)',
                 ITEM.PROF_COD_2 as 'Size Unit(107)', 
                 ITEM.USR_VIDEO as 'VIDEOS(108)',
-                {Column.CP.Product.is_on_sale} as 'IS_ON_SALE(109)',
+                {Table.CP.Item.Column.is_on_sale} as 'IS_ON_SALE(109)',
                 MW.CF_IS_ON_SALE as 'CUSTOM_IS_ON_SALE_ID(110)',
-                {Column.CP.Product.sale_description} as 'SALE_DESCRIPTION(111)',
+                {Table.CP.Item.Column.sale_description} as 'SALE_DESCRIPTION(111)',
                 MW.CF_SALE_DESCR as 'CUSTOM_ON_SALE_DESCRIPTION_ID(112)'
 
-                FROM {Table.CP.items} ITEM
+                FROM {Table.CP.Item.table} ITEM
                 LEFT OUTER JOIN IM_PRC PRC ON ITEM.ITEM_NO=PRC.ITEM_NO
                 LEFT OUTER JOIN IM_INV INV ON ITEM.ITEM_NO=INV.ITEM_NO
                 LEFT OUTER JOIN EC_ITEM_DESCR ON ITEM.ITEM_NO=EC_ITEM_DESCR.ITEM_NO
@@ -3272,7 +3272,7 @@ class Catalog:
                 def get_item_no_from_image_name(image_name):
                     def get_binding_id(item_no):
                         query = f"""
-                               SELECT {Column.CP.Product.binding_id} FROM {Table.CP.items}
+                               SELECT {Table.CP.Item.Column.binding_id} FROM {Table.CP.Item.table}
                                WHERE ITEM_NO = '{item_no}'
                                """
                         response = db.query(query)
@@ -3313,7 +3313,7 @@ class Catalog:
                 # currently there are only 4 counterpoint fields for descriptions.
                 if self.number < 5:
                     query = f"""
-                           SELECT {str(f'USR_PROF_ALPHA_{self.number + 21}')} FROM {Table.CP.items}
+                           SELECT {str(f'USR_PROF_ALPHA_{self.number + 21}')} FROM {Table.CP.Item.table}
                            WHERE ITEM_NO = '{self.sku}'
                            """
                     response = db.query(query)

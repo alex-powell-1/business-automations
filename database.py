@@ -19,7 +19,7 @@ class Database:
     error_handler = ProcessOutErrorHandler.error_handler
     logger = ProcessOutErrorHandler.logger
 
-    def query(query):
+    def query(query, mapped=False):
         """Runs Query Against SQL Database. Use Commit Kwarg for updating database"""
         connection = pyodbc.connect(
             f'DRIVER={{ODBC Driver 18 for SQL Server}};SERVER={Database.SERVER};PORT=1433;DATABASE={Database.DATABASE};'
@@ -60,10 +60,32 @@ class Database:
                 Database.query(query)
             else:
                 sql_data = {'code': f'{e.args[0]}', 'message': f'{e.args[1]}', 'query': query}
+        else:
+            if mapped:
+                if sql_data:
+                    code = 200
+                    message = 'success'
+                    # print all the cursor properties
+                    column_response = cursor.description
+                    mapped_response = []  # list of dictionaries
+                    row_count = len(sql_data)
+                    for row in sql_data:
+                        row_dict = {}
+                        for i, column in enumerate(row):
+                            column_name = column_response[i][0]
+                            row_dict[column_name] = column
+                        mapped_response.append(row_dict)
+                else:
+                    code = 201
+                    message = 'No results found'
+                    row_count = 0
+                    mapped_response = None
 
-        cursor.close()
-        connection.close()
-        return sql_data if sql_data else None
+                sql_data = {'code': code, 'message': message, 'rows': row_count, 'data': mapped_response}
+        finally:
+            cursor.close()
+            connection.close()
+            return sql_data if sql_data else None
 
     def create_tables():
         tables = {
@@ -491,11 +513,15 @@ class Database:
             else:
                 return False
 
-        def insert(email):
-            query = f"""
-            INSERT INTO {Table.newsletter} (EMAIL)
-            VALUES ('{email}')
-            """
+        def insert(email, date=None):
+            if not date:
+                query = f"""
+                INSERT INTO {Table.newsletter} (EMAIL)
+                VALUES ('{email}')"""
+            else:
+                query = f"""
+                INSERT INTO {Table.newsletter} (EMAIL, CREATED_DT)
+                VALUES ('{email}', '{date}')"""
             response = Database.query(query)
             return response
 
@@ -529,9 +555,9 @@ class Database:
                 """Returns a list of unique and validated binding IDs from the IM_ITEM table."""
 
                 response = Database.query(
-                    f'SELECT DISTINCT {Column.CP.Product.binding_id} '
-                    f"FROM {Table.CP.items} WHERE {Column.CP.Product.web_enabled} = 'Y'"
-                    f'AND {Column.CP.Product.binding_id} IS NOT NULL'
+                    f'SELECT DISTINCT {Table.CP.Item.Column.binding_id} '
+                    f"FROM {Table.CP.Item.table} WHERE {Table.CP.Item.Column.web_enabled} = 'Y'"
+                    f'AND {Table.CP.Item.Column.binding_id} IS NOT NULL'
                 )
 
                 def valid(binding_id):
@@ -589,7 +615,7 @@ class Database:
                     where_filter = f" WHERE ITEM_NO = '{items[0]}'"
 
                 query = f"""
-                    UPDATE {Table.CP.items}
+                    UPDATE {Table.CP.Item.table}
                     SET IS_ON_SALE = '{status}', LST_MAINT_DT = GETDATE()
                     """
                 if description:
@@ -612,39 +638,39 @@ class Database:
 
             def update(payload):
                 """FOR PRODUCTS_UPDATE WEBHOOK ONLY. Normal updates from shopify_catalog.py use sync()"""
-                query = f'UPDATE {Table.CP.items} SET '
+                query = f'UPDATE {Table.CP.Item.table} SET '
                 # Item Status
                 if 'status' in payload:
                     if payload['status'] == 'active':
-                        query += f"{Column.CP.Product.web_visible} = 'Y', "
+                        query += f"{Table.CP.Item.Column.web_visible} = 'Y', "
                     else:
-                        query += f"{Column.CP.Product.web_visible} = 'N', "
+                        query += f"{Table.CP.Item.Column.web_visible} = 'N', "
                 # Web Title
                 if 'title' in payload:
                     title = payload['title'].replace("'", "''")[:80]  # 80 char limit
-                    query += f"{Column.CP.Product.web_title} = '{title}', "
+                    query += f"{Table.CP.Item.Column.web_title} = '{title}', "
 
                 # SEO Data
                 if 'meta_title' in payload:
                     meta_title = payload['meta_title'].replace("'", "''")[:80]  # 80 char limit
-                    query += f"{Column.CP.Product.meta_title} = '{meta_title}', "
+                    query += f"{Table.CP.Item.Column.meta_title} = '{meta_title}', "
                 if 'meta_description' in payload:
                     meta_description = payload['meta_description'].replace("'", "''")[:160]  # 160 char limit
-                    query += f"{Column.CP.Product.meta_description} = '{meta_description}', "
+                    query += f"{Table.CP.Item.Column.meta_description} = '{meta_description}', "
 
                 # Image Alt Text
                 if 'alt_text_1' in payload:
                     alt_text_1 = payload['alt_text_1'].replace("'", "''")[:160]  # 160 char limit
-                    query += f"{Column.CP.Product.alt_text_1} = '{alt_text_1}', "
+                    query += f"{Table.CP.Item.Column.alt_text_1} = '{alt_text_1}', "
                 if 'alt_text_2' in payload:
                     alt_text_2 = payload['alt_text_2'].replace("'", "''")[:160]  # 160 char limit
-                    query += f"{Column.CP.Product.alt_text_2} = '{alt_text_2}', "
+                    query += f"{Table.CP.Item.Column.alt_text_2} = '{alt_text_2}', "
                 if 'alt_text_3' in payload:
                     alt_text_3 = payload['alt_text_3'].replace("'", "''")[:160]  # 160 char limit
-                    query += f"{Column.CP.Product.alt_text_3} = '{alt_text_3}', "
+                    query += f"{Table.CP.Item.Column.alt_text_3} = '{alt_text_3}', "
                 if 'alt_text_4' in payload:
                     alt_text_4 = payload['alt_text_4'].replace("'", "''")[:160]  # 160 char limit
-                    query += f"{Column.CP.Product.alt_text_4} = '{alt_text_4}', "
+                    query += f"{Table.CP.Item.Column.alt_text_4} = '{alt_text_4}', "
 
                 # The following Metafields require an ID to be maintained in the middleware.
                 # Check for ID in the respective column. If exists, just update the CP product table.
@@ -756,10 +782,10 @@ class Database:
                     def get():
                         """Returns a list of SKUs and URLS for all videos in Counterpoint."""
                         query = f"""
-                        SELECT ITEM_NO, {Column.CP.Product.videos} 
-                        FROM {Table.CP.items}
-                        WHERE {Column.CP.Product.videos} IS NOT NULL AND
-                        {Column.CP.Product.web_enabled} = 'Y'
+                        SELECT ITEM_NO, {Table.CP.Item.Column.videos} 
+                        FROM {Table.CP.Item.table}
+                        WHERE {Table.CP.Item.Column.videos} IS NOT NULL AND
+                        {Table.CP.Item.Column.web_enabled} = 'Y'
                         """
                         response = Database.query(query)
                         all_videos = [[x[0], x[1]] for x in response] if response else []
@@ -783,7 +809,7 @@ class Database:
                     for i in rule.items:
                         # Add Sale Item Flag and Sale Description to Items
                         query = f"""
-                        UPDATE {Table.CP.items}
+                        UPDATE {Table.CP.Item.table}
                         SET IS_ON_SALE = 'Y', SALE_DESCR = '{rule.badge_text}', LST_MAINT_DT = GETDATE()
                         WHERE ITEM_NO = '{i}'
                         """
@@ -1554,10 +1580,10 @@ class Database:
 
         class Product:
             def get_by_category(cp_category=None, cp_subcategory=None):
-                query = f"""SELECT ITEM_NO FROM {Table.CP.items} 
-                WHERE {Column.CP.Product.web_enabled} = 'Y' AND 
-                ({Column.CP.Product.binding_id} IS NULL OR
-                {Column.CP.Product.is_parent} = 'Y') AND 
+                query = f"""SELECT ITEM_NO FROM {Table.CP.Item.table} 
+                WHERE {Table.CP.Item.Column.web_enabled} = 'Y' AND 
+                ({Table.CP.Item.Column.binding_id} IS NULL OR
+                {Table.CP.Item.Column.is_parent} = 'Y') AND 
                 """
                 if cp_category and cp_subcategory:
                     query += f" CATEG_COD = '{cp_category}' AND SUBCAT_COD = '{cp_subcategory}'"
@@ -2640,4 +2666,5 @@ class Database:
 
 
 if __name__ == '__main__':
-    print(Database.Newsletter.is_subscribed('mclarkvazquez@gmail.com'))
+    response = Database.query("SELECT * FROM SN_SHOP_PROD WHERE BINDING_ID = 'B0001asdf'", mapped=True)
+    print(response)

@@ -1,7 +1,7 @@
 import pandas
 
 from setup.big_products import bc_get_variant, bc_update_product
-from integration.database import Database
+from database import Database
 from setup.log_engine import create_product_log
 from setup import creds
 from datetime import datetime

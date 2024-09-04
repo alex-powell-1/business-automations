@@ -1,7 +1,7 @@
 import requests
 
 import setup.utilities as utilities
-from integration.database import Database
+from database import Database
 from setup import creds
 import setup.date_presets as date_presets
 from customer_tools.customers import lookup_customer

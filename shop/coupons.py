@@ -6,7 +6,7 @@ from setup.error_handler import ScheduledTasksErrorHandler as error_handler
 
 from integration.shopify_api import Shopify
 from setup.utilities import utc_to_local
-from integration.database import Database
+from database import Database
 
 
 def generate_random_code(length):

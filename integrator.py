@@ -1,6 +1,6 @@
 from integration.shopify_catalog import Catalog
 from integration.shopify_customers import Customers
-from integration.database import Database
+from database import Database
 from integration import interface
 
 from setup import date_presets
@@ -19,7 +19,7 @@ class Integrator:
     logger = ProcessOutErrorHandler.logger
 
     def __init__(self):
-        self.last_sync = get_last_sync(file_name='last_sync_integrator.txt')
+        self.last_sync = get_last_sync(file_name='./integration/last_sync_integrator.txt')
         self.catalog = Catalog(last_sync=self.last_sync)
         self.customers = Customers(last_sync=self.last_sync)
 
@@ -45,7 +45,7 @@ class Integrator:
         self.logger.header('Sync Starting')
         self.customers.sync()
         self.catalog.sync(initial=initial)
-        set_last_sync(file_name='last_sync_integrator.txt', start_time=start_sync_time)
+        set_last_sync(file_name='./integration/last_sync_integrator.txt', start_time=start_sync_time)
         completion_time = (datetime.now() - start_sync_time).seconds
         Integrator.logger.info(f'Sync completion time: {completion_time} seconds')
         if Integrator.error_handler.errors:

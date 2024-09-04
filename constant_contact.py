@@ -9,7 +9,7 @@ import webbrowser
 
 import urllib.parse
 
-from integration.database import Database
+from database import Database
 
 from setup.error_handler import Logger, ErrorHandler
 
@@ -17,7 +17,7 @@ import multiprocessing
 
 from promise import Promise
 
-REDIRECT_URI = 'http://localhost:41022'
+REDIRECT_URI = 'http://localhost:41022/auth'
 REQUEST_TIMEOUT = 350
 
 logger = Logger(log_file=f'{creds.log_main}/constant_contact.log')
@@ -169,11 +169,11 @@ def refresh_access_token():
     return response.json()
 
 
-def get_authorized():
+def get_authorized(app):
     def get_authorization(resolve, reject):
         invoke_event('authorizationRequested')
 
-        @app.route('/')
+        @app.route('/auth')
         def authorize():
             if not request.args.get('code'):
                 invoke_event('authorizationError', error='ConstantContact API did not return authorization code.')
@@ -226,7 +226,7 @@ def get_access_token_without_code(force_refresh=False):
     if not force_refresh and CUR_ACCESS_TOKEN:
         return CUR_ACCESS_TOKEN
 
-    authorization_code = get_authorized().get()
+    authorization_code = get_authorized(app).get()
     if authorization_code is None:
         invoke_event('authorizationError', error='ConstantContact API did not return authorization code.')
         return None

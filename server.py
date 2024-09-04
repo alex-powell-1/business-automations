@@ -28,7 +28,7 @@ from setup.error_handler import ProcessInErrorHandler, ProcessOutErrorHandler, L
 from integration.shopify_api import Shopify
 from qr.qr_codes import QR
 
-from integration.database import Database
+from database import Database
 from traceback import format_exc as tb
 
 import uuid_utils as uuidu

@@ -5,7 +5,7 @@ import json
 from time import sleep
 from setup.error_handler import ProcessOutErrorHandler
 from pathlib import Path
-from integration.database import Database
+from database import Database
 from shortuuid import ShortUUID
 from setup.email_engine import Email
 from customer_tools.customers import lookup_customer

@@ -16,7 +16,7 @@ class Inventory:
     error_handler = ErrorHandler(logger)
 
     def __init__(self, verbose=False):
-        self.last_sync = get_last_sync(file_name='last_sync_inventory.txt')
+        self.last_sync = get_last_sync(file_name='./integration/last_sync_inventory.txt')
         self.verbose = verbose
         self.catalog = Catalog(last_sync=self.last_sync, inventory_only=True, verbose=self.verbose)
 
@@ -26,7 +26,7 @@ class Inventory:
     def sync(self, initial=False):
         start_sync_time = datetime.now()
         self.catalog.sync()
-        set_last_sync(file_name='last_sync_inventory.txt', start_time=start_sync_time)
+        set_last_sync(file_name='./integration/last_sync_inventory.txt', start_time=start_sync_time)
         # completion_time = (datetime.now() - start_sync_time).seconds
         # Inventory.logger.info(f'Inventory Sync completion time: {completion_time} seconds')
         if Inventory.error_handler.errors:

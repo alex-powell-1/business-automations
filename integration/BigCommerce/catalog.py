@@ -13,7 +13,7 @@ from PIL import Image, ImageOps
 from requests.auth import HTTPDigestAuth
 import random
 
-from integration.database import Database
+from database import Database
 
 from setup import creds
 from setup.query_engine import QueryEngine as db

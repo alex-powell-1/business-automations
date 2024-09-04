@@ -3,7 +3,7 @@ from datetime import datetime
 
 from customer_tools.customers import Customer
 from setup import creds
-from integration.database import Database
+from database import Database
 from setup.sms_engine import SMSEngine
 from sms import sms_queries
 from sms.sms_messages import salutations

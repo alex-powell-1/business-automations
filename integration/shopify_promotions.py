@@ -1,5 +1,5 @@
 from datetime import datetime
-from integration.database import Database
+from database import Database
 from setup.error_handler import ProcessOutErrorHandler
 from setup.utilities import convert_to_utc
 from integration.BigCommerce.catalog import Catalog
