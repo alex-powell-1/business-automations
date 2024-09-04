@@ -14,7 +14,7 @@ from setup.utilities import PhoneNumber, local_to_utc
 from datetime import datetime
 
 
-verbose_print = True
+verbose_print = False
 
 
 class Shopify:

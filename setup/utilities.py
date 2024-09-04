@@ -74,6 +74,11 @@ def get_filesize(filepath):
         return file_size
 
 
+def scrub(string: str):
+    """Sanitize a string for use in filenames."""
+    return re.sub('[^A-Za-z0-9 ]+', '', string)
+
+
 def get_product_images():
     ProcessOutErrorHandler.logger.info('Getting product images.')
     product_images = []

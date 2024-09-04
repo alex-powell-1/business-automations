@@ -11,7 +11,7 @@ from PIL import Image, ImageOps
 from database import Database
 
 from setup import creds
-from setup.creds import Column, Table, Metafield
+from setup.creds import Table, Metafield
 from database import Database as db
 from setup.utilities import get_product_images, convert_to_utc, parse_custom_url, get_filesize
 
@@ -819,6 +819,7 @@ class Catalog:
             self.in_store_only: bool = False
             self.is_preorder = False
             self.is_preorder_only = False
+            self.is_workshop = False
             self.preorder_message = None
             self.preorder_release_date = None
             self.alt_text_1 = None
@@ -1105,6 +1106,9 @@ class Catalog:
             self.shopify_collections = self.get_shopify_collections()
 
             self.type = self.get_collection_names()[0] if self.get_collection_names() else None
+
+            if self.tags == 'Workshop':
+                self.is_workshop = True
 
             # Now all images are in self.images list and are in order by binding img first then variant img
             # Add all images and videos to self.media list
@@ -1826,7 +1830,7 @@ class Catalog:
                 variant_payload = {
                     'inventoryItem': {
                         'cost': child.cost,
-                        'tracked': True if not self.is_preorder else False,
+                        'tracked': True if not (self.is_preorder or self.is_workshop) else False,
                         'requiresShipping': True,
                         'sku': child.sku,
                     },
@@ -1901,7 +1905,7 @@ class Catalog:
                         'measurement': {},
                         'requiresShipping': True,
                         'sku': self.sku,
-                        'tracked': True if not self.is_preorder else False,
+                        'tracked': True if not (self.is_preorder or self.is_workshop) else False,
                     },
                     'inventoryPolicy': 'DENY',
                     'price': self.default_price,

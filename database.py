@@ -85,6 +85,11 @@ class Database:
             connection.close()
             return sql_data if sql_data else None
 
+    def sql_scrub(string):
+        """Sanitize a string for use in SQL queries."""
+        escapes = ''.join([chr(char) for char in range(1, 32)])
+        return string.strip().replace("'", "''").translate(str.maketrans('', '', escapes))
+
     def create_tables():
         tables = {
             'design_leads': f"""
@@ -277,16 +282,16 @@ class Database:
                 verbose = False
 
                 if self.name:
-                    name = self.name.replace("'", "''")
+                    name = Database.sql_scrub(self.name)
                     name = name[:80]  # Truncate name to 80 characters
 
                 if self.message:
-                    body = self.message.replace("'", "''")
+                    body = Database.sql_scrub(self.message)
                     body = body[:1000]  # Truncate body to 1000 characters
 
                 if self.response_text:
                     error_message = str(self.response_text)
-                    error_message = error_message.replace("'", "''")
+                    error_message = Database.sql_scrub(error_message)
                     error_message = error_message[:255]
 
                 if self.media:
@@ -352,11 +357,11 @@ class Database:
             campaign=None,
             username=None,
         ):
-            body = body.replace("'", "''")
+            body = Database.sql_scrub(body)
             body = body[:1000]  # 1000 char limit
 
             if name is not None:
-                name = name.replace("'", "''")
+                name = Database.sql_scrub(name)
 
             to_phone = PhoneNumber(to_phone).to_cp()
             from_phone = PhoneNumber(from_phone).to_cp()
@@ -563,6 +568,13 @@ class Database:
 
                 return [binding[0] for binding in response if valid(binding[0])] if response else []
 
+            def get_by_category(category):
+                query = f"""
+                SELECT * FROM {Table.CP.Item.table}
+                WHERE CATEG_COD = '{category}'
+                """
+                return Database.query(query, mapped=True)
+
             def set_sale_price(sku, price):
                 query = f"""
                 UPDATE {Table.CP.item_prices}
@@ -645,29 +657,29 @@ class Database:
                         query += f"{Table.CP.Item.Column.web_visible} = 'N', "
                 # Web Title
                 if 'title' in payload:
-                    title = payload['title'].replace("'", "''")[:80]  # 80 char limit
+                    title = Database.sql_scrub(payload['title'])[:80]  # 80 char limit
                     query += f"{Table.CP.Item.Column.web_title} = '{title}', "
 
                 # SEO Data
                 if 'meta_title' in payload:
-                    meta_title = payload['meta_title'].replace("'", "''")[:80]  # 80 char limit
+                    meta_title = Database.sql_scrub(payload['meta_title'])[:80]  # 80 char limit
                     query += f"{Table.CP.Item.Column.meta_title} = '{meta_title}', "
                 if 'meta_description' in payload:
-                    meta_description = payload['meta_description'].replace("'", "''")[:160]  # 160 char limit
+                    meta_description = Database.sql_scrub(payload['meta_description'])[:160]  # 160 char limit
                     query += f"{Table.CP.Item.Column.meta_description} = '{meta_description}', "
 
                 # Image Alt Text
                 if 'alt_text_1' in payload:
-                    alt_text_1 = payload['alt_text_1'].replace("'", "''")[:160]  # 160 char limit
+                    alt_text_1 = Database.sql_scrub(payload['alt_text_1'])[:160]  # 160 char limit
                     query += f"{Table.CP.Item.Column.alt_text_1} = '{alt_text_1}', "
                 if 'alt_text_2' in payload:
-                    alt_text_2 = payload['alt_text_2'].replace("'", "''")[:160]  # 160 char limit
+                    alt_text_2 = Database.sql_scrub(payload['alt_text_2'])[:160]  # 160 char limit
                     query += f"{Table.CP.Item.Column.alt_text_2} = '{alt_text_2}', "
                 if 'alt_text_3' in payload:
-                    alt_text_3 = payload['alt_text_3'].replace("'", "''")[:160]  # 160 char limit
+                    alt_text_3 = Database.sql_scrub(payload['alt_text_3'])[:160]  # 160 char limit
                     query += f"{Table.CP.Item.Column.alt_text_3} = '{alt_text_3}', "
                 if 'alt_text_4' in payload:
-                    alt_text_4 = payload['alt_text_4'].replace("'", "''")[:160]  # 160 char limit
+                    alt_text_4 = Database.sql_scrub(payload['alt_text_4'])[:160]  # 160 char limit
                     query += f"{Table.CP.Item.Column.alt_text_4} = '{alt_text_4}', "
 
                 # The following Metafields require an ID to be maintained in the middleware.
@@ -731,6 +743,22 @@ class Database:
                     Database.error_handler.add_error_v(error=error)
                     raise Exception(error)
 
+            def update_timestamp(item_no):
+                query = f"""
+                UPDATE IM_ITEM
+                SET LST_MAINT_DT = GETDATE()
+                WHERE ITEM_NO = '{item_no}'
+                """
+                response = Database.query(query)
+                if response['code'] == 200:
+                    Database.logger.success(f'Timestamp updated for {item_no}.')
+                elif response['code'] == 201:
+                    Database.logger.warn(f'No rows affected for {item_no}.')
+                else:
+                    error = f'Error updating timestamp for {item_no}. \n Query: {query}\nResponse: {response}'
+                    Database.error_handler.add_error_v(error=error)
+                    raise Exception(error)
+
             class HTMLDescription:
                 table = 'EC_ITEM_DESCR'
 
@@ -742,34 +770,38 @@ class Database:
                     """
                     return Database.query(query)
 
-                def update(item_no, description):
-                    description = description.replace("'", "''")
+                def update(item_no, html_descr, update_timestamp=True):
+                    html_descr = Database.sql_scrub(html_descr)
                     query = f"""
-                    UPDATE {Database.Counterpoint.Product.HTMLDescription.table}
-                    SET HTML_DESCR = '{description}'
+                    UPDATE EC_ITEM_DESCR
+                    SET HTML_DESCR = '{html_descr}'
                     WHERE ITEM_NO = '{item_no}'
                     """
                     response = Database.query(query)
                     if response['code'] == 200:
                         Database.logger.success(f'HTML Description updated for item {item_no}.')
+                        if update_timestamp:
+                            Database.Counterpoint.Product.update_timestamp(item_no)
                     elif response['code'] == 201:
-                        Database.Counterpoint.Product.HTMLDescription.insert(item_no, description)
+                        Database.logger.warn(f'No HTML Description found for ITEM_NO: {item_no}.')
+                        Database.Counterpoint.Product.HTMLDescription.insert(item_no, html_descr, update_timestamp)
                     else:
-                        error = f'Error updating HTML Description for item {item_no}. \nQuery: {query}\nResponse: {response}'
+                        error = f'Error updating HTML Description for item {item_no}. \n Query: {query}\nResponse: {response}'
                         Database.error_handler.add_error_v(error=error)
                         raise Exception(error)
 
-                def insert(item_no, description):
-                    description = description.replace("'", "''")
-
+                def insert(item_no, html_descr, update_timestamp=True):
+                    html_descr = Database.sql_scrub(html_descr)
                     query = f"""
                     INSERT INTO {Database.Counterpoint.Product.HTMLDescription.table} (ITEM_NO, HTML_DESCR, LST_MAINT_DT, 
                     LST_MAINT_USR_ID)
-                    VALUES ('{item_no}', '{description}', GETDATE(), 'AP')
+                    VALUES ('{item_no}', '{html_descr}', GETDATE(), 'AP')
                     """
                     response = Database.query(query)
                     if response['code'] == 200:
                         Database.logger.success(f'INSERT: HTML Description for {item_no}.')
+                        if update_timestamp:
+                            Database.Counterpoint.Product.update_timestamp(item_no)
                     else:
                         error = f'Error adding HTML Description for item {item_no}. \nQuery: {query}\nResponse: {response}'
                         Database.error_handler.add_error_v(error=error)
@@ -969,6 +1001,15 @@ class Database:
                     FROM {Table.CP.customer_ship_addresses}
                     WHERE CUST_NO = '{cust_no}'"""
                     return Database.query(query)
+
+                def insert(customer):
+                    columns = ', '.join([x for x in customer.keys()])
+                    values = ', '.join([f"'{x}'" for x in customer.values()])
+                    query = f"""
+                    INSERT INTO {Table.CP.customer_ship_addresses} ({columns}) VALUES({values})
+                    """
+                    response = Database.query(query)
+                    return response
 
         class Promotion:
             def get(group_code=None, ids_only=False):
@@ -1539,7 +1580,7 @@ class Database:
                 VALUES({category.collection_id if category.collection_id else 'NULL'}, 
                 {category.menu_id if category.menu_id else 'NULL'}, {category.cp_categ_id}, 
                 {category.cp_parent_id}, '{category.name}', {category.sort_order}, 
-                '{category.description.replace("'", "''")}', {1 if category.is_visible else 0}, 
+                '{Database.sql_scrub(category.description)}', {1 if category.is_visible else 0}, 
                 {category.image_size if category.image_size else 'NULL'},
                 '{category.lst_maint_dt:%Y-%m-%d %H:%M:%S}')
                 """
@@ -1988,7 +2029,7 @@ class Database:
                         '{image.file_path}', {image.product_id}, {image.shopify_id}, '{1 if image.is_thumbnail else 0}', 
                         '{image.number}', '{image.sort_order}', '{image.is_binding_image}',
                         {f"'{image.binding_id}'" if image.binding_id else 'NULL'}, '{image.is_variant_image}',
-                        {f"'{image.description.replace("'", "''")}'" if image.description != '' else 'NULL'},
+                        {f"'{Database.sql_scrub(image.description)}'" if image.description != '' else 'NULL'},
                         {image.size})"""
                         insert_img_response = Database.query(img_insert)
                         if insert_img_response['code'] == 200:
@@ -2009,7 +2050,7 @@ class Database:
                         SORT_ORDER = '{image.sort_order}', IS_BINDING_IMAGE = '{image.is_binding_image}',
                         BINDING_ID = {f"'{image.binding_id}'" if image.binding_id else 'NULL'},
                         IS_VARIANT_IMAGE = '{image.is_variant_image}',
-                        DESCR = {f"'{image.description.replace("'", "''")}'" if
+                        DESCR = {f"'{Database.sql_scrub(image.description)}'" if
                                     image.description != '' else 'NULL'}, SIZE = '{image.size}'
                         WHERE ID = {image.db_id}"""
 
@@ -2320,7 +2361,7 @@ class Database:
             def insert(values):
                 number_of_validations = len(values['VALIDATIONS'])
                 if values['DESCR']:
-                    values['DESCR'] = values['DESCR'].replace("'", "''")
+                    values['DESCR'] = Database.sql_scrub(values['DESCR'])
 
                 if number_of_validations > 0:
                     validation_columns = ', ' + ', '.join(

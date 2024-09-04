@@ -1,5 +1,4 @@
 import json
-import re
 import time
 import hmac
 import base64
@@ -62,9 +61,13 @@ class EventID:
 
 @app.before_request
 def log_request():
-    """Log incoming requests to the console."""
+    """Log incoming requests."""
+    if request.is_json:
+        preview = f'- {request.get_data().decode('utf-8')[:20]}'
+    else:
+        preview = ''
     logger = Logger(log_file=f'{creds.log_main}/server/log_.log')
-    logger.info(f'{request.method} - {request.url}')
+    logger.info(f'{request.method} - {request.url} {preview}')
 
 
 # Error handling functions
@@ -837,7 +840,10 @@ def shopify_product_update():
         json.dump(webhook_data, f)
 
     if item_no and description:
-        Database.Counterpoint.Product.HTMLDescription.update(item_no=item_no, description=description)
+        # Update product description in Counterpoint - Skip timestamp update (avoid loop)
+        Database.Counterpoint.Product.HTMLDescription.update(
+            item_no=item_no, description=description, update_timestamp=False
+        )
 
     # Get SEO data
     seo_data = Shopify.Product.SEO.get(product_id)
