@@ -937,6 +937,31 @@ class Database:
                 else:
                     return None
 
+            def merge_customer(from_cust_no, to_cust_no):
+                """Merges two customers in Counterpoint. from_cust_no will be merged into to_cust_no."""
+                query = f"""
+                DECLARE @fromCust varchar(50) = '{from_cust_no}'
+                DECLARE @toCust varchar(50) = '{to_cust_no}'
+                DECLARE @output varchar(1000)
+
+                UPDATE {Table.CP.Customers.table}
+                SET {Table.CP.Customers.Column.is_ecomm_customer} = 'N'
+                WHERE {Table.CP.Customers.Column.number} in (@fromCust, @toCust)
+
+                EXEC USP_AR_MERGE_CUST @fromCust, @toCust, @output
+
+                UPDATE {Table.CP.Customers.table}
+                SET {Table.CP.Customers.Column.is_ecomm_customer} = 'Y'
+                WHERE {Table.CP.Customers.Column.number} = @toCust"""
+
+                response = Database.query(query)
+                if response['code'] == 200:
+                    Database.logger.success(f'Customer {from_cust_no} merged into {to_cust_no}.')
+                else:
+                    error = f'Error merging customer {from_cust_no} into {to_cust_no}. \nQuery: {query}\nResponse: {response}'
+                    Database.error_handler.add_error_v(error=error)
+                    raise Exception(error)
+
             class Address:
                 def get(cust_no):
                     query = f"""
