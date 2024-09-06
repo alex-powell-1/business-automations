@@ -18,8 +18,9 @@ verbose_print = False
 
 
 class Shopify:
-    logger = ProcessOutErrorHandler.logger
-    error_handler = ProcessOutErrorHandler.error_handler
+    eh = ProcessOutErrorHandler
+    logger = eh.logger
+    error_handler = eh.error_handler
     token = creds.shopify_admin_token
     shop_url = creds.shopify_shop_url
     headers = {'X-Shopify-Access-Token': token, 'Content-Type': 'application/json'}
@@ -48,19 +49,19 @@ class Shopify:
                     f'User Error: {self.user_errors}\nResponse: {json.dumps(self.response, indent=4)}'
                 )
             if self.errors or self.user_errors:
-                print(f'\n\nVariables: \n\n{variables}\n\n')
-                print(f'Operation Name: {operation_name}\n\n')
-                print(f'User Errors: {self.user_errors}')
-                print(f'Errors: {self.errors}\n\n')
-                print(operation_name, self)
+                # print(f'\n\nVariables: \n\n{variables}\n\n')
+                # print(f'Operation Name: {operation_name}\n\n')
+                # print(f'User Errors: {self.user_errors}')
+                # print(f'Errors: {self.errors}\n\n')
+                # print(operation_name, self)
 
                 if self.user_errors:
                     print('Entering User Errors: ', self.user_errors)
                     for i in self.user_errors:
                         if operation_name.startswith('customer'):
                             if i == 'Email has already been taken':
-                                with open('./duplicate_emails.txt', 'a') as f:
-                                    print(f"Duplicate email: {variables['input']['email']}", file=f)
+                                with open('./logs/duplicates/emails.txt', 'a') as f:
+                                    print(f"{datetime.now()}, {variables['input']['email']}", file=f)
                                 # Remove email from variables
                                 if 'email' in variables['input']:
                                     del variables['input']['email']
@@ -73,8 +74,8 @@ class Shopify:
                                 return self.__init__(document, variables, operation_name)
 
                             elif i == 'Phone has already been taken':
-                                with open('./duplicate_phones.txt', 'a') as f:
-                                    print(f"Duplicate phone: {variables['input']['phone']}", file=f)
+                                with open('./logs/duplicates/phones.txt', 'a') as f:
+                                    print(f"{datetime.now()}, {variables['input']['phone']}", file=f)
                                 # Remove phone from variables
                                 if 'phone' in variables['input']:
                                     del variables['input']['phone']
@@ -501,6 +502,19 @@ class Shopify:
                 if order['name'] == tkt_no:
                     return order['id'].split('/')[-1]
 
+        def update_order(order_id, payload):
+            url = f'https://{Shopify.shop_url}/admin/api/2024-07/orders/{order_id}.json'
+            payload = {'order': {'id': order_id, **payload}}
+            response = requests.put(url=url, headers=Shopify.headers, json=payload)
+            return response.json()
+
+        def update_customer(order_id, customer_id):
+            customer = Shopify.Customer.get(customer_id, rest=True)
+            return Shopify.Order.update_order(order_id, {'customer': customer})
+
+        def remove_customer(order_id):
+            return Shopify.Order.update_order(order_id, {'customer': None})
+
         class Draft:
             queries = './integration/queries/draft_orders.graphql'
             prev_order_id = -1
@@ -616,7 +630,15 @@ class Shopify:
         queries = './integration/queries/customers.graphql'
         prefix = 'gid://shopify/Customer/'
 
-        def get(customer_id: int = None):
+        def get(customer_id: int = None, rest=False):
+            if rest:
+                if customer_id:
+                    response = requests.get(
+                        f'https://{Shopify.shop_url}/admin/api/2024-07/customers/{customer_id}.json',
+                        headers=Shopify.headers,
+                    )
+                    if response.status_code == 200:
+                        return response.json()['customer']
             if customer_id:
                 variables = {'id': f'gid://shopify/Customer/{customer_id}'}
                 response = Shopify.Query(
@@ -944,7 +966,7 @@ class Shopify:
 
             return {'media_ids': media_ids, 'option_ids': option_ids, 'meta_ids': meta_ids}
 
-        def delete(product_id: int = None, all=False):
+        def delete(product_id: int = None, all=False, eh=ProcessOutErrorHandler):
             if product_id:
                 response = Shopify.Query(
                     document=Shopify.Product.queries,
@@ -956,7 +978,7 @@ class Shopify:
                     if deleted_product_id == product_id:
                         Shopify.logger.success(f'Product {product_id} deleted from Shopify.')
                     else:
-                        print(f'No match. deleted_product_id: {deleted_product_id}, product_id: {product_id}')
+                        eh.logger(f'No match. deleted_product_id: {deleted_product_id}, product_id: {product_id}')
                 except:
                     Shopify.error_handler.add_error_v(error=f'Could not get deleted product ID: {response.data}')
 
@@ -969,7 +991,6 @@ class Shopify:
                         variables={'id': f'{Shopify.Product.prefix}{i}'},
                         operation_name='productDelete',
                     )
-                    print(response.data)
 
         def publish(product_id: int, online_store=True, POS=True, shop=True, inbox=True, google=True):
             if online_store:
@@ -2189,4 +2210,7 @@ def refresh_order(tkt_no):
 
 
 if __name__ == '__main__':
-    Shopify.Webhook.delete()
+    # shopify_cust_ids = Shopify.Customer.get()
+    # mw_cust_ids = Database.Counterpoint.Customer.get()
+
+    print(Shopify.Order.get(5664499564711))

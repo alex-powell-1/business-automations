@@ -4,7 +4,6 @@ from datetime import datetime
 
 from setup import creds
 from setup.error_handler import ScheduledTasksErrorHandler as error_handler
-from database import Database
 
 
 def offsite_backups():

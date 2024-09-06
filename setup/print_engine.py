@@ -94,18 +94,18 @@ class Printer:
             cust_no = OrderAPI.get_cust_no(order)
 
             # Get Basic Customer Info from Counterpoint if available
-            customer_res = Database.Counterpoint.Customer.get(customer_no=cust_no)
-            if not customer_res:
+            customer = Database.Counterpoint.Customer(cust_no)
+            if not customer.CUST_NO:
                 Printer.logger.warn(f'Customer {cust_no} not found in Counterpoint')
                 first_name = 'Web'
                 last_name = 'Customer'
                 email = 'No Email'
                 phone = 'No Phone'
             else:
-                first_name = customer_res[0][1] or 'Web'
-                last_name = customer_res[0][2] or 'Customer'
-                email = customer_res[0][3] or 'No Email'
-                phone = customer_res[0][4] or 'No Phone'
+                first_name = customer.FST_NAM or 'Web'
+                last_name = customer.LST_NAM or 'Customer'
+                email = customer.EMAIL_ADRS_1 or 'No Email'
+                phone = customer.PHONE_1 or 'No Phone'
 
             # Get Product List
             products = order['products']['url']
@@ -200,6 +200,7 @@ class Printer:
                         if 'gift_certificate_amount' in order
                         else 0,
                         'barcode': barcode,
+                        'status': order['status'],
                     }
 
                     doc.render(context)
@@ -228,4 +229,4 @@ class Printer:
 
 
 if __name__ == '__main__':
-    Printer.Order.print(5652402864295)
+    Printer.Order.print(5663865307303)

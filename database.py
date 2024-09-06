@@ -1,3 +1,4 @@
+import random
 from setup import creds
 from setup.creds import Table, Metafield
 from setup.utilities import PhoneNumber
@@ -53,7 +54,7 @@ class Database:
 
         except pyodbc.Error as e:
             if e.args[0] == '40001':
-                print('Deadlock Detected. Retrying Query')
+                Database.logger.warn('Deadlock Detected. Retrying Query')
                 sleep(1)
                 Database.query(query)
             else:
@@ -63,7 +64,6 @@ class Database:
                 if sql_data:
                     code = 200
                     message = 'success'
-                    # print all the cursor properties
                     column_response = cursor.description
                     mapped_response = []  # list of dictionaries
                     row_count = len(sql_data)
@@ -419,17 +419,13 @@ class Database:
             SET {creds.sms_subscribe_status} = 'Y'
             WHERE PHONE_1 = '{phone}' OR PHONE_2 = '{phone}'
             """
-            print(query)
             response = Database.query(query=query)
-            print(response)
             if response['code'] == 200:
                 query = f"""
                 INSERT INTO {Table.sms_event} (ORIGIN, CAMPAIGN, PHONE, CUST_NO, NAME, CATEGORY, EVENT_TYPE, MESSAGE)
                 VALUES ('{origin}', '{campaign}', '{phone}', '{cust_no}', '{name}', '{category}',
                 'Subscribe', 'SET {creds.sms_subscribe_status} = Y')"""
-                print(query)
                 response = Database.query(query)
-                print(response)
                 if response['code'] != 200:
                     Database.error_handler.add_error_v(f'Error subscribing {phone} to SMS')
 
@@ -444,17 +440,13 @@ class Database:
             SET {creds.sms_subscribe_status} = 'N'
             WHERE PHONE_1 = '{phone}' OR PHONE_2 = '{phone}'
             """
-            print(query)
             response = Database.query(query=query)
-            print(response)
             if response['code'] == 200:
                 query = f"""
                 INSERT INTO {Table.sms_event} (ORIGIN, CAMPAIGN, PHONE, CUST_NO, NAME, CATEGORY, EVENT_TYPE, MESSAGE)
                 VALUES ('{origin}', '{campaign}', '{phone}', '{cust_no}', '{name}', '{category}',
                 'Unsubscribe', 'SET {creds.sms_subscribe_status} = N')"""
-                print(query)
                 response = Database.query(query)
-                print(response)
                 if response['code'] != 200:
                     Database.error_handler.add_error_v(f'Error unsubscribing {phone} from SMS')
 
@@ -517,6 +509,7 @@ class Database:
                 return False
 
         def insert(email, date=None):
+            """Inserts an email into the newsletter subscriber table."""
             if not date:
                 query = f"""
                 INSERT INTO {Table.newsletter} (EMAIL)
@@ -530,7 +523,7 @@ class Database:
 
     class Counterpoint:
         class Order:
-            def delete(doc_id=None, tkt_no=None):
+            def delete(doc_id=None, tkt_no=None, eh=ProcessOutErrorHandler):
                 if doc_id:
                     query = f"""
                     DELETE FROM {Table.CP.orders}
@@ -545,12 +538,12 @@ class Database:
 
                 response = Database.query(query)
                 if response['code'] == 200:
-                    Database.logger.success(f'Order {doc_id or tkt_no} deleted from PS_DOC_HDR.')
+                    eh.logger.success(f'Order {doc_id or tkt_no} deleted from PS_DOC_HDR.')
                 elif response['code'] == 201:
-                    Database.logger.warn(f'Order {doc_id or tkt_no} not found in PS_DOC_HDR.')
+                    eh.logger.warn(f'Order {doc_id or tkt_no} not found in PS_DOC_HDR.')
                 else:
                     error = f'Error deleting order {doc_id or tkt_no} from PS_DOC_HDR. \n Query: {query}\nResponse: {response}'
-                    Database.error_handler.add_error_v(error=error)
+                    eh.error_handler.add_error_v(error=error)
                     raise Exception(error)
 
         class Product:
@@ -575,7 +568,19 @@ class Database:
                 """
                 return Database.query(query, mapped=True)
 
-            def set_sale_price(sku, price):
+            def get_total_sold(start_date, end_date, item_no):
+                query = f"""
+                SELECT sum(QTY_SOLD) AS '2022 QTY SOLD' from PS_TKT_HIST_LIN
+                WHERE ITEM_NO IN (SELECT ITEM_NO 
+                FROM IM_ITEM
+                WHERE ITEM_NO = '{item_no}'
+                and BUS_DAT >= '{start_date}' AND BUS_DAT < '{end_date}'"""
+
+                response = Database.query(query)
+                if response:
+                    return response[0][0]
+
+            def set_sale_price(sku, price, eh=ProcessOutErrorHandler):
                 query = f"""
                 UPDATE {Table.CP.item_prices}
                 SET PRC_2 = {price}, LST_MAINT_DT = GETDATE()
@@ -583,42 +588,42 @@ class Database:
                 """
                 response = Database.query(query)
                 if response['code'] == 200:
-                    Database.logger.success(f'Sale price set for {sku}.')
+                    eh.logger.success(f'Sale price set for {sku}.')
                 elif response['code'] == 201:
-                    Database.logger.warn(f'Set Sale Price: No rows affected for {sku}.')
+                    eh.logger.warn(f'Set Sale Price: No rows affected for {sku}.')
                 else:
                     error = f'Error setting sale price for {sku}. \n Query: {query}\nResponse: {response}'
-                    Database.error_handler.add_error_v(error=error)
+                    eh.error_handler.add_error_v(error=error)
                     raise Exception(error)
 
-            def remove_sale_price(items):
+            def remove_sale_price(items, eh=ProcessOutErrorHandler):
                 if len(items) > 1:
                     where_filter = f'WHERE ITEM_NO IN {tuple(items)}'
                 else:
                     where_filter = f"WHERE ITEM_NO = '{items[0]}'"
 
-                    query = f"""
-                    UPDATE IM_PRC
-                    SET PRC_2 = NULL, LST_MAINT_DT = GETDATE()
-                    {where_filter}
-            
-                    UPDATE IM_ITEM
-                    SET IS_ON_SALE = 'N', SALE_DESCR = NULL, LST_MAINT_DT = GETDATE()
-                    {where_filter}
-                    """
-                    # Removing Sale Price, Last Maintenance Date, and Removing from On Sale Category
-                    response = Database.query(query)
+                query = f"""
+                UPDATE IM_PRC
+                SET PRC_2 = NULL, LST_MAINT_DT = GETDATE()
+                {where_filter}
+        
+                UPDATE IM_ITEM
+                SET IS_ON_SALE = 'N', SALE_DESCR = NULL, LST_MAINT_DT = GETDATE()
+                {where_filter}
+                """
+                # Removing Sale Price, Last Maintenance Date, and Removing from On Sale Category
+                response = Database.query(query)
 
-                    if response['code'] == 200:
-                        Database.logger.success(f'Sale Price removed successfully from {items}.')
-                    elif response['code'] == 201:
-                        Database.logger.warn(f'No Rows Affected for {items}')
-                    else:
-                        Database.error_handler.add_error_v(
-                            error=f'Error: {response["code"]}\n {response["message"]}, origin="Sale Price Removal")'
-                        )
+                if response['code'] == 200:
+                    eh.logger.success(f'Sale Price removed successfully from {items}.')
+                elif response['code'] == 201:
+                    eh.logger.warn(f'No Rows Affected for {items}')
+                else:
+                    eh.error_handler.add_error_v(
+                        error=f'Error: {response["code"]}\n {response["message"]}, origin="Sale Price Removal")'
+                    )
 
-            def set_sale_status(items, status, description=None):
+            def set_sale_status(items, status, description=None, eh=ProcessOutErrorHandler):
                 if len(items) > 1:
                     where_filter = f' WHERE ITEM_NO IN {tuple(items)}'
                 else:
@@ -638,15 +643,16 @@ class Database:
                 # Updating Sale Price, Sale Flag, Sale Description, Last Maintenance Date
                 response = Database.query(query)
                 if response['code'] == 200:
-                    Database.logger.success(f'Sale status updated for {items}.')
+                    eh.logger.success(f'Sale status updated for {items}.')
                 elif response['code'] == 201:
-                    Database.logger.warn(f'Sale status not updated for {items}.')
+                    eh.logger.warn(f'Sale status not updated for {items}.')
                 else:
                     error = f'Error updating sale status for {items}. \n Query: {query}\nResponse: {response}'
-                    Database.error_handler.add_error_v(error=error)
+                    eh.error_handler.add_error_v(error=error)
                     raise Exception(error)
 
-            def update(payload):
+            @staticmethod
+            def update(payload, eh=ProcessOutErrorHandler):
                 """FOR PRODUCTS_UPDATE WEBHOOK ONLY. Normal updates from shopify_catalog.py use sync()"""
                 query = f'UPDATE {Table.CP.Item.table} SET '
                 # Item Status
@@ -735,15 +741,16 @@ class Database:
 
                 response = Database.query(query)
                 if response['code'] == 200:
-                    Database.logger.success(f'Product {payload["item_no"]} updated in Middleware.')
+                    eh.logger.success(f'Product {payload["item_no"]} updated in Middleware.')
                 elif response['code'] == 201:
-                    Database.logger.warn(f'Product {payload["item_no"]} not found in Middleware.')
+                    eh.logger.warn(f'Product {payload["item_no"]} not found in Middleware.')
                 else:
                     error = f'Error updating product {payload["item_no"]} in Middleware. \n Query: {query}\nResponse: {response}'
-                    Database.error_handler.add_error_v(error=error)
+                    eh.error_handler.add_error_v(error=error)
                     raise Exception(error)
 
-            def update_timestamp(item_no):
+            @staticmethod
+            def update_timestamp(item_no, eh=ProcessOutErrorHandler):
                 query = f"""
                 UPDATE IM_ITEM
                 SET LST_MAINT_DT = GETDATE()
@@ -751,12 +758,32 @@ class Database:
                 """
                 response = Database.query(query)
                 if response['code'] == 200:
-                    Database.logger.success(f'Timestamp updated for {item_no}.')
+                    eh.logger.success(f'Timestamp updated for {item_no}.')
                 elif response['code'] == 201:
-                    Database.logger.warn(f'No rows affected for {item_no}.')
+                    eh.logger.warn(f'No rows affected for {item_no}.')
                 else:
                     error = f'Error updating timestamp for {item_no}. \n Query: {query}\nResponse: {response}'
-                    Database.error_handler.add_error_v(error=error)
+                    eh.error_handler.add_error_v(error=error)
+                    raise Exception(error)
+
+            @staticmethod
+            def update_buffer(item_no, buffer, update_timestamp=True, eh=ProcessOutErrorHandler):
+                """Update the stock buffer for an item in Counterpoint."""
+                query = f"""
+                UPDATE {Table.CP.Item.table}
+                SET {Table.CP.Item.Column.buffer} = {buffer}
+                WHERE ITEM_NO = '{item_no}'
+                """
+                response = Database.query(query)
+                if response['code'] == 200:
+                    eh.logger.success(f'Buffer updated for {item_no}.')
+                    if update_timestamp:
+                        Database.Counterpoint.Product.update_timestamp(item_no, eh=eh)
+                elif response['code'] == 201:
+                    eh.logger.warn(f'No rows affected for {item_no}.')
+                else:
+                    error = f'Error updating buffer for {item_no}. \n Query: {query}\nResponse: {response}'
+                    eh.error_handler.add_error_v(error=error)
                     raise Exception(error)
 
             class HTMLDescription:
@@ -765,12 +792,12 @@ class Database:
                 def get(item_no):
                     query = f"""
                     SELECT HTML_DESCR 
-                    FROM {Database.Counterpoint.Product.HTMLDescription.table} 
+                    FROM {Table.CP.Item.HTMLDescription.table} 
                     WHERE ITEM_NO = '{item_no}'
                     """
                     return Database.query(query)
 
-                def update(item_no, html_descr, update_timestamp=True):
+                def update(item_no, html_descr, update_timestamp=True, eh=ProcessOutErrorHandler):
                     html_descr = Database.sql_scrub(html_descr)
                     query = f"""
                     UPDATE EC_ITEM_DESCR
@@ -779,32 +806,34 @@ class Database:
                     """
                     response = Database.query(query)
                     if response['code'] == 200:
-                        Database.logger.success(f'HTML Description updated for item {item_no}.')
+                        eh.logger.success(f'HTML Description updated for item {item_no}.')
                         if update_timestamp:
-                            Database.Counterpoint.Product.update_timestamp(item_no)
+                            Database.Counterpoint.Product.update_timestamp(item_no, eh=eh)
                     elif response['code'] == 201:
-                        Database.logger.warn(f'No HTML Description found for ITEM_NO: {item_no}.')
-                        Database.Counterpoint.Product.HTMLDescription.insert(item_no, html_descr, update_timestamp)
+                        eh.logger.warn(f'No HTML Description found for ITEM_NO: {item_no}.')
+                        Database.Counterpoint.Product.HTMLDescription.insert(
+                            item_no, html_descr, update_timestamp, eh=eh
+                        )
                     else:
                         error = f'Error updating HTML Description for item {item_no}. \n Query: {query}\nResponse: {response}'
-                        Database.error_handler.add_error_v(error=error)
+                        eh.error_handler.add_error_v(error=error)
                         raise Exception(error)
 
-                def insert(item_no, html_descr, update_timestamp=True):
+                def insert(item_no, html_descr, update_timestamp=True, eh=ProcessOutErrorHandler):
                     html_descr = Database.sql_scrub(html_descr)
                     query = f"""
-                    INSERT INTO {Database.Counterpoint.Product.HTMLDescription.table} (ITEM_NO, HTML_DESCR, LST_MAINT_DT, 
+                    INSERT INTO {Table.CP.Item.HTMLDescription.table} (ITEM_NO, HTML_DESCR, LST_MAINT_DT, 
                     LST_MAINT_USR_ID)
                     VALUES ('{item_no}', '{html_descr}', GETDATE(), 'AP')
                     """
                     response = Database.query(query)
                     if response['code'] == 200:
-                        Database.logger.success(f'INSERT: HTML Description for {item_no}.')
+                        eh.logger.success(f'INSERT: HTML Description for {item_no}.')
                         if update_timestamp:
-                            Database.Counterpoint.Product.update_timestamp(item_no)
+                            Database.Counterpoint.Product.update_timestamp(item_no, eh=eh)
                     else:
                         error = f'Error adding HTML Description for item {item_no}. \nQuery: {query}\nResponse: {response}'
-                        Database.error_handler.add_error_v(error=error)
+                        eh.error_handler.add_error_v(error=error)
                         raise Exception(error)
 
             class Media:
@@ -855,7 +884,423 @@ class Database:
                             )
 
         class Customer:
-            def get(last_sync=datetime(1970, 1, 1), customer_no=None, customer_list=None):
+            def __init__(self, cust_no):
+                self.cust = Database.Counterpoint.Customer.get(cust_no)
+                # if self.cust:
+                self.CUST_NO = self.cust['CUST_NO']
+                self.NAM = self.cust['NAM']
+                self.NAM_UPR = self.cust['NAM_UPR']
+                self.FST_NAM = self.cust['FST_NAM']
+                self.FST_NAM_UPR = self.cust['FST_NAM_UPR']
+                self.LST_NAM = self.cust['LST_NAM']
+                self.LST_NAM_UPR = self.cust['LST_NAM_UPR']
+                self.SALUTATION = self.cust['SALUTATION']
+                self.CUST_TYP = self.cust['CUST_TYP']
+                self.ADRS_1 = self.cust['ADRS_1']
+                self.ADRS_2 = self.cust['ADRS_2']
+                self.ADRS_3 = self.cust['ADRS_3']
+                self.CITY = self.cust['CITY']
+                self.STATE = self.cust['STATE']
+                self.ZIP_COD = self.cust['ZIP_COD']
+                self.CNTRY = self.cust['CNTRY']
+                self.PHONE_1 = self.cust['PHONE_1']
+                self.PHONE_2 = self.cust['PHONE_2']
+                self.FAX_1 = self.cust['FAX_1']
+                self.FAX_2 = self.cust['FAX_2']
+                self.CONTCT_1 = self.cust['CONTCT_1']
+                self.CONTCT_2 = self.cust['CONTCT_2']
+                self.EMAIL_ADRS_1 = self.cust['EMAIL_ADRS_1']
+                self.EMAIL_ADRS_2 = self.cust['EMAIL_ADRS_2']
+                self.URL_1 = self.cust['URL_1']
+                self.URL_2 = self.cust['URL_2']
+                self.PROMPT_NAM_ADRS = self.cust['PROMPT_NAM_ADRS']
+                self.SLS_REP = self.cust['SLS_REP']
+                self.CATEG_COD = self.cust['CATEG_COD']
+                self.SHIP_VIA_COD = self.cust['SHIP_VIA_COD']
+                self.SHIP_ZONE_COD = self.cust['SHIP_ZONE_COD']
+                self.STR_ID = self.cust['STR_ID']
+                self.STMNT_COD = self.cust['STMNT_COD']
+                self.TAX_COD = self.cust['TAX_COD']
+                self.TERMS_COD = self.cust['TERMS_COD']
+                self.COMMNT = self.cust['COMMNT']
+                self.TAX_EXEMPT_NO = self.cust['TAX_EXEMPT_NO']
+                self.TAX_EXEMPT_DAT = self.cust['TAX_EXEMPT_DAT']
+                self.ALLOW_AR_CHRG = self.cust['ALLOW_AR_CHRG']
+                self.ALLOW_TKTS = self.cust['ALLOW_TKTS']
+                self.NO_CR_LIM = self.cust['NO_CR_LIM']
+                self.CR_LIM = self.cust['CR_LIM']
+                self.CR_RATE = self.cust['CR_RATE']
+                self.NO_MAX_CHK_AMT = self.cust['NO_MAX_CHK_AMT']
+                self.MAX_CHK_AMT = self.cust['MAX_CHK_AMT']
+                self.UNPSTD_BAL = self.cust['UNPSTD_BAL']
+                self.BAL_METH = self.cust['BAL_METH']
+                self.AR_ACCT_NO = self.cust['AR_ACCT_NO']
+                self.BAL = self.cust['BAL']
+                self.ORD_BAL = self.cust['ORD_BAL']
+                self.NO_OF_ORDS = self.cust['NO_OF_ORDS']
+                self.USE_ORD_SHIP_TO = self.cust['USE_ORD_SHIP_TO']
+                self.ALLOW_ORDS = self.cust['ALLOW_ORDS']
+                self.LST_AGE_DAT = self.cust['LST_AGE_DAT']
+                self.LST_AGE_BAL = self.cust['LST_AGE_BAL']
+                self.LST_AGE_BAL_1 = self.cust['LST_AGE_BAL_1']
+                self.LST_AGE_BAL_2 = self.cust['LST_AGE_BAL_2']
+                self.LST_AGE_BAL_3 = self.cust['LST_AGE_BAL_3']
+                self.LST_AGE_BAL_4 = self.cust['LST_AGE_BAL_4']
+                self.LST_AGE_BAL_5 = self.cust['LST_AGE_BAL_5']
+                self.LST_AGE_BAL_2_5 = self.cust['LST_AGE_BAL_2_5']
+                self.LST_AGE_BAL_3_5 = self.cust['LST_AGE_BAL_3_5']
+                self.LST_AGE_BAL_4_5 = self.cust['LST_AGE_BAL_4_5']
+                self.LST_AGE_BAL_OPN = self.cust['LST_AGE_BAL_OPN']
+                self.LST_AGE_FUTR_DOCS = self.cust['LST_AGE_FUTR_DOCS']
+                self.LST_AGE_METH = self.cust['LST_AGE_METH']
+                self.LST_AGE_AS_OF_DAT = self.cust['LST_AGE_AS_OF_DAT']
+                self.LST_AGE_CUTOFF_DAT = self.cust['LST_AGE_CUTOFF_DAT']
+                self.LST_AGE_MAX_PRD_1 = self.cust['LST_AGE_MAX_PRD_1']
+                self.LST_AGE_MAX_PRD_2 = self.cust['LST_AGE_MAX_PRD_2']
+                self.LST_AGE_MAX_PRD_3 = self.cust['LST_AGE_MAX_PRD_3']
+                self.LST_AGE_MAX_PRD_4 = self.cust['LST_AGE_MAX_PRD_4']
+                self.LST_AGE_NO_OF_PRDS = self.cust['LST_AGE_NO_OF_PRDS']
+                self.LST_AGE_EVENT_NO = self.cust['LST_AGE_EVENT_NO']
+                self.LST_AGE_NO_CUTOFF = self.cust['LST_AGE_NO_CUTOFF']
+                self.LST_AGE_PAST_CUTOFF = self.cust['LST_AGE_PAST_CUTOFF']
+                self.LST_AGE_NON_STD = self.cust['LST_AGE_NON_STD']
+                self.LST_STMNT_DAT = self.cust['LST_STMNT_DAT']
+                self.LST_STMNT_BAL = self.cust['LST_STMNT_BAL']
+                self.LST_STMNT_BAL_1 = self.cust['LST_STMNT_BAL_1']
+                self.LST_STMNT_BAL_2 = self.cust['LST_STMNT_BAL_2']
+                self.LST_STMNT_BAL_3 = self.cust['LST_STMNT_BAL_3']
+                self.LST_STMNT_BAL_4 = self.cust['LST_STMNT_BAL_4']
+                self.LST_STMNT_BAL_5 = self.cust['LST_STMNT_BAL_5']
+                self.LST_STMNT_BAL_2_5 = self.cust['LST_STMNT_BAL_2_5']
+                self.LST_STMNT_BAL_3_5 = self.cust['LST_STMNT_BAL_3_5']
+                self.LST_STMNT_BAL_4_5 = self.cust['LST_STMNT_BAL_4_5']
+                self.LST_STMNT_BAL_OPN = self.cust['LST_STMNT_BAL_OPN']
+                self.LST_STMNT_METH = self.cust['LST_STMNT_METH']
+                self.LST_STMNT_BEG_DAT = self.cust['LST_STMNT_BEG_DAT']
+                self.LST_STMNT_END_DAT = self.cust['LST_STMNT_END_DAT']
+                self.LST_STMNT_MAX_PRD_1 = self.cust['LST_STMNT_MAX_PRD_1']
+                self.LST_STMNT_MAX_PRD_2 = self.cust['LST_STMNT_MAX_PRD_2']
+                self.LST_STMNT_MAX_PRD_3 = self.cust['LST_STMNT_MAX_PRD_3']
+                self.LST_STMNT_MAX_PRD_4 = self.cust['LST_STMNT_MAX_PRD_4']
+                self.LST_STMNT_NO_OF_PRDS = self.cust['LST_STMNT_NO_OF_PRDS']
+                self.LST_STMNT_PAST_CTOFF = self.cust['LST_STMNT_PAST_CTOFF']
+                self.FST_SAL_DAT = self.cust['FST_SAL_DAT']
+                self.LST_SAL_DAT = self.cust['LST_SAL_DAT']
+                self.LST_SAL_AMT = self.cust['LST_SAL_AMT']
+                self.LST_PMT_DAT = self.cust['LST_PMT_DAT']
+                self.LST_PMT_AMT = self.cust['LST_PMT_AMT']
+                self.PROF_ALPHA_1 = self.cust['PROF_ALPHA_1']
+                self.PROF_ALPHA_2 = self.cust['PROF_ALPHA_2']
+                self.PROF_ALPHA_3 = self.cust['PROF_ALPHA_3']
+                self.PROF_ALPHA_4 = self.cust['PROF_ALPHA_4']
+                self.PROF_ALPHA_5 = self.cust['PROF_ALPHA_5']
+                self.PROF_COD_1 = self.cust['PROF_COD_1']
+                self.PROF_COD_2 = self.cust['PROF_COD_2']
+                self.PROF_COD_3 = self.cust['PROF_COD_3']
+                self.PROF_COD_4 = self.cust['PROF_COD_4']
+                self.PROF_COD_5 = self.cust['PROF_COD_5']
+                self.PROF_DAT_1 = self.cust['PROF_DAT_1']
+                self.PROF_DAT_2 = self.cust['PROF_DAT_2']
+                self.PROF_DAT_3 = self.cust['PROF_DAT_3']
+                self.PROF_DAT_4 = self.cust['PROF_DAT_4']
+                self.PROF_DAT_5 = self.cust['PROF_DAT_5']
+                self.PROF_NO_1 = self.cust['PROF_NO_1']
+                self.PROF_NO_2 = self.cust['PROF_NO_2']
+                self.PROF_NO_3 = self.cust['PROF_NO_3']
+                self.PROF_NO_4 = self.cust['PROF_NO_4']
+                self.PROF_NO_5 = self.cust['PROF_NO_5']
+                self.LST_MAINT_DT = self.cust['LST_MAINT_DT']
+                self.LST_MAINT_USR_ID = self.cust['LST_MAINT_USR_ID']
+                self.LST_LCK_DT = self.cust['LST_LCK_DT']
+                self.ROW_TS = self.cust['ROW_TS']
+                self.WRK_STMNT_ACTIV = self.cust['WRK_STMNT_ACTIV']
+                self.LWY_BAL = self.cust['LWY_BAL']
+                self.NO_OF_LWYS = self.cust['NO_OF_LWYS']
+                self.USE_LWY_SHIP_TO = self.cust['USE_LWY_SHIP_TO']
+                self.ALLOW_LWYS = self.cust['ALLOW_LWYS']
+                self.IS_ECOMM_CUST = self.cust['IS_ECOMM_CUST']
+                self.ECOMM_CUST_NO = self.cust['ECOMM_CUST_NO']
+                self.ECOMM_AFFIL_COD = self.cust['ECOMM_AFFIL_COD']
+                self.DISC_PCT = self.cust['DISC_PCT']
+                self.ECOMM_INIT_PWD = self.cust['ECOMM_INIT_PWD']
+                self.ECOMM_NXT_PUB_UPDT = self.cust['ECOMM_NXT_PUB_UPDT']
+                self.ECOMM_NXT_PUB_FULL = self.cust['ECOMM_NXT_PUB_FULL']
+                self.ECOMM_LST_PUB_DT = self.cust['ECOMM_LST_PUB_DT']
+                self.ECOMM_LST_PUB_TYP = self.cust['ECOMM_LST_PUB_TYP']
+                self.ECOMM_LST_IMP_DT = self.cust['ECOMM_LST_IMP_DT']
+                self.ECOMM_CREATED_CUST = self.cust['ECOMM_CREATED_CUST']
+                self.ECOMM_LST_ORD_NO = self.cust['ECOMM_LST_ORD_NO']
+                self.ECOMM_LST_ORD_DT = self.cust['ECOMM_LST_ORD_DT']
+                self.ECOMM_LST_IMP_TYP = self.cust['ECOMM_LST_IMP_TYP']
+                self.ECOMM_LST_IMP_EVENT_NO = self.cust['ECOMM_LST_IMP_EVENT_NO']
+                self.PROMPT_FOR_CUSTOM_FLDS = self.cust['PROMPT_FOR_CUSTOM_FLDS']
+                self.LOY_PGM_COD = self.cust['LOY_PGM_COD']
+                self.LOY_PTS_BAL = self.cust['LOY_PTS_BAL']
+                self.TOT_LOY_PTS_EARND = self.cust['TOT_LOY_PTS_EARND']
+                self.TOT_LOY_PTS_RDM = self.cust['TOT_LOY_PTS_RDM']
+                self.TOT_LOY_PTS_ADJ = self.cust['TOT_LOY_PTS_ADJ']
+                self.LST_LOY_EARN_TKT_DAT = self.cust['LST_LOY_EARN_TKT_DAT']
+                self.LST_LOY_EARN_TKT_TIM = self.cust['LST_LOY_EARN_TKT_TIM']
+                self.LST_LOY_PTS_EARN = self.cust['LST_LOY_PTS_EARN']
+                self.LST_LOY_EARN_TKT_NO = self.cust['LST_LOY_EARN_TKT_NO']
+                self.LST_LOY_RDM_TKT_DAT = self.cust['LST_LOY_RDM_TKT_DAT']
+                self.LST_LOY_RDM_TKT_TIM = self.cust['LST_LOY_RDM_TKT_TIM']
+                self.LST_LOY_PTS_RDM = self.cust['LST_LOY_PTS_RDM']
+                self.LST_LOY_RDM_TKT_NO = self.cust['LST_LOY_RDM_TKT_NO']
+                self.LST_LOY_ADJ_DAT = self.cust['LST_LOY_ADJ_DAT']
+                self.LST_LOY_PTS_ADJ = self.cust['LST_LOY_PTS_ADJ']
+                self.LST_LOY_ADJ_DOC_NO = self.cust['LST_LOY_ADJ_DOC_NO']
+                self.LOY_CARD_NO = self.cust['LOY_CARD_NO']
+                self.FCH_COD = self.cust['FCH_COD']
+                self.LST_FCH_DAT = self.cust['LST_FCH_DAT']
+                self.LST_FCH_AMT = self.cust['LST_FCH_AMT']
+                self.LST_FCH_PAST_DUE_AMT = self.cust['LST_FCH_PAST_DUE_AMT']
+                self.LST_FCH_DOC_NO = self.cust['LST_FCH_DOC_NO']
+                self.REQ_PO_NO = self.cust['REQ_PO_NO']
+                self.RS_UTC_DT = self.cust['RS_UTC_DT']
+                self.CUST_NAM_TYP = self.cust['CUST_NAM_TYP']
+                self.CUST_FST_LST_NAM = self.cust['CUST_FST_LST_NAM']
+                self.LST_LOY_EARN_TKT_DT = self.cust['LST_LOY_EARN_TKT_DT']
+                self.LST_LOY_RDM_TKT_DT = self.cust['LST_LOY_RDM_TKT_DT']
+                self.PS_HDR_CUST_FLD_FRM_ID = self.cust['PS_HDR_CUST_FLD_FRM_ID']
+                self.EMAIL_STATEMENT = self.cust['EMAIL_STATEMENT']
+                self.RS_STAT = self.cust['RS_STAT']
+                self.INCLUDE_IN_MARKETING_MAILOUTS = self.cust['INCLUDE_IN_MARKETING_MAILOUTS']
+                self.MARKETING_MAILOUT_OPT_IN_DAT = self.cust['MARKETING_MAILOUT_OPT_IN_DAT']
+                self.RPT_EMAIL = self.cust['RPT_EMAIL']
+                self.MBL_PHONE_1 = self.cust['MBL_PHONE_1']
+                self.MBL_PHONE_2 = self.cust['MBL_PHONE_2']
+                self.SUBSCRIBED_SMS = self.cust['SUBSCRIBED_SMS']
+                self.SUBSCRIBED_EMAIL = self.cust['SUBSCRIBED_EMAIL']
+
+                # else:
+                #     self.CUST_NO = None
+                #     self.NAM = None
+                #     self.NAM_UPR = None
+                #     self.FST_NAM = None
+                #     self.FST_NAM_UPR = None
+                #     self.LST_NAM = None
+                #     self.LST_NAM_UPR = None
+                #     self.SALUTATION = None
+                #     self.CUST_TYP = None
+                #     self.ADRS_1 = None
+                #     self.ADRS_2 = None
+                #     self.ADRS_3 = None
+                #     self.CITY = None
+                #     self.STATE = None
+                #     self.ZIP_COD = None
+                #     self.CNTRY = None
+                #     self.PHONE_1 = None
+                #     self.PHONE_2 = None
+                #     self.FAX_1 = None
+                #     self.FAX_2 = None
+                #     self.CONTCT_1 = None
+                #     self.CONTCT_2 = None
+                #     self.EMAIL_ADRS_1 = None
+                #     self.EMAIL_ADRS_2 = None
+                #     self.URL_1 = None
+                #     self.URL_2 = None
+                #     self.PROMPT_NAM_ADRS = None
+                #     self.SLS_REP = None
+                #     self.CATEG_COD = None
+                #     self.SHIP_VIA_COD = None
+                #     self.SHIP_ZONE_COD = None
+                #     self.STR_ID = None
+                #     self.STMNT_COD = None
+                #     self.TAX_COD = None
+                #     self.TERMS_COD = None
+                #     self.COMMNT = None
+                #     self.TAX_EXEMPT_NO = None
+                #     self.TAX_EXEMPT_DAT = None
+                #     self.ALLOW_AR_CHRG = None
+                #     self.ALLOW_TKTS = None
+                #     self.NO_CR_LIM = None
+                #     self.CR_LIM = None
+                #     self.CR_RATE = None
+                #     self.NO_MAX_CHK_AMT = None
+                #     self.MAX_CHK_AMT = None
+                #     self.UNPSTD_BAL = None
+                #     self.BAL_METH = None
+                #     self.AR_ACCT_NO = None
+                #     self.BAL = None
+                #     self.ORD_BAL = None
+                #     self.NO_OF_ORDS = None
+                #     self.USE_ORD_SHIP_TO = None
+                #     self.ALLOW_ORDS = None
+                #     self.LST_AGE_DAT = None
+                #     self.LST_AGE_BAL = None
+                #     self.LST_AGE_BAL_1 = None
+                #     self.LST_AGE_BAL_2 = None
+                #     self.LST_AGE_BAL_3 = None
+                #     self.LST_AGE_BAL_4 = None
+                #     self.LST_AGE_BAL_5 = None
+                #     self.LST_AGE_BAL_2_5 = None
+                #     self.LST_AGE_BAL_3_5 = None
+                #     self.LST_AGE_BAL_4_5 = None
+                #     self.LST_AGE_BAL_OPN = None
+                #     self.LST_AGE_FUTR_DOCS = None
+                #     self.LST_AGE_METH = None
+                #     self.LST_AGE_AS_OF_DAT = None
+                #     self.LST_AGE_CUTOFF_DAT = None
+                #     self.LST_AGE_MAX_PRD_1 = None
+                #     self.LST_AGE_MAX_PRD_2 = None
+                #     self.LST_AGE_MAX_PRD_3 = None
+                #     self.LST_AGE_MAX_PRD_4 = None
+                #     self.LST_AGE_NO_OF_PRDS = None
+                #     self.LST_AGE_EVENT_NO = None
+                #     self.LST_AGE_NO_CUTOFF = None
+                #     self.LST_AGE_PAST_CUTOFF = None
+                #     self.LST_AGE_NON_STD = None
+                #     self.LST_STMNT_DAT = None
+                #     self.LST_STMNT_BAL = None
+                #     self.LST_STMNT_BAL_1 = None
+                #     self.LST_STMNT_BAL_2 = None
+                #     self.LST_STMNT_BAL_3 = None
+                #     self.LST_STMNT_BAL_4 = None
+                #     self.LST_STMNT_BAL_5 = None
+                #     self.LST_STMNT_BAL_2_5 = None
+                #     self.LST_STMNT_BAL_3_5 = None
+                #     self.LST_STMNT_BAL_4_5 = None
+                #     self.LST_STMNT_BAL_OPN = None
+                #     self.LST_STMNT_METH = None
+                #     self.LST_STMNT_BEG_DAT = None
+                #     self.LST_STMNT_END_DAT = None
+                #     self.LST_STMNT_MAX_PRD_1 = None
+                #     self.LST_STMNT_MAX_PRD_2 = None
+                #     self.LST_STMNT_MAX_PRD_3 = None
+                #     self.LST_STMNT_MAX_PRD_4 = None
+                #     self.LST_STMNT_NO_OF_PRDS = None
+                #     self.LST_STMNT_PAST_CTOFF = None
+                #     self.FST_SAL_DAT = None
+                #     self.LST_SAL_DAT = None
+                #     self.LST_SAL_AMT = None
+                #     self.LST_PMT_DAT = None
+                #     self.LST_PMT_AMT = None
+                #     self.PROF_ALPHA_1 = None
+                #     self.PROF_ALPHA_2 = None
+                #     self.PROF_ALPHA_3 = None
+                #     self.PROF_ALPHA_4 = None
+                #     self.PROF_ALPHA_5 = None
+                #     self.PROF_COD_1 = None
+                #     self.PROF_COD_2 = None
+                #     self.PROF_COD_3 = None
+                #     self.PROF_COD_4 = None
+                #     self.PROF_COD_5 = None
+                #     self.PROF_DAT_1 = None
+                #     self.PROF_DAT_2 = None
+                #     self.PROF_DAT_3 = None
+                #     self.PROF_DAT_4 = None
+                #     self.PROF_DAT_5 = None
+                #     self.PROF_NO_1 = None
+                #     self.PROF_NO_2 = None
+                #     self.PROF_NO_3 = None
+                #     self.PROF_NO_4 = None
+                #     self.PROF_NO_5 = None
+                #     self.LST_MAINT_DT = None
+                #     self.LST_MAINT_USR_ID = None
+                #     self.LST_LCK_DT = None
+                #     self.ROW_TS = None
+                #     self.WRK_STMNT_ACTIV = None
+                #     self.LWY_BAL = None
+                #     self.NO_OF_LWYS = None
+                #     self.USE_LWY_SHIP_TO = None
+                #     self.ALLOW_LWYS = None
+                #     self.IS_ECOMM_CUST = None
+                #     self.ECOMM_CUST_NO = None
+                #     self.ECOMM_AFFIL_COD = None
+                #     self.DISC_PCT = None
+                #     self.ECOMM_INIT_PWD = None
+                #     self.ECOMM_NXT_PUB_UPDT = None
+                #     self.ECOMM_NXT_PUB_FULL = None
+                #     self.ECOMM_LST_PUB_DT = None
+                #     self.ECOMM_LST_PUB_TYP = None
+                #     self.ECOMM_LST_IMP_DT = None
+                #     self.ECOMM_CREATED_CUST = None
+                #     self.ECOMM_LST_ORD_NO = None
+                #     self.ECOMM_LST_ORD_DT = None
+                #     self.ECOMM_LST_IMP_TYP = None
+                #     self.ECOMM_LST_IMP_EVENT_NO = None
+                #     self.PROMPT_FOR_CUSTOM_FLDS = None
+                #     self.LOY_PGM_COD = None
+                #     self.LOY_PTS_BAL = None
+                #     self.TOT_LOY_PTS_EARND = None
+                #     self.TOT_LOY_PTS_RDM = None
+                #     self.TOT_LOY_PTS_ADJ = None
+                #     self.LST_LOY_EARN_TKT_DAT = None
+                #     self.LST_LOY_EARN_TKT_TIM = None
+                #     self.LST_LOY_PTS_EARN = None
+                #     self.LST_LOY_EARN_TKT_NO = None
+                #     self.LST_LOY_RDM_TKT_DAT = None
+                #     self.LST_LOY_RDM_TKT_TIM = None
+                #     self.LST_LOY_PTS_RDM = None
+                #     self.LST_LOY_RDM_TKT_NO = None
+                #     self.LST_LOY_ADJ_DAT = None
+                #     self.LST_LOY_PTS_ADJ = None
+                #     self.LST_LOY_ADJ_DOC_NO = None
+                #     self.LOY_CARD_NO = None
+                #     self.FCH_COD = None
+                #     self.LST_FCH_DAT = None
+                #     self.LST_FCH_AMT = None
+                #     self.LST_FCH_PAST_DUE_AMT = None
+                #     self.LST_FCH_DOC_NO = None
+                #     self.REQ_PO_NO = None
+                #     self.RS_UTC_DT = None
+                #     self.CUST_NAM_TYP = None
+                #     self.CUST_FST_LST_NAM = None
+                #     self.LST_LOY_EARN_TKT_DT = None
+                #     self.LST_LOY_RDM_TKT_DT = None
+                #     self.PS_HDR_CUST_FLD_FRM_ID = None
+                #     self.EMAIL_STATEMENT = None
+                #     self.RS_STAT = None
+                #     self.INCLUDE_IN_MARKETING_MAILOUTS = None
+                #     self.MARKETING_MAILOUT_OPT_IN_DAT = None
+                #     self.RPT_EMAIL = None
+                #     self.MBL_PHONE_1 = None
+                #     self.MBL_PHONE_2 = None
+                #     self.SUBSCRIBED_SMS = None
+                #     self.SUBSCRIBED_EMAIL = None
+
+                if self.FST_NAM:
+                    self.FST_NAM = self.FST_NAM.strip().title()
+                if self.LST_NAM:
+                    self.LST_NAM = self.LST_NAM.strip().title()
+                if self.NAM:
+                    self.NAM = self.NAM.strip().title()
+                if self.ADRS_1:
+                    self.ADRS_1 = self.ADRS_1.strip().title()
+                if self.ADRS_2:
+                    self.ADRS_2 = self.ADRS_2.strip()
+                if self.CITY:
+                    self.CITY = self.CITY.strip().title()
+                if self.STATE:
+                    self.STATE = self.STATE.strip().upper()
+                if self.ZIP_COD:
+                    self.ZIP_COD = self.ZIP_COD.strip()
+                if self.CNTRY:
+                    self.CNTRY = self.CNTRY.strip().upper()
+
+            def __str__(self):
+                result = ''
+                for k, v in cust.__dict__.items():
+                    if k == 'cust':
+                        continue
+                    result += f'{k}: {v}\n'
+                return result
+
+            @staticmethod
+            def get(cust_no):
+                query = f"""
+                SELECT * FROM {Table.CP.customers}
+                WHERE CUST_NO = '{cust_no}'
+                """
+                response = Database.query(query, mapped=True)
+                if response['code'] == 200:
+                    return response['data'][0]
+                else:
+                    return {}
+
+            @staticmethod
+            def get_all(last_sync=datetime(1970, 1, 1), customer_no=None, customer_list=None):
                 if customer_no:
                     customer_filter = f"AND CP.CUST_NO = '{customer_no}'"
                 elif customer_list:
@@ -872,6 +1317,52 @@ class Database:
                 WHERE IS_ECOMM_CUST = 'Y' AND CP.LST_MAINT_DT > '{last_sync}' and CUST_NAM_TYP = 'P' {customer_filter}
                 """
                 return Database.query(query)
+
+            def update(self):
+                query = f"""
+                UPDATE {Table.CP.customers}
+                SET """
+                for key, value in self.__dict__.items():
+                    if (
+                        key
+                        in [
+                            'cust',
+                            'CUST_NO',
+                            'LST_MAINT_DT',
+                            'ROW_TS',
+                            'CUST_FST_LST_NAM',
+                            'LST_LOY_EARN_TKT_DT',
+                            'LST_LOY_RDM_TKT_DT',
+                            'ST_LOY_RDM_TKT_DT',
+                        ]
+                        or value is None
+                    ):
+                        continue
+                    if isinstance(value, str):
+                        value = Database.sql_scrub(value)
+                    if isinstance(value, datetime):
+                        value = value.strftime('%Y-%m-%d %H:%M:%S')
+                    query += f"{key} = '{value}', "
+
+                # Remove trailing comma and space
+                if query[-2:] == ', ':
+                    query = query[:-2]
+
+                # Update Last Maintenance Date
+                query += ', LST_MAINT_DT = GETDATE()'
+
+                # Add WHERE clause
+                query += f" WHERE CUST_NO = '{self.CUST_NO}'"
+
+                response = Database.query(query)
+                if response['code'] == 200:
+                    Database.logger.success(f'Customer {self.CUST_NO} updated.')
+                elif response['code'] == 201:
+                    Database.logger.warn(f'No rows affected for {self.CUST_NO}.')
+                else:
+                    error = f'Error updating customer {self.CUST_NO}. \n Query: {query}\nResponse: {response}'
+                    Database.error_handler.add_error_v(error=error)
+                    raise Exception(error)
 
             @staticmethod
             def get_customer_by_phone(phone):
@@ -897,6 +1388,7 @@ class Database:
 
                 return customer_no, full_name, category
 
+            @staticmethod
             def update_timestamps(customer_list: list = None, customer_no: str = None):
                 if not customer_list and not customer_no:
                     return
@@ -924,6 +1416,7 @@ class Database:
                     )
                     raise Exception(response['message'])
 
+            @staticmethod
             def get_cust_no(phone_no):
                 phone = PhoneNumber(phone_no).to_cp()
                 query = f"""
@@ -936,6 +1429,7 @@ class Database:
                 else:
                     return None
 
+            @staticmethod
             def get_category(cust_no):
                 query = f"""
                 SELECT CATEG_COD FROM AR_CUST
@@ -947,6 +1441,7 @@ class Database:
                 else:
                     return None
 
+            @staticmethod
             def get_loyalty_balance(cust_no):
                 query = f"""
                 SELECT LOY_PTS_BAL FROM AR_CUST
@@ -958,6 +1453,7 @@ class Database:
                 else:
                     return None
 
+            @staticmethod
             def get_name(cust_no):
                 query = f"""
                 SELECT NAM FROM AR_CUST
@@ -969,7 +1465,8 @@ class Database:
                 else:
                     return None
 
-            def merge_customer(from_cust_no, to_cust_no):
+            @staticmethod
+            def merge_customer(from_cust_no, to_cust_no, eh=ProcessOutErrorHandler):
                 """Merges two customers in Counterpoint. from_cust_no will be merged into to_cust_no."""
                 query = f"""
                 DECLARE @fromCust varchar(50) = '{from_cust_no}'
@@ -986,15 +1483,15 @@ class Database:
                 SET {Table.CP.Customers.Column.is_ecomm_customer} = 'Y'
                 WHERE {Table.CP.Customers.Column.number} = @toCust"""
 
-                response = Database.query(query)
+                response = Database.query(query, mapped=True)
                 if response['code'] == 200:
-                    Database.logger.success(f'Customer {from_cust_no} merged into {to_cust_no}.')
+                    eh.logger.success(f'Customer {from_cust_no} merged into {to_cust_no}.')
                 else:
                     error = f'Error merging customer {from_cust_no} into {to_cust_no}. \nQuery: {query}\nResponse: {response}'
-                    Database.error_handler.add_error_v(error=error)
+                    eh.error_handler.add_error_v(error=error)
                     raise Exception(error)
 
-            class Address:
+            class ShippingAddress:
                 def get(cust_no):
                     query = f"""
                     SELECT FST_NAM, LST_NAM, ADRS_1, ADRS_2, CITY, STATE, ZIP_COD, CNTRY, PHONE_1
@@ -1010,6 +1507,68 @@ class Database:
                     """
                     response = Database.query(query)
                     return response
+
+                @staticmethod
+                def merge(from_cust_no, to_cust_no, eh=ProcessOutErrorHandler):
+                    # Check if from customer has a shipping address
+                    query = f"""
+                    SELECT COUNT(*) FROM {Table.CP.customer_ship_addresses}
+                    WHERE CUST_NO = '{from_cust_no}'
+                    """
+                    response = Database.query(query)
+                    if response[0][0] == 0:
+                        eh.logger.warn(f'No shipping addresses found for {from_cust_no}.')
+                        return
+                    # Check if to customer already has a shipping address
+                    query = f"""
+                    SELECT COUNT(*) FROM {Table.CP.customer_ship_addresses}
+                    WHERE CUST_NO = '{to_cust_no}'
+                    """
+                    response = Database.query(query)
+                    if response[0][0] == 0:
+                        # Update shipping address to new customer number. Simple migration of CUST_ID.
+                        query = f"""
+                        UPDATE {Table.CP.customer_ship_addresses}
+                        SET CUST_NO = '{to_cust_no}'
+                        WHERE CUST_NO = '{from_cust_no}'
+                        """
+                        response = Database.query(query)
+                        if response['code'] == 200:
+                            eh.logger.success(f'Shipping addresses merged from {from_cust_no} to {to_cust_no}.')
+                        else:
+                            error = f'Error merging shipping addresses from {from_cust_no} to {to_cust_no}. \nQuery: {query}\nResponse: {response}'
+                            eh.error_handler.add_error_v(error=error)
+                            raise Exception(error)
+                    else:
+                        # Get a list of shipping addresses associated with the from_cust_no
+                        query = f"""
+                        SELECT SHIP_ADRS_ID FROM {Table.CP.customer_ship_addresses}
+                        WHERE CUST_NO = '{from_cust_no}'
+                        """
+                        response = Database.query(query)
+                        if response:
+                            # Generate a random number for the new address ID
+                            new_id_int = random.randint(1000, 9999)
+                            count = 1
+                            for address in response:
+                                old_id = address[0]
+                                new_id = f'{new_id_int}-{count}'
+                                # Update the shipping address to the new customer number
+                                query = f"""
+                                UPDATE {Table.CP.customer_ship_addresses}
+                                SET CUST_NO = '{to_cust_no}', SHIP_ADRS_ID = '{new_id}'
+                                WHERE CUST_NO = '{from_cust_no}' AND SHIP_ADRS_ID = '{old_id}'
+                                """
+                                response = Database.query(query)
+                                if response['code'] == 200:
+                                    eh.logger.success(
+                                        f'Shipping address {old_id} merged from {from_cust_no} to {to_cust_no}.'
+                                    )
+                                else:
+                                    error = f'Error merging shipping address {old_id} from {from_cust_no} to {to_cust_no}. \nQuery: {query}\nResponse: {response}'
+                                    eh.error_handler.add_error_v(error=error)
+                                    raise Exception(error)
+                                count += 1
 
         class Promotion:
             def get(group_code=None, ids_only=False):
@@ -1027,8 +1586,8 @@ class Database:
                     result = []
                     for promo in promotions:
                         query = f"""
-                        SELECT TOP 1 GRP.GRP_TYP, GRP.GRP_COD, GRP.GRP_SEQ_NO, GRP.DESCR, GRP.CUST_FILT, GRP.BEG_DAT, 
-                        GRP.END_DAT, GRP.LST_MAINT_DT, GRP.ENABLED, GRP.MIX_MATCH_COD, MW.SHOP_ID
+                        SELECT TOP 1 GRP.GRP_TYP, GRP.GRP_COD, GRP.GRP_SEQ_NO, GRP.DESCR, GRP.CUST_FILT, GRP.NO_BEG_DAT, GRP.BEG_DAT, GRP.BEG_TIM_FLG, 
+                        GRP.NO_END_DAT, GRP.END_DAT, GRP.END_TIM_FLG, GRP.LST_MAINT_DT, GRP.ENABLED, GRP.MIX_MATCH_COD, MW.SHOP_ID
                         FROM IM_PRC_GRP GRP FULL OUTER JOIN {Table.Middleware.promotions} MW ON GRP.GRP_COD = MW.GRP_COD
                         WHERE GRP.GRP_COD = '{promo}' and GRP.GRP_TYP = 'P'
                         """
@@ -1418,6 +1977,7 @@ class Database:
                 meta_birth_month_id=None,
                 meta_spouse_birth_month_id=None,
                 meta_wholesale_price_tier_id=None,
+                eh=ProcessOutErrorHandler,
             ):
                 query = f"""
                         INSERT INTO {Table.Middleware.customers} (CUST_NO, SHOP_CUST_ID, 
@@ -1432,12 +1992,12 @@ class Database:
                         """
                 response = Database.query(query)
                 if response['code'] == 200:
-                    Database.logger.success(f'Customer {cp_cust_no} added to Middleware.')
+                    eh.logger.success(f'Customer {cp_cust_no} added to Middleware.')
                 else:
                     error = (
                         f'Error adding customer {cp_cust_no} to Middleware. \nQuery: {query}\nResponse: {response}'
                     )
-                    Database.error_handler.add_error_v(error=error)
+                    eh.error_handler.add_error_v(error=error)
                     raise Exception(error)
 
             def update(
@@ -1449,6 +2009,7 @@ class Database:
                 meta_birth_month_id=None,
                 meta_spouse_birth_month_id=None,
                 meta_wholesale_price_tier_id=None,
+                eh=ProcessOutErrorHandler,
             ):
                 query = f"""
                         UPDATE {Table.Middleware.customers}
@@ -1465,12 +2026,12 @@ class Database:
 
                 response = Database.query(query)
                 if response['code'] == 200:
-                    Database.logger.success(f'Customer {cp_cust_no} updated in Middleware.')
+                    eh.logger.success(f'Customer {cp_cust_no} updated in Middleware.')
                 elif response['code'] == 201:
-                    Database.logger.warn(f'Customer {cp_cust_no} not found in Middleware.')
+                    eh.logger.warn(f'Customer {cp_cust_no} not found in Middleware.')
                 else:
                     error = f'Error updating customer {cp_cust_no} in Middleware. \nQuery: {query}\nResponse: {response}'
-                    Database.error_handler.add_error_v(error=error)
+                    eh.error_handler.add_error_v(error=error)
                     raise Exception(error)
 
             def sync(customer):
@@ -2551,30 +3112,43 @@ class Database:
                         origin='Middleware Promotion Deletion',
                     )
 
+            def has_fixed_priced_items(rule):
+                query = f"""
+                SELECT COUNT(*) FROM {Table.Middleware.promotion_lines_fixed} 
+                WHERE GRP_COD = '{rule.grp_cod}' AND RUL_SEQ_NO = {rule.seq_no}
+                """
+                response = Database.query(query)
+                if response is not None:
+                    if response[0][0] > 0:
+                        return True
+                return False
+
             class BxgyLine:
                 """Buy X Get Y Line Items"""
 
                 def get(shopify_id):
                     if not shopify_id:
                         return
-                    query = f'SELECT ITEM_NO FROM {Table.Middleware.promotion_lines} WHERE SHOP_ID = {shopify_id}'
+                    query = (
+                        f'SELECT ITEM_NO FROM {Table.Middleware.promotion_lines_bogo} WHERE SHOP_ID = {shopify_id}'
+                    )
                     response = Database.query(query)
                     return [x[0] for x in response] if response else None
 
                 def sync(rule):
                     cp_items = rule.items
-                    mw_items = rule.mw_items
+                    mw_bogo_items = rule.mw_bogo_items
                     if cp_items:
                         for item in cp_items:
-                            if mw_items:
-                                if item in mw_items:
+                            if mw_bogo_items:
+                                if item in mw_bogo_items:
                                     continue
                                 else:
                                     Database.Shopify.Promotion.BxgyLine.insert(item, rule.shopify_id)
                             else:
                                 Database.Shopify.Promotion.BxgyLine.insert(item, rule.shopify_id)
-                    if mw_items:
-                        for item in mw_items:
+                    if mw_bogo_items:
+                        for item in mw_bogo_items:
                             if item in cp_items:
                                 continue
                             else:
@@ -2586,7 +3160,7 @@ class Database:
                         Database.logger.warn('No item provided for insertion.')
                         return
                     query = f"""
-                    INSERT INTO {Table.Middleware.promotion_lines} (SHOP_ID, ITEM_NO)
+                    INSERT INTO {Table.Middleware.promotion_lines_bogo} (SHOP_ID, ITEM_NO)
                     VALUES ({shopify_promo_id}, '{item}')"""
                     response = Database.query(query)
                     if response['code'] == 200:
@@ -2604,7 +3178,7 @@ class Database:
                         Database.logger.warn('No item number provided for update.')
                         return
                     query = f"""
-                    UPDATE {Table.Middleware.promotion_lines}
+                    UPDATE {Table.Middleware.promotion_lines_bogo}
                     SET SHOP_ID = {shopify_id}
                     WHERE ITEM_NO = '{line.item_no}'
                     """
@@ -2625,7 +3199,7 @@ class Database:
                         return
                     if shopify_id:
                         # Delete all line items for a specific promotion
-                        query = f'DELETE FROM {Table.Middleware.promotion_lines} WHERE SHOP_ID = {shopify_id}'
+                        query = f'DELETE FROM {Table.Middleware.promotion_lines_bogo} WHERE SHOP_ID = {shopify_id}'
                         response = Database.query(query)
                         if response['code'] == 200:
                             Database.logger.success(
@@ -2642,10 +3216,12 @@ class Database:
                     elif item_no_list:
                         # Delete all line items for a list of item numbers
                         if len(item_no_list) == 1:
-                            where_filter = f'ITEM_NO = {item_no_list[0]}'
+                            where_filter = f"ITEM_NO = '{item_no_list[0]}'"
                         else:
                             where_filter = f'ITEM_NO IN {tuple(item_no_list)}'
-                        query = f'DELETE FROM {Table.Middleware.promotion_lines} WHERE {where_filter}'
+
+                        query = f'DELETE FROM {Table.Middleware.promotion_lines_bogo} WHERE {where_filter}'
+
                         response = Database.query(query)
                         if response['code'] == 200:
                             Database.logger.success(
@@ -2730,5 +3306,5 @@ class Database:
 
 
 if __name__ == '__main__':
-    response = Database.query("SELECT * FROM SN_SHOP_PROD WHERE BINDING_ID = 'B0001asdf'", mapped=True)
-    print(response)
+    cust = Database.Counterpoint.Customer('105786')
+    print(cust)
