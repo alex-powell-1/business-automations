@@ -36,7 +36,7 @@ from setup.utilities import PhoneNumber, EmailAddress
 
 from integration.shopify_customers import Customers
 
-from customer_tools.customers import add_new_customer
+from customer_tools.customers import add_new_customer, lookup_customer
 
 app = flask.Flask(__name__)
 
@@ -784,6 +784,8 @@ def shopify_customer_create():
             city = None
             state = None
             zip_code = None
+            phone = webhook_data['phone']
+            email = webhook_data['email']
 
             addrs = webhook_data['addresses']
 
@@ -794,16 +796,9 @@ def shopify_customer_create():
                 state = a['province']
                 zip_code = a['zip']
 
-            add_new_customer(
-                first_name=webhook_data['first_name'],
-                last_name=webhook_data['last_name'],
-                phone_number=webhook_data['phone'],
-                email_address=webhook_data['email'],
-                street_address=street,
-                city=city,
-                state=state,
-                zip_code=zip_code,
-            )
+                # Merge new customer into existing customer
+                # Delete new customer from Shopify
+
         except Exception as e:
             error_handler.add_error_v(
                 error=f'Error adding customer {id}: {e}', origin=Route.Shopify.customer_create, traceback=tb()
@@ -884,16 +879,13 @@ def shopify_product_update():
     status = webhook_data['status']
     item_no = Database.Shopify.Product.get_parent_item_no(product_id)
 
-    with open('product_update.txt', 'a') as f:
-        print(item_no, title, file=f)
-
-    with open('product_update.json', 'a') as f:
-        json.dump(webhook_data, f)
+    with open('./logs/webhooks/product_update.txt', 'a') as f:
+        print(f'{datetime.now()} - SKU:{item_no}, Product ID: {product_id}, Web Title: {title}', file=f)
 
     if item_no and description:
         # Update product description in Counterpoint - Skip timestamp update (avoid loop)
         Database.Counterpoint.Product.HTMLDescription.update(
-            item_no=item_no, description=description, update_timestamp=False
+            item_no=item_no, html_descr=description, update_timestamp=False
         )
 
     # Get SEO data

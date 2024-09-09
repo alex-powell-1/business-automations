@@ -5,6 +5,8 @@ from customer_tools import customers
 from product_tools import brands
 from product_tools import set_inactive_status
 from product_tools import stock_buffer
+from customer_tools import stock_notification
+from customer_tools.merge import Merge
 from setup.email_engine import Email
 from setup import creds
 from setup import date_presets
@@ -27,8 +29,9 @@ minute = now.minute
 sms_test_mode = False  # if true, will only write generated messages write to logs
 sms_test_customer = False  # if true, will only send to single employee for testing
 
-error_handler = ScheduledTasksErrorHandler.error_handler
-logger = ScheduledTasksErrorHandler.logger
+eh = ScheduledTasksErrorHandler
+error_handler = eh.error_handler
+logger = eh.logger
 
 try:
     logger.info(f'Business Automations Starting at {now:%H:%M:%S}')
@@ -128,20 +131,20 @@ try:
             except Exception as err:
                 error_handler.add_error_v(error=err, origin='Export Customers')
 
-        # -----------------
-        # ONE PER DAY TASKS
-        # -----------------
+    # -----------------
+    # ONE PER DAY TASKS
+    # -----------------
 
-    #     # 11:30 AM TASKS
-    # if hour == 11 and minute == 30:
-    #     # STOCK NOTIFICATION EMAIL WITH COUPON GENERATION
-    #     # Read CSV file, check all items for stock, send auto generated emails to customer_tools
-    #     # with product photo, product description (if exists), coupon (if applicable), and
-    #     # direct purchase links. Generate coupon and send to big for e-comm use.
-    #     try:
-    #         stock_notification.send_stock_notification_emails()
-    #     except Exception as err:
-    #         error_handler.add_error_v(error=err, origin='Stock Notification Email')
+    # 11:30 AM TASKS
+    if hour == 11 and minute == 30:
+        # STOCK NOTIFICATION EMAIL WITH COUPON GENERATION
+        # Read CSV file, check all items for stock, send auto generated emails to customer_tools
+        # with product photo, product description (if exists), coupon (if applicable), and
+        # direct purchase links. Generate coupon and send to big for e-comm use.
+        try:
+            stock_notification.send_stock_notifications()
+        except Exception as err:
+            error_handler.add_error_v(error=err, origin='Stock Notification Email')
 
     if hour == 22 and minute == 30:
         # Nightly Off-Site Backups
@@ -150,6 +153,13 @@ try:
             backups.offsite_backups()
         except Exception as err:
             error_handler.add_error_v(error=err, origin='Offsite Backups')
+
+        # MERGE CUSTOMERS
+        # Merge duplicate customers by email or phone. Skips customers with open orders.
+        try:
+            merge = Merge(eh=eh)
+        except Exception as err:
+            error_handler.add_error_v(error=err, origin='Merge Customers')
 
     #    __          __     _         _____  ___          _   __________  ___    __  __
     #   / _\  /\/\  / _\   /_\  /\ /\/__   \/___\/\/\    /_\ /__   \_   \/___\/\ \ \/ _\

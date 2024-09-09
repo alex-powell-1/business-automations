@@ -589,9 +589,8 @@ class OrderAPI(DocumentAPI):
             state=state,
             zip_code=zip_code,
         )
-
+        # Add to the middleware database
         shopify_cust_no = bc_order['customer_id'].split('/')[-1]
-
         Database.Shopify.Customer.insert(cp_cust_no=cust_no, shopify_cust_no=shopify_cust_no)
 
         def write_shipping_adr():
@@ -669,6 +668,10 @@ class OrderAPI(DocumentAPI):
                 city=city,
                 state=state,
                 zip_code=zip_code,
+            )
+
+            Database.Shopify.Customer.update(
+                cp_cust_no=cust_no, shopify_cust_no=bc_order['customer_id'].split('/')[-1]
             )
 
             if response['code'] == 200:

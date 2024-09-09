@@ -33,15 +33,15 @@ class Customers:
 
     def get_updated_customers(self):
         if self.test_mode:
-            response = Database.Counterpoint.Customer.get(customer_no=self.test_customer)
+            response = Database.Counterpoint.Customer.get_all(customer_no=self.test_customer)
         else:
-            response = Database.Counterpoint.Customer.get(last_sync=self.last_sync)
+            response = Database.Counterpoint.Customer.get_all(last_sync=self.last_sync)
 
         return [self.Customer(x) for x in response] if response is not None else []
 
     def get_cp_customers(self):
         query = f"""
-        SELECT CUST_NO FROM {Table.CP.customers}
+        SELECT CUST_NO FROM {Table.CP.Customers.table}
         WHERE IS_ECOMM_CUST = 'Y'
         """
         response = Database.query(query)
@@ -55,10 +55,15 @@ class Customers:
         return [x[0] for x in response] if response is not None else []
 
     def process_deletes(self):
-        cp_customer_res = Database.Shopify.Customer.get(column='CUST_NO')
-        cp_customers = [x[0] for x in cp_customer_res] if cp_customer_res is not None else []
+        # cp_customer_res = Database.Counterpoint.Customer.get_all()
+        # cp_customers = [x[0] for x in cp_customer_res] if cp_customer_res is not None else []
+        cp_customers = self.get_cp_customers()
         mw_customers = self.get_mw_customers()
-        deletes = list(set(mw_customers) - set(cp_customers))
+        # Find Customers in MW that are not in CP
+        deletes = []
+        for mw_customer in mw_customers:
+            if mw_customer not in cp_customers:
+                deletes.append(mw_customer)
         if deletes:
             for delete in deletes:
                 shopify_cust_no = Database.Shopify.Customer.get_id(delete)
@@ -200,7 +205,7 @@ class Customers:
             self.addresses.append(address_main)
 
             # Get additional addresses
-            address_res = Database.Counterpoint.Customer.Address.get(cust_no=self.cp_cust_no)
+            address_res = Database.Counterpoint.Customer.ShippingAddress.get(cust_no=self.cp_cust_no)
             if address_res is not None:
                 for x in address_res:
                     address = {

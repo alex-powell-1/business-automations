@@ -1,5 +1,6 @@
 from integration.shopify_catalog import Catalog
 from integration.shopify_customers import Customers
+from integration.shopify_promotions import Promotions
 from database import Database
 from integration import interface
 
@@ -20,8 +21,9 @@ class Integrator:
 
     def __init__(self):
         self.last_sync = get_last_sync(file_name='./integration/last_sync_integrator.txt')
-        self.catalog = Catalog(last_sync=self.last_sync)
         self.customers = Customers(last_sync=self.last_sync)
+        self.promotions = Promotions(last_sync=self.last_sync)
+        self.catalog = Catalog(last_sync=self.last_sync)
 
     def __str__(self):
         return f'Integrator\n' f'Last Sync: {self.last_sync}\n'
@@ -29,11 +31,10 @@ class Integrator:
     def initialize(self, rebuild=False):
         """Initialize the integrator by deleting the catalog, rebuilding the tables, and syncing the catalog."""
         start_time = time.time()
-        self.catalog.delete_catalog()
-        # self.customers.delete_customers()
+        self.catalog.delete()  # Will delete all products, and collections  NEED TO TEST ON DEV STORE
+        # self.customers.()
         if rebuild:
-            # Drop and rebuild the tables
-            Database.Shopify.rebuild_tables()
+            Database.Shopify.rebuild_tables()  # Will drop and rebuild all Shopify tables
 
         self.catalog = Catalog(last_sync=date_presets.business_start_date)
         self.sync(initial=True)
@@ -44,6 +45,7 @@ class Integrator:
         start_sync_time = datetime.now()
         self.logger.header('Sync Starting')
         self.customers.sync()
+        self.promotions.sync()
         self.catalog.sync(initial=initial)
         set_last_sync(file_name='./integration/last_sync_integrator.txt', start_time=start_sync_time)
         completion_time = (datetime.now() - start_sync_time).seconds

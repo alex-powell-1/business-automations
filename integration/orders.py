@@ -86,4 +86,4 @@ class OrderProcessor:
 
 
 if __name__ == '__main__':
-    Order('5570286354599').post_shopify_order(cust_no_override='OL-100778')
+    print(Shopify.Order().as_bc_order(5664499564711))
