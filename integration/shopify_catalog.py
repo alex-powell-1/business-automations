@@ -1821,6 +1821,26 @@ class Catalog:
 
             return product_payload
 
+        def get_variant_metafields(self, variant):
+            result = []
+            # Custom Size
+            if variant.meta_selling_size['value']:
+                selling_size_data = {'value': variant.meta_selling_size['value']}
+                if variant.meta_selling_size['id']:
+                    selling_size_data['id'] = f'{Shopify.Metafield.prefix}{variant.meta_selling_size["id"]}'
+                else:
+                    selling_size_data['namespace'] = Catalog.metafields['Selling Size']['NAME_SPACE']
+                    selling_size_data['key'] = Catalog.metafields['Selling Size']['META_KEY']
+                    selling_size_data['type'] = Catalog.metafields['Selling Size']['TYPE']
+
+                result.append(selling_size_data)
+            else:
+                if variant.meta_selling_size['id']:
+                    Shopify.Metafield.delete(metafield_id=variant.meta_selling_size['id'])
+                    variant.meta_selling_size['id'] = None
+
+            return result
+
         def get_bulk_variant_payload(self):
             payload = {'media': [], 'strategy': 'REMOVE_STANDALONE_VARIANT', 'variants': []}
             # If product_id exists, this is an update
@@ -1840,6 +1860,7 @@ class Catalog:
                     'compareAtPrice': 0,
                     'optionValues': {'optionName': 'Option'},
                     'taxable': True if self.taxable else False,
+                    'metafields': self.get_variant_metafields(child),
                 }
 
                 if child.variant_id:
@@ -1912,6 +1933,7 @@ class Catalog:
                     'price': self.default_price,
                     'compareAtPrice': 0,
                     'taxable': False,
+                    'metafields': self.get_variant_metafields(self.variants[0]),
                 }
             }
 

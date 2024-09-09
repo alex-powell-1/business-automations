@@ -31,6 +31,12 @@ mutation CreateProductWithNewMedia(
           inventoryItem {
             id
           }
+          metafield(key: "selling_size", namespace: "variant-specification") {
+            id
+            key
+            namespace
+            value
+          }
         }
       }
       metafields(first: 25) {
@@ -287,6 +293,10 @@ query product($id: ID!) {
         title
         inventoryItem {
           id
+        }
+        metafield(key: "selling_size", namespace: "variant-specification") {
+          id
+          value
         }
       }
     }

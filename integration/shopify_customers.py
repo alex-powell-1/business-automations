@@ -109,7 +109,7 @@ class Customers:
             self.cp_cust_no = cust_result[0]
             self.fst_nam = str(cust_result[1]).title()
             self.lst_nam = str(cust_result[2]).title()
-            self.email = cust_result[3] if cust_result[3] else f'{self.cp_cust_no}@store.com'
+            self.email = cust_result[3]
             self.phone = cust_result[4]
             self.loyalty_points = float(cust_result[5])
             self.loyalty_point_id = cust_result[6]

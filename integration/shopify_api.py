@@ -14,7 +14,7 @@ from setup.utilities import PhoneNumber, local_to_utc
 from datetime import datetime
 
 
-verbose_print = False
+verbose_print = True
 
 
 class Shopify:
@@ -920,6 +920,15 @@ class Shopify:
             variant_ids = [
                 x['id'].split('/')[-1] for x in response.data['productCreate']['product']['variants']['nodes']
             ]
+            variant_meta_ids = [
+                {
+                    'id': x['metafield']['id'].split('/')[-1],
+                    'namespace': x['metafield']['namespace'],
+                    'key': x['metafield']['key'],
+                }
+                for x in response.data['productCreate']['product']['variants']['nodes']
+            ]
+
             inventory_ids = [
                 x['inventoryItem']['id'].split('/')[-1]
                 for x in response.data['productCreate']['product']['variants']['nodes']
@@ -936,6 +945,7 @@ class Shopify:
                 'option_ids': option_ids,
                 'option_value_ids': option_value_ids,
                 'variant_ids': variant_ids,
+                'variant_meta_ids': variant_meta_ids,
                 'inventory_ids': inventory_ids,
                 'meta_ids': meta_ids,
             }
@@ -1065,10 +1075,21 @@ class Shopify:
                     x['inventoryItem']['id'].split('/')[-1]
                     for x in response.data['productVariantsBulkCreate']['productVariants']
                 ]
+
+                variant_meta_ids = [
+                    {
+                        'id': x['metafield']['id'].split('/')[-1],
+                        'namespace': x['metafield']['namespace'],
+                        'key': x['metafield']['key'],
+                    }
+                    for x in response.data['productVariantsBulkCreate']['productVariants']
+                ]
+
                 return {
                     'variant_ids': variant_ids,
                     'option_value_ids': option_value_ids,
                     'inventory_ids': inventory_ids,
+                    'variant_meta_ids': variant_meta_ids,
                 }
 
             def update_single(variables):
@@ -1788,7 +1809,7 @@ class Shopify:
                 return result
 
             result = []
-            owner_types = ['PRODUCT', 'CUSTOMER', 'PRODUCTIMAGE', 'MEDIA_IMAGE']
+            owner_types = ['PRODUCT', 'CUSTOMER', 'PRODUCTVARIANT', 'PRODUCTIMAGE', 'MEDIA_IMAGE']
             for owner in owner_types:
                 response = Shopify.Query(
                     document=Shopify.MetafieldDefinition.queries,
@@ -2211,7 +2232,4 @@ def refresh_order(tkt_no):
 
 
 if __name__ == '__main__':
-    # shopify_cust_ids = Shopify.Customer.get()
-    # mw_cust_ids = Database.Counterpoint.Customer.get()
-
-    print(Shopify.Order.get(5664499564711))
+    Shopify.Product.get(8308332232871)

@@ -1,8 +1,7 @@
 import sys
 import signal
 import time
-import pika
-import pika.exceptions
+from consumers.rabbitmq import RabbitMQConsumer
 import requests
 from setup import creds
 
@@ -228,64 +227,6 @@ def process_shopify_order(order_id, eh=ProcessInErrorHandler):
         eh.logger.info(message=f'Order {order_id} is on hold. Skipping...for now...')
     else:
         eh.logger.info(message=f'Order {order_id} status is {order['status']}. Skipping...')
-
-
-class RabbitMQConsumer:
-    def __init__(self, queue_name, callback_func, host='localhost', eh=ProcessInErrorHandler):
-        self.logger = eh.logger
-        self.error_handler = eh.error_handler
-        self.queue_name = queue_name
-        self.host = host
-        self.connection = None
-        self.channel = None
-        self.callback_func = callback_func
-
-    def connect(self):
-        parameters = pika.ConnectionParameters(self.host)
-        self.connection = pika.BlockingConnection(parameters)
-        self.channel = self.connection.channel()
-        self.channel.queue_declare(queue=self.queue_name, durable=True)
-
-    def callback(self, ch, method, properties, body):
-        body = body.decode()
-        self.logger.info(f'{self.queue_name}: Received: {body}')
-        try:
-            self.callback_func(body)
-        except Exception as err:
-            error_type = 'Exception:'
-            self.error_handler.add_error_v(
-                error=f'Error ({error_type}): {err}', origin=self.queue_name, traceback=tb()
-            )
-        else:
-            self.logger.success(f'Processing Finished at {datetime.now():%H:%M:%S}\n')
-        finally:
-            ch.basic_ack(delivery_tag=method.delivery_tag)
-            self.error_handler.print_errors()
-
-    def start_consuming(self):
-        while True:
-            try:
-                self.connect()
-                self.channel.basic_consume(queue=self.queue_name, on_message_callback=self.callback)
-                print(f'Consumer {self.queue_name}: Waiting for messages. To exit press CTRL+C')
-                self.channel.start_consuming()
-            except KeyboardInterrupt:
-                sys.exit(0)
-            except pika.exceptions.AMQPConnectionError:
-                self.error_handler.add_error_v(
-                    error='Connection lost. Reconnecting...', origin=self.queue_name, traceback=tb()
-                )
-                time.sleep(5)  # Wait before attempting reconnection
-            except Exception as err:
-                self.error_handler.add_error_v(error=err, origin=self.queue_name, traceback=tb())
-                time.sleep(5)  # Wait before attempting reconnection
-
-    def stop_consuming(self):
-        self._stop_event.set()
-        if self.channel:
-            self.channel.stop_consuming()
-        if self.connection:
-            self.connection.close()
 
 
 def shutdown_handler(signum, frame):

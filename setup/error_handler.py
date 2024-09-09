@@ -156,6 +156,13 @@ class LeadFormErrorHandler:
     error_handler = ErrorHandler(logger)
 
 
+class ServerErrorHandler:
+    """Logging for the HTTP Server"""
+
+    logger = Logger(Logs.server)
+    error_handler = ErrorHandler(logger)
+
+
 if __name__ == '__main__':
     # logger = GlobalErrorHandler.logger
     # error_handler = GlobalErrorHandler.error_handler

@@ -315,7 +315,7 @@ while True:
     except KeyboardInterrupt:
         logger.info(f'Process Terminated by User at {datetime.now():%H:%M:%S}')
     else:
-        logger.success(f'Business Automations Complete at {datetime.now():%H:%M:%S}')
+        # logger.success(f'Business Automations Complete at {datetime.now():%H:%M:%S}')
         total_seconds = (datetime.now() - now).total_seconds()
         minutes = total_seconds // 60
         seconds = round(total_seconds % 60, 2)

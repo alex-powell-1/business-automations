@@ -5,8 +5,9 @@ from dateutil.relativedelta import relativedelta
 from jinja2 import Template
 
 import customer_tools
-from shop.coupons import generate_random_code, generate_random_coupon, delete_expired_coupons
+from shop.coupons import generate_random_coupon, delete_expired_coupons
 import customer_tools.customers
+from setup.utilities import generate_random_code
 from product_tools.products import Product
 from setup import creds
 from setup.email_engine import Email

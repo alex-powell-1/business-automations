@@ -1,18 +1,10 @@
-import secrets
-import string
 from datetime import datetime
 
 from setup.error_handler import ScheduledTasksErrorHandler as error_handler
 
 from integration.shopify_api import Shopify
-from setup.utilities import utc_to_local
+from setup.utilities import utc_to_local, generate_random_code
 from database import Database
-
-
-def generate_random_code(length):
-    res = ''.join(secrets.choice(string.ascii_uppercase + string.digits) for i in range(length))
-
-    return res
 
 
 def generate_random_coupon(length=10):

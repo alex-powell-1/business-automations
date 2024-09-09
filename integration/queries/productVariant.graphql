@@ -21,6 +21,12 @@ mutation productVariantCreate($input: ProductVariantInput!) {
         id
       }
       title
+      metafield(key: "selling_size", namespace: "variant-specification") {
+        id
+        key
+        namespace
+        value
+      }
     }
     userErrors {
       field
@@ -54,6 +60,12 @@ mutation productVariantsBulkCreate(
       inventoryItem {
         id
       }
+      metafield(key: "selling_size", namespace: "variant-specification") {
+        id
+        key
+        namespace
+        value
+      }
     }
     userErrors {
       field
@@ -77,6 +89,13 @@ mutation productVariantUpdate($input: ProductVariantInput!) {
       compareAtPrice
       inventoryItem {
         id
+      }
+      metafield(key: "selling_size", namespace: "variant-specification") {
+        id
+        key
+        namespace
+        value
+
       }
       selectedOptions {
         name
@@ -114,6 +133,12 @@ mutation productVariantsBulkUpdate(
       sku
       image {
         id
+      }
+      metafield(key: "selling_size", namespace: "variant-specification") {
+        id
+        key
+        namespace
+        value
       }
     }
     userErrors {

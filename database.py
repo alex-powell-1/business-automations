@@ -521,6 +521,22 @@ class Database:
             response = Database.query(query)
             return response
 
+        def unsubscribe(email):
+            query = f"""
+            UPDATE {Table.CP.Customers.table}
+            SET {Table.CP.Customers.Column.email_subscribed_1} = 'N'
+            WHERE EMAIL_ADDR = '{email}'
+            """
+            response = Database.query(query)
+            if response['code'] == 200:
+                Database.logger.success(f'Unsubscribed {email} from newsletter.')
+            elif response['code'] == 201:
+                Database.logger.warn(f'{email} not found in newsletter table.')
+            else:
+                error = f'Error unsubscribing {email} from newsletter. \n Query: {query}\nResponse: {response}'
+                Database.error_handler.add_error_v(error=error)
+                raise Exception(error)
+
     class Counterpoint:
         class Order:
             def delete(doc_id=None, tkt_no=None, eh=ProcessOutErrorHandler):
