@@ -3,12 +3,13 @@ import os
 import re
 import time
 from setup import creds
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from email.utils import formatdate
 import base64
-from setup.error_handler import ProcessOutErrorHandler
+from setup.error_handler import ProcessOutErrorHandler, ScheduledTasksErrorHandler
 from PIL import Image, ImageOps, ImageDraw, ImageFont
 import pytz
+from traceback import format_exc as tb
 
 
 class PhoneNumber:
@@ -277,12 +278,6 @@ class VirtualRateLimiter:
             time.sleep(sleep3)
 
 
-if '__main__' == __name__:
-    # Example usage
-    phone = PhoneNumber('828-234-1265').to_twilio()
-    print(phone)
-
-
 def combine_images(
     product_image_path,
     barcode_image_path,
@@ -370,3 +365,32 @@ def combine_images(
         combined_image.save(combined_image_path)
 
     return combined_image
+
+
+def delete_old_files(directory=None, days=14, eh=ScheduledTasksErrorHandler):
+    """Delete files older than a specified number of days. If no directory is specified, all directories in the Logs
+    class will be checked."""
+    cut_off_dt = datetime.now() - timedelta(days=days)
+
+    def delete_helper(directory):
+        for f in os.listdir(directory):
+            last_modified_dt = datetime.fromtimestamp(os.path.getmtime(os.path.join(directory, f)))
+            if last_modified_dt < cut_off_dt and f.endswith('.log'):
+                try:
+                    os.remove(os.path.join(directory, f))
+                    pass
+                except Exception as e:
+                    eh.error_handler.add_error('Error deleting file.', origin='delete_old_files', traceback=tb())
+                else:
+                    eh.logger.info(f'Deleted file: {directory}/{f}')
+
+    if directory is None:
+        for x in creds.Logs.__dict__:
+            if not x.startswith('__'):
+                delete_helper(creds.Logs.__dict__[x])
+    else:
+        delete_helper(directory)
+
+
+if '__main__' == __name__:
+    delete_old_files()

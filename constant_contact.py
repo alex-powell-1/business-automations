@@ -11,7 +11,7 @@ import urllib.parse
 
 from database import Database
 
-from setup.error_handler import Logger, ErrorHandler
+from setup.error_handler import ProcessOutErrorHandler
 
 import multiprocessing
 
@@ -20,8 +20,8 @@ from promise import Promise
 REDIRECT_URI = 'http://localhost:41022/auth'
 REQUEST_TIMEOUT = 350
 
-logger = Logger(log_file=f'{creds.log_main}/constant_contact.log')
-error_handler = ErrorHandler(logger=logger)
+logger = ProcessOutErrorHandler.logger
+error_handler = ProcessOutErrorHandler.error_handler
 
 
 def CUSTOMER_ADDED(name, email, error):

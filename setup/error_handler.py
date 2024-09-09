@@ -1,10 +1,11 @@
 from datetime import datetime
 from setup import creds
+from setup.creds import Logs
 
 
 class Logger:
-    def __init__(self, log_file: str):
-        self.log_file = log_file
+    def __init__(self, log_directory: str):
+        self.log_file = f'{log_directory}/log_{datetime.now():%m_%d_%y}.log'
 
         if not self.log_file.endswith('.log'):
             self.log_file += '.log'
@@ -109,49 +110,49 @@ class ErrorHandler:
 class GlobalErrorHandler:
     """General Logging for the entire application"""
 
-    logger = Logger(f"{creds.global_log}/log_{datetime.now().strftime("%m_%d_%y")}.log")
+    logger = Logger(creds.global_log)
     error_handler = ErrorHandler(logger)
 
 
 class ScheduledTasksErrorHandler:
     """General Logging for the entire application"""
 
-    logger = Logger(creds.scheduled_tasks_log)
+    logger = Logger(Logs.scheduled_tasks)
     error_handler = ErrorHandler(logger)
 
 
 class SMSErrorHandler:
     """Logging for sms texts"""
 
-    logger = Logger(creds.sms_log)
+    logger = Logger(Logs.sms)
     error_handler = ErrorHandler(logger)
 
 
 class SMSEventHandler:
     """Logging for SMS Unsubscribes, Landline Handling, and other SMS Events"""
 
-    logger = Logger(creds.sms_event_log)
+    logger = Logger(Logs.sms_events)
     error_handler = ErrorHandler(logger)
 
 
 class ProcessInErrorHandler:
     """Logging for the Process In Integration"""
 
-    logger = Logger(creds.process_in_log)
+    logger = Logger(Logs.process_in)
     error_handler = ErrorHandler(logger)
 
 
 class ProcessOutErrorHandler:
     """Logging for the Process Out Integration"""
 
-    logger = Logger(creds.process_out_log)
+    logger = Logger(Logs.process_out)
     error_handler = ErrorHandler(logger)
 
 
 class LeadFormErrorHandler:
     """Logging for the Design Lead Form"""
 
-    logger = Logger(creds.design_lead_log)
+    logger = Logger(Logs.design_leads)
     error_handler = ErrorHandler(logger)
 
 

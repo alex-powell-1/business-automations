@@ -16,8 +16,9 @@ from traceback import format_exc as tb
 
 
 class Integrator:
-    error_handler = ProcessOutErrorHandler.error_handler
-    logger = ProcessOutErrorHandler.logger
+    eh = ProcessOutErrorHandler
+    error_handler = eh.error_handler
+    logger = eh.logger
 
     def __init__(self):
         self.last_sync = get_last_sync(file_name='./integration/last_sync_integrator.txt')
@@ -171,9 +172,9 @@ def user_menu_choices():
 
 
 if __name__ == '__main__':
-    integrator = Integrator()
     # Argument parsing
     if len(sys.argv) > 1:
+        integrator = Integrator()
         if sys.argv[1] == 'initialize':
             integrator.initialize()
         elif sys.argv[1] == 'delete':
@@ -201,8 +202,30 @@ if __name__ == '__main__':
 
     else:
         try:
-            integrator.sync()
+            # Run the integrator in a loop
+            while True:
+                now = datetime.now()
+                hour = now.hour
+                if 18 > hour > 7:
+                    minutes_between_sync = 15
+                else:
+                    minutes_between_sync = 60
+
+                delay = minutes_between_sync * 60
+
+                try:
+                    integrator = Integrator()
+                    integrator.sync()
+                    time.sleep(delay)
+
+                except Exception as e:
+                    integrator.error_handler.add_error_v(
+                        error=f'Error: {e}', origin='integrator.py', traceback=tb()
+                    )
+                    time.sleep(60)
+
         except KeyboardInterrupt:
             sys.exit(0)
+
         except Exception as e:
             Integrator.error_handler.add_error_v(error=e, origin='Integrator.py', traceback=tb())

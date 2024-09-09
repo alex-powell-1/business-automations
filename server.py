@@ -36,8 +36,6 @@ from setup.utilities import PhoneNumber, EmailAddress
 
 from integration.shopify_customers import Customers
 
-from customer_tools.customers import add_new_customer, lookup_customer
-
 app = flask.Flask(__name__)
 
 limiter = Limiter(get_remote_address, app=app)
@@ -63,10 +61,10 @@ class EventID:
 def log_request():
     """Log incoming requests."""
     if request.is_json:
-        preview = f'- {request.get_data().decode('utf-8')[:20]}'
+        preview = f'- {request.get_data().decode('utf-8')[:30]}'
     else:
         preview = ''
-    logger = Logger(log_file=f'{creds.log_main}/server/log_.log')
+    logger = Logger(log_directory=creds.Logs.server)
     logger.info(f'{request.method} - {request.url} {preview}')
 
 
@@ -807,7 +805,7 @@ def shopify_product_update():
     """Webhook route for updated products. Sends to RabbitMQ queue for asynchronous processing"""
     webhook_data = request.json
     headers = request.headers
-
+    logger = Logger(creds.Logs.webhooks_product_update)
     event_id = headers.get('X-Shopify-Event-Id')
     if event_id == EventID.product_update:
         return jsonify({'success': True}), 200
@@ -828,8 +826,7 @@ def shopify_product_update():
     status = webhook_data['status']
     item_no = Database.Shopify.Product.get_parent_item_no(product_id)
 
-    with open('./logs/webhooks/product_update.txt', 'a') as f:
-        print(f'{datetime.now()} - SKU:{item_no}, Product ID: {product_id}, Web Title: {title}', file=f)
+    logger.log(f'Webhook: Product Update, SKU:{item_no}, Product ID: {product_id}, Web Title: {title}')
 
     if item_no and description:
         # Update product description in Counterpoint - Skip timestamp update (avoid loop)
@@ -1066,7 +1063,7 @@ if __name__ == '__main__':
                     threads=8,
                     max_request_body_size=1073741824,  # 1 GB
                     max_request_header_size=8192,  # 8 KB
-                    connection_limit=1000,  # Increase the connection limit
+                    connection_limit=1000,
                 )
             except Exception as e:
                 print('Error serving Flask app: ', e)

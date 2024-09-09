@@ -2,6 +2,7 @@ import sys
 import signal
 import time
 import pika
+import pika.exceptions
 import requests
 from setup import creds
 
@@ -287,10 +288,6 @@ class RabbitMQConsumer:
             self.connection.close()
 
 
-def run_server():
-    subprocess.run(['python', './server.py'])
-
-
 def shutdown_handler(signum, frame):
     print('Received shutdown signal, stopping consumers...')
     for consumer in consumers:
@@ -304,10 +301,6 @@ if __name__ == '__main__':
     try:
         signal.signal(signal.SIGINT, shutdown_handler)
         signal.signal(signal.SIGTERM, shutdown_handler)
-
-        # # Start the server in a separate thread
-        # server_thread = threading.Thread(target=run_server)
-        # server_thread.start()
 
         threads = []
         consumers = []

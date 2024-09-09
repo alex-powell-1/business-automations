@@ -4,10 +4,10 @@ import pandas as pd
 import csv
 from setup import creds
 from database import Database as db
-from setup.error_handler import ScheduledTasksErrorHandler as error_handler
+from setup.error_handler import ScheduledTasksErrorHandler
 
 
-def create_inventory_csv(retail=True):
+def create_inventory_csv(retail=True, eh=ScheduledTasksErrorHandler):
     if retail:
         # RETAIL AVAILABILITY
         query = """
@@ -48,21 +48,16 @@ def create_inventory_csv(retail=True):
         df.to_csv(
             dir, mode='w', header=False, index=False, quoting=csv.QUOTE_NONE
         )  # quoting fixes double quotes issue
-        error_handler.logger.info('CSV file created.')
 
 
-def upload_inventory():
+def upload_inventory(verbose=True, eh=ScheduledTasksErrorHandler):
     """Uploads csv of inventory for retail and wholesale availability data tables"""
-    # # Retail Segment
-    error_handler.logger.info(f'Inventory upload starting at {datetime.now():%H:%M:%S}')
-    error_handler.logger.info('Creating inventory csv for upload to Retail Availability')
+    if verbose:
+        eh.logger.info(f'Inventory upload starting at {datetime.now():%H:%M:%S}')
     create_inventory_csv(retail=True)
-    error_handler.logger.info('Retail Inventory Uploaded to WebDav Server')
-
-    # Wholesale Segment
-    error_handler.logger.info('Creating inventory csv for upload to Wholesale Availability')
     create_inventory_csv(retail=False)
-    error_handler.logger.info(f'Inventory Upload: Finished at {datetime.now():%H:%M:%S}')
+    if verbose:
+        eh.logger.info(f'Inventory Upload: Finished at {datetime.now():%H:%M:%S}')
 
 
 if __name__ == '__main__':

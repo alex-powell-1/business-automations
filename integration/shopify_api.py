@@ -56,12 +56,12 @@ class Shopify:
                 # print(operation_name, self)
 
                 if self.user_errors:
-                    print('Entering User Errors: ', self.user_errors)
                     for i in self.user_errors:
                         if operation_name.startswith('customer'):
                             if i == 'Email has already been taken':
-                                with open('./logs/duplicates/emails.txt', 'a') as f:
-                                    print(f"{datetime.now()}, {variables['input']['email']}", file=f)
+                                Shopify.logger.warn(
+                                    f'Operation: {operation_name} - Duplicate Email: {variables["input"]["email"]}'
+                                )
                                 # Remove email from variables
                                 if 'email' in variables['input']:
                                     del variables['input']['email']
@@ -74,8 +74,9 @@ class Shopify:
                                 return self.__init__(document, variables, operation_name)
 
                             elif i == 'Phone has already been taken':
-                                with open('./logs/duplicates/phones.txt', 'a') as f:
-                                    print(f"{datetime.now()}, {variables['input']['phone']}", file=f)
+                                Shopify.logger.warn(
+                                    f'Operation: {operation_name} - Duplicate Phone: {variables["input"]["phone"]}'
+                                )
                                 # Remove phone from variables
                                 if 'phone' in variables['input']:
                                     del variables['input']['phone']

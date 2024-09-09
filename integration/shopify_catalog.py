@@ -15,7 +15,7 @@ from setup.creds import Table, Metafield
 from database import Database as db
 from setup.utilities import get_product_images, convert_to_utc, parse_custom_url, get_filesize
 
-from setup.error_handler import Logger, ErrorHandler
+from setup.error_handler import ProcessOutErrorHandler
 
 from traceback import format_exc as tb
 
@@ -23,8 +23,9 @@ from traceback import format_exc as tb
 class Catalog:
     all_binding_ids = Database.Counterpoint.Product.get_all_binding_ids()
     metafields = Database.Shopify.Metafield_Definition.get()
-    logger = Logger(f"{creds.log_main}/integration/process_out/log_{datetime.now().strftime("%m_%d_%y")}.log")
-    error_handler = ErrorHandler(logger)
+    eh = ProcessOutErrorHandler
+    logger = eh.logger
+    error_handler = eh.error_handler
 
     def __init__(
         self, last_sync=datetime(1970, 1, 1), inventory_only=False, verbose=True, test_mode=False, test_queue=None

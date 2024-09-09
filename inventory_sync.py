@@ -1,19 +1,19 @@
 from integration.shopify_catalog import Catalog
 from product_tools import inventory_upload
-from setup import creds
 
 
 from datetime import datetime
 
-from setup.error_handler import Logger, ErrorHandler
+from setup.error_handler import ProcessOutErrorHandler
 from traceback import format_exc as tb
 from setup.utilities import get_last_sync, set_last_sync
 from time import sleep
 
 
 class Inventory:
-    logger = Logger(f"{creds.log_main}/integration/process_out/log_{datetime.now().strftime("%m_%d_%y")}.log")
-    error_handler = ErrorHandler(logger)
+    eh = ProcessOutErrorHandler
+    logger = eh.logger
+    error_handler = eh.error_handler
 
     def __init__(self, verbose=False):
         self.last_sync = get_last_sync(file_name='./integration/last_sync_inventory.txt')
@@ -27,13 +27,16 @@ class Inventory:
         start_sync_time = datetime.now()
         self.catalog.sync()
         set_last_sync(file_name='./integration/last_sync_inventory.txt', start_time=start_sync_time)
-        # completion_time = (datetime.now() - start_sync_time).seconds
-        # Inventory.logger.info(f'Inventory Sync completion time: {completion_time} seconds')
+        completion_time = (datetime.now() - start_sync_time).seconds
+        if self.verbose:
+            Inventory.logger.info(f'Inventory Sync completion time: {completion_time} seconds')
         if Inventory.error_handler.errors:
             Inventory.error_handler.print_errors()
 
 
 if __name__ == '__main__':
+    verbose_logging = False
+
     while True:
         now = datetime.now()
         hour = now.hour
@@ -45,10 +48,10 @@ if __name__ == '__main__':
             step = 10
         try:
             # Upload Inventory to file share.
-            inventory_upload.upload_inventory()
+            inventory_upload.upload_inventory(verbose=verbose_logging, eh=Inventory.eh)
 
             for i in range(step):
-                inventory = Inventory(verbose=True)
+                inventory = Inventory(verbose=verbose_logging)
                 inventory.sync()
                 sleep(delay)
 
