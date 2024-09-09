@@ -192,6 +192,16 @@ class Shopify:
         prefix = 'gid://shopify/Order/'
 
         @staticmethod
+        def test(order_id):
+            response = Shopify.Query(
+                document=Shopify.Order.queries,
+                operation_name='OrderCustomerRemove',
+                variables={'orderId': f'{Shopify.Order.prefix}{order_id}'},
+            )
+
+            return response.data
+
+        @staticmethod
         def get(order_id: int):
             response = Shopify.Query(
                 document=Shopify.Order.queries,
