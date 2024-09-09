@@ -146,7 +146,7 @@ def get_service_information():
 
 
 @app.route(f'{Route.design}-admin', methods=['POST'])
-@limiter.limit('20/minute')  # 10 requests per minute
+@limiter.limit('10/minute')  # 10 requests per minute
 def get_service_information_admin():
     """Route for information request about company service. Sends JSON to RabbitMQ for asynchronous processing."""
     LeadFormErrorHandler.logger.log_file = f'design_leads_{datetime.now().strftime("%m_%d_%y")}.log'
