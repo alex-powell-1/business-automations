@@ -145,6 +145,57 @@ def get_service_information():
         return 'Your information has been received. Please check your email for more information from our team.'
 
 
+@app.route(f'{Route.design}-admin', methods=['POST'])
+@limiter.limit('10/minute')  # 10 requests per minute
+def get_service_information_admin():
+    """Route for information request about company service. Sends JSON to RabbitMQ for asynchronous processing."""
+    LeadFormErrorHandler.logger.log_file = f'design_leads_{datetime.now().strftime("%m_%d_%y")}.log'
+    token = request.headers.get('Authorization').split(' ')[1]
+
+    # Base64 decode the token
+    decoded_token = base64.b64decode(token).decode()
+    signature, message, timestamp = decoded_token.split(':')
+
+    current_time = int(time.time() * 1000)
+    time_difference = current_time - int(timestamp)
+
+    # Verify timestamp
+    if time_difference > 1000 * 60 * 10:
+        return jsonify({'error': 'Invalid token'}), 401
+
+    def verify_hmac(key, message, sig):
+        computed_digest = hmac.new(key.encode(), message.encode(), hashlib.sha256).hexdigest()
+        return hmac.compare_digest(computed_digest, sig)
+
+    # Validate the SHA hash
+    if not verify_hmac(creds.design_admin_key, message, signature):
+        return jsonify({'error': 'Invalid token'}), 401
+
+    data = request.json
+    try:
+        connection = pika.BlockingConnection(pika.ConnectionParameters('localhost'))
+
+        channel = connection.channel()
+
+        channel.queue_declare(queue=creds.consumer_design_lead_form, durable=True)
+
+        channel.basic_publish(
+            exchange='',
+            routing_key=creds.consumer_design_lead_form,
+            body=json.dumps(data),
+            properties=pika.BasicProperties(delivery_mode=pika.DeliveryMode.Persistent),
+        )
+
+        connection.close()
+    except Exception as e:
+        LeadFormErrorHandler.error_handler.add_error_v(
+            error=f'Error sending design request to RabbitMQ: {e}', origin='design_info'
+        )
+        return jsonify({'error': 'Internal server error'}), 500
+    else:
+        return 'Your information has been received. Please check your email for more information from our team.'
+
+
 @app.route(Route.stock_notify, methods=['POST'])
 @limiter.limit('20/minute')  # 10 requests per minute
 def stock_notification():

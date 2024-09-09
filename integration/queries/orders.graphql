@@ -242,3 +242,144 @@ query orders {
         }
     }
 }
+
+mutation OrderCustomerRemove($orderId: ID!) {
+    orderCustomerRemove(orderId: $orderId) {
+        order {
+            id
+            customer {
+                id
+                __typename
+            }
+            purchasingEntity {
+                ... on Customer {
+                    id
+                    __typename
+                }
+                ... on PurchasingCompany {
+                    company {
+                        id
+                        __typename
+                    }
+                    contact {
+                        id
+                        customer {
+                            id
+                            __typename
+                        }
+                        __typename
+                    }
+                    location {
+                        id
+                        __typename
+                    }
+                    __typename
+                }
+                __typename
+            }
+            __typename
+        }
+        userErrors {
+            field
+            message
+            __typename
+        }
+        __typename
+    }
+}
+
+mutation OrderAddCustomer($orderId: ID!, $customerId: ID!) {
+    orderCustomerSet(orderId: $orderId, customerId: $customerId) {
+        order {
+            id
+            customer {
+                id
+                fullName
+                image {
+                    id
+                    transformedSrc: url(
+                        transform: { maxWidth: 30, maxHeight: 30, crop: CENTER }
+                    )
+                    __typename
+                }
+                numberOfOrders
+                note
+                __typename
+            }
+            purchasingEntity {
+                ... on Customer {
+                    defaultAddress {
+                        formattedArea
+                        id
+                        __typename
+                    }
+                    displayName
+                    email
+                    firstName
+                    fullName
+                    id
+                    lastName
+                    numberOfOrders
+                    phone
+                    __typename
+                }
+                ... on PurchasingCompany {
+                    company {
+                        id
+                        name
+                        __typename
+                    }
+                    contact {
+                        id
+                        customer {
+                            displayName
+                            email
+                            firstName
+                            fullName
+                            id
+                            lastName
+                            numberOfOrders
+                            phone
+                            __typename
+                        }
+                        roleAssignments(first: 1) {
+                            edges {
+                                node {
+                                    id
+                                    __typename
+                                }
+                                __typename
+                            }
+                            __typename
+                        }
+                        __typename
+                    }
+                    location {
+                        id
+                        name
+                        shippingAddress {
+                            address1
+                            address2
+                            city
+                            countryCode
+                            formattedArea
+                            id
+                            province
+                            __typename
+                        }
+                        __typename
+                    }
+                    __typename
+                }
+                __typename
+            }
+            __typename
+        }
+        userErrors {
+            field
+            message
+            __typename
+        }
+        __typename
+    }
+}
