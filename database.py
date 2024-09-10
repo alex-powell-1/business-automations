@@ -682,6 +682,12 @@ class Database:
                     title = Database.sql_scrub(payload['title'])[:80]  # 80 char limit
                     query += f"{Table.CP.Item.Column.web_title} = '{title}', "
 
+                if 'tags' in payload:
+                    tags = Database.sql_scrub(payload['tags'])[:80]
+                    query += f"{Table.CP.Item.Column.tags} = '{tags}', "
+                else:
+                    query += f'{Table.CP.Item.Column.tags} = NULL, '
+
                 # SEO Data
                 if 'meta_title' in payload:
                     meta_title = Database.sql_scrub(payload['meta_title'])[:80]  # 80 char limit
@@ -2388,7 +2394,7 @@ class Database:
                 def get_option_id(sku):
                     if sku:
                         query = f"""
-                            SELECT OPTION_ID FROM {creds.shopify_product_table}
+                            SELECT OPTION_ID FROM {Table.Middleware.products}
                             WHERE ITEM_NO = '{sku}'
                             """
                     else:
@@ -2401,7 +2407,7 @@ class Database:
                 def get_option_value_id(sku):
                     if sku:
                         query = f"""
-                            SELECT OPTION_VALUE_ID FROM {creds.shopify_product_table}
+                            SELECT OPTION_VALUE_ID FROM {Table.Middleware.products}
                             WHERE ITEM_NO = '{sku}'
                             """
                     else:
@@ -2422,7 +2428,8 @@ class Database:
                         PRODUCT_ID, VARIANT_ID, INVENTORY_ID, VARIANT_NAME, OPTION_ID, OPTION_VALUE_ID, CATEG_ID, 
                         CF_BOTAN_NAM, CF_PLANT_TYP, CF_HEIGHT, CF_WIDTH, CF_CLIM_ZON, CF_CLIM_ZON_LST,
                         CF_COLOR, CF_SIZE, CF_BLOOM_SEAS, CF_BLOOM_COLOR, CF_LIGHT_REQ, CF_FEATURES, CF_IS_PREORDER, 
-                        CF_PREORDER_DT, CF_PREORDER_MSG, CF_IS_FEATURED, CF_IN_STORE_ONLY, CF_IS_ON_SALE, CF_SALE_DESCR
+                        CF_PREORDER_DT, CF_PREORDER_MSG, CF_IS_FEATURED, CF_IN_STORE_ONLY, CF_IS_ON_SALE, CF_SALE_DESCR,
+                        CF_VAR_SIZE
                         )
                          
                         VALUES ('{variant.sku}', {f"'{product.binding_id}'" if product.binding_id else 'NULL'}, 
@@ -2451,7 +2458,8 @@ class Database:
                         {product.meta_is_featured['id'] if product.meta_is_featured['id'] else "NULL"},
                         {product.meta_in_store_only['id'] if product.meta_in_store_only['id'] else "NULL"},
                         {product.meta_is_on_sale['id'] if product.meta_is_on_sale['id'] else "NULL"},
-                        {product.meta_sale_description['id'] if product.meta_sale_description['id'] else "NULL"}
+                        {product.meta_sale_description['id'] if product.meta_sale_description['id'] else "NULL"},
+                        {variant.meta_variant_size['id'] if variant.meta_variant_size['id'] else "NULL"}
                         )
                         """
                     response = Database.query(insert_query)
@@ -2503,6 +2511,7 @@ class Database:
                         CF_IN_STORE_ONLY = {product.meta_in_store_only['id'] if product.meta_in_store_only['id'] else "NULL"},
                         CF_IS_ON_SALE = {product.meta_is_on_sale['id'] if product.meta_is_on_sale['id'] else "NULL"},
                         CF_SALE_DESCR = {product.meta_sale_description['id'] if product.meta_sale_description['id'] else "NULL"},
+                        CF_VAR_SIZE = {variant.meta_variant_size['id'] if variant.meta_variant_size['id'] else "NULL"},
                         LST_MAINT_DT = GETDATE() 
                         WHERE ID = {variant.mw_db_id}
                         """

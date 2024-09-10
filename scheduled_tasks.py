@@ -15,11 +15,13 @@ from sms.sms_messages import birthdays, first_time_customers, returning_customer
 from setup import backups
 from setup.error_handler import ScheduledTasksErrorHandler
 import time
+import importlib
 
 # -----------------
 # Scheduled Tasks
 # -----------------
 while True:
+    importlib.reload(date_presets)
     now = datetime.now()
     day = now.day
     hour = now.hour

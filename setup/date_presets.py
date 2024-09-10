@@ -6,6 +6,7 @@ business_start_date = datetime(2020, 1, 1)
 business_start_today = datetime.today().replace(hour=8)
 thirty_minutes_ago = datetime.now() + relativedelta(minutes=-30)
 five_minutes_ago = datetime.now() + relativedelta(minutes=-5)
+
 thirty_seconds_ago = datetime.now() + relativedelta(seconds=-30)
 twenty_four_hours_ago = datetime.now() + relativedelta(hours=-24)
 day_start = datetime.combine(date.today(), datetime.min.time())
@@ -69,7 +70,7 @@ last_year_low_stock_window = today + relativedelta(years=-1, days=low_stock_wind
 # Low Stock - How many items to show on report
 number_of_low_stock_items = 100
 
-date_format = "%x"
+date_format = '%x'
 
 # SMS Related Dates
 # For regular Coupon
@@ -79,6 +80,6 @@ birthday_coupon_expiration_day = month_start + relativedelta(months=+1, days=+9)
 
 # Reporting Periods
 reporting_periods = {
-    "yesterday": {"start": yesterday, "end": yesterday},
-    "last_week": {"start": last_week_start, "end": last_week_end},
+    'yesterday': {'start': yesterday, 'end': yesterday},
+    'last_week': {'start': last_week_start, 'end': last_week_end},
 }

@@ -31,7 +31,7 @@ mutation CreateProductWithNewMedia(
           inventoryItem {
             id
           }
-          metafield(key: "selling_size", namespace: "variant-specification") {
+          metafield(key: "variant_size", namespace: "variant-specification") {
             id
             key
             namespace
@@ -88,10 +88,9 @@ mutation UpdateProductWithNewMedia(
           mediaContentType
           preview {
             status
-            image
-            {
+            image {
               url
-              }
+            }
           }
         }
       }
@@ -99,6 +98,21 @@ mutation UpdateProductWithNewMedia(
         id
         optionValues {
           id
+        }
+      }
+      variants(first: 20) {
+        nodes {
+          id
+          title
+          inventoryItem {
+            id
+          }
+          metafield(key: "variant_size", namespace: "variant-specification") {
+            id
+            key
+            namespace
+            value
+          }
         }
       }
       metafields(first: 25) {
@@ -120,9 +134,7 @@ mutation UpdateProductWithNewMedia(
   }
 }
 
-mutation updateProduct(
-  $input: ProductInput!
-) {
+mutation updateProduct($input: ProductInput!) {
   productUpdate(input: $input) {
     product {
       id
@@ -143,6 +155,21 @@ mutation updateProduct(
         id
         optionValues {
           id
+        }
+      }
+      variants(first: 20) {
+        nodes {
+          id
+          title
+          inventoryItem {
+            id
+          }
+          metafield(key: "variant_size", namespace: "variant-specification") {
+            id
+            key
+            namespace
+            value
+          }
         }
       }
       metafields(first: 25) {
@@ -294,7 +321,7 @@ query product($id: ID!) {
         inventoryItem {
           id
         }
-        metafield(key: "selling_size", namespace: "variant-specification") {
+        metafield(key: "variant_size", namespace: "variant-specification") {
           id
           value
         }

@@ -21,7 +21,7 @@ mutation productVariantCreate($input: ProductVariantInput!) {
         id
       }
       title
-      metafield(key: "selling_size", namespace: "variant-specification") {
+      metafield(key: "variant_size", namespace: "variant-specification") {
         id
         key
         namespace
@@ -51,16 +51,21 @@ mutation productVariantsBulkCreate(
         id
         optionValues {
           id
+          name
         }
       }
     }
     productVariants {
       id
+      sku
       title
       inventoryItem {
         id
       }
-      metafield(key: "selling_size", namespace: "variant-specification") {
+      image {
+        id
+      }
+      metafield(key: "variant_size", namespace: "variant-specification") {
         id
         key
         namespace
@@ -90,12 +95,11 @@ mutation productVariantUpdate($input: ProductVariantInput!) {
       inventoryItem {
         id
       }
-      metafield(key: "selling_size", namespace: "variant-specification") {
+      metafield(key: "variant_size", namespace: "variant-specification") {
         id
         key
         namespace
         value
-
       }
       selectedOptions {
         name
@@ -131,10 +135,14 @@ mutation productVariantsBulkUpdate(
     productVariants {
       id
       sku
+      title
+      inventoryItem {
+        id
+      }
       image {
         id
       }
-      metafield(key: "selling_size", namespace: "variant-specification") {
+      metafield(key: "variant_size", namespace: "variant-specification") {
         id
         key
         namespace
@@ -191,15 +199,28 @@ mutation bulkDeleteProductVariants($productId: ID!, $variantsIds: [ID!]!) {
   }
 }
 
-# query productVariants($id: ID!) {
-#   productVariants(query:gid://shopify/Product/8308343963815) {
-#     edges {
-#       node {
-#         id
-#         image {
-#           id
-#         }
-#       }
-#     }
-#   }
-# }
+query productVariant($id: ID!) {
+  productVariant(id: $id) {
+    title
+    displayName
+    createdAt
+    price
+    compareAtPrice
+    inventoryQuantity
+    availableForSale
+    inventoryItem {
+      id
+      sku
+      unitCost {
+        amount
+      }
+      tracked
+    }
+    metafield(key: "variant_size", namespace: "variant-specification") {
+      id
+      key
+      namespace
+      value
+    }
+  }
+}
