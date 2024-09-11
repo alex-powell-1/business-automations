@@ -1,13 +1,13 @@
-from datetime import datetime
-import csv
+from datetime import datetime, date
+from dateutil.relativedelta import relativedelta
 
+import csv
+from setup import date_presets
 import requests
 
 from setup import creds
-from setup import date_presets
-from setup.create_log import create_customer_log
 from database import Database as db
-from setup.error_handler import ScheduledTasksErrorHandler as error_handler
+from setup.error_handler import ScheduledTasksErrorHandler
 from database import Database
 
 from setup.utilities import PhoneNumber
@@ -15,6 +15,8 @@ from setup.utilities import PhoneNumber
 
 class Customer:
     def __init__(self, number):
+        self.logger = ScheduledTasksErrorHandler.logger
+        self.error_handler = ScheduledTasksErrorHandler.error_handler
         self.number = number
         self.first_name = ''
         self.last_name = ''
@@ -75,62 +77,6 @@ class Customer:
             self.sms_subscribe = response[0][20]
             self.pricing_tier = int(response[0][21]) if response[0][21] is not None else None
 
-    def add_to_mailerlite(self):
-        url = 'https://connect.mailerlite.com/api/subscribers/'
-
-        headers = {
-            'Authorization': f'Bearer {creds.mailerlite_token}',
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-        }
-
-        if self.category == 'WHOLESALE':
-            payload = {
-                'email': self.email_1,
-                'groups': [creds.wholesale_mailing_list],
-                'fields': {
-                    'name': self.first_name,
-                    'last_name': self.last_name,
-                    'company': self.name,
-                    'phone': self.phone_1,
-                },
-            }
-        else:
-            payload = {
-                'email': self.email_1,
-                'groups': [creds.retail_all_mailing_list],
-                'fields': {'name': self.first_name, 'last_name': self.last_name, 'phone': self.phone_1},
-            }
-
-        response = requests.post(url, headers=headers, json=payload)
-        print(response.json())
-
-    def unsubscribe_from_sms(self):
-        query = f"""
-        UPDATE AR_CUST
-        SET {creds.sms_subscribe_status} = 'N', LST_MAINT_DT = GETDATE()
-        WHERE CUST_NO = '{self.number}'
-        """
-        db.query(query)
-        create_customer_log(
-            customer_number=self.number,
-            first_name=self.first_name,
-            last_name=self.last_name,
-            name=self.name,
-            phone_1=self.phone_1,
-            status_1_col_name='unsubscribed',
-            status_1_data=f'Unsubscribed on {date_presets.today:%x}',
-            log_location=creds.unsubscribed_sms,
-        )
-
-    def subscribe_to_sms(self):
-        query = f"""
-        UPDATE AR_CUST
-        SET {creds.sms_subscribe_status} = 'Y', LST_MAINT_DT = GETDATE()
-        WHERE CUST_NO = '{self.number}'
-        """
-        db.query(query)
-
     def get_total_spent(self, start_date, stop_date):
         pass
 
@@ -158,14 +104,14 @@ class Customer:
                 """
         response = db.query(query)
         if response['code'] == 200:
-            error_handler.logger.success(
+            self.logger.success(
                 f'{self.name}({self.number}) pricing tier updated from {current_tier} to {target_tier}'
             )
         else:
-            error_handler.error_handler.add_error_v(error=response['message'], origin='set_pricing_tier')
+            self.error_handler.add_error_v(error=response['message'], origin='set_pricing_tier')
 
 
-def export_retail_customer_csv():
+def export_retail_customer_csv(eh=ScheduledTasksErrorHandler):
     retail_query = """
     SELECT CUST_NO, FST_NAM, LST_NAM, EMAIL_ADRS_1, PHONE_1, PROF_COD_2, LOY_PTS_BAL 
     FROM AR_CUST 
@@ -173,13 +119,13 @@ def export_retail_customer_csv():
     """
 
     try:
-        error_handler.logger.info('Getting retail customer data from SQL')
+        eh.logger.info('Getting retail customer data from SQL')
         response = db.query(retail_query)
     except Exception as err:
-        error_handler.error_handler.add_error_v(error=err, origin='Retail Customer SQL Query')
+        eh.error_handler.add_error_v(error=err, origin='Retail Customer SQL Query')
     else:
         if response is None:
-            error_handler.logger.info('No Retail Data')
+            eh.logger.info('No Retail Data')
         else:
             header_list = [
                 'Customer Number',
@@ -215,10 +161,10 @@ def export_retail_customer_csv():
             export_file.close()
             print('HERE')
     finally:
-        error_handler.logger.info('Retail Export Complete')
+        eh.logger.info('Retail Export Complete')
 
 
-def export_wholesale_customer_csv():
+def export_wholesale_customer_csv(eh=ScheduledTasksErrorHandler):
     retail_query = """
     SELECT CUST_NO, FST_NAM, LST_NAM, EMAIL_ADRS_1, PHONE_1
     FROM AR_CUST 
@@ -226,13 +172,13 @@ def export_wholesale_customer_csv():
     """
 
     try:
-        error_handler.logger.info('Getting wholesale customer data from SQL')
+        eh.logger.info('Getting wholesale customer data from SQL')
         response = db.query(retail_query)
     except Exception as err:
-        error_handler.error_handler.add_error_v(error=err, origin='Wholesale Customer SQL Query')
+        eh.error_handler.add_error_v(error=err, origin='Wholesale Customer SQL Query')
     else:
         if response is None:
-            error_handler.logger.info('No Wholesale Data')
+            eh.logger.info('No Wholesale Data')
         else:
             header_list = ['Customer Number', 'First Name', 'Last Name', 'Email Address', 'Phone Number']
 
@@ -253,14 +199,14 @@ def export_wholesale_customer_csv():
 
             export_file.close()
     finally:
-        error_handler.logger.info('Wholesale Export Complete')
+        eh.logger.info('Wholesale Export Complete')
 
 
-def export_customers_to_csv():
-    error_handler.logger.info(f'Customer Export: Starting at {datetime.now():%H:%M:%S}')
+def export_customers_to_csv(eh=ScheduledTasksErrorHandler):
+    eh.logger.info(f'Customer Export: Starting at {datetime.now():%H:%M:%S}')
     export_retail_customer_csv()
     export_wholesale_customer_csv()
-    error_handler.logger.info(f'Customer Export: Finished at {datetime.now():%H:%M:%S}')
+    eh.logger.info(f'Customer Export: Finished at {datetime.now():%H:%M:%S}')
 
 
 def is_current_customer(customer_number):
@@ -767,14 +713,14 @@ def set_negative_loyalty_points_to_zero(log_file):
     print('-----------------------', file=log_file)
 
 
-def set_contact_1():
+def set_contact_1(eh=ScheduledTasksErrorHandler):
     """Takes first name and last name and updates contact 1 field in counterpoint"""
-    error_handler.logger.info(f'Set Contact 1: Starting at {datetime.now():%H:%M:%S}')
+    eh.logger.info(f'Set Contact 1: Starting at {datetime.now():%H:%M:%S}')
     target_customers = get_customers_with_no_contact_1()
     if target_customers is None:
-        error_handler.logger.info('No customer_tools to set at this time.')
+        eh.logger.info('No customer_tools to set at this time.')
     else:
-        error_handler.logger.info(f'{len(target_customers)} Customers to Update')
+        eh.logger.info(f'{len(target_customers)} Customers to Update')
         for x in target_customers:
             query = f"""
             SELECT FST_NAM, LST_NAM
@@ -800,10 +746,60 @@ def set_contact_1():
                     """
                     response = db.query(query)
                     if response['code'] == 200:
-                        error_handler.logger.info(
-                            f"Customer {x}: " f"Contact 1 updated to: {full_name.replace("''", "'")}"
-                        )
+                        eh.logger.info(f"Customer {x}: " f"Contact 1 updated to: {full_name.replace("''", "'")}")
                     else:
-                        error_handler.error_handler.add_error_v(error=response['message'], origin='set_contact_1')
+                        eh.error_handler.add_error_v(error=response['message'], origin='set_contact_1')
 
-    error_handler.logger.info(f'Set Contact 1: Finished at {datetime.now():%H:%M:%S}')
+    eh.logger.info(f'Set Contact 1: Finished at {datetime.now():%H:%M:%S}')
+
+
+def fix_first_and_last_sale_dates(dt=date_presets.yesterday, eh=ScheduledTasksErrorHandler):
+    """Updates the first and last sale dates for customers with refunds."""
+    eh.logger.info(f'Fix First and Last Sale Dates: Starting at {datetime.now():%H:%M:%S}')
+    # Get a list of customers with refunds from a day ago
+    customers = db.Counterpoint.ClosedOrder.get_refund_customers(dt)
+    if not customers:
+        eh.logger.info(f'No customers with refunds on {dt}.')
+    else:
+        for customer in customers:
+            #################################
+            # Fix Last Sale Date and Amount #
+            #################################
+
+            # Get the last successful order for the customer
+            last_success_tkt_no = db.Counterpoint.ClosedOrder.get_last_successful_order(customer)
+            if last_success_tkt_no:
+                # Get the date and amount of the last successful order
+                last_success_order_date = db.Counterpoint.ClosedOrder.get_business_date(tkt_no=last_success_tkt_no)
+                last_success_order_amt = db.Counterpoint.ClosedOrder.get_total(tkt_no=last_success_tkt_no)
+                # Update the customer's last sale date and amount
+                db.Counterpoint.Customer.update_last_sale_date(
+                    cust_no=customer, last_sale_date=last_success_order_date, last_sale_amt=last_success_order_amt
+                )
+            else:
+                # If the customer has no successful orders, set the last sale date to None
+                db.Counterpoint.Customer.update_last_sale_date(cust_no=customer, last_sale_date=None)
+
+            ########################
+            # Fix First Sale Date #
+            ########################
+            # Get the first successful order for the customer
+            first_success_tkt_no = db.Counterpoint.ClosedOrder.get_first_successful_order(customer)
+            if first_success_tkt_no:
+                # Get the date of the first successful order
+                first_success_order_date = db.Counterpoint.ClosedOrder.get_business_date(
+                    tkt_no=first_success_tkt_no
+                )
+                # Update the customer's first sale date
+                db.Counterpoint.Customer.update_first_sale_date(
+                    cust_no=customer, first_sale_date=first_success_order_date
+                )
+            else:
+                # If the customer has no successful orders, set the first sale date to None
+                db.Counterpoint.Customer.update_first_sale_date(cust_no=customer, first_sale_date=None)
+
+    eh.logger.info(f'Fix First and Last Sale Dates: Finished at {datetime.now():%H:%M:%S}')
+
+
+if __name__ == '__main__':
+    pass

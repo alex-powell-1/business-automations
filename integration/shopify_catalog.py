@@ -1860,7 +1860,7 @@ class Catalog:
                     'price': child.price_1,  # May be overwritten by price_2 (below)
                     'compareAtPrice': 0,
                     'optionValues': {'optionName': 'Option'},
-                    'taxable': True if self.taxable else False,
+                    'taxable': child.taxable,
                     'metafields': self.get_variant_metafields(child),
                 }
 
@@ -1933,8 +1933,7 @@ class Catalog:
                     'inventoryPolicy': 'DENY',
                     'price': self.default_price,
                     'compareAtPrice': 0,
-                    'taxable': False,
-                    'metafields': self.get_variant_metafields(self.variants[0]),
+                    'taxable': self.taxable,
                 }
             }
 
@@ -2531,7 +2530,7 @@ class Catalog:
                 self.price_1 = float(product_data['price_1'])
                 self.price_2 = float(product_data['price_2']) if product_data['price_2'] else None
                 self.cost = float(product_data['cost'])
-                self.taxable = product_data['taxable']
+                self.taxable = True if product_data['taxable'] == 'Y' else False
 
                 # Inventory Levels
                 self.quantity_available = product_data['quantity_available']
@@ -2733,10 +2732,12 @@ class Catalog:
                 # Get Size
                 custom_size = product_data['custom_size']
                 custom_size_unit = product_data['custom_size_unit']
-                if custom_size:
+                if custom_size and custom_size_unit:
                     if float(custom_size).is_integer():
                         custom_size = int(custom_size)
                     custom_size = f'{custom_size} {custom_size_unit.lower()}'
+                else:
+                    custom_size = None
 
                 # meta_size will be used on single products only.
                 self.meta_size = {

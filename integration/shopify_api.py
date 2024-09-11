@@ -14,7 +14,7 @@ from setup.utilities import PhoneNumber, local_to_utc
 from datetime import datetime
 
 
-verbose_print = True
+verbose_print = False
 
 
 class Shopify:
@@ -350,6 +350,7 @@ class Shopify:
 
             subtotal = float(get_money(snode['currentSubtotalPriceSet'])) + header_discount + shippingCost
             total = float(get_money(snode['currentTotalPriceSet']))
+            refund_total = float(get_money(snode['totalRefundedSet']))
 
             if len(snode['refunds']) > 0:
                 status = 'Partially Refunded'
@@ -416,6 +417,7 @@ class Shopify:
                 'base_shipping_cost': shippingCost,
                 'total_ex_tax': total,
                 'total_inc_tax': total,
+                'refund_total': refund_total,
                 'items_total': snode['subtotalLineItemsQuantity'],
                 'payment_status': snode['displayFinancialStatus'],
                 'store_credit_amount': get_store_credit_amount(),
@@ -1223,6 +1225,18 @@ class Shopify:
                         for i in media_ids:
                             Database.Shopify.Product.Media.Image.delete(product_id=product_id, image_id=i)
 
+            class Metafield:
+                def get(variant_id: int):
+                    response = Shopify.Query(
+                        document=Shopify.Product.Variant.queries,
+                        variables={'id': f'gid://shopify/ProductVariant/{variant_id}'},
+                        operation_name='productVariantMetafields',
+                    )
+                    try:
+                        return response.data['productVariant']['metafield']['id'].split('/')[-1]
+                    except:
+                        return None
+
         class Media:
             queries = './integration/queries/media.graphql'
 
@@ -1777,7 +1791,9 @@ class Shopify:
             )
             return response.data
 
-        def delete(metafield_id: int = None, product_id: int = None, customer_id: int = None):
+        def delete(
+            metafield_id: int = None, product_id: int = None, customer_id: int = None, variant_id: int = None
+        ):
             if metafield_id:
                 target_id = f'{Shopify.Metafield.prefix}{metafield_id}'
                 print(f'Target ID: {target_id}')
@@ -1797,6 +1813,12 @@ class Shopify:
                 # Get all metafield ids for this customer from shopify
                 response = Shopify.Customer.Metafield.get(customer_id)
                 meta_ids = [x['node']['id'].split('/')[-1] for x in response['customer']['metafields']['edges']]
+
+            elif variant_id:
+                response = Shopify.Product.Variant.Metafield.get(variant_id)
+                if not response:
+                    return
+                meta_ids = [response]
 
             if meta_ids:
                 for meta_id in meta_ids:
@@ -2114,7 +2136,7 @@ class Shopify:
                 )
                 return response.data
 
-            def delete(discount_id):
+            def delete(discount_id: int):
                 response = Shopify.Query(
                     document=Shopify.Discount.queries,
                     variables={'id': f'{Shopify.Discount.prefix}{discount_id}'},
@@ -2247,7 +2269,7 @@ class Shopify:
 
 def refresh_order(tkt_no):
     """Delete order from PS_DOC_HDR and associated tables and rebuild from Shopify Data"""
-    Database.Counterpoint.Order.delete(tkt_no=tkt_no)
+    Database.Counterpoint.OpenOrder.delete(tkt_no=tkt_no)
 
     from integration.orders import Order as ShopifyOrder
 
@@ -2258,4 +2280,9 @@ def refresh_order(tkt_no):
 
 
 if __name__ == '__main__':
-    print(Shopify.Product.get(1))
+    single_items = Database.Counterpoint.Product.get_single_items()
+    for x in single_items:
+        if Database.Shopify.Product.exists(x):
+            variant_id = Database.Shopify.Product.Variant.get_id(x)
+            if variant_id:
+                Shopify.Metafield.delete(variant_id=variant_id)

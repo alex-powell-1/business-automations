@@ -3,9 +3,9 @@ import re
 from big_commerce import big_products
 from setup import creds
 from setup import date_presets
-from setup.create_log import *
 from database import Database as db
 from setup.error_handler import ScheduledTasksErrorHandler as error_handler
+from datetime import datetime
 
 
 class Product:
@@ -250,31 +250,11 @@ class Product:
                     f'{self.item_no}: {self.long_descr} buffer changed from ' f'{initial_buffer} to {buffer}'
                 )
                 # Write Success Log
-                create_product_log(
-                    item_no=self.item_no,
-                    product_name=self.long_descr,
-                    qty_avail=self.quantity_available,
-                    status_1_col_name='buffer',
-                    status_1_data=self.buffer,
-                    status_2_col_name='Message',
-                    status_2_data=f'Item: {self.item_no} buffer updated from ' f'{initial_buffer} to {self.buffer}',
-                    log_location=creds.buffer_log,
-                )
+
                 # If unsuccessful:
             else:
                 error_handler.logger.warn(
                     f'{self.item_no}: {self.long_descr} failed to change sort order to {buffer}'
-                )
-                # Write failure log
-                create_product_log(
-                    item_no=self.item_no,
-                    product_name=self.long_descr,
-                    qty_avail=self.quantity_available,
-                    status_1_col_name='buffer',
-                    status_1_data=self.buffer,
-                    status_2_col_name='Message',
-                    status_2_data=f'Item: {self.item_no} buffer failed to update to {buffer}.',
-                    log_location=creds.buffer_log,
                 )
 
     def set_sort_order(self, target_sort_order=0):
@@ -310,33 +290,13 @@ class Product:
                         f'{old_sort_order} to {self.sort_order}'
                     )
                     # Write Success Log
-                    create_product_log(
-                        item_no=self.item_no,
-                        product_name=self.long_descr,
-                        qty_avail=self.quantity_available,
-                        status_1_col_name='sort_order',
-                        status_1_data=self.sort_order,
-                        status_2_col_name='Message',
-                        status_2_data=f'Item: {self.item_no} sort order updated from '
-                        f'{old_sort_order} to {self.sort_order}',
-                        log_location=creds.sort_order_log,
-                    )
+
                 # If unsuccessful:
                 else:
                     error_handler.logger.warn(
                         f'{self.item_no}: {self.long_descr} failed to change sort order to {target_sort_order}'
                     )
                     # Write failure log
-                    create_product_log(
-                        item_no=self.item_no,
-                        product_name=self.long_descr,
-                        qty_avail=self.quantity_available,
-                        status_1_col_name='sort_order',
-                        status_1_data=self.sort_order,
-                        status_2_col_name='Message',
-                        status_2_data=f'Item: {self.item_no} sort order failed to update.',
-                        log_location=creds.sort_order_log,
-                    )
 
     def set_featured(self, status):
         if self.binding_key is None:
@@ -359,44 +319,16 @@ class Product:
             if self.featured == 'Y':
                 error_handler.logger.info(f'Item: {self.item_no} updated to featured')
                 # Write Success Log
-                create_product_log(
-                    item_no=self.item_no,
-                    product_name=self.long_descr,
-                    qty_avail=self.quantity_available,
-                    status_1_col_name='featured',
-                    status_1_data=self.featured,
-                    status_2_col_name='Message',
-                    status_2_data=f'Item: {self.item_no} updated to featured',
-                    log_location=creds.featured_products,
-                )
+
             # If Unsuccessful
             else:
                 error_handler.logger.warn(f'Item: {self.item_no} failed to update to featured')
                 # Write failure Log
-                create_product_log(
-                    item_no=self.item_no,
-                    product_name=self.long_descr,
-                    qty_avail=self.quantity_available,
-                    status_1_col_name='featured',
-                    status_1_data=status,
-                    status_2_col_name='Message',
-                    status_2_data=f'Item: {self.item_no} failed to update to featured',
-                    log_location=creds.featured_products,
-                )
+
         else:
             if self.featured == 'N':
                 error_handler.logger.info(f'Item: {self.item_no} updated to NOT featured')
                 # Write Success Log
-                create_product_log(
-                    item_no=self.item_no,
-                    product_name=self.long_descr,
-                    qty_avail=self.quantity_available,
-                    status_1_col_name='featured',
-                    status_1_data=self.featured,
-                    status_2_col_name='Message',
-                    status_2_data=f'Item: {self.item_no} updated to featured',
-                    log_location=creds.featured_products,
-                )
 
     def set_sale_price(self, discount):
         sale_price = round(float(self.price_1 * (100 - discount) / 100), 2)
@@ -787,35 +719,6 @@ def get_product_categories_cp():
         for x in response:
             categories.append(x[0])
         return categories
-
-
-def export_html_descr():
-    log = creds.description_log
-
-    query = """
-    SELECT ec.ITEM_NO, ec.HTML_DESCR
-    FROM EC_ITEM_DESCR ec
-    inner join im_ITEM item on ec.item_no=item.item_no
-    WHERE ec.HTML_DESCR IS NOT NULL AND item.CATEG_COD = 'POTTERY'
-    """
-
-    response = db.query(query)
-
-    if response is not None:
-        items = []
-
-        for x in response:
-            items.append([x[0], x[1]])
-
-        for y in items:
-            log_data = [[y[0], (y[1]).strip().replace('\n', '').replace('\r', '').replace('&nbsp;', '')]]
-            df = pandas.DataFrame(log_data, columns=['item_no', 'html_description'])
-            try:
-                pandas.read_csv(log)
-            except FileNotFoundError:
-                df.to_csv(log, mode='a', header=True, index=False)
-            else:
-                df.to_csv(log, mode='a', header=False, index=False)
 
 
 def set_sale_price(query, discount_percentage):

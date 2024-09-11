@@ -1,5 +1,4 @@
 from setup import creds
-from setup.create_log import *
 from setup.date_presets import *
 from database import Database as db
 
@@ -55,16 +54,7 @@ def remove_web_enabled_flags():
             last_sale_date = x[4]
             set_web_enabled(item_number, flag='N')
             status = get_ecomm_flags(item_number)[0]
-            create_product_log(
-                item_number,
-                descr,
-                qty,
-                'web_enabled',
-                'lst_sal_dat',
-                status,
-                last_sale_date,
-                creds.e_comm_flag_product_log,
-            )
+
             print(f'Removed Web Enabled for {item_number} at {datetime.now()}')
     else:
         print(f'No E-commerce Flags to Remove at {datetime.now()}')
@@ -135,17 +125,6 @@ def add_ecomm_flags():
             else:
                 web_visible_message = f'From {old_web_visible} to {new_web_visible}'
                 print(f'Change for {item_number}: From {old_web_enabled} to {new_web_enabled}')
-
-            create_product_log(
-                item_no=item_number,
-                product_name=long_descr,
-                qty_avail=qty_avail,
-                status_1_col_name='web_enabled',
-                status_2_col_name='web_visible',
-                status_1_data=web_enabled_message,
-                status_2_data=web_visible_message,
-                log_location=creds.e_comm_flag_product_log,
-            )
 
     else:
         print(f'No E-Commerce Flags to Add at {datetime.now()}')

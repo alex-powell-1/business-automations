@@ -88,13 +88,5 @@ def set_always_online(item_list, parent=False):
                 db.query(query)
                 print(f"Set Item: {x} to 'Always Online'")
                 always_online_status = get_product_details(x)[2]
-                create_log.create_product_log(
-                    item_no=item_number,
-                    product_name=descr,
-                    qty_avail=qty,
-                    status_1_col_name='always_online_status',
-                    status_1_data=always_online_status,
-                    log_location=creds.always_online_log,
-                )
 
     error_handler.logger.info(f'Setting Always Online: Completed at {datetime.now():%H:%M:%S}')

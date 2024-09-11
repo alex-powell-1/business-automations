@@ -105,7 +105,7 @@ while True:
             # Move active product_tools with zero stock into inactive status
             # unless they are on order, hold, quote
             try:
-                set_inactive_status.set_products_to_inactive()
+                set_inactive_status.set_products_to_inactive(eh=ScheduledTasksErrorHandler)
             except Exception as err:
                 error_handler.add_error_v(error=err, origin='Inactive Status')
 
@@ -127,7 +127,11 @@ while True:
         # -----------------
         # ONE PER DAY TASKS
         # -----------------
-
+        if hour == 5 and minute == 0:
+            try:
+                customers.fix_first_and_last_sale_dates()
+            except Exception as err:
+                error_handler.add_error_v(error=err, origin='Fix First and Last Sale Dates')
         # 11:30 AM TASKS
         if hour == 11 and minute == 30:
             # STOCK NOTIFICATION EMAIL WITH COUPON GENERATION

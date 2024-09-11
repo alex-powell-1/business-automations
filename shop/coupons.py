@@ -1,5 +1,5 @@
 from datetime import datetime
-
+from dateutil.relativedelta import relativedelta
 from setup.error_handler import ScheduledTasksErrorHandler as error_handler
 
 from integration.shopify_api import Shopify
@@ -25,16 +25,18 @@ def get_expired_coupons():
         for discount in discounts:
             try:
                 ends_at = discount['discount']['endsAt']
+
                 if ends_at is None:
-                    raise
+                    continue
 
                 ends_at = datetime.strptime(ends_at, '%Y-%m-%dT%H:%M:%SZ')
                 ends_at = utc_to_local(ends_at)
 
-                if ends_at < datetime.now():
+                if ends_at < datetime.now().astimezone():
                     expired_discounts.append(discount)
-            except:
-                pass
+
+            except Exception as e:
+                print(e)
 
         return expired_discounts
     except Exception as e:
@@ -46,16 +48,14 @@ def delete_expired_coupons():
     error_handler.logger.info('Deleting Expired Coupons')
     total = 0
 
-    ids = [x['id'] for x in get_expired_coupons()]
+    ids = [x['id'].split('/')[-1] for x in get_expired_coupons()]
 
-    for id in ids:
-        try:
-            Shopify.Discount.Code.deactivate(id)
-            Database.Counterpoint.Discount.deactivate(shop_id=id)
-            total += 1
-        except Exception as e:
-            error_handler.error_handler.add_error_v(
-                f'Error deactivating coupon: {e}', origin='delete_expired_coupons'
-            )
+    for id in ids[:-1]:
+        Shopify.Discount.Code.delete(id)
+        Database.Counterpoint.Discount.delete(shop_id=id)
 
     error_handler.logger.success(f'Expired Coupons Deactivated. {total} / {len(ids)}')
+
+
+if __name__ == '__main__':
+    pass

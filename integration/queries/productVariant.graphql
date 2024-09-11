@@ -224,3 +224,14 @@ query productVariant($id: ID!) {
     }
   }
 }
+
+query productVariantMetafields($id: ID!) {
+  productVariant(id: $id) {
+    metafield(key: "variant_size", namespace: "variant-specification") {
+      id
+      key
+      namespace
+      value
+    }
+  }
+}
