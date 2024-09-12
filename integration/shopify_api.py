@@ -248,6 +248,7 @@ class Shopify:
 
             items = []
 
+            # Convert gift card line into multiple lines
             for i, _item in enumerate(snode['lineItems']['edges']):
                 item = _item['node']
 
