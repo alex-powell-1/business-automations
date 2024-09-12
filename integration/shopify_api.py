@@ -249,7 +249,6 @@ class Shopify:
             items = []
 
             for i, _item in enumerate(snode['lineItems']['edges']):
-                print('item:', _item)
                 item = _item['node']
 
                 if item['sku'] is not None and 'GFC' in item['sku'] and item['quantity'] > 1:
