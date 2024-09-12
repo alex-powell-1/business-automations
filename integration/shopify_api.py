@@ -114,6 +114,19 @@ class Shopify:
                                 # Re-run query
                                 return self.__init__(document, variables, operation_name)
 
+                            elif i == 'Key must be unique within this namespace on this resource':
+                                # Delete all customer metafields for this customer and resend the payload
+                                customer_id = variables['input']['id'].split('/')[-1]
+                                Shopify.Metafield.delete(customer_id=customer_id)
+                                Database.Shopify.Customer.Metafield.delete(shopify_cust_no=customer_id)
+                                for error in self.user_errors:
+                                    # This will remove any instances of this error from the user_errors list
+                                    if error == 'Key must be unique within this namespace on this resource':
+                                        self.user_errors.remove(error)
+                                # Re-run query
+                                Shopify.logger.info(f'Re-running query for customer {customer_id}')
+                                return self.__init__(document, variables, operation_name)
+
                             elif operation_name == 'customerDelete':
                                 if i == "Customer can't be found":
                                     # If a customer cannot be found in shopify, simply remove this error and move on.

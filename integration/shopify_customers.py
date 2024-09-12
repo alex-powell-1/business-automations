@@ -531,5 +531,5 @@ class Customers:
 
 
 if __name__ == '__main__':
-    customers = Customers()
+    customers = Customers(test_mode=True, test_customer='11262')
     customers.sync()

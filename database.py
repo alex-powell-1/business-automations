@@ -165,6 +165,16 @@ class Database:
                                         EVENT_TYPE varchar(20),
                                         MESSAGE varchar(255)
                                         )""",
+            'sms_subsribe': f"""
+                                        CREATE TABLE {Table.sms_subscribe}(
+                                        CUST_NO varchar(15) NOT NULL,
+                                        PHONE_1 T_BOOL DEFAULT('N'),
+                                        PHONE_1_FST_SUB_DT DATETIME,
+                                        PHONE_1_MAINT_DT DATETIME,
+                                        PHONE_2 T_BOOL DEFAULT('N'),
+                                        PHONE_2_FST_SUB_DT DATETIME,
+                                        PHONE_2_MAINT_DT DATETIME,
+                                        LST_MAINT_DT DATETIME DEFAULT(current_timestamp))""",
             'stock_notify': f"""
                                         CREATE TABLE {Table.stock_notify}(
                                         ID int IDENTITY(1,1) primary key,
@@ -179,6 +189,49 @@ class Database:
                                         EMAIL varchar(50),
                                         CREATED_DT DATETIME DEFAULT(current_timestamp)
                                         );""",
+            'email_list': f"""
+                                        CREATE TABLE {Table.email_list} (
+                                        CUST_NO varchar(15) NOT NULL,
+                                        LIST_1 T_BOOL DEFAULT('N'),
+                                        LIST_1_FST_SUB_DT DATETIME,
+                                        LIST_1_MAINT_DT DATETIME,
+
+                                        LIST_2 T_BOOL DEFAULT('N'),
+                                        LIST_2_FST_SUB_DT DATETIME,
+                                        LIST_2_MAINT_DT DATETIME,
+
+                                        LIST_3 T_BOOL DEFAULT('N'),
+                                        LIST_3_FST_SUB_DT DATETIME,
+                                        LIST_3_MAINT_DT DATETIME,
+
+                                        LIST_4 T_BOOL DEFAULT('N'),
+                                        LIST_4_FST_SUB_DT DATETIME,
+                                        LIST_4_MAINT_DT DATETIME,
+
+                                        LIST_5 T_BOOL DEFAULT('N'),
+                                        LIST_5_FST_SUB_DT DATETIME,
+                                        LIST_5_MAINT_DT DATETIME,
+
+                                        LIST_6 T_BOOL DEFAULT('N'),
+                                        LIST_6_FST_SUB_DT DATETIME,
+                                        LIST_6_MAINT_DT DATETIME,
+
+                                        LIST_7 T_BOOL DEFAULT('N'),
+                                        LIST_7_FST_SUB_DT DATETIME,
+                                        LIST_7_MAINT_DT DATETIME,
+
+                                        LIST_8 T_BOOL DEFAULT('N'),
+                                        LIST_8_FST_SUB_DT DATETIME,
+                                        LIST_8_MAINT_DT DATETIME,
+
+                                        LIST_9 T_BOOL DEFAULT('N'),
+                                        LIST_9_FST_SUB_DT DATETIME,
+                                        LIST_9_MAINT_DT DATETIME,
+
+                                        LIST_10 T_BOOL DEFAULT('N'),
+                                        LIST_10_FST_SUB_DT DATETIME,
+                                        LIST_10_MAINT_DT DATETIME,
+                                        LST_MAINT_DATE DATETIME DEFAULT(current_timestamp));""",
         }
 
         for table in tables:
