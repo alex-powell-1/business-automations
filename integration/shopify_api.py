@@ -237,7 +237,7 @@ class Shopify:
                 item = _item['node']
 
                 if item['sku'] is not None and 'GFC' in item['sku'] and item['quantity'] > 1:
-                    for j in range(item['quantity']):
+                    for _ in range(item['quantity']):
                         snode['lineItems']['edges'].insert(i, item)
 
             for _item in snode['lineItems']['edges']:
