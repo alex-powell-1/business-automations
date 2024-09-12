@@ -238,56 +238,60 @@ def shutdown_handler(signum, frame):
     sys.exit(0)
 
 
+# if __name__ == '__main__':
+#     try:
+#         signal.signal(signal.SIGINT, shutdown_handler)
+#         signal.signal(signal.SIGTERM, shutdown_handler)
+
+#         threads = []
+#         consumers = []
+
+#         queues = [
+#             {
+#                 'queue_name': creds.consumer_shopify_draft_create,
+#                 'callback': on_draft_created,
+#                 'error_handler': ProcessInErrorHandler,
+#             },
+#             {
+#                 'queue_name': creds.consumer_shopify_draft_update,
+#                 'callback': on_draft_updated,
+#                 'error_handler': ProcessInErrorHandler,
+#             },
+#             {
+#                 'queue_name': creds.consumer_sync_on_demand,
+#                 'callback': sync_on_demand,
+#                 'error_handler': ProcessOutErrorHandler,
+#             },
+#             {
+#                 'queue_name': creds.consumer_shopify_orders,
+#                 'callback': process_shopify_order,
+#                 'error_handler': ProcessInErrorHandler,
+#             },
+#             {
+#                 'queue_name': creds.consumer_design_lead_form,
+#                 'callback': process_design_lead,
+#                 'error_handler': LeadFormErrorHandler,
+#             },
+#         ]
+
+#         for queue in queues:
+#             consumer = RabbitMQConsumer(
+#                 queue_name=queue['queue_name'], callback_func=queue['callback'], eh=queue['error_handler']
+#             )
+#             consumers.append(consumer)
+#             thread = threading.Thread(target=consumer.start_consuming)
+#             thread.start()
+#             threads.append(thread)
+
+#         for thread in threads:
+#             thread.join()
+
+#     except Exception as e:
+#         ProcessInErrorHandler.error_handler.add_error_v(
+#             error=f'Unhandled exception: {e}', origin='consumers.py->main', traceback=tb()
+#         )
+#         shutdown_handler(None, None)
+
+
 if __name__ == '__main__':
-    try:
-        signal.signal(signal.SIGINT, shutdown_handler)
-        signal.signal(signal.SIGTERM, shutdown_handler)
-
-        threads = []
-        consumers = []
-
-        queues = [
-            {
-                'queue_name': creds.consumer_shopify_draft_create,
-                'callback': on_draft_created,
-                'error_handler': ProcessInErrorHandler,
-            },
-            {
-                'queue_name': creds.consumer_shopify_draft_update,
-                'callback': on_draft_updated,
-                'error_handler': ProcessInErrorHandler,
-            },
-            {
-                'queue_name': creds.consumer_sync_on_demand,
-                'callback': sync_on_demand,
-                'error_handler': ProcessOutErrorHandler,
-            },
-            {
-                'queue_name': creds.consumer_shopify_orders,
-                'callback': process_shopify_order,
-                'error_handler': ProcessInErrorHandler,
-            },
-            {
-                'queue_name': creds.consumer_design_lead_form,
-                'callback': process_design_lead,
-                'error_handler': LeadFormErrorHandler,
-            },
-        ]
-
-        for queue in queues:
-            consumer = RabbitMQConsumer(
-                queue_name=queue['queue_name'], callback_func=queue['callback'], eh=queue['error_handler']
-            )
-            consumers.append(consumer)
-            thread = threading.Thread(target=consumer.start_consuming)
-            thread.start()
-            threads.append(thread)
-
-        for thread in threads:
-            thread.join()
-
-    except Exception as e:
-        ProcessInErrorHandler.error_handler.add_error_v(
-            error=f'Unhandled exception: {e}', origin='consumers.py->main', traceback=tb()
-        )
-        shutdown_handler(None, None)
+    process_shopify_order('5672071102631')
