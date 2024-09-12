@@ -416,4 +416,6 @@ class Email:
 
 
 if __name__ == '__main__':
-    Email.Staff.DesignLeadNotification.send(recipients=creds.lead_email['recipients'])
+    Email.Customer.GiftCard.send(
+        name='Karen Randle', email='knrandle@att.net', gc_code='5792-5157-4820', amount=100
+    )
