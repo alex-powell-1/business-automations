@@ -361,7 +361,6 @@ class Shopify:
                 return money['shopMoney']['amount']
 
             try:
-                # Shipping Line Amount from Shopify
                 shippingCost = float(get_money(snode['shippingLine']['discountedPriceSet']))
             except:
                 shippingCost = 0
