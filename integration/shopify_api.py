@@ -246,15 +246,19 @@ class Shopify:
 
             refunded_subtotal = 0
 
+            items = []
+
             for i, _item in enumerate(snode['lineItems']['edges']):
+                print('item:', _item)
                 item = _item['node']
 
                 if item['sku'] is not None and 'GFC' in item['sku'] and item['quantity'] > 1:
                     for _ in range(item['quantity']):
-                        snode['lineItems']['edges'].insert(i, item)
+                        items.append(item)
+                else:
+                    items.append(item)
 
-            for _item in snode['lineItems']['edges']:
-                item = _item['node']
+            for item in items:
 
                 def get_money(money: dict):
                     return money['shopMoney']['amount']
