@@ -1061,8 +1061,10 @@ class OrderAPI(DocumentAPI):
 
             if response['code'] == 200:
                 self.logger.success('Ticket number updated.')
+            elif response['code'] == 201:
+                self.logger.warn(f'DOC ID not found in {table}.')
             else:
-                self.error_handler.add_error_v('Ticket number could not be updated')
+                self.error_handler.add_error_v(f'Ticket number could not be updated in {table}.')
                 self.error_handler.add_error_v(response['message'])
 
     # Writes to several tables in Counterpoint.
@@ -1727,6 +1729,8 @@ class OrderAPI(DocumentAPI):
 
         if response['code'] == 200:
             self.logger.success('Updated line types')
+        elif response['code'] == 201:
+            self.logger.info('No lines to update.')
         else:
             self.error_handler.add_error_v('Line types could not be updated')
 
