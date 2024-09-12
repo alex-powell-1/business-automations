@@ -26,7 +26,10 @@ class Promotions:
         promo_data = Database.Counterpoint.Promotion.get()
         if promo_data:
             for promo in promo_data:
-                self.promotions.append(self.Promotion(promo=promo))
+                try:
+                    self.promotions.append(self.Promotion(promo=promo))
+                except Exception as e:
+                    Promotions.error_handler.add_error_v(error=e, origin='Promotion Sync', traceback=tb())
 
     def process_deletes(self):
         cp_promotions = [x.grp_cod for x in self.promotions]
@@ -177,7 +180,16 @@ class Promotions:
         def get_bxgy_payload(self, rule):
             """Creates the payload for the BOGO Twoofer promotion."""
             required_qty, reward_qty = rule.get_reward_quantity()
-            discount_amount = rule.get_discount_amount() / 100
+
+            if rule.price_breaks[-1].prc_meth == 'D':
+                discount_amount = int(rule.get_discount_amount()) / 100
+                effect = {'percentage': discount_amount}
+
+            elif rule.price_breaks[-1].prc_meth == 'A':
+                discount_amount = float(rule.get_discount_amount())
+                effect = {'amount': discount_amount}
+
+            print(f'Required Qty: {required_qty} Reward Qty: {reward_qty} Discount Amount: {discount_amount}')
 
             payload = {
                 'automaticBxgyDiscount': {
@@ -195,12 +207,7 @@ class Promotions:
                         },
                     },
                     'customerGets': {
-                        'value': {
-                            'discountOnQuantity': {
-                                'quantity': json.dumps(reward_qty),
-                                'effect': {'percentage': discount_amount},
-                            }
-                        },
+                        'value': {'discountOnQuantity': {'quantity': json.dumps(reward_qty), 'effect': effect}},
                         'items': {
                             'products': {
                                 'productsToAdd': [],
@@ -424,7 +431,7 @@ class Promotions:
                 self.grp_cod = rule[1]
                 self.seq_no = rule[2]
                 self.descr = rule[3]
-                self.shopify_title = f'{self.grp_cod} - {self.descr}'
+                self.shopify_title = self.get_shopify_title()
                 self.cust_filt = rule[4]
                 if self.cust_filt:
                     self.is_retail = False if 'WHOLESALE' in self.cust_filt else True
@@ -441,8 +448,11 @@ class Promotions:
                 self.db_id = rule[13]
 
                 self.price_breaks: list[self.PriceBreak] = self.get_price_breaks()
+
                 self.items: list[str] = self.get_cp_items()  # List of CP Item Numbers
+
                 self.mw_bogo_items: list[str] = Database.Shopify.Promotion.BxgyLine.get(self.shopify_id)
+
                 self.mw_fixed_price_items: list[str] = Database.Shopify.Promotion.FixLine.get(
                     group_cod=self.grp_cod, rul_seq_no=self.seq_no
                 )
@@ -464,7 +474,15 @@ class Promotions:
                 result += f'\tBadge Text: {self.badge_text}\n'
                 return result
 
+            def get_shopify_title(self) -> str:
+                # description = '-'.join(self.descr.split('-')[0:-1]).strip()
+                description = self.descr.strip()
+                return f'{description}'
+
             def is_bogo_twoofer(self) -> bool:
+                print(f'Checking for BOGO Twoofer: GRP: {self.grp_cod} SEQ: {self.seq_no}')
+                print(f'Use BOGO Twoofer: {self.use_bogo_twoofer}')
+                print(f'Require Full Group for BOGO: {self.req_full_group_for_bogo}')
                 return self.use_bogo_twoofer == 'Y' and self.req_full_group_for_bogo == 'Y'
 
             def get_price_breaks(self) -> list[object]:
@@ -486,6 +504,9 @@ class Promotions:
                     where_filter = f'WHERE {self.item_filt}'
                 else:
                     where_filter = ''
+
+                where_filter + " AND IS_ECOMM_ITEM = 'Y'"
+
                 query = f'SELECT ITEM_NO FROM IM_ITEM {where_filter}'
                 response = Database.query(query)
                 if response:
@@ -498,9 +519,16 @@ class Promotions:
                 """Calculates the number of reward products given to a customer after a condition is met.
                 Example: Buy 1 Get 1 Free = 1 reward product, Buy 2 Get 1 Free = 1 reward product, etc.
                 """
-                first_rule_qty = int(self.price_breaks[0].min_qty)
-                second_rule_qty = int(self.price_breaks[1].min_qty)
-                reward = second_rule_qty - first_rule_qty
+                if len(self.price_breaks) == 1:
+                    raise ValueError('Single Price Break Found. This is not supported at this time.')
+
+                elif len(self.price_breaks) == 2:
+                    first_rule_qty = int(self.price_breaks[0].min_qty)
+                    second_rule_qty = int(self.price_breaks[1].min_qty)
+                    reward = second_rule_qty - first_rule_qty
+                else:
+                    raise ValueError('More than two price breaks found. This is not supported at this time.')
+
                 return first_rule_qty, reward
 
             def get_discount_amount(self, fixed_price=False):
@@ -517,34 +545,12 @@ class Promotions:
                             discount_amount = math.floor(100 - (fixed_price * 100 / retail_price))
                             return discount_amount
                 else:
-                    return int(self.price_breaks[-1].amt_or_pct)
+                    return self.price_breaks[-1].amt_or_pct
 
             def get_badge_text(self) -> str:
-                # Create sale description to be used on items in catalog view and search view
+                """Creates a custom badge for the promotion."""
                 if self.is_bogo_twoofer():
-                    required_qty, reward_qty = self.get_reward_quantity()
-                    if required_qty and reward_qty:
-                        message = f'BUY {required_qty}, GET {reward_qty}'
-                        amount = self.get_discount_amount()
-                        price_method = self.price_breaks[-1].prc_meth
-                        if price_method == 'D':
-                            if amount < 100:
-                                message += f' {amount}% OFF'
-                            elif amount == 100:
-                                message += ' FREE'
-                        elif self.price_breaks[-1].prc_meth == 'A':
-                            message += f' ${amount} OFF!'
-
-                elif self.req_full_group_for_bogo == 'Y':
-                    if self.price_breaks[-1].prc_meth == 'F':
-                        try:
-                            min_qty = int(self.price_breaks[-1].min_qty)
-                            unit_prc = self.price_breaks[-1].amt_or_pct
-                        except:
-                            message = 'SALE'
-                        else:
-                            message = f'{min_qty} FOR ${round(min_qty * unit_prc, 2)}'
-
+                    message = self.descr.split('-')[-1].strip()
                 else:
                     price_method = self.price_breaks[-1].prc_meth
                     if price_method == 'D':
@@ -607,6 +613,9 @@ class Promotions:
 
 
 if __name__ == '__main__':
-    promo = Promotions(last_sync=datetime(2024, 7, 15))
+    promo = Promotions(last_sync=datetime(2024, 9, 11, 14, 0, 0))
     for p in promo.promotions:
-        p.process()
+        if p.grp_cod == 'MUM':
+            p.process()
+
+    # Promotions.Promotion.delete(group_code='MUM')

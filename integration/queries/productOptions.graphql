@@ -45,3 +45,37 @@ mutation updateOption(
     }
   }
 }
+
+mutation reorderOptions($options: [OptionReorderInput!]!, $productId: ID!) {
+  productOptionsReorder(options: $options, productId: $productId) {
+    userErrors {
+      field
+      message
+      code
+    }
+    product {
+      id
+      options {
+        id
+        name
+        values
+        position
+        optionValues {
+          id
+          name
+          hasVariants
+        }
+      }
+      variants(first: 5) {
+        nodes {
+          id
+          title
+          selectedOptions {
+            name
+            value
+          }
+        }
+      }
+    }
+  }
+}

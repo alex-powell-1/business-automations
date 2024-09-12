@@ -10,6 +10,14 @@ from setup.error_handler import ProcessOutErrorHandler, ScheduledTasksErrorHandl
 from PIL import Image, ImageOps, ImageDraw, ImageFont
 import pytz
 from traceback import format_exc as tb
+import secrets
+import string
+
+
+def generate_random_code(length):
+    res = ''.join(secrets.choice(string.ascii_uppercase + string.digits) for i in range(length))
+
+    return res
 
 
 class PhoneNumber:
@@ -393,4 +401,4 @@ def delete_old_files(directory=None, days=14, eh=ScheduledTasksErrorHandler):
 
 
 if '__main__' == __name__:
-    delete_old_files()
+    print(generate_random_code(16))

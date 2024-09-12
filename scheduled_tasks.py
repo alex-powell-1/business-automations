@@ -15,11 +15,13 @@ from sms.sms_messages import birthdays, first_time_customers, returning_customer
 from setup import backups
 from setup.error_handler import ScheduledTasksErrorHandler
 import time
+import importlib
 
 # -----------------
 # Scheduled Tasks
 # -----------------
 while True:
+    importlib.reload(date_presets)
     now = datetime.now()
     day = now.day
     hour = now.hour
@@ -103,7 +105,7 @@ while True:
             # Move active product_tools with zero stock into inactive status
             # unless they are on order, hold, quote
             try:
-                set_inactive_status.set_products_to_inactive()
+                set_inactive_status.set_products_to_inactive(eh=ScheduledTasksErrorHandler)
             except Exception as err:
                 error_handler.add_error_v(error=err, origin='Inactive Status')
 
@@ -125,7 +127,11 @@ while True:
         # -----------------
         # ONE PER DAY TASKS
         # -----------------
-
+        if hour == 5 and minute == 0:
+            try:
+                customers.fix_first_and_last_sale_dates()
+            except Exception as err:
+                error_handler.add_error_v(error=err, origin='Fix First and Last Sale Dates')
         # 11:30 AM TASKS
         if hour == 11 and minute == 30:
             # STOCK NOTIFICATION EMAIL WITH COUPON GENERATION
@@ -315,7 +321,7 @@ while True:
     except KeyboardInterrupt:
         logger.info(f'Process Terminated by User at {datetime.now():%H:%M:%S}')
     else:
-        logger.success(f'Business Automations Complete at {datetime.now():%H:%M:%S}')
+        # logger.success(f'Business Automations Complete at {datetime.now():%H:%M:%S}')
         total_seconds = (datetime.now() - now).total_seconds()
         minutes = total_seconds // 60
         seconds = round(total_seconds % 60, 2)

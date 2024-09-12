@@ -136,7 +136,50 @@ def get_service_information():
         connection.close()
     except Exception as e:
         LeadFormErrorHandler.error_handler.add_error_v(
-            error=f'Error sending design request to RabbitMQ: {e}', origin='design_info'
+            error=f'Error sending design request to RabbitMQ: {e}', origin=Route.design, traceback=tb()
+        )
+        return jsonify({'error': 'Internal server error'}), 500
+    else:
+        return 'Your information has been received. Please check your email for more information from our team.'
+
+
+@app.route(Route.design_admin, methods=['POST'])
+@limiter.limit('20/minute')  # 10 requests per minute
+def get_service_information_admin():
+    """Route for information request about company service. Sends JSON to RabbitMQ for asynchronous processing."""
+    LeadFormErrorHandler.logger.log_file = f'design_leads_{datetime.now().strftime("%m_%d_%y")}.log'
+    token = request.headers.get('Authorization').split(' ')[1]
+    # Base64 decode the token
+    decoded_token = base64.b64decode(token).decode()
+    signature, message, timestamp = decoded_token.split(':')
+    current_time = int(time.time() * 1000)
+    time_difference = current_time - int(timestamp)
+    # Verify timestamp
+    if time_difference > 1000 * 60 * 10:
+        return jsonify({'error': 'Invalid token'}), 401
+
+    def verify_hmac(key, message, sig):
+        computed_digest = hmac.new(key.encode(), message.encode(), hashlib.sha256).hexdigest()
+        return hmac.compare_digest(computed_digest, sig)
+
+    # Validate the SHA hash
+    if not verify_hmac(creds.design_admin_key, message, signature):
+        return jsonify({'error': 'Invalid token'}), 401
+    data = request.json
+    try:
+        connection = pika.BlockingConnection(pika.ConnectionParameters('localhost'))
+        channel = connection.channel()
+        channel.queue_declare(queue=creds.consumer_design_lead_form, durable=True)
+        channel.basic_publish(
+            exchange='',
+            routing_key=creds.consumer_design_lead_form,
+            body=json.dumps(data),
+            properties=pika.BasicProperties(delivery_mode=pika.DeliveryMode.Persistent),
+        )
+        connection.close()
+    except Exception as e:
+        LeadFormErrorHandler.error_handler.add_error_v(
+            error=f'Error sending design request to RabbitMQ: {e}', origin=Route.design_admin, traceback=tb()
         )
         return jsonify({'error': 'Internal server error'}), 500
     else:
@@ -824,6 +867,7 @@ def shopify_product_update():
     title = webhook_data['title']
     description = webhook_data['body_html']
     status = webhook_data['status']
+    tags = webhook_data['tags']
     item_no = Database.Shopify.Product.get_parent_item_no(product_id)
 
     logger.log(f'Webhook: Product Update, SKU:{item_no}, Product ID: {product_id}, Web Title: {title}')
@@ -836,8 +880,12 @@ def shopify_product_update():
 
     # Get SEO data
     seo_data = Shopify.Product.SEO.get(product_id)
-    meta_title = seo_data['title']
-    meta_description = seo_data['description']
+    if seo_data:
+        meta_title = seo_data['title']
+        meta_description = seo_data['description']
+    else:
+        meta_title = None
+        meta_description = None
 
     # Get product Metafields
     metafields = Shopify.Product.Metafield.get(product_id)
@@ -920,6 +968,9 @@ def shopify_product_update():
             update_payload['meta_title'] = meta_title
         if meta_description:
             update_payload['meta_description'] = meta_description
+
+        if tags:
+            update_payload['tags'] = tags
 
         if botanical_name:
             update_payload['botanical_name'] = botanical_name
@@ -1031,6 +1082,54 @@ def qr_tracker(qr_id):
     return jsonify({'success': True}), 200
 
 
+@app.route(Route.unsubscribe, methods=['GET'])
+@limiter.limit('20 per minute')
+def unsubscribe():
+    email = request.args.get('email')
+    if not email:
+        return jsonify({'error': 'No email provided'}), 400
+
+    # Database.Newsletter.unsubscribe(email)
+    html = f"""
+    <html>
+    <head>
+    <title>Unsubscribe</title>
+    </head>
+    <body>
+    <h1>Unsubscribed</h1>
+    <p>{email} has been successfully removed from our newsletter.</p>
+    <h2>Clicked this by mistake?</h2>
+    <p>Click <a href="{creds.api_endpoint}/resubscribe?email={email}">here</a> to resubscribe.</p>
+    </body>
+    </html>
+    """
+    return html, 200
+
+
+@app.route(Route.resubscribe, methods=['GET'])
+@limiter.limit('20 per minute')
+def resubscribe():
+    email = request.args.get('email')
+    if not email:
+        return jsonify({'error': 'No email provided'}), 400
+
+    # Database.Newsletter.resubscribe(email)
+
+    html = f"""
+    <html>
+    <head>
+    <title>Resubscribe</title>
+    </head>
+    <body>
+    <h1>Resubscribed</h1>
+    <p>{email} has been successfully resubscribed to our newsletter.</p>
+    </body>
+    </html>
+    """
+    return html, 200
+
+
+@limiter.limit('10/minute')  # 10 requests per minute
 @app.route('/robots.txt', methods=['GET'])
 def robots():
     # disallow all robots

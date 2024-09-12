@@ -14,6 +14,12 @@ import sys
 import time
 from traceback import format_exc as tb
 
+loop = False
+
+customer_sync = False
+promotions_sync = False
+catalog_sync = True
+
 
 class Integrator:
     eh = ProcessOutErrorHandler
@@ -22,9 +28,12 @@ class Integrator:
 
     def __init__(self):
         self.last_sync = get_last_sync(file_name='./integration/last_sync_integrator.txt')
-        self.customers = Customers(last_sync=self.last_sync)
-        self.promotions = Promotions(last_sync=self.last_sync)
-        self.catalog = Catalog(last_sync=self.last_sync)
+        if customer_sync:
+            self.customers = Customers(last_sync=self.last_sync)
+        if promotions_sync:
+            self.promotions = Promotions(last_sync=self.last_sync)
+        if catalog_sync:
+            self.catalog = Catalog(last_sync=self.last_sync)
 
     def __str__(self):
         return f'Integrator\n' f'Last Sync: {self.last_sync}\n'
@@ -45,9 +54,12 @@ class Integrator:
     def sync(self, initial=False):
         start_sync_time = datetime.now()
         self.logger.header('Sync Starting')
-        self.customers.sync()
-        self.promotions.sync()
-        self.catalog.sync(initial=initial)
+        if customer_sync:
+            self.customers.sync()
+        if promotions_sync:
+            self.promotions.sync()
+        if catalog_sync:
+            self.catalog.sync(initial=initial)
         set_last_sync(file_name='./integration/last_sync_integrator.txt', start_time=start_sync_time)
         completion_time = (datetime.now() - start_sync_time).seconds
         Integrator.logger.info(f'Sync completion time: {completion_time} seconds')
@@ -201,31 +213,36 @@ if __name__ == '__main__':
             main_menu()
 
     else:
-        try:
-            # Run the integrator in a loop
-            while True:
-                now = datetime.now()
-                hour = now.hour
-                if 18 > hour > 7:
-                    minutes_between_sync = 15
-                else:
-                    minutes_between_sync = 60
+        if loop:
+            try:
+                # Run the integrator in a loop
+                while True:
+                    now = datetime.now()
+                    hour = now.hour
+                    if 18 > hour > 7:
+                        minutes_between_sync = 15
+                    else:
+                        minutes_between_sync = 60
 
-                delay = minutes_between_sync * 60
+                    delay = minutes_between_sync * 60
 
-                try:
-                    integrator = Integrator()
-                    integrator.sync()
-                    time.sleep(delay)
+                    try:
+                        integrator = Integrator()
+                        integrator.sync()
+                        time.sleep(delay)
 
-                except Exception as e:
-                    integrator.error_handler.add_error_v(
-                        error=f'Error: {e}', origin='integrator.py', traceback=tb()
-                    )
-                    time.sleep(60)
+                    except Exception as e:
+                        integrator.error_handler.add_error_v(
+                            error=f'Error: {e}', origin='integrator.py', traceback=tb()
+                        )
+                        time.sleep(60)
 
-        except KeyboardInterrupt:
-            sys.exit(0)
+            except KeyboardInterrupt:
+                sys.exit(0)
 
-        except Exception as e:
-            Integrator.error_handler.add_error_v(error=e, origin='Integrator.py', traceback=tb())
+            except Exception as e:
+                Integrator.error_handler.add_error_v(error=e, origin='Integrator.py', traceback=tb())
+
+        else:
+            integrator = Integrator()
+            integrator.sync()

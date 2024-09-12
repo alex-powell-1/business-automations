@@ -1707,11 +1707,12 @@ class Catalog:
                 for image in self.images:
                     image_size = get_filesize(image.file_path)
                     if image_size != image.size:
-                        Shopify.Product.Media.Image.delete(image=image)
-                        Database.Shopify.Product.Media.Image.delete(image_id=image.shopify_id)
-                        image.shopify_id = None
-                        image.image_url = None
-                        image.db_id = None
+                        if image.db_id:  # If image is in the database, delete the image from Shopify
+                            Shopify.Product.Media.Image.delete(image=image)
+                            Database.Shopify.Product.Media.Image.delete(image_id=image.shopify_id)
+                            image.shopify_id = None
+                            image.image_url = None
+                            image.db_id = None
                         image.size = get_filesize(image.file_path)
                         file_list.append(image.file_path)
                         stagedUploadsCreateVariables['input'].append(
@@ -1821,6 +1822,26 @@ class Catalog:
 
             return product_payload
 
+        def get_variant_metafields(self, variant):
+            result = []
+            # Variant Size
+            if variant.meta_variant_size['value']:
+                variant_size = {'value': variant.meta_variant_size['value']}
+                if variant.meta_variant_size['id']:
+                    variant_size['id'] = f'{Shopify.Metafield.prefix}{variant.meta_variant_size["id"]}'
+                else:
+                    variant_size['namespace'] = Catalog.metafields['Variant Size']['NAME_SPACE']
+                    variant_size['key'] = Catalog.metafields['Variant Size']['META_KEY']
+                    variant_size['type'] = Catalog.metafields['Variant Size']['TYPE']
+
+                result.append(variant_size)
+            else:
+                if variant.meta_variant_size['id']:
+                    Shopify.Metafield.delete(metafield_id=variant.meta_variant_size['id'])
+                    variant.meta_variant_size['id'] = None
+
+            return result
+
         def get_bulk_variant_payload(self):
             payload = {'media': [], 'strategy': 'REMOVE_STANDALONE_VARIANT', 'variants': []}
             # If product_id exists, this is an update
@@ -1839,7 +1860,8 @@ class Catalog:
                     'price': child.price_1,  # May be overwritten by price_2 (below)
                     'compareAtPrice': 0,
                     'optionValues': {'optionName': 'Option'},
-                    'taxable': True if self.taxable else False,
+                    'taxable': child.taxable,
+                    'metafields': self.get_variant_metafields(child),
                 }
 
                 if child.variant_id:
@@ -1911,7 +1933,7 @@ class Catalog:
                     'inventoryPolicy': 'DENY',
                     'price': self.default_price,
                     'compareAtPrice': 0,
-                    'taxable': False,
+                    'taxable': self.taxable,
                 }
             }
 
@@ -1991,13 +2013,14 @@ class Catalog:
                     # Create Variants in Bulk
                     self.variants[0].variant_id = None
                     variant_payload = self.get_bulk_variant_payload()
-                    response = Shopify.Product.Variant.create_bulk(variant_payload)
+                    variant_response = Shopify.Product.Variant.create_bulk(variant_payload)
 
-                    for x, variant in enumerate(self.variants):
-                        variant.variant_id = response['variant_ids'][x]
-                        variant.option_value_id = response['option_value_ids'][x]
-                        variant.inventory_id = response['inventory_ids'][x]
+                    for variant in self.variants:
                         variant.option_id = self.option_id
+                        variant.option_value_id = variant_response[variant.sku]['option_value_id']
+                        variant.inventory_id = variant_response[variant.sku]['inventory_id']
+                        variant.variant_id = variant_response[variant.sku]['variant_id']
+                        variant.has_variant_image = variant_response[variant.sku]['has_image']
 
                     # Remove Default Variant
                     Shopify.Product.Option.update(
@@ -2005,13 +2028,17 @@ class Catalog:
                         option_id=self.option_id,
                         option_values_to_delete=[delete_target],
                     )
+
+                    Shopify.Product.Option.reorder(self)
+
                     # Wait for images to process
                     time.sleep(3)
                     Shopify.Product.Variant.Image.create(self.product_id, self.get_variant_image_payload())
+                    self.get_variant_meta_ids(variant_response)
 
                 else:
                     single_payload = self.get_single_variant_payload()
-                    Shopify.Product.Variant.update_single(single_payload)
+                    variant_response = Shopify.Product.Variant.update_single(single_payload)
 
                 # Add Product to Online Store Sales Channel
                 Shopify.Product.publish(self.product_id)
@@ -2026,21 +2053,24 @@ class Catalog:
 
                 if self.is_bound:
                     # Update the Variants
-                    response = Shopify.Product.Variant.update_bulk(self.get_bulk_variant_payload())
+                    variant_response = Shopify.Product.Variant.update_bulk(self.get_bulk_variant_payload())
 
                     for variant in self.variants:
                         variant.option_id = self.option_id
-                        variant.option_value_id = response[variant.sku]['option_value_id']
-                        variant.variant_id = response[variant.sku]['variant_id']
-                        variant.has_variant_image = response[variant.sku]['has_image']
+                        variant.option_value_id = variant_response[variant.sku]['option_value_id']
+                        variant.variant_id = variant_response[variant.sku]['variant_id']
+                        variant.has_variant_image = variant_response[variant.sku]['has_image']
+
+                    Shopify.Product.Option.reorder(self)
 
                     # Wait for images to process
                     time.sleep(3)
                     Shopify.Product.Variant.Image.create(self.product_id, self.get_variant_image_payload())
+                    self.get_variant_meta_ids(variant_response)
 
                 else:
                     variant_payload = self.get_single_variant_payload()
-                    response = Shopify.Product.Variant.update_single(variant_payload)
+                    variant_response = Shopify.Product.Variant.update_single(variant_payload)
 
             if not self.inventory_only:
                 if self.product_id:
@@ -2130,6 +2160,19 @@ class Catalog:
 
             if 'media_ids' in response:
                 get_media_ids(response)
+
+        def get_variant_meta_ids(self, response):
+            for item in response:
+                for variant in self.variants:
+                    if variant.sku == item:
+                        if 'variant_meta_ids' in response[item]:
+                            for variant_meta_id in response[item]['variant_meta_ids']:
+                                # Variant Size
+                                if (
+                                    variant_meta_id['key'] == 'variant_size'
+                                    and variant.meta_variant_size['value'] == variant_meta_id['value']
+                                ):
+                                    variant.meta_variant_size['id'] = variant_meta_id['id']
 
         def get_shopify_collections(self):
             """Get Shopify Collection IDs from Middleware Category IDs"""
@@ -2487,7 +2530,7 @@ class Catalog:
                 self.price_1 = float(product_data['price_1'])
                 self.price_2 = float(product_data['price_2']) if product_data['price_2'] else None
                 self.cost = float(product_data['cost'])
-                self.taxable = product_data['taxable']
+                self.taxable = True if product_data['taxable'] == 'Y' else False
 
                 # Inventory Levels
                 self.quantity_available = product_data['quantity_available']
@@ -2689,13 +2732,22 @@ class Catalog:
                 # Get Size
                 custom_size = product_data['custom_size']
                 custom_size_unit = product_data['custom_size_unit']
-                if custom_size:
+                if custom_size and custom_size_unit:
                     if float(custom_size).is_integer():
                         custom_size = int(custom_size)
                     custom_size = f'{custom_size} {custom_size_unit.lower()}'
+                else:
+                    custom_size = None
 
+                # meta_size will be used on single products only.
                 self.meta_size = {
                     'id': product_data['custom_size_id'],
+                    'value': f'{custom_size}' if custom_size else None,
+                }
+
+                # meta_variant_size will be used on bound products only.
+                self.meta_variant_size = {
+                    'id': product_data['custom__variant_size_id'],
                     'value': f'{custom_size}' if custom_size else None,
                 }
 
@@ -2901,7 +2953,8 @@ class Catalog:
                 {Table.CP.Item.Column.is_on_sale} as 'IS_ON_SALE(109)',
                 MW.CF_IS_ON_SALE as 'CUSTOM_IS_ON_SALE_ID(110)',
                 {Table.CP.Item.Column.sale_description} as 'SALE_DESCRIPTION(111)',
-                MW.CF_SALE_DESCR as 'CUSTOM_ON_SALE_DESCRIPTION_ID(112)'
+                MW.CF_SALE_DESCR as 'CUSTOM_ON_SALE_DESCRIPTION_ID(112)',
+                MW.CF_VAR_SIZE as 'CUSTOM_VARIANT_SIZE_ID(113)'
 
                 FROM {Table.CP.Item.table} ITEM
                 LEFT OUTER JOIN IM_PRC PRC ON ITEM.ITEM_NO=PRC.ITEM_NO
@@ -3044,6 +3097,7 @@ class Catalog:
                             'custom_is_on_sale_id': item[0][110],
                             'custom_sale_description': item[0][111],
                             'custom_sale_description_id': item[0][112],
+                            'custom__variant_size_id': item[0][113],
                         }
                     except KeyError:
                         Catalog.error_handler.add_error_v(
@@ -3479,14 +3533,25 @@ class Catalog:
 
 if __name__ == '__main__':
     from datetime import datetime
-    # to_delete = [
-    #     {'sku': '200899'},
-    # ]
 
-    # for x in to_delete:
-    #     Catalog.Product.delete(sku=x['sku'])
-    # for x in Catalog.metafields:
-    #     print(x)
-    cat = Catalog(last_sync=datetime(2024, 8, 14, 15, 20, 0))
+    # query = """
+    #     SELECT MW.ITEM_NO, BINDING_ID
+    #     FROM SN_SHOP_PROD MW
+    #     INNER JOIN IM_ITEM CP ON MW.ITEM_NO = CP.ITEM_NO
+    #     WHERE BINDING_ID IS NOT NULL AND MW.CF_VAR_SIZE IS NULL and CP.USR_SIZE IS NOT NULL"""
+    # response = Database.query(query)
+    # for x in response:
+    #     cat = Catalog(
+    #         last_sync=datetime(2024, 9, 10, 11, 0, 0),
+    #         test_mode=True,
+    #         test_queue=[{'sku': x[0], 'binding_id': x[1]}],
+    #     )
+    #     cat.sync()
 
-    cat.process_media()
+    # # Catalog.Product.delete('201852', update_timestamp=True)
+    cat = Catalog(
+        last_sync=datetime(2024, 9, 10, 12, 57, 0),
+        test_mode=True,
+        test_queue=[{'sku': '10344', 'binding_id': 'B0001'}],
+    )
+    cat.sync()

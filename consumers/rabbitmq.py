@@ -67,6 +67,13 @@ class RabbitMQConsumer:
                 self.error_handler.add_error_v(error=err, origin=self.queue_name, traceback=tb())
                 time.sleep(5)  # Wait before attempting reconnection
 
+    def stop_consuming(self):
+        self._stop_event.set()
+        if self.channel:
+            self.channel.stop_consuming()
+        if self.connection:
+            self.connection.close()
+
 
 if __name__ == '__main__':
     pass

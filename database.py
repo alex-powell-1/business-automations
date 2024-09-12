@@ -521,16 +521,32 @@ class Database:
             response = Database.query(query)
             return response
 
+        def unsubscribe(email):
+            query = f"""
+            UPDATE {Table.CP.Customers.table}
+            SET {Table.CP.Customers.Column.email_subscribed_1} = 'N'
+            WHERE EMAIL_ADDR = '{email}'
+            """
+            response = Database.query(query)
+            if response['code'] == 200:
+                Database.logger.success(f'Unsubscribed {email} from newsletter.')
+            elif response['code'] == 201:
+                Database.logger.warn(f'{email} not found in newsletter table.')
+            else:
+                error = f'Error unsubscribing {email} from newsletter. \n Query: {query}\nResponse: {response}'
+                Database.error_handler.add_error_v(error=error)
+                raise Exception(error)
+
     class Counterpoint:
-        class Order:
+        class OpenOrder:
             def delete(doc_id=None, tkt_no=None, eh=ProcessOutErrorHandler):
                 if doc_id:
                     query = f"""
-                    DELETE FROM {Table.CP.orders}
+                    DELETE FROM {Table.CP.open_orders}
                     WHERE DOC_ID = {doc_id}"""
                 elif tkt_no:
                     query = f"""
-                    DELETE FROM {Table.CP.orders}
+                    DELETE FROM {Table.CP.open_orders}
                     WHERE TKT_NO = '{tkt_no}'"""
 
                 else:
@@ -545,6 +561,127 @@ class Database:
                     error = f'Error deleting order {doc_id or tkt_no} from PS_DOC_HDR. \n Query: {query}\nResponse: {response}'
                     eh.error_handler.add_error_v(error=error)
                     raise Exception(error)
+
+            def has_refund(order_number) -> bool:
+                """returns true if order has an associated refund"""
+                query = f"""
+                SELECT TKT_NO
+                FROM {Table.CP.open_orders}
+                WHERE TKT_NO like '{order_number}%' AND TKT_NO like '%R%'
+                """
+                response = Database.query(query)
+                try:
+                    return response[0][0] is not None
+                except:
+                    return False
+
+        class ClosedOrder:
+            def get_refund_customers(date):
+                """Returns a list of customers who have a refunded ticket on a given date"""
+                query = f"""
+                SELECT CUST_NO
+                FROM {Table.CP.closed_orders}
+                WHERE BUS_DAT = '{date}' AND TKT_NO like '%R%'
+                """
+                response = Database.query(query)
+                if response is not None:
+                    return [x[0] for x in response]
+                else:
+                    return None
+
+            def get_business_date(tkt_no=None, doc_id=None, eh=ProcessOutErrorHandler):
+                if not tkt_no and not doc_id:
+                    raise Exception('No Ticket Number or Document ID provided.')
+                if doc_id:
+                    where_filter = f'DOC_ID = {doc_id}'
+
+                elif tkt_no:
+                    where_filter = f"TKT_NO = '{tkt_no}'"
+
+                query = f"""
+                SELECT BUS_DAT
+                FROM {Table.CP.closed_orders}
+                WHERE {where_filter}
+                """
+                response = Database.query(query)
+                if response:
+                    return response[0][0]
+                else:
+                    eh.logger.warn(f'No business date found for {tkt_no or doc_id}.')
+                    return None
+
+            def get_total(tkt_no, eh=ProcessOutErrorHandler):
+                query = f"""
+                SELECT TOT
+                FROM {Table.CP.closed_orders}
+                WHERE TKT_NO = '{tkt_no}'
+                """
+                response = Database.query(query)
+                if response:
+                    return response[0][0]
+                else:
+                    eh.logger.warn(f'No total found for {tkt_no}.')
+                    return None
+
+            def has_refund(order_number) -> bool:
+                """returns true if order has an associated refund"""
+                query = f"""
+                SELECT TKT_NO
+                FROM {Table.CP.closed_orders}
+                WHERE TKT_NO like '{order_number}%' AND TKT_NO like '%R%'
+                """
+                response = Database.query(query)
+                try:
+                    return response[0][0] is not None
+                except:
+                    return False
+
+            def get_last_successful_order(customer):
+                """Find the last order that does not have an associated refund"""
+                refunded = True
+                count = 0
+                while refunded:
+                    query = f"""
+                    SELECT TKT_NO FROM {Table.CP.closed_orders}
+                    WHERE CUST_NO = '{customer}' AND TKT_NO not like '%R%'
+                    ORDER BY BUS_DAT DESC
+                    OFFSET {count} ROWS
+                    FETCH NEXT 1 ROWS ONLY
+                    """
+                    response = Database.query(query)
+                    if response is not None:
+                        most_recent_ticket = response[0][0]
+                        if Database.Counterpoint.ClosedOrder.has_refund(most_recent_ticket):
+                            # Evaluate whether this is full or partial refund...
+                            count += 1
+                        else:
+                            # Return the most recent ticket that does not have a refund
+                            return most_recent_ticket
+                    else:
+                        return None
+
+            def get_first_successful_order(customer):
+                """Find the first order that does not have an associated refund"""
+                refunded = True
+                count = 0
+                while refunded:
+                    query = f"""
+                    SELECT TKT_NO FROM {Table.CP.closed_orders}
+                    WHERE CUST_NO = '{customer}' AND TKT_NO not like '%R%'
+                    ORDER BY BUS_DAT
+                    OFFSET {count} ROWS
+                    FETCH NEXT 1 ROWS ONLY
+                    """
+                    response = Database.query(query)
+                    if response is not None:
+                        first_ticket = response[0][0]
+                        if Database.Counterpoint.ClosedOrder.has_refund(first_ticket):
+                            count += 1
+                        else:
+                            # Return the most recent ticket that does not have a refund
+                            return first_ticket
+                    else:
+                        return None
 
         class Product:
             def get_all_binding_ids():
@@ -579,6 +716,17 @@ class Database:
                 response = Database.query(query)
                 if response:
                     return response[0][0]
+
+            def get_single_items():
+                query = f"""
+                SELECT ITEM_NO FROM {Table.CP.Item.table}
+                WHERE {Table.CP.Item.Column.web_enabled} = 'Y' AND {Table.CP.Item.Column.binding_id} IS NULL
+                """
+                response = Database.query(query)
+                if response:
+                    return [x[0] for x in response]
+                else:
+                    return None
 
             def set_sale_price(sku, price, eh=ProcessOutErrorHandler):
                 query = f"""
@@ -651,6 +799,41 @@ class Database:
                     eh.error_handler.add_error_v(error=error)
                     raise Exception(error)
 
+            def set_active(sku, eh=ProcessOutErrorHandler):
+                query = f"""
+                UPDATE {Table.CP.Item.table} 
+                SET STAT = 'A'
+                WHERE ITEM_NO = '{sku}'
+                """
+                response = Database.query(query)
+                if response['code'] == 200:
+                    eh.logger.success(f'Product {sku} set to active status.')
+                elif response['code'] == 201:
+                    eh.logger.warn(f'Product {sku} not found in {Table.CP.Item.table}.')
+                else:
+                    error = f'Error setting product {sku} to active status. \n Query: {query}\nResponse: {response}'
+                    eh.error_handler.add_error_v(error=error)
+                    raise Exception(error)
+
+            @staticmethod
+            def set_inactive(sku, eh=ProcessOutErrorHandler):
+                query = f"""
+                UPDATE {Table.CP.Item.table} 
+                SET STAT = 'V'
+                WHERE ITEM_NO = '{sku}'
+                """
+                response = Database.query(query)
+                if response['code'] == 200:
+                    eh.logger.success(f'Product {sku} set to inactive status.')
+                elif response['code'] == 201:
+                    eh.logger.warn(f'Product {sku} not found in {Table.CP.Item.table}.')
+                else:
+                    error = (
+                        f'Error setting product {sku} to inactive status. \n Query: {query}\nResponse: {response}'
+                    )
+                    eh.error_handler.add_error_v(error=error)
+                    raise Exception(error)
+
             @staticmethod
             def update(payload, eh=ProcessOutErrorHandler):
                 """FOR PRODUCTS_UPDATE WEBHOOK ONLY. Normal updates from shopify_catalog.py use sync()"""
@@ -665,6 +848,12 @@ class Database:
                 if 'title' in payload:
                     title = Database.sql_scrub(payload['title'])[:80]  # 80 char limit
                     query += f"{Table.CP.Item.Column.web_title} = '{title}', "
+
+                if 'tags' in payload:
+                    tags = Database.sql_scrub(payload['tags'])[:80]
+                    query += f"{Table.CP.Item.Column.tags} = '{tags}', "
+                else:
+                    query += f'{Table.CP.Item.Column.tags} = NULL, '
 
                 # SEO Data
                 if 'meta_title' in payload:
@@ -1281,11 +1470,68 @@ class Database:
 
             def __str__(self):
                 result = ''
-                for k, v in cust.__dict__.items():
+                for k, v in self.__dict__.items():
                     if k == 'cust':
                         continue
                     result += f'{k}: {v}\n'
                 return result
+
+            @staticmethod
+            def update_first_sale_date(cust_no, first_sale_date):
+                if first_sale_date:
+                    query = f"""
+                    UPDATE {Table.CP.customers}
+                    SET FST_SAL_DAT = '{first_sale_date}'
+                    WHERE CUST_NO = '{cust_no}'
+                    """
+                else:
+                    query = f"""
+                    UPDATE {Table.CP.customers}
+                    SET FST_SAL_DAT = NULL
+                    WHERE CUST_NO = '{cust_no}'
+                    """
+                response = Database.query(query)
+                if response['code'] == 200:
+                    Database.logger.success(f'Customer {cust_no} first sale date updated to {first_sale_date}.')
+                elif response['code'] == 201:
+                    Database.logger.warn(f'No rows affected for {cust_no}.')
+                else:
+                    Database.error_handler.add_error_v(
+                        error=f'Error updating customer {cust_no} first sale date.\n\nQuery: {query}\n\nResponse: {response}',
+                        origin='update_first_sale_date',
+                    )
+                    raise Exception(response['message'])
+
+            @staticmethod
+            def update_last_sale_date(cust_no, last_sale_date, last_sale_amt=None):
+                if last_sale_date:
+                    query = f"""
+                    UPDATE {Table.CP.customers}
+                    SET LST_SAL_DAT = '{last_sale_date}', LST_SAL_AMT = {last_sale_amt}
+                    WHERE CUST_NO = '{cust_no}'
+                    """
+                else:
+                    query = f"""
+                    UPDATE {Table.CP.customers}
+                    SET LST_SAL_DAT = NULL, LST_SAL_AMT = NULL
+                    WHERE CUST_NO = '{cust_no}'
+                    """
+                response = Database.query(query)
+                if response['code'] == 200:
+                    success_message = f'Customer {cust_no} last sale date updated to {last_sale_date}.'
+                    if last_sale_amt:
+                        success_message += f' Last sale amount updated to {last_sale_amt}.'
+                    Database.logger.success(success_message)
+
+                elif response['code'] == 201:
+                    Database.logger.warn(f'No rows affected for {cust_no}.')
+
+                else:
+                    Database.error_handler.add_error_v(
+                        error=f'Error updating customer {cust_no} last sale date.\n\nQuery: {query}\n\nResponse: {response}',
+                        origin='update_last_sale_date',
+                    )
+                    raise Exception(response['message'])
 
             @staticmethod
             def get(cust_no):
@@ -1625,6 +1871,16 @@ class Database:
             used to apply discounts to orders. Discounts can be applied to the entire order or to
             individual items. Discounts can be a fixed amount, a percentage, or a prompted amount or percentage."""
 
+            def get_disc_cod_from_shop_id(shop_id):
+                query = f"""
+                SELECT DISC_ID FROM {Table.Middleware.discounts} WHERE SHOP_ID = {shop_id}
+                """
+                response = Database.query(query)
+                if response:
+                    return response[0][0]
+                else:
+                    return None
+
             def has_coupon(code):
                 query = f"""
                 SELECT COUNT(*) FROM PS_DISC_COD WHERE DISC_COD = '{code}'
@@ -1686,6 +1942,7 @@ class Database:
                     return
                 if shop_id:
                     where = f'WHERE SHOP_ID = {shop_id}'
+
                 elif discount_code:
                     where = f"WHERE DISC_COD = '{discount_code}'"
 
@@ -1713,32 +1970,42 @@ class Database:
                         f'Error deactivating coupon: {e}', origin='Database.Counterpoint.Discount.deactivate'
                     )
 
-            def delete(discount_code):
+            def delete(discount_code=None, shop_id=None):
                 """Deletes a discount code from CounterPoint."""
-                query = f"""
-                DELETE FROM {Table.CP.discounts} WHERE DISC_COD = '{discount_code}'
-                """
-                try:
-                    response = Database.query(query)
-
-                    if response['code'] == 200:
-                        Database.logger.success(f'Deleted Coupon: {discount_code}')
-                        return True
-                    elif response['code'] == 201:
-                        Database.error_handler.add_error_v(
-                            f'Could not find coupon in CounterPoint: {discount_code}'
-                        )
-                        return False
-                    else:
-                        Database.error_handler.add_error_v(
-                            error=f'CP Coupon Deletion Error: {response}',
-                            origin='Database.Counterpoint.Discount.delete',
-                        )
-                        return False
-                except Exception as e:
+                if not discount_code and not shop_id:
                     Database.error_handler.add_error_v(
-                        error=f'CP Coupon Deletion Error: {e}', origin='Database.Counterpoint.Discount.delete'
+                        'No discount_code or shop_id provided', origin='Database.Counterpoint.Discount.delete'
                     )
+                    return
+
+                if shop_id:
+                    discount_code = Database.Counterpoint.Discount.get_disc_cod_from_shop_id(shop_id)
+
+                if discount_code:
+                    query = f"""
+                    DELETE FROM {Table.CP.discounts} WHERE DISC_ID = '{discount_code}'
+                    """
+                    try:
+                        response = Database.query(query)
+
+                        if response['code'] == 200:
+                            Database.logger.success(f'Deleted Coupon: {discount_code}')
+                            return True
+                        elif response['code'] == 201:
+                            Database.error_handler.add_error_v(
+                                f'Could not find coupon in CounterPoint: {discount_code}'
+                            )
+                            return False
+                        else:
+                            Database.error_handler.add_error_v(
+                                error=f'CP Coupon Deletion Error: {response}',
+                                origin='Database.Counterpoint.Discount.delete',
+                            )
+                            return False
+                    except Exception as e:
+                        Database.error_handler.add_error_v(
+                            error=f'CP Coupon Deletion Error: {e}', origin='Database.Counterpoint.Discount.delete'
+                        )
 
     class Shopify:
         def rebuild_tables(self):
@@ -2204,6 +2471,13 @@ class Database:
                     raise Exception(response['message'])
 
         class Product:
+            def exists(sku):
+                query = f"""
+                        SELECT * FROM {Table.Middleware.products}
+                        WHERE ITEM_NO = '{sku}'
+                        """
+                return Database.query(query) is not None
+
             def get_by_category(cp_category=None, cp_subcategory=None):
                 query = f"""SELECT ITEM_NO FROM {Table.CP.Item.table} 
                 WHERE {Table.CP.Item.Column.web_enabled} = 'Y' AND 
@@ -2372,7 +2646,7 @@ class Database:
                 def get_option_id(sku):
                     if sku:
                         query = f"""
-                            SELECT OPTION_ID FROM {creds.shopify_product_table}
+                            SELECT OPTION_ID FROM {Table.Middleware.products}
                             WHERE ITEM_NO = '{sku}'
                             """
                     else:
@@ -2385,7 +2659,7 @@ class Database:
                 def get_option_value_id(sku):
                     if sku:
                         query = f"""
-                            SELECT OPTION_VALUE_ID FROM {creds.shopify_product_table}
+                            SELECT OPTION_VALUE_ID FROM {Table.Middleware.products}
                             WHERE ITEM_NO = '{sku}'
                             """
                     else:
@@ -2406,7 +2680,8 @@ class Database:
                         PRODUCT_ID, VARIANT_ID, INVENTORY_ID, VARIANT_NAME, OPTION_ID, OPTION_VALUE_ID, CATEG_ID, 
                         CF_BOTAN_NAM, CF_PLANT_TYP, CF_HEIGHT, CF_WIDTH, CF_CLIM_ZON, CF_CLIM_ZON_LST,
                         CF_COLOR, CF_SIZE, CF_BLOOM_SEAS, CF_BLOOM_COLOR, CF_LIGHT_REQ, CF_FEATURES, CF_IS_PREORDER, 
-                        CF_PREORDER_DT, CF_PREORDER_MSG, CF_IS_FEATURED, CF_IN_STORE_ONLY, CF_IS_ON_SALE, CF_SALE_DESCR
+                        CF_PREORDER_DT, CF_PREORDER_MSG, CF_IS_FEATURED, CF_IN_STORE_ONLY, CF_IS_ON_SALE, CF_SALE_DESCR,
+                        CF_VAR_SIZE
                         )
                          
                         VALUES ('{variant.sku}', {f"'{product.binding_id}'" if product.binding_id else 'NULL'}, 
@@ -2435,7 +2710,8 @@ class Database:
                         {product.meta_is_featured['id'] if product.meta_is_featured['id'] else "NULL"},
                         {product.meta_in_store_only['id'] if product.meta_in_store_only['id'] else "NULL"},
                         {product.meta_is_on_sale['id'] if product.meta_is_on_sale['id'] else "NULL"},
-                        {product.meta_sale_description['id'] if product.meta_sale_description['id'] else "NULL"}
+                        {product.meta_sale_description['id'] if product.meta_sale_description['id'] else "NULL"},
+                        {variant.meta_variant_size['id'] if variant.meta_variant_size['id'] else "NULL"}
                         )
                         """
                     response = Database.query(insert_query)
@@ -2487,6 +2763,7 @@ class Database:
                         CF_IN_STORE_ONLY = {product.meta_in_store_only['id'] if product.meta_in_store_only['id'] else "NULL"},
                         CF_IS_ON_SALE = {product.meta_is_on_sale['id'] if product.meta_is_on_sale['id'] else "NULL"},
                         CF_SALE_DESCR = {product.meta_sale_description['id'] if product.meta_sale_description['id'] else "NULL"},
+                        CF_VAR_SIZE = {variant.meta_variant_size['id'] if variant.meta_variant_size['id'] else "NULL"},
                         LST_MAINT_DT = GETDATE() 
                         WHERE ID = {variant.mw_db_id}
                         """
@@ -3306,5 +3583,7 @@ class Database:
 
 
 if __name__ == '__main__':
-    cust = Database.Counterpoint.Customer('105786')
-    print(cust)
+    single_items = Database.Counterpoint.Product.get_single_items()
+    for x in single_items:
+        if Database.Shopify.Product.exists(x):
+            pass

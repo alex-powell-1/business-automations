@@ -21,6 +21,12 @@ mutation productVariantCreate($input: ProductVariantInput!) {
         id
       }
       title
+      metafield(key: "variant_size", namespace: "variant-specification") {
+        id
+        key
+        namespace
+        value
+      }
     }
     userErrors {
       field
@@ -45,14 +51,25 @@ mutation productVariantsBulkCreate(
         id
         optionValues {
           id
+          name
         }
       }
     }
     productVariants {
       id
+      sku
       title
       inventoryItem {
         id
+      }
+      image {
+        id
+      }
+      metafield(key: "variant_size", namespace: "variant-specification") {
+        id
+        key
+        namespace
+        value
       }
     }
     userErrors {
@@ -77,6 +94,12 @@ mutation productVariantUpdate($input: ProductVariantInput!) {
       compareAtPrice
       inventoryItem {
         id
+      }
+      metafield(key: "variant_size", namespace: "variant-specification") {
+        id
+        key
+        namespace
+        value
       }
       selectedOptions {
         name
@@ -112,8 +135,18 @@ mutation productVariantsBulkUpdate(
     productVariants {
       id
       sku
+      title
+      inventoryItem {
+        id
+      }
       image {
         id
+      }
+      metafield(key: "variant_size", namespace: "variant-specification") {
+        id
+        key
+        namespace
+        value
       }
     }
     userErrors {
@@ -166,15 +199,39 @@ mutation bulkDeleteProductVariants($productId: ID!, $variantsIds: [ID!]!) {
   }
 }
 
-# query productVariants($id: ID!) {
-#   productVariants(query:gid://shopify/Product/8308343963815) {
-#     edges {
-#       node {
-#         id
-#         image {
-#           id
-#         }
-#       }
-#     }
-#   }
-# }
+query productVariant($id: ID!) {
+  productVariant(id: $id) {
+    title
+    displayName
+    createdAt
+    price
+    compareAtPrice
+    inventoryQuantity
+    availableForSale
+    inventoryItem {
+      id
+      sku
+      unitCost {
+        amount
+      }
+      tracked
+    }
+    metafield(key: "variant_size", namespace: "variant-specification") {
+      id
+      key
+      namespace
+      value
+    }
+  }
+}
+
+query productVariantMetafields($id: ID!) {
+  productVariant(id: $id) {
+    metafield(key: "variant_size", namespace: "variant-specification") {
+      id
+      key
+      namespace
+      value
+    }
+  }
+}

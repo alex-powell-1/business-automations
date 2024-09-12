@@ -350,6 +350,7 @@ class Shopify:
 
             subtotal = float(get_money(snode['currentSubtotalPriceSet'])) + header_discount + shippingCost
             total = float(get_money(snode['currentTotalPriceSet']))
+            refund_total = float(get_money(snode['totalRefundedSet']))
 
             if len(snode['refunds']) > 0:
                 status = 'Partially Refunded'
@@ -416,6 +417,7 @@ class Shopify:
                 'base_shipping_cost': shippingCost,
                 'total_ex_tax': total,
                 'total_inc_tax': total,
+                'refund_total': refund_total,
                 'items_total': snode['subtotalLineItemsQuantity'],
                 'payment_status': snode['displayFinancialStatus'],
                 'store_credit_amount': get_store_credit_amount(),
@@ -920,6 +922,17 @@ class Shopify:
             variant_ids = [
                 x['id'].split('/')[-1] for x in response.data['productCreate']['product']['variants']['nodes']
             ]
+            variant_meta_ids = [
+                {
+                    'id': x['metafield']['id'].split('/')[-1],
+                    'namespace': x['metafield']['namespace'],
+                    'key': x['metafield']['key'],
+                    'value': x['metafield']['value'],
+                }
+                for x in response.data['productCreate']['product']['variants']['nodes']
+                if x['metafield']
+            ]
+
             inventory_ids = [
                 x['inventoryItem']['id'].split('/')[-1]
                 for x in response.data['productCreate']['product']['variants']['nodes']
@@ -936,6 +949,7 @@ class Shopify:
                 'option_ids': option_ids,
                 'option_value_ids': option_value_ids,
                 'variant_ids': variant_ids,
+                'variant_meta_ids': variant_meta_ids,
                 'inventory_ids': inventory_ids,
                 'meta_ids': meta_ids,
             }
@@ -965,7 +979,23 @@ class Shopify:
                 for x in response.data['productUpdate']['product']['metafields']['edges']
             ]
 
-            return {'media_ids': media_ids, 'option_ids': option_ids, 'meta_ids': meta_ids}
+            variant_meta_ids = [
+                {
+                    'id': x['metafield']['id'].split('/')[-1],
+                    'namespace': x['metafield']['namespace'],
+                    'key': x['metafield']['key'],
+                    'value': x['metafield']['value'],
+                }
+                for x in response.data['productUpdate']['product']['variants']['nodes']
+                if x['metafield']
+            ]
+
+            return {
+                'media_ids': media_ids,
+                'option_ids': option_ids,
+                'meta_ids': meta_ids,
+                'variant_meta_ids': variant_meta_ids,
+            }
 
         def delete(product_id: int = None, all=False, eh=ProcessOutErrorHandler):
             if product_id:
@@ -1042,34 +1072,60 @@ class Shopify:
             def get(product_id):
                 response = Shopify.Query(
                     document=Shopify.Product.Variant.queries,
-                    variables={'id': f'{Shopify.Product.prefix}{product_id}'},
-                    operation_name='productVariants',
+                    variables={'id': f'{Shopify.Product.Variant.prefix}{product_id}'},
+                    operation_name='productVariant',
                 )
                 return response.data
 
-            def create_bulk(variables):
-                response = Shopify.Query(
-                    document=Shopify.Product.Variant.queries,
-                    operation_name='productVariantsBulkCreate',
-                    variables=variables,
-                )
+            def parse_bulk_variant_response(operation_name, variables, response):
+                result = {}
 
-                variant_ids = [
-                    x['id'].split('/')[-1] for x in response.data['productVariantsBulkCreate']['productVariants']
-                ]
-                option_value_ids = [
-                    x['id'].split('/')[-1]
-                    for x in response.data['productVariantsBulkCreate']['product']['options'][0]['optionValues']
-                ]
-                inventory_ids = [
-                    x['inventoryItem']['id'].split('/')[-1]
-                    for x in response.data['productVariantsBulkCreate']['productVariants']
-                ]
-                return {
-                    'variant_ids': variant_ids,
-                    'option_value_ids': option_value_ids,
-                    'inventory_ids': inventory_ids,
-                }
+                for i in variables['variants']:
+                    sku = i['inventoryItem']['sku']
+                    name = i['optionValues']['name']
+                    result[sku] = {
+                        'variant_id': [
+                            x['id'].split('/')[-1]
+                            for x in response.data[operation_name]['productVariants']
+                            if x['sku'] == sku
+                        ][0],
+                        'option_value_id': [
+                            x['id'].split('/')[-1]
+                            for x in response.data[operation_name]['product']['options'][0]['optionValues']
+                            if x['name'] == name
+                        ][0],
+                        'inventory_id': [
+                            x['inventoryItem']['id'].split('/')[-1]
+                            for x in response.data[operation_name]['productVariants']
+                            if x['sku'] == sku
+                        ][0],
+                        'has_image': True
+                        if [
+                            x['image']['id'].split('/')[-1]
+                            for x in response.data[operation_name]['productVariants']
+                            if x['sku'] == sku and x['image'] is not None
+                        ]
+                        else False,
+                        'variant_meta_ids': [
+                            {
+                                'id': x['metafield']['id'].split('/')[-1],
+                                'namespace': x['metafield']['namespace'],
+                                'key': x['metafield']['key'],
+                                'value': x['metafield']['value'],
+                            }
+                            for x in response.data[operation_name]['productVariants']
+                            if x['sku'] == sku and x['metafield']
+                        ],
+                    }
+
+                return result
+
+            def create_bulk(variables):
+                operation_name = 'productVariantsBulkCreate'
+                response = Shopify.Query(
+                    document=Shopify.Product.Variant.queries, operation_name=operation_name, variables=variables
+                )
+                return Shopify.Product.Variant.parse_bulk_variant_response(operation_name, variables, response)
 
             def update_single(variables):
                 response = Shopify.Query(
@@ -1077,62 +1133,26 @@ class Shopify:
                     variables=variables,
                     operation_name='productVariantUpdate',
                 )
-                return response.data
+                metafield = response.data['productVariantUpdate']['productVariant']['metafield']
+                variant_meta_ids = []
+                if metafield:
+                    variant_meta_ids.append(
+                        {
+                            'id': metafield['id'].split('/')[-1],
+                            'namespace': metafield['namespace'],
+                            'key': metafield['key'],
+                            'value': metafield['value'],
+                        }
+                    )
+
+                return {'variant_meta_ids': variant_meta_ids}
 
             def update_bulk(variables):
+                operation_name = 'productVariantsBulkUpdate'
                 response = Shopify.Query(
-                    document=Shopify.Product.Variant.queries,
-                    variables=variables,
-                    operation_name='productVariantsBulkUpdate',
+                    document=Shopify.Product.Variant.queries, variables=variables, operation_name=operation_name
                 )
-
-                result = {}
-                for i in variables['variants']:
-                    sku = i['inventoryItem']['sku']
-                    name = i['optionValues']['name']
-                    result[sku] = {
-                        'variant_id': [
-                            x['id'].split('/')[-1]
-                            for x in response.data['productVariantsBulkUpdate']['productVariants']
-                            if x['sku'] == sku
-                        ][0],
-                        'option_value_id': [
-                            x['id'].split('/')[-1]
-                            for x in response.data['productVariantsBulkUpdate']['product']['options'][0][
-                                'optionValues'
-                            ]
-                            if x['name'] == name
-                        ][0],
-                        # 'shopify_id': [
-                        #     x['image']['id'].split('/')[-1]
-                        #     for x in response.data['productVariantsBulkUpdate']['productVariants']
-                        #     if x['sku'] == sku and x['image'] is not None
-                        # ],
-                        'has_image': True
-                        if [
-                            x['image']['id'].split('/')[-1]
-                            for x in response.data['productVariantsBulkUpdate']['productVariants']
-                            if x['sku'] == sku and x['image'] is not None
-                        ]
-                        else False,
-                    }
-
-                # variant_ids = [
-                #     x['id'].split('/')[-1] for x in response.data['productVariantsBulkUpdate']['productVariants']
-                # ]
-                # option_value_ids = [
-                #     x['id'].split('/')[-1]
-                #     for x in response.data['productVariantsBulkUpdate']['product']['options'][0]['optionValues']
-                # ]
-                # shopify_ids = [
-                #     x['image']['id'].split('/')[-1]
-                #     for x in response.data['productVariantsBulkUpdate']['productVariants']
-                #     if x['image'] is not None
-                # ]
-
-                # result = {'option_value_ids': option_value_ids, 'variant_ids': variant_ids, 'shopify_ids': shopify_ids}
-                print(result)
-                return result
+                return Shopify.Product.Variant.parse_bulk_variant_response(operation_name, variables, response)
 
             def delete(product_id, variant_id: int):
                 response = Shopify.Query(
@@ -1204,6 +1224,18 @@ class Shopify:
                         Shopify.Product.Media.delete(product_id=product_id, media_type='image', media_ids=media_ids)
                         for i in media_ids:
                             Database.Shopify.Product.Media.Image.delete(product_id=product_id, image_id=i)
+
+            class Metafield:
+                def get(variant_id: int):
+                    response = Shopify.Query(
+                        document=Shopify.Product.Variant.queries,
+                        variables={'id': f'gid://shopify/ProductVariant/{variant_id}'},
+                        operation_name='productVariantMetafields',
+                    )
+                    try:
+                        return response.data['productVariant']['metafield']['id'].split('/')[-1]
+                    except:
+                        return None
 
         class Media:
             queries = './integration/queries/media.graphql'
@@ -1388,13 +1420,16 @@ class Shopify:
                     variables={'id': f'{Shopify.Product.prefix}{product_id}'},
                     operation_name='productMeta',
                 )
-                metafields = [x['node'] for x in response.data['product']['metafields']['edges']]
+                if response.data['product']:
+                    if 'metafields' in response.data['product']:
+                        metafields = [x['node'] for x in response.data['product']['metafields']['edges']]
                 product_specifications = []
-                for x in metafields:
-                    if x['namespace'] == Metafield.Namespace.Product.specification:
-                        product_specifications.append(
-                            {'id': x['id'].split('/')[-1], 'key': x['key'], 'value': x['value']}
-                        )
+                if metafields:
+                    for x in metafields:
+                        if x['namespace'] == Metafield.Namespace.Product.specification:
+                            product_specifications.append(
+                                {'id': x['id'].split('/')[-1], 'key': x['key'], 'value': x['value']}
+                            )
                 product_status = []
                 for x in metafields:
                     if x['namespace'] == Metafield.Namespace.Product.status:
@@ -1453,6 +1488,29 @@ class Shopify:
                 )
                 return response.data
 
+            def reorder(product: object):
+                """Reorder options for a Catalog.Product object"""
+                variables = {
+                    'productId': f'{Shopify.Product.prefix}{product.product_id}',
+                    'options': [{'id': f'{Shopify.Product.Option.prefix}{product.option_id}', 'values': []}],
+                }
+
+                # Sort variants by price
+                product.variants.sort(key=lambda x: x.price_1)
+
+                for variant in product.variants:
+                    variables['options'][0]['values'].append(
+                        {'id': f'{Shopify.Product.OptionValue.prefix}{variant.option_value_id}'}
+                    )
+
+                response = Shopify.Query(
+                    document=Shopify.Product.Option.queries, variables=variables, operation_name='reorderOptions'
+                )
+                return response.data
+
+        class OptionValue:
+            prefix = 'gid://shopify/ProductOptionValue/'
+
         class Files:
             queries = './integration/queries/files.graphql'
 
@@ -1503,12 +1561,15 @@ class Shopify:
 
         class SEO:
             def get(product_id: int):
+                Shopify.logger.info(f'Getting SEO for product {product_id}')
                 response = Shopify.Query(
                     document=Shopify.Product.queries,
                     variables={'id': f'{Shopify.Product.prefix}{product_id}'},
                     operation_name='SEO',
                 )
-                return response.data['product']['seo']
+                if response.data['product']:
+                    if 'seo' in response.data['product']:
+                        return response.data['product']['seo']
 
             def update(product_id: int, title=None, description=None):
                 variables = {'input': {'id': f'{Shopify.Product.prefix}{product_id}', 'seo': {}}}
@@ -1730,7 +1791,9 @@ class Shopify:
             )
             return response.data
 
-        def delete(metafield_id: int = None, product_id: int = None, customer_id: int = None):
+        def delete(
+            metafield_id: int = None, product_id: int = None, customer_id: int = None, variant_id: int = None
+        ):
             if metafield_id:
                 target_id = f'{Shopify.Metafield.prefix}{metafield_id}'
                 print(f'Target ID: {target_id}')
@@ -1750,6 +1813,12 @@ class Shopify:
                 # Get all metafield ids for this customer from shopify
                 response = Shopify.Customer.Metafield.get(customer_id)
                 meta_ids = [x['node']['id'].split('/')[-1] for x in response['customer']['metafields']['edges']]
+
+            elif variant_id:
+                response = Shopify.Product.Variant.Metafield.get(variant_id)
+                if not response:
+                    return
+                meta_ids = [response]
 
             if meta_ids:
                 for meta_id in meta_ids:
@@ -1788,7 +1857,7 @@ class Shopify:
                 return result
 
             result = []
-            owner_types = ['PRODUCT', 'CUSTOMER', 'PRODUCTIMAGE', 'MEDIA_IMAGE']
+            owner_types = ['PRODUCT', 'CUSTOMER', 'PRODUCTVARIANT', 'PRODUCTIMAGE', 'MEDIA_IMAGE']
             for owner in owner_types:
                 response = Shopify.Query(
                     document=Shopify.MetafieldDefinition.queries,
@@ -2067,7 +2136,7 @@ class Shopify:
                 )
                 return response.data
 
-            def delete(discount_id):
+            def delete(discount_id: int):
                 response = Shopify.Query(
                     document=Shopify.Discount.queries,
                     variables={'id': f'{Shopify.Discount.prefix}{discount_id}'},
@@ -2200,7 +2269,7 @@ class Shopify:
 
 def refresh_order(tkt_no):
     """Delete order from PS_DOC_HDR and associated tables and rebuild from Shopify Data"""
-    Database.Counterpoint.Order.delete(tkt_no=tkt_no)
+    Database.Counterpoint.OpenOrder.delete(tkt_no=tkt_no)
 
     from integration.orders import Order as ShopifyOrder
 
@@ -2211,7 +2280,9 @@ def refresh_order(tkt_no):
 
 
 if __name__ == '__main__':
-    # shopify_cust_ids = Shopify.Customer.get()
-    # mw_cust_ids = Database.Counterpoint.Customer.get()
-
-    print(Shopify.Order.get(5664499564711))
+    single_items = Database.Counterpoint.Product.get_single_items()
+    for x in single_items:
+        if Database.Shopify.Product.exists(x):
+            variant_id = Database.Shopify.Product.Variant.get_id(x)
+            if variant_id:
+                Shopify.Metafield.delete(variant_id=variant_id)

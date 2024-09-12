@@ -1635,7 +1635,7 @@ class OrderAPI(DocumentAPI):
 
             return total
 
-        tot_tndr = float(bc_order['total_inc_tax'] or 0) if self.is_refund() else get_tndr()
+        tot_tndr = float(bc_order['refund_total'] or 0) if self.is_refund() else get_tndr()
 
         query = f"""
         DELETE FROM PS_DOC_HDR_TOT

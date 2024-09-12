@@ -1,18 +1,12 @@
 from datetime import datetime
 
 from product_tools.products import Product
-from setup.create_log import create_product_log
-from setup.creds import inactive_product_log
 from database import Database as db
-from setup.error_handler import ScheduledTasksErrorHandler as error_handler
+from setup.error_handler import ScheduledTasksErrorHandler
 
 # Inactive Product Automation
 #
-# Author: Alex Powell
-#
-# This automation is a part of the suite of automations.
-
-# This automation (written in Python) will determine if a product should be inactive and set it to inactive status (V).
+# This automation will determine if a product should be inactive and set it to inactive status (V).
 # Inactive products are automatically filtered out of the checkout choices at our POS touchscreen.
 # This prevents sales team members from having to sift through and/or selling out of stock items.
 #
@@ -27,20 +21,6 @@ from setup.error_handler import ScheduledTasksErrorHandler as error_handler
 # - Product is not on an open order
 # - Product is not in category 'BONNIE'
 #
-#
-# Technical Considerations:
-# This automation makes use a class in the business-automations setup module called QueryEngine.
-# QueryEngine has one method, query_db that takes a SQL query as a argument. It has a parameter called 'commit'
-# that must be set to True for SQL update queries like the one used in this script.
-
-
-def set_inactive(item_number):
-    query = f"""
-    UPDATE IM_ITEM 
-    SET STAT = 'V'
-    WHERE ITEM_NO = '{item_number}'
-    """
-    db.query(query)
 
 
 def get_active_products_with_no_stock():
@@ -93,7 +73,7 @@ def get_bonnie_items():
         return
 
 
-def get_products_on_quotes_or_holds():
+def get_products_on_open_documents():
     query = """
     SELECT DISTINCT ITEM_NO
     FROM PS_DOC_LIN
@@ -110,9 +90,9 @@ def get_products_on_quotes_or_holds():
         return
 
 
-def set_products_to_inactive():
+def set_products_to_inactive(eh=ScheduledTasksErrorHandler):
     count = 0
-    error_handler.logger.info(f'Inactive Products: Starting at {datetime.now():%H:%M:%S}')
+    eh.logger.info(f'Inactive Products: Starting at {datetime.now():%H:%M:%S}')
     active_products = get_active_products_with_no_stock()
     if active_products is not None:
         # Update: Items on open order are not taken into account as of April 24
@@ -128,26 +108,18 @@ def set_products_to_inactive():
             #     print(f"Skipping {item.item_no}: {item.long_descr} - On Open Order")
             #     continue
             if item.item_no in bonnie_products:
-                error_handler.logger.info(f'Skipping {item.item_no}: {item.long_descr} - Bonnie Product')
+                eh.logger.info(f'Skipping {item.item_no}: {item.long_descr} - Bonnie Product')
                 continue
             else:
-                error_handler.logger.info(f'Setting {item.item_no}: {item.web_title} to inactive')
-                set_inactive(item.item_no)
-                item = Product(item.item_no)
-                if item.status == 'V':
-                    error_handler.logger.info(f'Item: {item.item_no}: Inactive Status Set')
-                    count += 1
+                try:
+                    db.Counterpoint.Product.set_inactive(item.item_no)
+                except:
+                    continue
                 else:
-                    error_handler.logger.info(f'Item: {item.item_no}: Inactive Status Failed to Set')
+                    count += 1
 
-                create_product_log(
-                    item_no=item.item_no,
-                    product_name=item.long_descr,
-                    qty_avail=item.quantity_available,
-                    status_1_col_name='status',
-                    status_1_data=item.status,
-                    log_location=inactive_product_log,
-                )
+    eh.logger.info(f'{count} product statuses changed. Process completed at {datetime.now():%H:%M:%S}.')
 
-    error_handler.logger.info(f'{count} product statuses changed')
-    error_handler.logger.info(f'Inactive Products: Completed at {datetime.now():%H:%M:%S}')
+
+if __name__ == '__main__':
+    set_products_to_inactive()
