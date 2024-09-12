@@ -279,24 +279,20 @@ class Shopify:
                 if item['name'] is None:
                     item['name'] = ''
 
-                if item['name'].lower() == 'delivery':
+                if item['name'].split('-')[0].strip().lower() == 'delivery':
                     if is_refunded:
                         item['quantity'] = quantity_refunded
 
                     delivery_from_lines += price * float(item['quantity'])
                     continue
-                    # item['sku'] = 'DELIVERY'
 
-                if item['name'].lower() == 'service':
+                if item['name'].split('-')[0].strip().lower() == 'service':
                     item['sku'] = 'SERVICE'
 
                 if item['sku'] is None:
                     continue
 
-                item['isGiftCard'] = False
-
-                if item['sku'] is not None:
-                    item['isGiftCard'] = 'GFC' in item['sku']
+                item['isGiftCard'] = 'GFC' in item['sku']
 
                 pl = {
                     'id': item['id'],
