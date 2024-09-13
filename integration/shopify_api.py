@@ -1126,7 +1126,10 @@ class Shopify:
                 variables={'id': f'{Shopify.Product.prefix}{product_id}'},
                 operation_name='product',
             )
-            return response.data['product']['collections']['edges']
+            return [x['node'] for x in response.data['product']['collections']['edges']]
+
+        def get_collection_ids(product_id: int):
+            return [x['id'].split('/')[-1] for x in Shopify.Product.get_collections(product_id=8348458516647)]
 
         def get_product_id_from_sku(sku: str):
             query = f"""

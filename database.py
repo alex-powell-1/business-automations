@@ -2682,6 +2682,32 @@ class Database:
                 Database.Shopify.Product.Media.Image.delete(product_id=product_id)
                 Database.Shopify.Product.Media.Video.delete(product_id=product_id)
 
+            def get_collection_ids(item_no=None, binding_id=None, product_id=None):
+                if item_no:
+                    query = f"""
+                    SELECT CATEG_ID FROM {Table.Middleware.products}
+                    WHERE ITEM_NO = '{item_no}'
+                    """
+                elif binding_id:
+                    query = f"""
+                    SELECT CATEG_ID FROM {Table.Middleware.products}
+                    WHERE BINDING_ID = '{binding_id}'
+                    """
+                elif product_id:
+                    query = f"""
+                    SELECT CATEG_ID FROM {Table.Middleware.products}
+                    WHERE PRODUCT_ID = {product_id}
+                    """
+                else:
+                    Database.logger.warn('No item number or binding ID provided for lookup.')
+                    return
+
+                response = Database.query(query)
+                try:
+                    return [int(x) for x in response[0][0].split(',')]
+                except:
+                    return []
+
             class Variant:
                 def get_id(sku):
                     if sku:
