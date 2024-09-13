@@ -14,7 +14,7 @@ from setup.utilities import PhoneNumber, local_to_utc
 from datetime import datetime
 
 
-verbose_print = False
+verbose_print = True
 
 
 class Shopify:
@@ -49,12 +49,6 @@ class Shopify:
                     f'User Error: {self.user_errors}\nResponse: {json.dumps(self.response, indent=4)}'
                 )
             if self.errors or self.user_errors:
-                # print(f'\n\nVariables: \n\n{variables}\n\n')
-                # print(f'Operation Name: {operation_name}\n\n')
-                # print(f'User Errors: {self.user_errors}')
-                # print(f'Errors: {self.errors}\n\n')
-                # print(operation_name, self)
-
                 if self.user_errors:
                     for i in self.user_errors:
                         if operation_name.startswith('customer'):
@@ -2303,9 +2297,4 @@ def refresh_order(tkt_no):
 
 
 if __name__ == '__main__':
-    single_items = Database.Counterpoint.Product.get_single_items()
-    for x in single_items:
-        if Database.Shopify.Product.exists(x):
-            variant_id = Database.Shopify.Product.Variant.get_id(x)
-            if variant_id:
-                Shopify.Metafield.delete(variant_id=variant_id)
+    response = Shopify.Menu.get(205591937191)

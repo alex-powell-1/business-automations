@@ -82,6 +82,7 @@ class ErrorHandler:
                 print(error)
                 if self.logger:
                     self.logger.log(str(error))
+            self.errors = []
         else:
             self.logger.log('No Sync Errors Found.')
 
@@ -99,7 +100,7 @@ class ErrorHandler:
             self.traceback = traceback
 
         def __str__(self):
-            timestamp_str = self.timestamp.strftime('%Y-%m-%d %H:%M:%S')
+            timestamp_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             origin_str = f' [{self.origin}] ' if self.origin else ' '
 
             prefix = f'[{self.type}]{origin_str}[{timestamp_str}]'

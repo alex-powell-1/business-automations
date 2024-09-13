@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en" style="background-color: white">
+  <head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0",
+    maximum-scale=1.0, user-scalable=0">
+    <link
+      href="{{ url_for('static', filename='stylesheets/web/basic.css') }}"
+      rel="stylesheet"
+    />
+
+    <title>{{ title }}</title>
+  </head>
+  <body
+    style="
+      margin: 0;
+      width: 100vw;
+      height: 100vh;
+      display: grid;
+      place-items: center;
+    "
+  >
+    <div class="center">
+      <a href="{{ company_url }}"><img
+        src="{{ url_for('static', filename='images/logo.jpg') }}"
+        alt="logo"
+        style="width: 200px"
+      /></a>
+      <div>
+      <h1>{{ title }}</h1>
+      <p>{{ message }}</p>
+
+      {% if code == 200 %}
+      <h2>Clicked this by mistake?</h2>
+      <p>
+        Click <a href="{{ endpoint }}?email={{ email }}">here</a> to
+        resubscribe.
+      </p>
+      {% endif %}
+    </div>
+  </body>
+</html>

@@ -549,17 +549,36 @@ class Database:
             return response
 
     class Newsletter:
-        def is_subscribed(email):
-            query = f"""
-            SELECT EMAIL
-            FROM {Table.newsletter}
-            WHERE EMAIL = '{email}'
-            """
-            response = Database.query(query)
-            if response:
-                return response[0][0] is not None
-            else:
+        def is_subscribed(email, cp=False):
+            """Returns True if email is subscribed to the generic newsletter via the website.
+            If cp is True, checks if email is subscribed to the newsletter in Counterpoint."""
+            if not email:
                 return False
+            if not cp:
+                # Check if email is subscribed to the generic newsletter signup form
+                query = f"""
+                SELECT EMAIL
+                FROM {Table.newsletter}
+                WHERE EMAIL = '{email}'
+                """
+                response = Database.query(query)
+                if response:
+                    return response[0][0] is not None
+                else:
+                    return False
+
+            else:
+                # Check if email is subscribed to the newsletter in Counterpoint
+                query = f"""
+                SELECT {Table.CP.Customers.Column.email_subscribed_1}
+                FROM {Table.CP.Customers.table}
+                WHERE EMAIL_ADRS_1 = '{email}' or EMAIL_ADRS_2 = '{email}'
+                """
+                response = Database.query(query)
+                if response:
+                    return response[0][0] == 'Y'
+                else:
+                    return False
 
         def insert(email, date=None):
             """Inserts an email into the newsletter subscriber table."""
@@ -574,21 +593,47 @@ class Database:
             response = Database.query(query)
             return response
 
-        def unsubscribe(email):
+        def unsubscribe(email, eh=ProcessOutErrorHandler):
+            if not Database.Newsletter.is_subscribed(email, cp=True):
+                return {'code': 201, 'message': f'{email} not found in newsletter table.'}
+
+            # Unsubscribe from Counterpoint
             query = f"""
             UPDATE {Table.CP.Customers.table}
             SET {Table.CP.Customers.Column.email_subscribed_1} = 'N'
-            WHERE EMAIL_ADDR = '{email}'
+            WHERE EMAIL_ADRS_1 = '{email}' or EMAIL_ADRS_2 = '{email}'
             """
             response = Database.query(query)
             if response['code'] == 200:
                 Database.logger.success(f'Unsubscribed {email} from newsletter.')
-            elif response['code'] == 201:
-                Database.logger.warn(f'{email} not found in newsletter table.')
             else:
                 error = f'Error unsubscribing {email} from newsletter. \n Query: {query}\nResponse: {response}'
                 Database.error_handler.add_error_v(error=error)
                 raise Exception(error)
+
+            return response
+
+        def subscribe(email, eh=ProcessOutErrorHandler):
+            if Database.Newsletter.is_subscribed(email, cp=True):
+                return {'code': 201, 'message': f'{email} already subscribed to newsletter.'}
+
+            # Subscribe in Counterpoint
+            query = f"""
+            UPDATE {Table.CP.Customers.table}
+            SET {Table.CP.Customers.Column.email_subscribed_1} = 'Y'
+            WHERE EMAIL_ADRS_1 = '{email}' or EMAIL_ADRS_2 = '{email}'
+            """
+            response = Database.query(query)
+            if response['code'] == 200:
+                Database.logger.success(f'Subscribed {email} to newsletter.')
+            elif response['code'] == 201:
+                Database.logger.warn(f'{email} not found in newsletter table.')
+            else:
+                error = f'Error subscribing {email} to newsletter. \n Query: {query}\nResponse: {response}'
+                Database.error_handler.add_error_v(error=error)
+                raise Exception(error)
+
+            return response
 
     class Counterpoint:
         class OpenOrder:
@@ -1686,6 +1731,33 @@ class Database:
                     category = 'Unknown'
 
                 return customer_no, full_name, category
+
+            @staticmethod
+            def lookup_customer_by_email(email_address):
+                if email_address is None:
+                    return
+                email_address = email_address.replace("'", "''")
+                query = f"""
+                SELECT TOP 1 CUST_NO
+                FROM AR_CUST 
+                WHERE EMAIL_ADRS_1 = '{email_address}' or EMAIL_ADRS_2 = '{email_address}'
+                """
+                response = Database.query(query)
+                if response is not None:
+                    return response[0][0]
+
+            def lookup_customer_by_phone(phone_number):
+                if phone_number is None:
+                    return
+                phone_number = PhoneNumber(phone_number).to_cp()
+                query = f"""
+                SELECT TOP 1 CUST_NO
+                FROM AR_CUST
+                WHERE PHONE_1 = '{phone_number}' or MBL_PHONE_1 = '{phone_number}'
+                """
+                response = Database.query(query)
+                if response is not None:
+                    return response[0][0]
 
             @staticmethod
             def update_timestamps(customer_list: list = None, customer_no: str = None):

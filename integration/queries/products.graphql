@@ -201,7 +201,6 @@ mutation productDelete($id: ID!) {
   }
 }
 
-
 query SEO($id: ID!) {
   product(id: $id) {
     seo {
@@ -375,8 +374,6 @@ query products($first: Int, $after: String) {
     }
   }
 }
-
-
 
 query variantIventoryId($id: ID!) {
   productVariant(id: $id) {

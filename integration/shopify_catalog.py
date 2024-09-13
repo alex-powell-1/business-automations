@@ -574,6 +574,9 @@ class Catalog:
                     'items': [menu_helper(child) for child in category.children],
                 }
 
+                if category.menu_id:
+                    menu_item['id'] = f'gid://shopify/MenuItem/{category.menu_id}'
+
                 return menu_item
 
             # # Temporary Static Auto-Collection for Sales
@@ -599,7 +602,27 @@ class Catalog:
                 }
             )
 
-            Shopify.Menu.update(main_menu)
+            response = Shopify.Menu.update(main_menu)
+
+            def get_menu_ids(response):
+                categories = []
+
+                for item in response['menuUpdate']['menu']['items']:
+                    menu_item_id = item['id']
+                    title = item['title']
+                    children = item['items']
+                    categories.append({'id': menu_item_id, 'title': title})
+                    for child in children:
+                        child_id = child['id']
+                        child_title = child['title']
+                        categories.append({'id': child_id, 'title': child_title})
+
+                for cat in categories:
+                    for category in self.categories:
+                        if cat['title'] == category.name:
+                            category.menu_id = cat['id'].split('/')[-1]
+
+            get_menu_ids(response)
 
         def update_tree_in_middleware(self):
             # Update Entire Category Tree in Middleware
@@ -1258,15 +1281,18 @@ class Catalog:
             # Test for missing cost
             if check_for_item_cost:
                 if self.cost == 0:
-                    message = f'Product {self.sku} is missing a cost. Validation passed for now :).'
+                    message = f'Product {self.sku} is missing a cost. Validation failed.'
                     Catalog.error_handler.add_error_v(error=message, origin='Input Validation')
                     return False
 
             # Test for missing price 1
             if self.default_price == 0:
-                message = f'Product {self.sku} is missing a price 1. Validation failed.'
-                Catalog.error_handler.add_error_v(error=message, origin='Input Validation')
-                return False
+                if self.in_store_only:
+                    Catalog.logger.warn(f'In-Store-Only Product {self.sku} is missing a price 1. Will Pass.')
+                else:
+                    message = f'Product {self.sku} is missing a price 1. Validation failed.'
+                    Catalog.error_handler.add_error_v(error=message, origin='Input Validation')
+                    return False
 
             if check_html_description:
                 # Test for missing html description

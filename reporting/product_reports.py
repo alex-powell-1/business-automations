@@ -1099,3 +1099,17 @@ def report_generator(
             report += f'<p>Error! Message: {err}</p>'
 
     return report
+
+
+if __name__ == '__main__':
+    from product_tools import products
+
+    print(
+        create_top_items_report(
+            beginning_date=one_year_ago,
+            ending_date=last_year_forecast,
+            mode='sales',
+            number_of_items=products.get_ecomm_items(),
+            return_format=3,
+        )
+    )
