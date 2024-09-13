@@ -142,7 +142,8 @@ class Customers:
             self.meta_wholesale_price_tier_id = cust_result[22]
 
             self.sms_subscribe = True if cust_result[23] == 'Y' else False
-            self.mw_id = cust_result[24]
+            self.email_subscribe = True if cust_result[24] == 'Y' else False
+            self.mw_id = cust_result[25]
 
             self.addresses = []
             self.get_addresses()
@@ -233,17 +234,25 @@ class Customers:
 
             if self.email:
                 variables['input']['email'] = self.email
-                if not self.shopify_cust_no:
-                    variables['input']['emailMarketingConsent'] = {'marketingState': 'SUBSCRIBED'}
+                variables['input']['emailMarketingConsent'] = (
+                    {'marketingState': 'SUBSCRIBED'}
+                    if self.email_subscribe
+                    else {'marketingState': 'NOT_SUBSCRIBED'}
+                )
 
             if self.phone:
                 variables['input']['phone'] = self.phone
                 if not self.shopify_cust_no:
+                    # Only add SMS marketing consent if the customer is new
+                    # Existing customers will have their SMS marketing consent updated
+                    # customerSmsMarketingConsentUpdate Mutation instead
+
                     variables['input']['smsMarketingConsent'] = (
                         {'marketingState': 'SUBSCRIBED', 'marketingOptInLevel': 'UNKNOWN'}
                         if self.sms_subscribe
                         else {'marketingState': 'NOT_SUBSCRIBED'}
                     )
+
             # Add Customer Number
             if not self.meta_cust_no_id:
                 variables['input']['metafields'].append(
@@ -436,6 +445,21 @@ class Customers:
 
             return variables
 
+        def check_for_existing_customer(self):
+            """Check for an existing customer in Shopify by email or phone number."""
+            shopify_cust_id = None
+
+            if self.email:
+                shopify_cust_id = Shopify.Customer.get_by_email(self.email)
+
+            if not shopify_cust_id:
+                if self.phone:
+                    shopify_cust_id = Shopify.Customer.get_by_phone(self.phone)
+                else:
+                    shopify_cust_id = None
+            if shopify_cust_id:
+                self.shopify_cust_no = shopify_cust_id
+
         def process(self):
             def create():
                 Customers.logger.info(f'Creating customer {self.cp_cust_no}')
@@ -445,8 +469,13 @@ class Customers:
                 Customers.logger.info(f'Updating customer {self.cp_cust_no}')
                 return Shopify.Customer.update(self.write_customer_payload())
 
+            if not self.shopify_cust_no:
+                self.check_for_existing_customer()
+
             if self.shopify_cust_no:
                 response = update()
+                # if self.phone:
+                # Shopify.Customer.SmsMarketingConsent.update(self)
             else:
                 response = create()
 
@@ -530,6 +559,50 @@ class Customers:
             return key in Customers.Customer.get_metafield_keys(cust_id)
 
 
+class Subscriber:
+    def __init__(self, email, enabled, create_date):
+        self.email = email
+        self.enabled = True if enabled == 1 else False
+        self.create_date = create_date
+        self.shopify_cust_no = None
+
+    def __str__(self):
+        return f'{self.email} - {self.create_date} - Enabled: {self.enabled}'
+
+    def process(self):
+        if Shopify.Customer.get_by_email(self.email):
+            return
+
+        variables = {'input': {'email': self.email, 'emailMarketingConsent': {}}}
+        variables['input']['emailMarketingConsent'] = (
+            {'marketingState': 'SUBSCRIBED'} if self.enabled else {'marketingState': 'NOT_SUBSCRIBED'}
+        )
+
+        response = Shopify.Customer.create(variables)
+        if response:
+            self.shopify_cust_no = response['id']
+            Database.Shopify.Customer.sync(self)
+
+
+class NewsletterSubscribers:
+    def __init__(self, last_sync=datetime(1970, 1, 1)):
+        self.last_sync = last_sync
+        self.subscribers: list[Subscriber] = []
+
+    def sync(self):
+        query = f"""
+        SELECT EMAIL, ENABLED, CREATED_DT
+        FROM {Table.newsletter}
+        WHERE CREATED_DT > '{self.last_sync}'
+        """
+        response = Database.query(query)
+        self.subscribers = [Subscriber(x[0], x[1], x[2]) for x in response] if response is not None else []
+        if self.subscribers:
+            for subscriber in self.subscribers:
+                # subscriber.process()
+                print(subscriber)
+
+
 if __name__ == '__main__':
-    customers = Customers(test_mode=True, test_customer='11262')
+    customers = NewsletterSubscribers()
     customers.sync()

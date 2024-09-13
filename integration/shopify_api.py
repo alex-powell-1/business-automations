@@ -14,7 +14,7 @@ from setup.utilities import PhoneNumber, local_to_utc
 from datetime import datetime
 
 
-verbose_print = True
+verbose_print = False
 
 
 class MoveInput:
@@ -181,26 +181,33 @@ class Shopify:
                                 Shopify.logger.info(f'Re-running query for customer {customer_id}')
                                 return self.__init__(document, variables, operation_name)
 
-                        elif operation_name == 'productUpdate':
-                            if i == "Namespace can't be blank":
-                                break
-                            elif i == "Type can't be blank":
-                                break
+                        elif operation_name.startswith('product'):
+                            if operation_name == 'productUpdate':
+                                if i == "Namespace can't be blank":
+                                    break
+                                elif i == "Type can't be blank":
+                                    break
 
-                            elif i == 'Key must be unique within this namespace on this resource':
-                                product_id = variables['input']['id'].split('/')[-1]
-                                Shopify.Metafield.delete(product_id=product_id)
-                                Database.Shopify.Product.Metafield.delete(product_id=product_id)
-                                for error in self.user_errors:
-                                    # This will remove any instances of this error from the user_errors list
-                                    if error == 'Key must be unique within this namespace on this resource':
-                                        self.user_errors.remove(error)
-                                # Re-run query
-                                return self.__init__(document, variables, operation_name)
+                                elif i == 'Key must be unique within this namespace on this resource':
+                                    product_id = variables['input']['id'].split('/')[-1]
+                                    Shopify.Metafield.delete(product_id=product_id)
+                                    Database.Shopify.Product.Metafield.delete(product_id=product_id)
+                                    for error in self.user_errors:
+                                        # This will remove any instances of this error from the user_errors list
+                                        if error == 'Key must be unique within this namespace on this resource':
+                                            self.user_errors.remove(error)
+                                    # Re-run query
+                                    return self.__init__(document, variables, operation_name)
 
-                        elif i == 'Metafield does not exist':
-                            self.user_errors.remove(i)
-                            continue
+                            elif operation_name == 'productDelete':
+                                if i == 'Product does not exist':
+                                    # If a product cannot be found in shopify, simply remove this error and move on.
+                                    self.user_errors.remove(i)
+                                    continue
+
+                            elif i == 'Metafield does not exist':
+                                self.user_errors.remove(i)
+                                continue
 
                         else:
                             # Uncaught user error
@@ -738,6 +745,22 @@ class Shopify:
                         result['birth_month_spouse_id'] = x['node']['id'].split('/')[-1]
 
             return result
+
+        def get_by_email(email: str):
+            response = Shopify.Query(
+                document=Shopify.Customer.queries, variables={'email': email}, operation_name='customerByEmail'
+            )
+            if response.data['customers']['edges']:
+                return response.data['customers']['edges'][0]['node']['id'].split('/')[-1]
+            return None
+
+        def get_by_phone(phone: str):
+            response = Shopify.Query(
+                document=Shopify.Customer.queries, variables={'phone': phone}, operation_name='customerByPhone'
+            )
+            if response.data['customers']['edges']:
+                return response.data['customers']['edges'][0]['node']['id'].split('/')[-1]
+            return None
 
         def create(payload):
             operation_name = 'customerCreate'
@@ -2475,4 +2498,4 @@ def refresh_order(tkt_no):
 
 
 if __name__ == '__main__':
-    response = Shopify.Menu.get(205591937191)
+    print(Shopify.Customer.get_by_phone('828-234-1265'))

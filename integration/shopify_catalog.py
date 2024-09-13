@@ -289,20 +289,22 @@ class Catalog:
         process_videos()
 
     def sync(self, initial=False):
+        """Syncs the catalog with Shopify. This will update products, categories, and media."""
+        # Sync Categories (Collections)
         if not self.inventory_only:
             if not self.test_mode:
                 self.category_tree.sync()
 
-            if not initial:
-                self.process_product_deletes()
-                if not self.test_mode:
-                    self.process_media()
-
-        # Get Sync Queue
+        # Get Product Sync Queue
         if self.test_mode:
             self.sync_queue = self.test_queue
         else:
             self.get_sync_queue()  # Get all products that have been updated since the last sync
+
+        if not self.inventory_only and not initial:
+            self.process_product_deletes()
+            if not self.test_mode:
+                self.process_media()
 
         if not self.sync_queue:
             if not self.inventory_only:  # don't log this for inventory sync.

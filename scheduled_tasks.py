@@ -5,6 +5,7 @@ from customer_tools import customers
 from product_tools import brands
 from product_tools import set_inactive_status
 from product_tools import stock_buffer
+from product_tools.sort_order import SortOrderEngine
 from customer_tools import stock_notification
 from customer_tools.merge import Merge
 from setup.email_engine import Email
@@ -132,6 +133,12 @@ while True:
                 customers.fix_first_and_last_sale_dates()
             except Exception as err:
                 error_handler.add_error_v(error=err, origin='Fix First and Last Sale Dates')
+
+            try:
+                SortOrderEngine.sort()
+            except Exception as err:
+                error_handler.add_error_v(error=err, origin='Sort Order')
+
         # 11:30 AM TASKS
         if hour == 11 and minute == 30:
             # STOCK NOTIFICATION EMAIL WITH COUPON GENERATION

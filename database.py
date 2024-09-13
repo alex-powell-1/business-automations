@@ -59,6 +59,14 @@ class Database:
                 Database.query(query)
             else:
                 sql_data = {'code': f'{e.args[0]}', 'message': f'{e.args[1]}', 'query': query}
+
+        except KeyboardInterrupt:
+            Database.logger.warn('Keyboard Interrupt. Query Cancelled.')
+            raise KeyboardInterrupt
+
+        except Exception as e:
+            Database.error_handler.add_error_v(error=e, origin='database.py', traceback=tb())
+            raise Exception(e)
         else:
             if mapped:
                 if sql_data:
@@ -549,25 +557,13 @@ class Database:
             return response
 
     class Newsletter:
-        def is_subscribed(email, cp=False):
+        def is_subscribed(email):
             """Returns True if email is subscribed to the generic newsletter via the website.
             If cp is True, checks if email is subscribed to the newsletter in Counterpoint."""
             if not email:
                 return False
-            if not cp:
-                # Check if email is subscribed to the generic newsletter signup form
-                query = f"""
-                SELECT EMAIL
-                FROM {Table.newsletter}
-                WHERE EMAIL = '{email}'
-                """
-                response = Database.query(query)
-                if response:
-                    return response[0][0] is not None
-                else:
-                    return False
-
-            else:
+            cust_no = Database.Counterpoint.Customer.lookup_customer_by_email(email)
+            if cust_no:
                 # Check if email is subscribed to the newsletter in Counterpoint
                 query = f"""
                 SELECT {Table.CP.Customers.Column.email_subscribed_1}
@@ -575,10 +571,24 @@ class Database:
                 WHERE EMAIL_ADRS_1 = '{email}' or EMAIL_ADRS_2 = '{email}'
                 """
                 response = Database.query(query)
-                if response:
+                try:
                     return response[0][0] == 'Y'
-                else:
+                except:
                     return False
+
+            else:
+                # Check if email is subscribed to the generic newsletter signup form
+                query = f"""
+                SELECT EMAIL, ENABLED
+                FROM {Table.newsletter}
+                WHERE EMAIL = '{email}'
+                """
+                response = Database.query(query)
+                if response:
+                    try:
+                        return response[0][1] == 1
+                    except:
+                        return False
 
         def insert(email, date=None):
             """Inserts an email into the newsletter subscriber table."""
@@ -594,7 +604,7 @@ class Database:
             return response
 
         def unsubscribe(email, eh=ProcessOutErrorHandler):
-            if not Database.Newsletter.is_subscribed(email, cp=True):
+            if not Database.Newsletter.is_subscribed(email):
                 return {'code': 201, 'message': f'{email} not found in newsletter table.'}
 
             # Unsubscribe from Counterpoint
@@ -605,7 +615,24 @@ class Database:
             """
             response = Database.query(query)
             if response['code'] == 200:
+                # Email was found in Counterpoint and updated to unsubscribed
                 Database.logger.success(f'Unsubscribed {email} from newsletter.')
+            elif response['code'] == 201:
+                # Email not found in Counterpoint. Check if email is in newsletter table.
+                query = f"""
+                UPDATE {Table.newsletter}
+                SET ENABLED = 0
+                WHERE EMAIL = '{email}'
+                """
+                response = Database.query(query)
+                if response['code'] == 200:
+                    Database.logger.success(f'Unsubscribed {email} from newsletter.')
+                elif response['code'] == 201:
+                    Database.logger.warn(f'{email} not found in newsletter table.')
+                else:
+                    error = f'Error unsubscribing {email} from newsletter. \n Query: {query}\nResponse: {response}'
+                    Database.error_handler.add_error_v(error=error)
+                    raise Exception(error)
             else:
                 error = f'Error unsubscribing {email} from newsletter. \n Query: {query}\nResponse: {response}'
                 Database.error_handler.add_error_v(error=error)
@@ -613,8 +640,10 @@ class Database:
 
             return response
 
-        def subscribe(email, eh=ProcessOutErrorHandler):
-            if Database.Newsletter.is_subscribed(email, cp=True):
+        def subscribe(email, cust_no=None, eh=ProcessOutErrorHandler):
+            """Subscribes an email to the newsletter in Counterpoint (current customer) or
+            the newsletter table if this is not a current customer."""
+            if Database.Newsletter.is_subscribed(email):
                 return {'code': 201, 'message': f'{email} already subscribed to newsletter.'}
 
             # Subscribe in Counterpoint
@@ -624,10 +653,22 @@ class Database:
             WHERE EMAIL_ADRS_1 = '{email}' or EMAIL_ADRS_2 = '{email}'
             """
             response = Database.query(query)
+
             if response['code'] == 200:
+                # Email was found in Counterpoint and updated to subscribed
                 Database.logger.success(f'Subscribed {email} to newsletter.')
+
             elif response['code'] == 201:
-                Database.logger.warn(f'{email} not found in newsletter table.')
+                # Email not found in Counterpoint.
+                message = f'{email} not found in newsletter table.'
+                Database.logger.warn(message)
+                if cust_no:
+                    # If cust_no is provided, add email to customer record.
+                    response = Database.Counterpoint.Customer.add_email(email, cust_no)
+                    if response['code'] == 200:
+                        Database.logger.success(f'Subscribed {email} to newsletter.')
+                else:
+                    response = Database.Newsletter.insert(email)
             else:
                 error = f'Error subscribing {email} to newsletter. \n Query: {query}\nResponse: {response}'
                 Database.error_handler.add_error_v(error=error)
@@ -1575,6 +1616,27 @@ class Database:
                 return result
 
             @staticmethod
+            def add_email(cust_no, email, field='EMAIL_ADRS_1', subscribe=True):
+                query = f"""
+                UPDATE {Table.CP.customers}
+                SET {field} = '{email}'
+                WHERE CUST_NO = '{cust_no}'
+                """
+                response = Database.query(query)
+                if response['code'] == 200:
+                    Database.logger.success(f'Customer {cust_no} email updated to {email}.')
+                    if subscribe:
+                        Database.Newsletter.subscribe(email)
+                elif response['code'] == 201:
+                    Database.logger.warn(f'No rows affected for {cust_no}.')
+                else:
+                    Database.error_handler.add_error_v(
+                        error=f'Error updating customer {cust_no} email.\n\nQuery: {query}\n\nResponse: {response}',
+                        origin='add_email',
+                    )
+                    raise Exception(response['message'])
+
+            @staticmethod
             def update_first_sale_date(cust_no, first_sale_date):
                 if first_sale_date:
                     query = f"""
@@ -1655,7 +1717,7 @@ class Database:
                 query = f"""
                 SELECT CP.CUST_NO, FST_NAM, LST_NAM, EMAIL_ADRS_1, PHONE_1, LOY_PTS_BAL, MW.LOY_ACCOUNT, ADRS_1, ADRS_2, CITY, STATE, ZIP_COD, CNTRY,
                 MW.SHOP_CUST_ID, MW.META_CUST_NO, CATEG_COD, MW.META_CATEG, PROF_COD_2, MW.META_BIR_MTH, PROF_COD_3, MW.META_SPS_BIR_MTH, 
-                PROF_ALPHA_1, MW.WH_PRC_TIER, {creds.sms_subscribe_status}, MW.ID 
+                PROF_ALPHA_1, MW.WH_PRC_TIER, {Table.CP.Customers.Column.sms_subscribed_1}, {Table.CP.Customers.Column.email_subscribed_1}, MW.ID 
                 FROM {Table.CP.customers} CP
                 FULL OUTER JOIN {Table.Middleware.customers} MW on CP.CUST_NO = MW.cust_no
                 WHERE IS_ECOMM_CUST = 'Y' AND CP.LST_MAINT_DT > '{last_sync}' and CUST_NAM_TYP = 'P' {customer_filter}
