@@ -8,6 +8,140 @@ from setup.date_presets import *
 from setup.error_handler import ScheduledTasksErrorHandler as error_handler
 from database import Database as db
 
+from integration.shopify_api import Shopify, MoveInput, MovesCollection, Moves
+
+
+class SortOrderEngine:
+    eh = error_handler
+    error_handler = eh.error_handler
+    logger = error_handler.logger
+    origin = 'sort_order.py'
+
+    def group_ecomm_items_by_collection(top_ecomm_items_with_stock):
+        """Groups top ecomm items by collection"""
+        collections: dict[str, list[dict[str, str | int]]] = {}
+
+        items_not_found = 0
+
+        for i, item in enumerate(top_ecomm_items_with_stock):
+            if (len(top_ecomm_items_with_stock) > 15 and i % 10 == 0) or len(top_ecomm_items_with_stock) <= 15:
+                SortOrderEngine.logger.info(f'Processing item {i + 1}/{len(top_ecomm_items_with_stock)}')
+            try:
+                # product_id = db.Shopify.Product.get_id(item_no=item)
+
+                ################################################################################
+                ################ Instead of using the Database helper functions ################
+                ############ I'm going to directly query the table to improve speed ############
+                ################################################################################
+
+                query = f"""
+                SELECT PRODUCT_ID, CATEG_ID FROM {creds.Table.Middleware.products}
+                WHERE ITEM_NO = '{item}'
+                """
+
+                response = db.query(query)
+                try:
+                    product_id = response[0][0]
+                    collection_ids = [int(x) for x in response[0][1].split(',')]
+                except:
+                    product_id = None
+                    collection_ids = []
+
+                if product_id is None or len(collection_ids) == 0:
+                    items_not_found += 1
+                    continue
+
+                product_id = int(product_id)
+
+                # collection_ids = db.Shopify.Product.get_collection_ids(product_id=product_id)
+
+                for collection_id in collection_ids:
+                    if collection_id not in collections:
+                        collections[collection_id] = []
+
+                    collections[collection_id].append({'item_no': item, 'product_id': product_id})
+            except Exception as e:
+                SortOrderEngine.error_handler.add_error_v(
+                    error=f'Error getting collection ids for {item}: {e}',
+                    origin='SortOrderEngine.group_ecomm_items_by_collection',
+                )
+
+        if items_not_found > 0:
+            SortOrderEngine.logger.warn(f'{items_not_found} items not found in Shopify')
+        return collections
+
+    def sort():
+        """Sets sort order based on revenue data from prior year during the forecasted time period"""
+        SortOrderEngine.logger.info('Sort Order: Starting')
+
+        ###############################################################################################
+        ######################################### First Step. #########################################
+        ###############################################################################################
+
+        SortOrderEngine.logger.info('Getting top ecomm items with stock')
+        top_ecomm_items_with_stock = create_top_items_report(
+            beginning_date=one_year_ago,
+            ending_date=last_year_forecast,
+            mode='sales',
+            number_of_items=products.get_ecomm_items(),
+            return_format=3,
+        )
+        # top_ecomm_items_with_stock = ['BTSP5OZ']
+        SortOrderEngine.logger.success('Top ecomm items with stock retrieved')
+
+        ###############################################################################################
+        ############################### Group eComm Items By Collection ###############################
+        ###############################################################################################
+
+        SortOrderEngine.logger.info('Grouping ecomm items by collection')
+        collections: dict = SortOrderEngine.group_ecomm_items_by_collection(top_ecomm_items_with_stock)
+        SortOrderEngine.logger.success('Ecomm items grouped by collection')
+
+        collections_list = [(collection_id, items) for collection_id, items in collections.items()]
+
+        # TODO: Remove duplicate product id entries. Keep first index.
+        SortOrderEngine.logger.info('Removing duplicate product IDs')
+        for i, collection in enumerate(collections_list):
+            collection_id, items = collection
+
+            prod_ids = []
+            new_items = []
+
+            for item in items:
+                if item['product_id'] not in prod_ids:
+                    new_items.append(item)
+                    prod_ids.append(item['product_id'])
+
+            collections_list[i] = (collection_id, new_items)
+
+        SortOrderEngine.logger.success('Duplicate product IDs removed')
+
+        ###############################################################################################
+        ########################################## Last Step ##########################################
+        ###############################################################################################
+
+        for collection_index, collection in enumerate(collections_list):
+            collection_id, items = collection
+            SortOrderEngine.logger.info(f'Processing collection {collection_id}')
+            SortOrderEngine.logger.info(f'Collection {collection_index + 1}/{len(collections_list)}')
+
+            # Change sort order to manual
+            Shopify.Collection.change_sort_order_to_manual(collection_id=collection_id)
+
+            mc = MovesCollection()
+            for item_index, item in enumerate(items):
+                product_id = item['product_id']
+
+                move = MoveInput(item_id=product_id, position=item_index)
+                mc.add(move)
+
+            responses = Shopify.Collection.reorder_items(collection_id=collection_id, collection_of_moves=mc)
+            SortOrderEngine.logger.success(f'Collection {collection_id} processed')
+
+        responses = Shopify.Collection.move_all_out_of_stock_to_bottom(eh=SortOrderEngine.eh)
+
+        return responses
+
 
 def sort_order_engine():
     """Sets sort order based on revenue data from prior year during the forecasted time period"""
@@ -206,4 +340,4 @@ def sort_order_engine():
 
 
 if __name__ == '__main__':
-    sort_order_engine()
+    SortOrderEngine.sort()
