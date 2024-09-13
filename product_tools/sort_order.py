@@ -21,16 +21,39 @@ class SortOrderEngine:
         """Groups top ecomm items by collection"""
         collections: dict[str, list[dict[str, str | int]]] = {}
 
+        items_not_found = 0
+
         for i, item in enumerate(top_ecomm_items_with_stock):
             if (len(top_ecomm_items_with_stock) > 15 and i % 10 == 0) or len(top_ecomm_items_with_stock) <= 15:
                 SortOrderEngine.logger.info(f'Processing item {i + 1}/{len(top_ecomm_items_with_stock)}')
             try:
+                # product_id = db.Shopify.Product.get_id(item_no=item)
+
+                ################################################################################
+                ################ Instead of using the Database helper functions ################
+                ############ I'm going to directly query the table to improve speed ############
+                ################################################################################
+
+                query = f"""
+                SELECT PRODUCT_ID, CATEG_ID FROM {creds.Table.Middleware.products}
+                WHERE ITEM_NO = '{item}'
+                """
+
+                response = db.query(query)
                 try:
-                    product_id = int(db.Shopify.Product.get_id(item_no=item))
+                    product_id = response[0][0]
+                    collection_ids = [int(x) for x in response[0][1].split(',')]
                 except:
-                    raise Exception(f'Product ID not found for {item}')
-                # collection_ids = Shopify.Product.get_collection_ids(product_id=product_id)
-                collection_ids = db.Shopify.Product.get_collection_ids(product_id=product_id)
+                    product_id = None
+                    collection_ids = []
+
+                if product_id is None or len(collection_ids) == 0:
+                    items_not_found += 1
+                    continue
+
+                product_id = int(product_id)
+
+                # collection_ids = db.Shopify.Product.get_collection_ids(product_id=product_id)
 
                 for collection_id in collection_ids:
                     if collection_id not in collections:
@@ -42,6 +65,9 @@ class SortOrderEngine:
                     error=f'Error getting collection ids for {item}: {e}',
                     origin='SortOrderEngine.group_ecomm_items_by_collection',
                 )
+
+        if items_not_found > 0:
+            SortOrderEngine.logger.warn(f'{items_not_found} items not found in Shopify')
         return collections
 
     def sort():
@@ -63,10 +89,8 @@ class SortOrderEngine:
         # top_ecomm_items_with_stock = ['BTSP5OZ']
         SortOrderEngine.logger.success('Top ecomm items with stock retrieved')
 
-        # TODO: Remove duplicate product id entries. Keep first index.
-
         ###############################################################################################
-        ########################################## Last Step ##########################################
+        ############################### Group eComm Items By Collection ###############################
         ###############################################################################################
 
         SortOrderEngine.logger.info('Grouping ecomm items by collection')
@@ -75,9 +99,34 @@ class SortOrderEngine:
 
         collections_list = [(collection_id, items) for collection_id, items in collections.items()]
 
-        for collection in collections_list:
+        # TODO: Remove duplicate product id entries. Keep first index.
+        SortOrderEngine.logger.info('Removing duplicate product IDs')
+        for i, collection in enumerate(collections_list):
+            collection_id, items = collection
+
+            prod_ids = []
+            new_items = []
+
+            for item in items:
+                if item['product_id'] not in prod_ids:
+                    new_items.append(item)
+                    prod_ids.append(item['product_id'])
+
+            collections_list[i] = (collection_id, new_items)
+
+        SortOrderEngine.logger.success('Duplicate product IDs removed')
+
+        ###############################################################################################
+        ########################################## Last Step ##########################################
+        ###############################################################################################
+
+        for collection_index, collection in enumerate(collections_list):
             collection_id, items = collection
             SortOrderEngine.logger.info(f'Processing collection {collection_id}')
+            SortOrderEngine.logger.info(f'Collection {collection_index + 1}/{len(collections_list)}')
+
+            # Change sort order to manual
+            Shopify.Collection.change_sort_order_to_manual(collection_id=collection_id)
 
             mc = MovesCollection()
             for item_index, item in enumerate(items):
@@ -290,5 +339,5 @@ def sort_order_engine():
     error_handler.logger.info('-----------------------')
 
 
-# if __name__ == '__main__':
-#     sort_order_engine()
+if __name__ == '__main__':
+    SortOrderEngine.sort()

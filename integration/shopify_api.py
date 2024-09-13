@@ -1861,6 +1861,15 @@ class Shopify:
 
             return responses
 
+        def change_sort_order_to_manual(collection_id: int):
+            """Change sort order to manual for a collection"""
+            response = Shopify.Query(
+                document=Shopify.Collection.queries,
+                variables={'input': {'id': f'{Shopify.Collection.prefix}{collection_id}', 'sortOrder': 'MANUAL'}},
+                operation_name='collectionUpdate',
+            )
+            return response.data
+
         class Files:
             queries = './integration/queries/files.graphql'
 
