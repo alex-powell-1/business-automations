@@ -55,6 +55,7 @@ class EventID:
     customer_create = 0
     customer_update = 0
     product_update = 0
+    variant_out_of_stock = 0
 
 
 @app.before_request
@@ -1154,6 +1155,40 @@ def resubscribe():
         content = jinja_template.render(data, url_for=url_for)
 
     return content, 200
+
+
+@app.route(Route.Shopify.variant_out_of_stock, methods=['POST'])
+@limiter.limit('20/minute')
+def variant_out_of_stock():
+    """Webhook route for notification when a product variant is out of stock."""
+
+    webhook_data = request.json
+    headers = request.headers
+    event_id = headers.get('X-Shopify-Event-Id')
+    if event_id == EventID.variant_out_of_stock:
+        return jsonify({'success': True}), 200
+    EventID.variant_out_of_stock = event_id
+
+    data = request.get_data()
+    hmac_header = headers.get('X-Shopify-Hmac-Sha256')
+    if not hmac_header:
+        return jsonify({'error': 'Unauthorized'}), 401
+    verified = verify_webhook(data, hmac_header)
+    if not verified:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    ProcessInErrorHandler.logger.info(f'Variant Out of Stock: {webhook_data}')
+
+    product_id = webhook_data['product_id']
+    product_id = int(product_id)
+
+    shopify_product = Shopify.Product.get(product_id=product_id)
+    if shopify_product['node']['totalInventory'] < 1:
+        collections = Shopify.Product.get_collection_ids(product_id=product_id)
+        for collection in collections:
+            Shopify.Collection.move_to_bottom(collection_id=collection, product_id_list=[product_id])
+
+    return jsonify({'success': True}), 200
 
 
 @limiter.limit('10/minute')  # 10 requests per minute
