@@ -1172,7 +1172,7 @@ def variant_out_of_stock():
     product_id = int(product_id)
 
     shopify_product = Shopify.Product.get(product_id=product_id)
-    if shopify_product['node']['totalInventory'] < 1:
+    if shopify_product['totalInventory'] < 1:
         collections = Shopify.Product.get_collection_ids(product_id=product_id)
         for collection in collections:
             Shopify.Collection.move_to_bottom(collection_id=collection, product_id_list=[product_id])
