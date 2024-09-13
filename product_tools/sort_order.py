@@ -8,7 +8,9 @@ from setup.date_presets import *
 from setup.error_handler import ScheduledTasksErrorHandler as error_handler
 from database import Database as db
 
-from integration.shopify_api import Shopify, MoveInput, MovesCollection, Moves
+import time
+
+from integration.shopify_api import Shopify, MoveInput, MovesCollection
 
 
 class SortOrderEngine:
@@ -73,6 +75,7 @@ class SortOrderEngine:
     def sort():
         """Sets sort order based on revenue data from prior year during the forecasted time period"""
         SortOrderEngine.logger.info('Sort Order: Starting')
+        start_time = time.time()
 
         ###############################################################################################
         ######################################### First Step. #########################################
@@ -139,6 +142,10 @@ class SortOrderEngine:
             SortOrderEngine.logger.success(f'Collection {collection_id} processed')
 
         responses = Shopify.Collection.move_all_out_of_stock_to_bottom(eh=SortOrderEngine.eh)
+
+        duration = time.time() - start_time
+
+        SortOrderEngine.logger.info(f'Sort Order: Completed in {duration:.2f} seconds')
 
         return responses
 
