@@ -440,12 +440,6 @@ def newsletter_signup():
             print(f'{email} is already on file')
             return 'This email address is already on file.', 400
 
-        # Lookup customer by email
-        cust_no = Database.Counterpoint.Customer.lookup_customer_by_email(email)
-        if cust_no:
-            # Subscribe customer to newsletter
-            Database.Newsletter.subscribe(email, eh=ProcessInErrorHandler)
-
         # Send welcome email
         recipient = {'': email}
         with open('./templates/new10.html', 'r') as file:
@@ -483,7 +477,7 @@ def newsletter_signup():
             )
             return 'Error sending welcome email.', 500
         else:
-            res = Database.Newsletter.insert(email)
+            res = Database.Newsletter.subscribe(email)
             if res['code'] != 200:
                 ProcessInErrorHandler.error_handler.add_error_v(
                     error=f'Error adding {email} to newsletter: {res["message"]}', origin=Route.newsletter

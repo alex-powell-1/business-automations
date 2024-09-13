@@ -87,6 +87,26 @@ query customers($first: Int, $after: String) {
   }
 }
 
+query customerByEmail($email: String!) {
+  customers(first: 1, query: $email) {
+    edges {
+      node {
+        id
+      }
+    }
+  }
+}
+
+query customerByPhone($phone: String!) {
+  customers(first: 1, query: $phone) {
+    edges {
+      node {
+        id
+      }
+    }
+  }
+}
+
 query customer($id: ID!) {
   customer(id: $id) {
     addresses(first: 5) {
