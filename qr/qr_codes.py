@@ -1,17 +1,53 @@
-from setup.creds import Table
+from setup.creds import Table, public_files
 from database import Database as db
 from setup.error_handler import ProcessInErrorHandler
+import qrcode
 
 
 class QR:
     logger = ProcessInErrorHandler.logger
     error_handler = ProcessInErrorHandler.error_handler
 
-    def insert(qr_code, url, publication, medium, offer, description, coupon_code):
+    def __init__(self, filename, query_params, url, publication, medium, description, offer=None, coupon_code=None):
+        self.filename = filename
+        self.qr_code = query_params
+        self.url = url
+        self.publication = publication
+        self.medium = medium
+        self.description = description
+        self.offer = offer
+        self.coupon_code = coupon_code
+
+    def generate(self):
+        qr = qrcode.make(f'{self.url}?qr={self.qr_code}')
+        type(qr)  # qrcode.image.pil.PilImage
+        qr.save(f'{public_files}/qr/{self.filename}.png')
+        QR.insert(
+            qr_code=self.qr_code,
+            url=self.url,
+            publication=self.publication,
+            medium=self.medium,
+            description=self.description,
+            offer=self.offer,
+            coupon_code=self.coupon_code,
+        )
+
+    @staticmethod
+    def insert(qr_code, url, publication, medium, description, offer=None, coupon_code=None):
+        optional_args = ''
+        optional_values = ''
+        if offer:
+            optional_args += ', OFFER'
+            optional_values = f", '{offer}'"
+        if coupon_code:
+            optional_args += ', COUPON_CODE'
+            optional_values = f", '{coupon_code}'"
+
         query = f"""
-        INSERT INTO {Table.qr} (QR_CODE, URL, PUBLICATION, MEDIUM, OFFER, DESCR, COUPON_CODE)
-        Values('{qr_code}','{url}', '{publication}', '{medium}', '{offer}', '{description}', '{coupon_code}')
+        INSERT INTO {Table.qr} (QR_CODE, URL, PUBLICATION, MEDIUM, DESCR {optional_args})
+        Values('{qr_code}','{url}', '{publication}', '{medium}', '{description}' {optional_values})
         """
+
         response = db.query(query)
         if response['code'] == 200:
             QR.logger.success(f'QR Code {qr_code} inserted successfully')
@@ -20,6 +56,7 @@ class QR:
             QR.error_handler.add_error_v(f'Failed to insert QR Code {qr_code}')
             return False
 
+    @staticmethod
     def is_valid(qr_code):
         query = f"""
         SELECT ID FROM {Table.qr}
@@ -28,6 +65,7 @@ class QR:
         response = db.query(query)
         return len(response) > 0 if response else False
 
+    @staticmethod
     def get_visit_count(qr_code):
         query = f"""
         SELECT VISIT_COUNT FROM {Table.qr}
@@ -79,4 +117,13 @@ class QR:
 
 
 if __name__ == '__main__':
-    QR.get_url('123456')
+    code = QR(
+        filename='hickory-living',
+        query_params='hkylv',
+        url='https://settlemyrenursery.com/pages/landscape-design',
+        publication='magazine',
+        medium='print',
+        description='Landscape Design Ad with House',
+    )
+
+    code.generate()

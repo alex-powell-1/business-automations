@@ -25,6 +25,7 @@ from setup.creds import Route
 from setup.email_engine import Email
 from setup.error_handler import ProcessInErrorHandler, ProcessOutErrorHandler, LeadFormErrorHandler, Logger
 from integration.shopify_api import Shopify
+from shop.models.webhooks import CustomerWebhook
 from qr.qr_codes import QR
 
 from database import Database
@@ -808,7 +809,8 @@ def shopify_customer_create():
 def shopify_customer_update():
     """Webhook route for updated customers. Sends to RabbitMQ queue for asynchronous processing"""
     headers = request.headers
-
+    webhook_data = request.json
+    # print(webhook_data)
     event_id = headers.get('X-Shopify-Event-Id')
     if event_id == EventID.customer_update:
         return jsonify({'success': True}), 200
@@ -816,30 +818,17 @@ def shopify_customer_update():
 
     data = request.get_data()
     hmac_header = headers.get('X-Shopify-Hmac-Sha256')
-
     if not hmac_header:
         return jsonify({'error': 'Unauthorized'}), 401
     verified = verify_webhook(data, hmac_header)
     if not verified:
         return jsonify({'error': 'Unauthorized'}), 401
 
-    #############################################################################
-    #############################################################################
-    ########## Im concerned about a potential loop here. If a customer ##########
-    ## is updated via integration it triggers the webhook. It will be updated, ##
-    ######## changing its LST_MAINT_DT and marking it for the next sync, ########
-    ######################## starting the process again. ########################
-    #############################################################################
-    #############################################################################
+    customer = CustomerWebhook(webhook_data)
+    print(webhook_data)
+    print()
+    print(customer)
 
-    # error_handler = ProcessInErrorHandler.error_handler
-    # logger = error_handler.logger
-
-    # logger.info(f'Processing Customer Update: {id}')
-
-    # update_customer()
-
-    # logger.success(f'Customer Update Finished: {id}')
     return jsonify({'success': True}), 200
 
 

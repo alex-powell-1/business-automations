@@ -2218,6 +2218,7 @@ class Shopify:
             {'topic': 'CUSTOMERS_CREATE', 'url': f'{creds.api_endpoint}{Route.Shopify.customer_create}'},
             {'topic': 'CUSTOMERS_UPDATE', 'url': f'{creds.api_endpoint}{Route.Shopify.customer_update}'},
             {'topic': 'PRODUCTS_UPDATE', 'url': f'{creds.api_endpoint}{Route.Shopify.product_update}'},
+            {'topic': 'VARIANTS_OUT_OF_STOCK', 'url': f'{creds.api_endpoint}{Route.Shopify.variant_out_of_stock}'},
         ]
 
         def get(id='', ids_only=False):
@@ -2238,7 +2239,7 @@ class Shopify:
             if topic and address:
                 response = Shopify.Query(
                     document=Shopify.Webhook.queries,
-                    variables={'topic': topic, 'address': address},
+                    variables={'topic': topic, 'webhookSubscription': address, 'format': Shopify.Webhook.format},
                     operation_name='webhookSubscriptionCreate',
                 )
 
@@ -2258,6 +2259,7 @@ class Shopify:
 
             # Create all default webhooks
             result = []
+
             for topic in Shopify.Webhook.topics:
                 response = Shopify.Query(
                     document=Shopify.Webhook.queries,
@@ -2498,4 +2500,4 @@ def refresh_order(tkt_no):
 
 
 if __name__ == '__main__':
-    print(Shopify.Customer.get_by_phone('828-234-1265'))
+    print(Shopify.Webhook.create())
