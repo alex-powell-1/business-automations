@@ -1,14 +1,10 @@
-from datetime import datetime, date
-from dateutil.relativedelta import relativedelta
-
 import csv
 from setup import date_presets
 import requests
-
+from datetime import datetime
 from setup import creds
 from database import Database as db
 from setup.error_handler import ScheduledTasksErrorHandler
-from database import Database
 
 from setup.utilities import PhoneNumber
 
@@ -222,28 +218,6 @@ def is_current_customer(customer_number):
         return False
 
 
-def get_customer_number_by_phone(phone):
-    query = f"""
-    SELECT CUST_NO
-    FROM AR_CUST
-    WHERE PHONE_1 = '{phone}'
-    """
-    response = db.query(query)
-    if response is not None:
-        return response[0][0]
-
-
-def get_customer_number_by_email(email):
-    query = f"""
-    SELECT CUST_NO
-    FROM AR_CUST
-    WHERE EMAIL_ADRS_1 = '{email}'
-    """
-    response = db.query(query)
-    if response is not None:
-        return response[0][0]
-
-
 def get_customers_by_category(category):
     query = f"""
     SELECT CUST_NO
@@ -259,48 +233,18 @@ def get_customers_by_category(category):
         return customer_list
 
 
-def add_all_customers_to_mailerlite(category):
-    customer_list = get_customers_by_category(category)
-    for x in customer_list:
-        customer = Customer(x)
-        customer.add_to_mailerlite()
-
-
-def lookup_customer_by_email(email_address):
-    if email_address is None:
-        return
-    email_address = email_address.replace("'", "''")
-    query = f"""
-    SELECT TOP 1 CUST_NO
-    FROM AR_CUST 
-    WHERE EMAIL_ADRS_1 = '{email_address}' or EMAIL_ADRS_2 = '{email_address}'
-    """
-    response = db.query(query)
-    if response is not None:
-        return response[0][0]
-
-
-def lookup_customer_by_phone(phone_number):
-    if phone_number is None:
-        return
-    phone_number = PhoneNumber(phone_number).to_cp()
-    query = f"""
-    SELECT TOP 1 CUST_NO
-    FROM AR_CUST
-    WHERE PHONE_1 = '{phone_number}' or MBL_PHONE_1 = '{phone_number}'
-    """
-    response = db.query(query)
-    if response is not None:
-        return response[0][0]
-
-
 def lookup_customer(email_address=None, phone_number=None):
-    return lookup_customer_by_email(email_address) or lookup_customer_by_phone(phone_number)
+    return db.Counterpoint.Customer.lookup_customer_by_email(
+        email_address
+    ) or db.Counterpoint.Customer.lookup_customer_by_phone(phone_number)
 
 
 def is_customer(email_address, phone_number):
     """Checks to see if an email or phone number belongs to a current customer"""
-    return lookup_customer_by_email(email_address) is not None or lookup_customer_by_phone(phone_number) is not None
+    return (
+        db.Counterpoint.Customer.lookup_customer_by_email(email_address) is not None
+        or db.Counterpoint.Customer.lookup_customer_by_phone(phone_number) is not None
+    )
 
 
 def add_new_customer(first_name, last_name, phone_number, email_address, street_address, city, state, zip_code):
@@ -410,7 +354,7 @@ def add_new_customer(first_name, last_name, phone_number, email_address, street_
             print(f'Error: {response.status_code} - {response.text}')
 
         cust_id = response.json()['CUST_NO']
-        Database.Counterpoint.Customer.update_timestamps(customer_no=cust_id)
+        db.Counterpoint.Customer.update_timestamps(customer_no=cust_id)
         return cust_id
     else:
         return 'Already a customer'

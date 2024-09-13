@@ -73,16 +73,12 @@ query menus {
 }
 
 query menu($id: ID!) {
-  menu(id: $id) {
+  menu (id: $id) {
     id
-    title
     handle
     items {
       id
-      resourceId
       title
-      type
-      url
       items {
         id
         title

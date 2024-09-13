@@ -9,7 +9,7 @@ import bleach
 import flask
 import pika
 import requests
-from flask import request, jsonify, abort, send_from_directory
+from flask import request, jsonify, abort, send_from_directory, url_for
 from werkzeug.exceptions import NotFound, BadRequest
 from flask_cors import CORS
 from flask_limiter import Limiter
@@ -440,6 +440,13 @@ def newsletter_signup():
             print(f'{email} is already on file')
             return 'This email address is already on file.', 400
 
+        # Lookup customer by email
+        cust_no = Database.Counterpoint.Customer.lookup_customer_by_email(email)
+        if cust_no:
+            # Subscribe customer to newsletter
+            Database.Newsletter.subscribe(email, eh=ProcessInErrorHandler)
+
+        # Send welcome email
         recipient = {'': email}
         with open('./templates/new10.html', 'r') as file:
             template_str = file.read()
@@ -1089,44 +1096,70 @@ def unsubscribe():
     if not email:
         return jsonify({'error': 'No email provided'}), 400
 
-    # Database.Newsletter.unsubscribe(email)
-    html = f"""
-    <html>
-    <head>
-    <title>Unsubscribe</title>
-    </head>
-    <body>
-    <h1>Unsubscribed</h1>
-    <p>{email} has been successfully removed from our newsletter.</p>
-    <h2>Clicked this by mistake?</h2>
-    <p>Click <a href="{creds.api_endpoint}/resubscribe?email={email}">here</a> to resubscribe.</p>
-    </body>
-    </html>
-    """
-    return html, 200
+    response = Database.Newsletter.unsubscribe(email, eh=ProcessInErrorHandler)
+    code = response['code']
+
+    if code == 200:
+        title = 'Unsubscribed'
+        message = f'{email} has been successfully unsubscribed from our newsletter.'
+    elif code == 201:
+        title = 'Already Unsubscribed'
+        message = f'{email} is already unsubscribed.'
+    else:
+        title = 'Error Unsubscribing'
+        message = 'An error occurred while unsubscribing.'
+
+    with open('./templates/email_subscription/unsubscribe.html', 'r') as file:
+        template_str = file.read()
+        jinja_template = Template(template_str)
+        data = {
+            'title': title,
+            'email': email,
+            'endpoint': f'{creds.api_endpoint}/{Route.subscribe}',
+            'message': message,
+            'code': code,
+            'company_url': creds.company_url,
+        }
+        content = jinja_template.render(data, url_for=url_for)
+
+    return content, 200
 
 
-@app.route(Route.resubscribe, methods=['GET'])
+@app.route(Route.subscribe, methods=['GET'])
 @limiter.limit('20 per minute')
 def resubscribe():
     email = request.args.get('email')
     if not email:
         return jsonify({'error': 'No email provided'}), 400
 
-    # Database.Newsletter.resubscribe(email)
+    response = Database.Newsletter.subscribe(email, eh=ProcessInErrorHandler)
+    code = response['code']
 
-    html = f"""
-    <html>
-    <head>
-    <title>Resubscribe</title>
-    </head>
-    <body>
-    <h1>Resubscribed</h1>
-    <p>{email} has been successfully resubscribed to our newsletter.</p>
-    </body>
-    </html>
-    """
-    return html, 200
+    if code == 200:
+        title = 'Subscribed'
+        message = f'{email} has been subscribed to our newsletter.'
+    elif code == 201:
+        title = 'Already Subscribed'
+        message = f'{email} is already subscribed.'
+
+    else:
+        title = 'Error Subscribing'
+        message = 'An error occurred while resubscribing.'
+
+    with open('./templates/email_subscription/subscribe.html', 'r') as file:
+        template_str = file.read()
+        jinja_template = Template(template_str)
+        data = {
+            'title': title,
+            'email': email,
+            'endpoint': f'{creds.api_endpoint}/{Route.unsubscribe}',
+            'message': message,
+            'code': code,
+            'company_url': creds.company_url,
+        }
+        content = jinja_template.render(data, url_for=url_for)
+
+    return content, 200
 
 
 @limiter.limit('10/minute')  # 10 requests per minute
@@ -1140,6 +1173,11 @@ def robots():
     """,
         200,
     )
+
+
+@app.route('/favicon.ico', methods=['GET'])
+def favicon():
+    return send_from_directory(creds.public_files, 'favicon.ico')
 
 
 @app.route('/', methods=['GET'])

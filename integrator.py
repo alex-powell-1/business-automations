@@ -3,6 +3,7 @@ from integration.shopify_customers import Customers
 from integration.shopify_promotions import Promotions
 from database import Database
 from integration import interface
+from setup import creds
 
 from setup import date_presets
 from datetime import datetime
@@ -13,8 +14,6 @@ from setup.utilities import get_last_sync, set_last_sync
 import sys
 import time
 from traceback import format_exc as tb
-
-loop = False
 
 customer_sync = False
 promotions_sync = False
@@ -60,6 +59,7 @@ class Integrator:
             self.promotions.sync()
         if catalog_sync:
             self.catalog.sync(initial=initial)
+
         set_last_sync(file_name='./integration/last_sync_integrator.txt', start_time=start_sync_time)
         completion_time = (datetime.now() - start_sync_time).seconds
         Integrator.logger.info(f'Sync completion time: {completion_time} seconds')
@@ -212,15 +212,14 @@ if __name__ == '__main__':
         elif sys.argv[1] == 'input':
             main_menu()
 
-    else:
-        if loop:
+        elif '-l' in sys.argv:
             try:
                 # Run the integrator in a loop
                 while True:
                     now = datetime.now()
                     hour = now.hour
                     if 18 > hour > 7:
-                        minutes_between_sync = 15
+                        minutes_between_sync = creds.integrator_run_interval
                     else:
                         minutes_between_sync = 60
 
@@ -243,6 +242,6 @@ if __name__ == '__main__':
             except Exception as e:
                 Integrator.error_handler.add_error_v(error=e, origin='Integrator.py', traceback=tb())
 
-        else:
-            integrator = Integrator()
-            integrator.sync()
+    else:
+        integrator = Integrator()
+        integrator.sync()
