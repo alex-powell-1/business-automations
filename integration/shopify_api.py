@@ -17,6 +17,42 @@ from datetime import datetime
 verbose_print = True
 
 
+class MoveInput:
+    def __init__(self, item_id: int, position: int):
+        self.item_id = f'gid://shopify/Product/{item_id}'
+        self.position = position
+
+    def get(self):
+        return {'id': self.item_id, 'newPosition': f'{self.position}'}
+
+
+class Moves:
+    def __init__(self):
+        self.moves: list[MoveInput] = []
+
+    def can_add(self):
+        return len(self.moves) < 250
+
+    def add(self, move: MoveInput):
+        self.moves.append(move)
+
+    def get(self):
+        return self.moves
+
+
+class MovesCollection:
+    def __init__(self):
+        self.moves: list[Moves] = [Moves()]
+
+    def add(self, move: MoveInput):
+        if not self.moves[-1].can_add():
+            self.moves.append(Moves())
+        self.moves[-1].add(move)
+
+    def get(self):
+        return [move.get() for move in self.moves]
+
+
 class Shopify:
     eh = ProcessOutErrorHandler
     logger = eh.logger
@@ -242,6 +278,7 @@ class Shopify:
 
             items = []
 
+            # Convert gift card line into multiple lines
             for i, _item in enumerate(snode['lineItems']['edges']):
                 item = _item['node']
 
@@ -273,24 +310,20 @@ class Shopify:
                 if item['name'] is None:
                     item['name'] = ''
 
-                if item['name'].lower() == 'delivery':
+                if item['name'].split('-')[0].strip().lower() == 'delivery':
                     if is_refunded:
                         item['quantity'] = quantity_refunded
 
                     delivery_from_lines += price * float(item['quantity'])
                     continue
-                    # item['sku'] = 'DELIVERY'
 
-                if item['name'].lower() == 'service':
+                if item['name'].split('-')[0].strip().lower() == 'service':
                     item['sku'] = 'SERVICE'
 
                 if item['sku'] is None:
                     continue
 
-                item['isGiftCard'] = False
-
-                if item['sku'] is not None:
-                    item['isGiftCard'] = 'GFC' in item['sku']
+                item['isGiftCard'] = 'GFC' in item['sku']
 
                 pl = {
                     'id': item['id'],
@@ -358,7 +391,6 @@ class Shopify:
                 return money['shopMoney']['amount']
 
             try:
-                # Shipping Line Amount from Shopify
                 shippingCost = float(get_money(snode['shippingLine']['discountedPriceSet']))
             except:
                 shippingCost = 0
@@ -1082,6 +1114,31 @@ class Shopify:
                     document=Shopify.Product.queries, variables=variables, operation_name='publishablePublish'
                 )
 
+        def get_collections(product_id: int):
+            response = Shopify.Query(
+                document=Shopify.Product.queries,
+                variables={'id': f'{Shopify.Product.prefix}{product_id}'},
+                operation_name='product',
+            )
+            return [x['node'] for x in response.data['product']['collections']['edges']]
+
+        def get_collection_ids(product_id: int):
+            return [x['id'].split('/')[-1] for x in Shopify.Product.get_collections(product_id=8348458516647)]
+
+        def get_product_id_from_sku(sku: str):
+            query = f"""
+            SELECT PRODUCT_ID FROM SN_SHOP_PROD
+            WHERE ITEM_NO = '{sku}'
+            OR BINDING_ID = '{sku}'
+            """
+
+            response = Database.query(query)
+
+            try:
+                return response[0][0]
+            except:
+                return None
+
         class Variant:
             queries = './integration/queries/productVariant.graphql'
             prefix = 'gid://shopify/ProductVariant/'
@@ -1683,6 +1740,127 @@ class Shopify:
                 document=Shopify.Collection.queries,
                 variables={'input': {'id': f'{Shopify.Collection.prefix}{collection_id}'}},
                 operation_name='collectionDelete',
+            )
+            return response.data
+
+        def get_product_count(collection_id: int):
+            return Shopify.Collection.get(collection_id=collection_id)['collection']['productsCount']['count']
+
+        def get_out_of_stock_items(collection_id: int, eh=ProcessOutErrorHandler):
+            """Get a list of out of stock items in a collection"""
+            eh.logger.info(f'Getting out of stock items for collection {collection_id}')
+            try:
+                response = None
+                variables = {'collectionID': f'{Shopify.Collection.prefix}{collection_id}', 'after': None}
+
+                data = []
+
+                while response is None or response.data['products']['pageInfo']['hasNextPage']:
+                    if response is not None:
+                        variables['after'] = response.data['products']['pageInfo']['endCursor']
+
+                    response = Shopify.Query(
+                        document=Shopify.Product.queries, variables=variables, operation_name='outOfStockProducts'
+                    )
+
+                    for edge in response.data['products']['edges']:
+                        if not edge['node']['inCollection']:
+                            continue
+
+                        data.append(edge['node']['id'].split('/')[-1])
+
+                eh.logger.success(f'Found {len(data)} out of stock items in collection {collection_id}')
+                return data
+            except Exception as e:
+                eh.error_handler.add_error_v(
+                    error=f'Error getting out of stock items for collection {collection_id}: {e}',
+                    origin='Shopify.Collection.get_out_of_stock_items',
+                )
+                return []
+
+        def reorder_250_items(collection_id: int, moves: list[MoveInput], eh=ProcessOutErrorHandler):
+            """Reorder up to 250 items within a collection. ONLY WORKS ON MANUALLY SORTED COLLECTIONS"""
+            eh.logger.info(f'Reordering {len(moves)} items in collection {collection_id}')
+
+            response = Shopify.Query(
+                document=Shopify.Collection.queries,
+                variables={
+                    'id': f'{Shopify.Collection.prefix}{collection_id}',
+                    'moves': [move.get() for move in moves],
+                },
+                operation_name='collectionReorderProducts',
+            )
+            return response.data
+
+        def reorder_items(collection_id: int, collection_of_moves: MovesCollection, eh=ProcessOutErrorHandler):
+            """Reorder any amount of items using a MovesCollection. ONLY WORKS ON MANUALLY SORTED COLLECTIONS"""
+            responses = []
+
+            list_of_moves = collection_of_moves.get()
+
+            eh.logger.info(f'Reordering {len(list_of_moves)} items in collection {collection_id}')
+
+            for moves in list_of_moves:
+                data = Shopify.Collection.reorder_250_items(collection_id=collection_id, moves=moves, eh=eh)
+                responses.append(data)
+
+            return responses
+
+        def move_to_bottom(collection_id: int, product_id_list: list[int], eh=ProcessOutErrorHandler):
+            """Move a list of items to the bottom of a collection"""
+            eh.logger.info(
+                f'Setting up moves for {len(product_id_list)} items to bottom of collection {collection_id}'
+            )
+
+            count = Shopify.Collection.get_product_count(collection_id=collection_id)
+            mc = MovesCollection()
+            for i, product_id in enumerate(product_id_list):
+                move = MoveInput(item_id=product_id, position=count - i)
+                mc.add(move)
+
+            eh.logger.success(f'Setting up moves complete.')
+
+            return Shopify.Collection.reorder_items(collection_id=collection_id, collection_of_moves=mc, eh=eh)
+
+        def move_all_out_of_stock_to_bottom(eh=ProcessOutErrorHandler):
+            """Move all out of stock items to the bottom of all collections"""
+
+            collections = [int(x['id']) for x in Shopify.Collection.get()]
+
+            eh.logger.info(f'Moving all out of stock items to bottom of {len(collections)} collections')
+
+            responses = []
+
+            for i, collection_id in enumerate(collections):
+                items = [
+                    int(x) for x in Shopify.Collection.get_out_of_stock_items(collection_id=collection_id, eh=eh)
+                ]
+
+                if len(items) == 0:
+                    eh.logger.info(f'No out of stock items found in collection {collection_id}')
+                    eh.logger.success(f'{i + 1}/{len(collections)} collections processed')
+                    continue
+
+                eh.logger.info(f'Found {len(items)} out of stock items in collection {collection_id}')
+
+                response = Shopify.Collection.move_to_bottom(
+                    collection_id=collection_id, product_id_list=items, eh=eh
+                )
+
+                eh.logger.success(f'{i + 1}/{len(collections)} collections processed')
+
+                responses.append(response)
+
+            eh.logger.success(f'Moved all out of stock items to bottom of {len(collections)} collections')
+
+            return responses
+
+        def change_sort_order_to_manual(collection_id: int):
+            """Change sort order to manual for a collection"""
+            response = Shopify.Query(
+                document=Shopify.Collection.queries,
+                variables={'input': {'id': f'{Shopify.Collection.prefix}{collection_id}', 'sortOrder': 'MANUAL'}},
+                operation_name='collectionUpdate',
             )
             return response.data
 
