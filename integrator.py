@@ -15,8 +15,8 @@ import sys
 import time
 from traceback import format_exc as tb
 
-customer_sync = False
-promotions_sync = False
+customer_sync = True
+promotions_sync = True
 catalog_sync = True
 
 

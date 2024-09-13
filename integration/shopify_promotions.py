@@ -480,9 +480,6 @@ class Promotions:
                 return f'{description}'
 
             def is_bogo_twoofer(self) -> bool:
-                print(f'Checking for BOGO Twoofer: GRP: {self.grp_cod} SEQ: {self.seq_no}')
-                print(f'Use BOGO Twoofer: {self.use_bogo_twoofer}')
-                print(f'Require Full Group for BOGO: {self.req_full_group_for_bogo}')
                 return self.use_bogo_twoofer == 'Y' and self.req_full_group_for_bogo == 'Y'
 
             def get_price_breaks(self) -> list[object]:
