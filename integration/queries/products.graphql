@@ -1,426 +1,455 @@
 mutation CreateProductWithNewMedia(
-  $input: ProductInput!
-  $media: [CreateMediaInput!]
+    $input: ProductInput!
+    $media: [CreateMediaInput!]
 ) {
-  productCreate(input: $input, media: $media) {
-    product {
-      id
-      options(first: 20) {
-        id
-        optionValues {
-          id
-        }
-      }
-      media(first: 75) {
-        nodes {
-          id
-          alt
-          mediaContentType
-          preview {
-            status
-            image {
-              url
+    productCreate(input: $input, media: $media) {
+        product {
+            id
+            options(first: 20) {
+                id
+                optionValues {
+                    id
+                }
             }
-          }
+            media(first: 75) {
+                nodes {
+                    id
+                    alt
+                    mediaContentType
+                    preview {
+                        status
+                        image {
+                            url
+                        }
+                    }
+                }
+            }
+            variants(first: 20) {
+                nodes {
+                    id
+                    title
+                    inventoryItem {
+                        id
+                    }
+                    metafield(
+                        key: "variant_size"
+                        namespace: "variant-specification"
+                    ) {
+                        id
+                        key
+                        namespace
+                        value
+                    }
+                }
+            }
+            metafields(first: 25) {
+                edges {
+                    node {
+                        id
+                        key
+                        value
+                        namespace
+                    }
+                }
+            }
         }
-      }
-      variants(first: 20) {
-        nodes {
-          id
-          title
-          inventoryItem {
-            id
-          }
-          metafield(key: "variant_size", namespace: "variant-specification") {
-            id
-            key
-            namespace
-            value
-          }
-        }
-      }
-      metafields(first: 25) {
-        edges {
-          node {
-            id
-            key
-            value
-            namespace
-          }
-        }
-      }
-    }
 
-    userErrors {
-      field
-      message
+        userErrors {
+            field
+            message
+        }
     }
-  }
 }
 
 mutation productSEOupdate($input: ProductInput!) {
-  productUpdate(input: $input) {
-    product {
-      id
-      seo {
-        title
-        description
-      }
+    productUpdate(input: $input) {
+        product {
+            id
+            seo {
+                title
+                description
+            }
+        }
+        userErrors {
+            field
+            message
+        }
     }
-    userErrors {
-      field
-      message
-    }
-  }
 }
 
 mutation UpdateProductWithNewMedia(
-  $input: ProductInput!
-  $media: [CreateMediaInput!]
+    $input: ProductInput!
+    $media: [CreateMediaInput!]
 ) {
-  productUpdate(input: $input, media: $media) {
-    product {
-      id
-      media(first: 75) {
-        nodes {
-          id
-          alt
-          mediaContentType
-          preview {
-            status
-            image {
-              url
+    productUpdate(input: $input, media: $media) {
+        product {
+            id
+            media(first: 75) {
+                nodes {
+                    id
+                    alt
+                    mediaContentType
+                    preview {
+                        status
+                        image {
+                            url
+                        }
+                    }
+                }
             }
-          }
+            options(first: 20) {
+                id
+                optionValues {
+                    id
+                }
+            }
+            variants(first: 20) {
+                nodes {
+                    id
+                    title
+                    inventoryItem {
+                        id
+                    }
+                    metafield(
+                        key: "variant_size"
+                        namespace: "variant-specification"
+                    ) {
+                        id
+                        key
+                        namespace
+                        value
+                    }
+                }
+            }
+            metafields(first: 25) {
+                edges {
+                    node {
+                        id
+                        key
+                        value
+                        namespace
+                    }
+                }
+            }
         }
-      }
-      options(first: 20) {
-        id
-        optionValues {
-          id
-        }
-      }
-      variants(first: 20) {
-        nodes {
-          id
-          title
-          inventoryItem {
-            id
-          }
-          metafield(key: "variant_size", namespace: "variant-specification") {
-            id
-            key
-            namespace
-            value
-          }
-        }
-      }
-      metafields(first: 25) {
-        edges {
-          node {
-            id
-            key
-            value
-            namespace
-          }
-        }
-      }
-    }
 
-    userErrors {
-      field
-      message
+        userErrors {
+            field
+            message
+        }
     }
-  }
 }
 
 mutation updateProduct($input: ProductInput!) {
-  productUpdate(input: $input) {
-    product {
-      id
-      media(first: 75) {
-        nodes {
-          id
-          alt
-          mediaContentType
-          preview {
-            status
-            image {
-              url
+    productUpdate(input: $input) {
+        product {
+            id
+            media(first: 75) {
+                nodes {
+                    id
+                    alt
+                    mediaContentType
+                    preview {
+                        status
+                        image {
+                            url
+                        }
+                    }
+                }
             }
-          }
+            options(first: 20) {
+                id
+                optionValues {
+                    id
+                }
+            }
+            variants(first: 20) {
+                nodes {
+                    id
+                    title
+                    inventoryItem {
+                        id
+                    }
+                    metafield(
+                        key: "variant_size"
+                        namespace: "variant-specification"
+                    ) {
+                        id
+                        key
+                        namespace
+                        value
+                    }
+                }
+            }
+            metafields(first: 25) {
+                edges {
+                    node {
+                        id
+                        key
+                        value
+                        namespace
+                    }
+                }
+            }
         }
-      }
-      options(first: 20) {
-        id
-        optionValues {
-          id
-        }
-      }
-      variants(first: 20) {
-        nodes {
-          id
-          title
-          inventoryItem {
-            id
-          }
-          metafield(key: "variant_size", namespace: "variant-specification") {
-            id
-            key
-            namespace
-            value
-          }
-        }
-      }
-      metafields(first: 25) {
-        edges {
-          node {
-            id
-            key
-            value
-            namespace
-          }
-        }
-      }
-    }
 
-    userErrors {
-      field
-      message
+        userErrors {
+            field
+            message
+        }
     }
-  }
 }
 
 mutation productDelete($id: ID!) {
-  productDelete(input: { id: $id }) {
-    deletedProductId
-    userErrors {
-      field
-      message
+    productDelete(input: { id: $id }) {
+        deletedProductId
+        userErrors {
+            field
+            message
+        }
     }
-  }
 }
 
-
 query SEO($id: ID!) {
-  product(id: $id) {
-    seo {
-      title
-      description
+    product(id: $id) {
+        seo {
+            title
+            description
+        }
     }
-  }
 }
 
 query productMeta($id: ID!) {
-  product(id: $id) {
-    metafields(first: 50) {
-      edges {
-        node {
-          id
-          namespace
-          key
-          value
+    product(id: $id) {
+        metafields(first: 50) {
+            edges {
+                node {
+                    id
+                    namespace
+                    key
+                    value
+                }
+            }
         }
-      }
     }
-  }
 }
 
 query product($id: ID!) {
-  product(id: $id) {
-    collections(first: 5) {
-      edges {
-        node {
-          handle
-        }
-      }
-    }
-    createdAt
-    defaultCursor
-    description
-    descriptionHtml
-    featuredImage {
-      id
-    }
-    feedback {
-      details {
-        messages {
-          message
-        }
-      }
-    }
-    giftCardTemplateSuffix
-    handle
-    hasOnlyDefaultVariant
-    hasOutOfStockVariants
-    id
-    images(first: 5) {
-      edges {
-        node {
-          id
-        }
-      }
-    }
-
-    metafields(first: 25) {
-      edges {
-        node {
-          id
-          namespace
-          key
-        }
-      }
-    }
-
-    onlineStoreUrl
-    options {
-      name
-      optionValues {
-        id
-        name
-      }
-    }
-    priceRange {
-      maxVariantPrice {
-        amount
-      }
-      minVariantPrice {
-        amount
-      }
-    }
-    productType
-
-    resourcePublications(first: 5) {
-      edges {
-        node {
-          publication {
-            id
-          }
-          isPublished
-        }
-      }
-    }
-
-    seo {
-      title
-      description
-    }
-    storefrontId
-    tags
-    templateSuffix
-    title
-    totalInventory
-    tracksInventory
-    variantsCount {
-      count
-    }
-    variants(first: 20) {
-      nodes {
-        id
-        title
-        inventoryItem {
-          id
-        }
-        metafield(key: "variant_size", namespace: "variant-specification") {
-          id
-          value
-        }
-      }
-    }
-    vendor
-
-    media(first: 75) {
-      nodes {
-        id
-        alt
-        mediaContentType
-        preview {
-          status
-          image {
-            id
-            url
-            metafield(namespace: "image", key: "name") {
-              id
-              value
+    product(id: $id) {
+        collections(first: 50) {
+            edges {
+                node {
+                    handle
+                }
             }
-          }
         }
-      }
-    }
-
-    images(first: 5) {
-      edges {
-        node {
-          id
-          metafield(namespace: "product-image", key: "name") {
+        createdAt
+        defaultCursor
+        description
+        descriptionHtml
+        featuredImage {
             id
-            value
-          }
         }
-      }
+        feedback {
+            details {
+                messages {
+                    message
+                }
+            }
+        }
+        giftCardTemplateSuffix
+        handle
+        hasOnlyDefaultVariant
+        hasOutOfStockVariants
+        id
+        images(first: 5) {
+            edges {
+                node {
+                    id
+                }
+            }
+        }
+
+        metafields(first: 25) {
+            edges {
+                node {
+                    id
+                    namespace
+                    key
+                }
+            }
+        }
+
+        onlineStoreUrl
+        options {
+            name
+            optionValues {
+                id
+                name
+            }
+        }
+        priceRange {
+            maxVariantPrice {
+                amount
+            }
+            minVariantPrice {
+                amount
+            }
+        }
+        productType
+
+        resourcePublications(first: 5) {
+            edges {
+                node {
+                    publication {
+                        id
+                    }
+                    isPublished
+                }
+            }
+        }
+
+        seo {
+            title
+            description
+        }
+        storefrontId
+        tags
+        templateSuffix
+        title
+        totalInventory
+        tracksInventory
+        variantsCount {
+            count
+        }
+        variants(first: 20) {
+            nodes {
+                id
+                title
+                inventoryItem {
+                    id
+                }
+                metafield(
+                    key: "variant_size"
+                    namespace: "variant-specification"
+                ) {
+                    id
+                    value
+                }
+            }
+        }
+        vendor
+
+        media(first: 75) {
+            nodes {
+                id
+                alt
+                mediaContentType
+                preview {
+                    status
+                    image {
+                        id
+                        url
+                        metafield(namespace: "image", key: "name") {
+                            id
+                            value
+                        }
+                    }
+                }
+            }
+        }
+
+        images(first: 5) {
+            edges {
+                node {
+                    id
+                    metafield(namespace: "product-image", key: "name") {
+                        id
+                        value
+                    }
+                }
+            }
+        }
     }
-  }
 }
 
 query products($first: Int, $after: String) {
-  products(first: $first, after: $after) {
-    edges {
-      node {
-        id
-      }
+    products(first: $first, after: $after) {
+        edges {
+            node {
+                id
+            }
+        }
+        pageInfo {
+            hasNextPage
+            endCursor
+        }
     }
-    pageInfo {
-      hasNextPage
-      endCursor
-    }
-  }
 }
 
-
+query outOfStockProducts($collectionID: ID!, $after: String) {
+    products(
+        first: 250
+        after: $after
+        query: "(inventory_total:<=0) AND (status:ACTIVE)"
+    ) {
+        edges {
+            node {
+                id
+                title
+                inCollection(id: $collectionID)
+            }
+        }
+        pageInfo {
+            hasNextPage
+            endCursor
+        }
+    }
+}
 
 query variantIventoryId($id: ID!) {
-  productVariant(id: $id) {
-    inventoryItem {
-      sku
-      id
+    productVariant(id: $id) {
+        inventoryItem {
+            sku
+            id
+        }
     }
-  }
 }
 
 mutation productPublish($input: ProductPublishInput!) {
-  productPublish(input: $input) {
-    userErrors {
-      field
-      message
+    productPublish(input: $input) {
+        userErrors {
+            field
+            message
+        }
     }
-  }
 }
 
 mutation publishablePublish($id: ID!, $input: [PublicationInput!]!) {
-  publishablePublish(id: $id, input: $input) {
-    publishable {
-      availablePublicationsCount {
-        count
-      }
-      resourcePublicationsCount {
-        count
-      }
+    publishablePublish(id: $id, input: $input) {
+        publishable {
+            availablePublicationsCount {
+                count
+            }
+            resourcePublicationsCount {
+                count
+            }
+        }
+        shop {
+            publicationCount
+        }
+        userErrors {
+            field
+            message
+        }
     }
-    shop {
-      publicationCount
-    }
-    userErrors {
-      field
-      message
-    }
-  }
 }
 
 mutation productUnpublish($input: ProductUnpublishInput!) {
-  productUnpublish(input: $input) {
-    userErrors {
-      field
-      message
+    productUnpublish(input: $input) {
+        userErrors {
+            field
+            message
+        }
     }
-  }
 }

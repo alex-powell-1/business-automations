@@ -1,82 +1,96 @@
-
-
 mutation CollectionCreate($input: CollectionInput!) {
-  collectionCreate(input: $input) {
-    userErrors {
-      field
-      message
-    }
-    collection {
-      id
-      title
-      descriptionHtml
-      handle
-      sortOrder
-      ruleSet {
-        appliedDisjunctively
-        rules {
-          column
-          relation
-          condition
+    collectionCreate(input: $input) {
+        userErrors {
+            field
+            message
         }
-      }
+        collection {
+            id
+            title
+            descriptionHtml
+            handle
+            sortOrder
+            ruleSet {
+                appliedDisjunctively
+                rules {
+                    column
+                    relation
+                    condition
+                }
+            }
+        }
     }
-  }
 }
 
 mutation collectionUpdate($input: CollectionInput!) {
-  collectionUpdate(input: $input) {
-    userErrors {
-      field
-      message
+    collectionUpdate(input: $input) {
+        userErrors {
+            field
+            message
+        }
     }
-  }
 }
 
 mutation collectionDelete($input: CollectionDeleteInput!) {
-  collectionDelete(input: $input) {
-    deletedCollectionId
-    shop {
-      id
-      name
+    collectionDelete(input: $input) {
+        deletedCollectionId
+        shop {
+            id
+            name
+        }
+        userErrors {
+            field
+            message
+        }
     }
-    userErrors {
-      field
-      message
-    }
-  }
 }
 
 query collection($id: ID!) {
-  collection(id: $id) {
-    id
-    title
-    descriptionHtml
-    handle
-    updatedAt
-  }
-}
-
-query collections {
-  collections(first: 250) {
-    edges {
-      node {
+    collection(id: $id) {
         id
         title
         descriptionHtml
         handle
         updatedAt
-      }
+
+        productsCount {
+            count
+        }
     }
-  }
+}
+
+query collections {
+    collections(first: 250) {
+        edges {
+            node {
+                id
+                title
+                descriptionHtml
+                handle
+                updatedAt
+            }
+        }
+    }
 }
 
 query collectionByHandle($handle: String!) {
-  collectionByHandle(handle: $handle) {
-    id
-    title
-    descriptionHtml
-    handle
-    updatedAt
-  }
+    collectionByHandle(handle: $handle) {
+        id
+        title
+        descriptionHtml
+        handle
+        updatedAt
+    }
+}
+
+mutation collectionReorderProducts($id: ID!, $moves: [MoveInput!]!) {
+    collectionReorderProducts(id: $id, moves: $moves) {
+        job {
+            id
+        }
+        userErrors {
+            field
+            message
+        }
+    }
 }

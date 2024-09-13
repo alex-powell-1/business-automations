@@ -8,6 +8,36 @@ from setup.date_presets import *
 from setup.error_handler import ScheduledTasksErrorHandler as error_handler
 from database import Database as db
 
+from integration.shopify_api import Shopify, MoveInput, MovesCollection, Moves
+
+
+class SortOrderEngine:
+    eh = error_handler
+    error_handler = eh.error_handler
+    logger = error_handler.logger
+    origin = 'sort_order.py'
+
+    def group_ecomm_items_by_collection(self, top_ecomm_items_with_stock):
+        """Groups top ecomm items by collection"""
+        collections = {}
+        for item in top_ecomm_items_with_stock:
+            pass
+        return collections
+
+    def sort():
+        """Sets sort order based on revenue data from prior year during the forecasted time period"""
+        SortOrderEngine.logger.info(f'Sort Order: Starting at {datetime.now():%H:%M:%S}')
+
+        top_ecomm_items_with_stock = create_top_items_report(
+            beginning_date=one_year_ago,
+            ending_date=last_year_forecast,
+            mode='sales',
+            number_of_items=products.get_ecomm_items(),
+            return_format=3,
+        )
+
+        responses = Shopify.Collection.move_all_out_of_stock_to_bottom(eh=SortOrderEngine.eh)
+
 
 def sort_order_engine():
     """Sets sort order based on revenue data from prior year during the forecasted time period"""
