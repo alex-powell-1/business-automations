@@ -22,8 +22,8 @@ class SortOrderEngine:
         collections: dict[str, list[dict[str, str | int]]] = {}
 
         for i, item in enumerate(top_ecomm_items_with_stock):
-            if i % 10 == 0:
-                SortOrderEngine.logger.info(f'Processing item {i}/{len(top_ecomm_items_with_stock)}')
+            if (len(top_ecomm_items_with_stock) > 15 and i % 10 == 0) or len(top_ecomm_items_with_stock) <= 15:
+                SortOrderEngine.logger.info(f'Processing item {i + 1}/{len(top_ecomm_items_with_stock)}')
             try:
                 try:
                     product_id = int(db.Shopify.Product.get_id(item_no=item))
