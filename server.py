@@ -1182,7 +1182,9 @@ def variant_out_of_stock():
         if shopify_product['totalInventory'] < 1:
             collections = Shopify.Product.get_collection_ids(product_id=product_id)
             for collection in collections:
-                Shopify.Collection.move_to_bottom(collection_id=collection, product_id_list=[product_id])
+                Shopify.Collection.move_to_bottom(
+                    collection_id=collection, product_id_list=[product_id], eh=OutOfStockErrorHandler
+                )
     except Exception as e:
         OutOfStockErrorHandler.error_handler.add_error_v(
             error=f'Error processing variant out of stock: {e}', origin='Variant Out of Stock', traceback=tb()
