@@ -1175,8 +1175,7 @@ def variant_out_of_stock():
     OutOfStockErrorHandler.logger.info(f'Variant Out of Stock: {webhook_data}')
 
     try:
-        product_id = webhook_data['product_id']
-        product_id = int(product_id)
+        product_id = int(webhook_data['product_id'])
 
         shopify_product = Shopify.Product.get(product_id=product_id)
         if shopify_product['totalInventory'] < 1:
