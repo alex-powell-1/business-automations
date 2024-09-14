@@ -23,7 +23,13 @@ from setup.utilities import convert_utc_to_local
 from setup import creds, authorization
 from setup.creds import Route
 from setup.email_engine import Email
-from setup.error_handler import ProcessInErrorHandler, ProcessOutErrorHandler, LeadFormErrorHandler, Logger
+from setup.error_handler import (
+    ProcessInErrorHandler,
+    ProcessOutErrorHandler,
+    LeadFormErrorHandler,
+    Logger,
+    OutOfStockErrorHandler,
+)
 from integration.shopify_api import Shopify
 from shop.models.webhooks import CustomerWebhook
 from qr.qr_codes import QR
@@ -1166,16 +1172,22 @@ def variant_out_of_stock():
     if not verified:
         return jsonify({'error': 'Unauthorized'}), 401
 
-    ProcessInErrorHandler.logger.info(f'Variant Out of Stock: {webhook_data}')
+    OutOfStockErrorHandler.logger.info(f'Variant Out of Stock: {webhook_data}')
 
-    product_id = webhook_data['product_id']
-    product_id = int(product_id)
+    try:
+        product_id = int(webhook_data['product_id'])
 
-    shopify_product = Shopify.Product.get(product_id=product_id)
-    if shopify_product['node']['totalInventory'] < 1:
-        collections = Shopify.Product.get_collection_ids(product_id=product_id)
-        for collection in collections:
-            Shopify.Collection.move_to_bottom(collection_id=collection, product_id_list=[product_id])
+        shopify_product = Shopify.Product.get(product_id=product_id)
+        if shopify_product['totalInventory'] < 1:
+            collections = Shopify.Product.get_collection_ids(product_id=product_id)
+            for collection in collections:
+                Shopify.Collection.move_to_bottom(
+                    collection_id=collection, product_id_list=[product_id], eh=OutOfStockErrorHandler
+                )
+    except Exception as e:
+        OutOfStockErrorHandler.error_handler.add_error_v(
+            error=f'Error processing variant out of stock: {e}', origin='Variant Out of Stock', traceback=tb()
+        )
 
     return jsonify({'success': True}), 200
 

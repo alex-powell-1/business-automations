@@ -143,6 +143,11 @@ class ProcessInErrorHandler:
     error_handler = ErrorHandler(logger)
 
 
+class OutOfStockErrorHandler:
+    logger = Logger(f'{creds.log_main}/webhooks/out_of_stock')
+    error_handler = ErrorHandler(logger)
+
+
 class ProcessOutErrorHandler:
     """Logging for the Process Out Integration"""
 
