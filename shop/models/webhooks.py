@@ -6,7 +6,7 @@ class CustomerWebhook:
         self.last_name = data['last_name']
         self.phone = data['phone']
         self.addresses = data['addresses']
-        if 'state' in data['email_marketing_consent']:
+        if data['email_marketing_consent'] and 'state' in data['email_marketing_consent']:
             self.email_consent = True if data['email_marketing_consent']['state'] == 'subscribed' else False
             self.email_consent_updated_at = data['email_marketing_consent']['consent_updated_at']
         else:

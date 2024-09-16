@@ -475,6 +475,7 @@ class Database:
         @staticmethod
         def subscribe(origin, campaign, cust_no, name, category, phone):
             phone = PhoneNumber(phone).to_cp()
+
             query = f"""
             UPDATE AR_CUST
             SET {creds.sms_subscribe_status} = 'Y'

@@ -2549,4 +2549,4 @@ def refresh_order(tkt_no):
 
 if __name__ == '__main__':
     verbose = True
-    print(Shopify.Product.get(8308193460391))
+    print(Shopify.Webhook.get())
