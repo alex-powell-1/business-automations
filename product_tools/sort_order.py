@@ -67,6 +67,7 @@ class SortOrderEngine:
                     if binding_id is None:
                         if item['item_no'] in response:
                             featured_items.append(item)
+                            item_skus.append(item['item_no'])
 
                         continue
 
@@ -93,10 +94,13 @@ class SortOrderEngine:
         print(featured_items)
 
         for item in items:
+            if item['item_no'] in item_skus:
+                continue
+
             new_items.append(item)
             item_skus.append(item['item_no'])
 
-        return new_items
+        return featured_items + new_items
 
     def remove_duplicate_products(items):
         """Removes duplicate products"""
