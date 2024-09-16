@@ -373,19 +373,31 @@ def get_ecomm_items_with_stock():
         return result
 
 
-def get_ecomm_items(mode=1):
+def get_ecomm_items(mode=1, in_stock_only=False):
     # Mode 1 returns a total count of all e-comm items
     if mode == 1:
-        query = """
-        SELECT COUNT(ITEM_NO)
-        FROM IM_ITEM
-        WHERE IS_ECOMM_ITEM = 'Y'
-        """
-        response = db.query(query)
-        if response is not None:
-            return response[0][0]
+        if in_stock_only:
+            query = """
+            SELECT COUNT(ITEM_NO)
+            FROM VI_IM_ITEM_WITH_INV
+            WHERE IS_ECOMM_ITEM = 'Y' AND QTY_AVAIL > 0
+            """
+            response = db.query(query)
+            if response is not None:
+                return response[0][0]
+            else:
+                return 0
         else:
-            return 0
+            query = """
+            SELECT COUNT(ITEM_NO)
+            FROM IM_ITEM
+            WHERE IS_ECOMM_ITEM = 'Y'
+            """
+            response = db.query(query)
+            if response is not None:
+                return response[0][0]
+            else:
+                return 0
     # Mode 2 returns a list of skus of all e-comm items
     if mode == 2:
         query = """

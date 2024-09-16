@@ -7,15 +7,27 @@ from setup.date_presets import *
 from database import Database as db
 
 
-def get_quantity_available(item):
-    query = f"""
-    SELECT QTY_AVAIL
-    FROM IM_INV
-    WHERE ITEM_NO = '{item}'
-    """
-    quantity = db.query(query)
-    quantity = int(quantity[0][0])
-    return quantity
+def get_quantity_available(item, buffered=False):
+    if buffered:
+        query = f"""
+        SELECT QTY_AVAIL, PROF_NO_1
+        FROM VI_IM_ITEM_WITH_INV
+        WHERE ITEM_NO = '{item}'
+        """
+        response = db.query(query)
+        if response is not None:
+            quantity = int(response[0][0])
+            buffer = int(response[0][1]) if response[0][1] is not None and response[0][1] >= 0 else 0
+            return quantity - buffer
+    else:
+        query = f"""
+        SELECT QTY_AVAIL
+        FROM IM_INV
+        WHERE ITEM_NO = '{item}'
+        """
+        quantity = db.query(query)
+        quantity = int(quantity[0][0])
+        return quantity
 
 
 def cost_of_goods_sold(start_date, stop_date, store):
@@ -175,6 +187,7 @@ def create_top_items_report(
     number_of_items=15,
     category='ALL',
     return_format=1,
+    in_stock_only=False,
 ):
     """creates top items report by sales or quantity"""
     # format 3 is a list of top item skus
@@ -274,7 +287,11 @@ def create_top_items_report(
                     )
             # item numbers only
             elif return_format == 3:
-                result.append(item[0])
+                if in_stock_only:
+                    if get_quantity_available(item[0], buffered=True) > 0:
+                        result.append(item[0])
+                else:
+                    result.append(item[0])
             counter += 1
         return result
     else:
@@ -1116,4 +1133,4 @@ def report_generator(
 
 
 if __name__ == '__main__':
-    pass
+    print(get_quantity_available('DECO12', buffered=True))

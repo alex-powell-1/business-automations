@@ -17,7 +17,6 @@ class SortOrderEngine:
     eh = error_handler
     error_handler = eh.error_handler
     logger = error_handler.logger
-    origin = 'sort_order.py'
 
     def group_ecomm_items_by_collection(top_ecomm_items_with_stock):
         """Groups top ecomm items by collection"""
@@ -29,48 +28,68 @@ class SortOrderEngine:
             if (len(top_ecomm_items_with_stock) > 15 and i % 10 == 0) or len(top_ecomm_items_with_stock) <= 15:
                 SortOrderEngine.logger.info(f'Processing item {i + 1}/{len(top_ecomm_items_with_stock)}')
             try:
-                # product_id = db.Shopify.Product.get_id(item_no=item)
-
-                ################################################################################
-                ################ Instead of using the Database helper functions ################
-                ############ I'm going to directly query the table to improve speed ############
-                ################################################################################
-
-                query = f"""
-                SELECT PRODUCT_ID, CATEG_ID FROM {creds.Table.Middleware.products}
-                WHERE ITEM_NO = '{item}'
-                """
-
-                response = db.query(query)
-                try:
-                    product_id = response[0][0]
-                    collection_ids = [int(x) for x in response[0][1].split(',')]
-                except:
-                    product_id = None
-                    collection_ids = []
-
-                if product_id is None or len(collection_ids) == 0:
-                    items_not_found += 1
-                    continue
-
-                product_id = int(product_id)
-
-                # collection_ids = db.Shopify.Product.get_collection_ids(product_id=product_id)
+                collection_ids = db.Shopify.Product.get_collection_ids(product_id=item['product_id'])
 
                 for collection_id in collection_ids:
                     if collection_id not in collections:
                         collections[collection_id] = []
 
-                    collections[collection_id].append({'item_no': item, 'product_id': product_id})
+                    collections[collection_id].append(item)
             except Exception as e:
                 SortOrderEngine.error_handler.add_error_v(
                     error=f'Error getting collection ids for {item}: {e}',
                     origin='SortOrderEngine.group_ecomm_items_by_collection',
                 )
+                items_not_found += 1
 
         if items_not_found > 0:
             SortOrderEngine.logger.warn(f'{items_not_found} items not found in Shopify')
         return collections
+
+    def adjust_order(items):
+        """Adjusts order of items"""
+        new_items = []
+
+        for item in items:
+            new_items.append(item)
+
+        return new_items
+
+    def remove_duplicate_products(items):
+        """Removes duplicate products"""
+
+        prod_ids = []
+        new_items = []
+
+        for item in items:
+            if item['product_id'] not in prod_ids:
+                new_items.append(item)
+                prod_ids.append(item['product_id'])
+
+        return new_items
+
+    def parse_items(items):
+        """Parses items for sorting"""
+        new_items = []
+
+        items_not_found = 0
+
+        for item in items:
+            try:
+                product_id = db.Shopify.Product.get_id(item_no=item)
+                product_id = int(product_id)
+
+                new_items.append({'item_no': item, 'product_id': product_id})
+            except Exception as e:
+                SortOrderEngine.error_handler.add_error_v(
+                    error=f'Error parsing item {item}: {e}', origin='SortOrderEngine.parse_items'
+                )
+                items_not_found += 1
+
+        if items_not_found > 0:
+            SortOrderEngine.logger.warn(f'{items_not_found} items not found in Shopify')
+
+        return new_items
 
     def sort():
         """Sets sort order based on revenue data from prior year during the forecasted time period"""
@@ -78,7 +97,7 @@ class SortOrderEngine:
         start_time = time.time()
 
         ###############################################################################################
-        ######################################### First Step. #########################################
+        ############################### Get top ecomm items with stock. ###############################
         ###############################################################################################
 
         SortOrderEngine.logger.info('Getting top ecomm items with stock')
@@ -86,11 +105,36 @@ class SortOrderEngine:
             beginning_date=one_year_ago,
             ending_date=last_year_forecast,
             mode='sales',
-            number_of_items=products.get_ecomm_items(),
+            number_of_items=products.get_ecomm_items(in_stock_only=True),
             return_format=3,
+            in_stock_only=True,
         )
         # top_ecomm_items_with_stock = ['BTSP5OZ']
         SortOrderEngine.logger.success('Top ecomm items with stock retrieved')
+
+        ###############################################################################################
+        ######################################### Parse Items #########################################
+        ###############################################################################################
+
+        SortOrderEngine.logger.info('Parsing items')
+        top_ecomm_items_with_stock = SortOrderEngine.parse_items(top_ecomm_items_with_stock)
+        SortOrderEngine.logger.success('Items parsed')
+
+        ###############################################################################################
+        ###################################### Remove Duplicates ######################################
+        ###############################################################################################
+
+        SortOrderEngine.logger.info('Removing duplicates')
+        top_ecomm_items_with_stock = SortOrderEngine.remove_duplicate_products(top_ecomm_items_with_stock)
+        SortOrderEngine.logger.success('Duplicates removed')
+
+        ###############################################################################################
+        ######################################## Adjust Order. ########################################
+        ###############################################################################################
+
+        SortOrderEngine.logger.info('Adjusting order')
+        top_ecomm_items_with_stock = SortOrderEngine.adjust_order(top_ecomm_items_with_stock)
+        SortOrderEngine.logger.success('Order adjusted')
 
         ###############################################################################################
         ############################### Group eComm Items By Collection ###############################
@@ -100,28 +144,11 @@ class SortOrderEngine:
         collections: dict = SortOrderEngine.group_ecomm_items_by_collection(top_ecomm_items_with_stock)
         SortOrderEngine.logger.success('Ecomm items grouped by collection')
 
-        collections_list = [(collection_id, items) for collection_id, items in collections.items()]
-
-        # TODO: Remove duplicate product id entries. Keep first index.
-        SortOrderEngine.logger.info('Removing duplicate product IDs')
-        for i, collection in enumerate(collections_list):
-            collection_id, items = collection
-
-            prod_ids = []
-            new_items = []
-
-            for item in items:
-                if item['product_id'] not in prod_ids:
-                    new_items.append(item)
-                    prod_ids.append(item['product_id'])
-
-            collections_list[i] = (collection_id, new_items)
-
-        SortOrderEngine.logger.success('Duplicate product IDs removed')
-
         ###############################################################################################
         ########################################## Last Step ##########################################
         ###############################################################################################
+
+        collections_list = [(collection_id, items) for collection_id, items in collections.items()]
 
         for collection_index, collection in enumerate(collections_list):
             collection_id, items = collection
