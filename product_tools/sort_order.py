@@ -90,6 +90,8 @@ class SortOrderEngine:
 
         # creds.Table.CP.Item.Column.is_parent
 
+        print(featured_items)
+
         for item in items:
             new_items.append(item)
             item_skus.append(item['item_no'])
@@ -226,7 +228,7 @@ class SortOrderEngine:
 
         if print_mode:
             print(collections)
-            return
+            return collections
 
         collections_list = [(collection_id, items) for collection_id, items in collections.items()]
 
