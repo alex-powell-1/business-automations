@@ -832,9 +832,7 @@ def shopify_customer_update():
         return jsonify({'error': 'Unauthorized'}), 401
 
     customer = CustomerWebhook(webhook_data)
-    print(webhook_data)
-    print()
-    print(customer)
+    Logger(creds.Logs.webhooks_customer_update).log(f'Webhook: Customer Update, ID: {customer.id}')
 
     return jsonify({'success': True}), 200
 
