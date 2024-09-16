@@ -17,7 +17,6 @@ class SortOrderEngine:
     eh = error_handler
     error_handler = eh.error_handler
     logger = error_handler.logger
-    origin = 'sort_order.py'
 
     def group_ecomm_items_by_collection(top_ecomm_items_with_stock):
         """Groups top ecomm items by collection"""
@@ -72,6 +71,28 @@ class SortOrderEngine:
             SortOrderEngine.logger.warn(f'{items_not_found} items not found in Shopify')
         return collections
 
+    def adjust_order(items):
+        """Adjusts order of items"""
+        new_items = []
+
+        for item in items:
+            new_items.append(item)
+
+        return new_items
+
+    def remove_duplicate_products(items):
+        """Removes duplicate products"""
+
+        prod_ids = []
+        new_items = []
+
+        for item in items:
+            if item['product_id'] not in prod_ids:
+                new_items.append(item)
+                prod_ids.append(item['product_id'])
+
+        return new_items
+
     def sort():
         """Sets sort order based on revenue data from prior year during the forecasted time period"""
         SortOrderEngine.logger.info('Sort Order: Starting')
@@ -93,6 +114,22 @@ class SortOrderEngine:
         SortOrderEngine.logger.success('Top ecomm items with stock retrieved')
 
         ###############################################################################################
+        ###################################### Remove Duplicates ######################################
+        ###############################################################################################
+
+        SortOrderEngine.logger.info('Removing duplicates')
+        top_ecomm_items_with_stock = SortOrderEngine.remove_duplicate_products(top_ecomm_items_with_stock)
+        SortOrderEngine.logger.success('Duplicates removed')
+
+        ###############################################################################################
+        ######################################## Adjust Order. ########################################
+        ###############################################################################################
+
+        SortOrderEngine.logger.info('Adjusting order')
+        top_ecomm_items_with_stock = SortOrderEngine.adjust_order(top_ecomm_items_with_stock)
+        SortOrderEngine.logger.success('Order adjusted')
+
+        ###############################################################################################
         ############################### Group eComm Items By Collection ###############################
         ###############################################################################################
 
@@ -102,22 +139,22 @@ class SortOrderEngine:
 
         collections_list = [(collection_id, items) for collection_id, items in collections.items()]
 
-        # TODO: Remove duplicate product id entries. Keep first index.
-        SortOrderEngine.logger.info('Removing duplicate product IDs')
-        for i, collection in enumerate(collections_list):
-            collection_id, items = collection
+        # Remove duplicate product id entries. Keep first index.
+        # SortOrderEngine.logger.info('Removing duplicate product IDs')
+        # for i, collection in enumerate(collections_list):
+        #     collection_id, items = collection
 
-            prod_ids = []
-            new_items = []
+        #     prod_ids = []
+        #     new_items = []
 
-            for item in items:
-                if item['product_id'] not in prod_ids:
-                    new_items.append(item)
-                    prod_ids.append(item['product_id'])
+        #     for item in items:
+        #         if item['product_id'] not in prod_ids:
+        #             new_items.append(item)
+        #             prod_ids.append(item['product_id'])
 
-            collections_list[i] = (collection_id, new_items)
+        #     collections_list[i] = (collection_id, new_items)
 
-        SortOrderEngine.logger.success('Duplicate product IDs removed')
+        # SortOrderEngine.logger.success('Duplicate product IDs removed')
 
         ###############################################################################################
         ########################################## Last Step ##########################################
