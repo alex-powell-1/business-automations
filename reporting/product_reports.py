@@ -175,6 +175,7 @@ def create_top_items_report(
     number_of_items=15,
     category='ALL',
     return_format=1,
+    in_stock_only=False,
 ):
     """creates top items report by sales or quantity"""
     # format 3 is a list of top item skus
@@ -274,7 +275,11 @@ def create_top_items_report(
                     )
             # item numbers only
             elif return_format == 3:
-                result.append(item[0])
+                if in_stock_only:
+                    if get_quantity_available(item[0]) > 0:
+                        result.append(item[0])
+                else:
+                    result.append(item[0])
             counter += 1
         return result
     else:
