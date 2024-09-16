@@ -1886,7 +1886,7 @@ class Shopify:
                 move = MoveInput(item_id=product_id, position=count - i)
                 mc.add(move)
 
-            eh.logger.success(f'Setting up moves complete.')
+            eh.logger.success('Setting up moves complete.')
 
             return Shopify.Collection.reorder_items(collection_id=collection_id, collection_of_moves=mc, eh=eh)
 
