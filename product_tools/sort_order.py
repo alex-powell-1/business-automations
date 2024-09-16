@@ -91,6 +91,33 @@ class SortOrderEngine:
 
         return new_items
 
+    def remove_excluded_collections(collections: dict) -> dict:
+        """Removes excluded collections from collections dictionary"""
+        new_collections = {}
+
+        for collection_id, items in collections.items():
+            query = f"""
+                SELECT IMG_FILE FROM VI_SN_SHOP_CATEG
+                WHERE COLLECTION_ID = '{collection_id}'
+            """
+
+            response = db.query(query)
+            try:
+                do_sort = str(response[0][0]).lower().strip() == 'true'
+            except Exception as e:
+                SortOrderEngine.error_handler.add_error_v(
+                    error=f'Error checking if collection {collection_id} is do sort: {e}',
+                    origin='SortOrderEngine.remove_excluded_collections',
+                )
+                do_sort = False
+
+            if do_sort:
+                new_collections[collection_id] = items
+            else:
+                SortOrderEngine.logger.info(f'Excluding collection {collection_id}')
+
+        return new_collections
+
     def sort():
         """Sets sort order based on revenue data from prior year during the forecasted time period"""
         SortOrderEngine.logger.info('Sort Order: Starting')
@@ -143,6 +170,14 @@ class SortOrderEngine:
         SortOrderEngine.logger.info('Grouping ecomm items by collection')
         collections: dict = SortOrderEngine.group_ecomm_items_by_collection(top_ecomm_items_with_stock)
         SortOrderEngine.logger.success('Ecomm items grouped by collection')
+
+        ###############################################################################################
+        ################################# Remove excluded collections #################################
+        ###############################################################################################
+
+        SortOrderEngine.logger.info('Removing excluded collections')
+        collections = SortOrderEngine.remove_excluded_collections(collections)
+        SortOrderEngine.logger.success('Excluded collections removed')
 
         ###############################################################################################
         ########################################## Last Step ##########################################
