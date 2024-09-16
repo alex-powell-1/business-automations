@@ -11,7 +11,6 @@ from reporting import product_reports
 from database import Database
 
 from setup.admin_report_html import boiler_plate, css, body_start, body_end
-from setup.date_presets import today
 
 from product_tools import products
 from setup.error_handler import ScheduledTasksErrorHandler as error_handler
@@ -227,13 +226,14 @@ class Email:
 
     class Staff:
         class AdminReport:
-            def send(recipients):
+            def send(recipients, dates):
                 error_handler.logger.info(f'Generating Admin Report Data - Starting at {datetime.now():%H:%M:%S}')
 
-                subject = f'Administrative Report - {today:%x}'
+                subject = f'Administrative Report - {dates.today:%x}'
 
                 report_data = product_reports.report_generator(
                     title='Administrative Report',
+                    dates=dates,
                     revenue=True,
                     cogs_report=True,
                     last_week_report=True,
@@ -266,10 +266,10 @@ class Email:
                 error_handler.logger.info(f'Administrative Report: Completed at {datetime.now():%H:%M:%S}')
 
         class LowStockReport:
-            def send(recipients):
+            def send(recipients, dates):
                 error_handler.logger.info(f'Generating Admin Report Data - Starting at {datetime.now():%H:%M:%S}')
 
-                subject = f'Low Stock Report - {today:%x}'
+                subject = f'Low Stock Report - {dates.today:%x}'
 
                 report_data = product_reports.report_generator(
                     title='Low Stock Report',

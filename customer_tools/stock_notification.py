@@ -261,7 +261,7 @@ def send_stock_notifications():
                     error_handler.error_handler.add_error_v(f'Coupon Code Could Not Be Generated for {item_no}')
                     continue
 
-            item_photo = creds.photo_path + f'/{item_no}.jpg'
+            item_photo = creds.product_images + f'/{item_no}.jpg'
 
             if included:
                 expiration_date = datetime.datetime.now() + relativedelta(days=+5)
@@ -277,13 +277,13 @@ def send_stock_notifications():
             copy_file(item_photo, creds.public_files)
 
             local_photo = creds.public_files + f'/{item_no}.jpg'
-            product_photo = creds.api_public_files + f'{item_no}.jpg'
+            product_photo = creds.api_public_files + f'/{item_no}.jpg'
 
             photos_to_remove.append(local_photo)
 
             if included:
                 photos_to_remove.append(creds.public_files + f'/{item_no}-BARCODE.jpg')
-                product_photo = creds.api_public_files + f'{item_no}-BARCODE.jpg'
+                product_photo = creds.api_public_files + f'/{item_no}-BARCODE.jpg'
 
             ###############################################################
             ###################### Send Text / Email ######################

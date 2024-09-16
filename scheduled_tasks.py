@@ -15,325 +15,331 @@ from sms import sms_queries
 from sms.sms_messages import birthdays, first_time_customers, returning_customers, wholesale_sms_messages
 from setup import backups
 from setup.error_handler import ScheduledTasksErrorHandler
-import time
-import importlib
+
 
 # -----------------
 # Scheduled Tasks
 # -----------------
-while True:
-    importlib.reload(date_presets)
-    now = datetime.now()
-    day = now.day
-    hour = now.hour
-    minute = now.minute
+dates = date_presets.Dates()
+now = datetime.now()
+day = now.day
+hour = now.hour
+minute = now.minute
 
-    sms_test_mode = False  # if true, will only write generated messages write to logs
-    sms_test_customer = False  # if true, will only send to single employee for testing
+sms_test_mode = False  # if true, will only write generated messages write to logs
+sms_test_customer = False  # if true, will only send to single employee for testing
 
-    eh = ScheduledTasksErrorHandler
-    error_handler = eh.error_handler
-    logger = eh.logger
+eh = ScheduledTasksErrorHandler
+error_handler = eh.error_handler
+logger = eh.logger
 
-    try:
-        # ADMINISTRATIVE REPORT - Generate report/email to administrative team list
-        if creds.administrative_report['enabled'] and creds.administrative_report['hour'] == hour and minute == 0:
-            try:
-                Email.Staff.AdminReport.send(recipients=creds.administrative_report['recipients'])
-            except Exception as err:
-                error_handler.add_error_v(error=err, origin='Administrative Report')
+try:
+    # ADMINISTRATIVE REPORT - Generate report/email to administrative team list
+    if creds.administrative_report['enabled'] and creds.administrative_report['hour'] == hour and minute == 0:
+        try:
+            Email.Staff.AdminReport.send(recipients=creds.administrative_report['recipients'], dates=dates)
+        except Exception as err:
+            error_handler.add_error_v(error=err, origin='Administrative Report')
 
-        # ITEMS REPORT EMAIL - for product management team
-        if creds.item_report['enabled'] and creds.item_report['hour'] == hour and minute == 0:
-            try:
-                Email.Staff.ItemReport.send(recipients=creds.item_report['recipients'])
-            except Exception as err:
-                error_handler.add_error_v(error=err, origin='Item Report')
+    # ITEMS REPORT EMAIL - for product management team
+    if creds.item_report['enabled'] and creds.item_report['hour'] == hour and minute == 0:
+        try:
+            Email.Staff.ItemReport.send(recipients=creds.item_report['recipients'])
+        except Exception as err:
+            error_handler.add_error_v(error=err, origin='Item Report')
 
-        # LOW STOCK REPORT EMAIL - for product management team
-        if creds.low_stock_report['enabled'] and creds.low_stock_report['hour'] == hour and minute == 0:
-            try:
-                Email.Staff.LowStockReport.send(recipients=creds.low_stock_report['recipients'])
-            except Exception as err:
-                error_handler.add_error_v(error=err, origin='Low Stock Report')
+    # LOW STOCK REPORT EMAIL - for product management team
+    if creds.low_stock_report['enabled'] and creds.low_stock_report['hour'] == hour and minute == 0:
+        try:
+            Email.Staff.LowStockReport.send(recipients=creds.low_stock_report['recipients'], dates=dates)
+        except Exception as err:
+            error_handler.add_error_v(error=err, origin='Low Stock Report')
 
-        # LANDSCAPE DESIGN LEAD NOTIFICATION EMAIL - Customer Followup Email to Sales Team
-        if creds.lead_email['enabled'] and creds.lead_email['hour'] == hour and minute == 0:
-            try:
-                Email.Staff.DesignLeadNotification.send(recipients=creds.lead_email['recipients'])
-            except Exception as err:
-                error_handler.add_error_v(error=err, origin='Lead Notification Email')
+    # LANDSCAPE DESIGN LEAD NOTIFICATION EMAIL - Customer Followup Email to Sales Team
+    if creds.lead_email['enabled'] and creds.lead_email['hour'] == hour and minute == 0:
+        try:
+            Email.Staff.DesignLeadNotification.send(recipients=creds.lead_email['recipients'])
+        except Exception as err:
+            error_handler.add_error_v(error=err, origin='Lead Notification Email')
 
-        if minute == 0 or minute == 30:
-            # # Checks health of Web App API. Notifies system administrator if not running via SMS text.
-            try:
-                network.health_check()
-            except Exception as err:
-                error_handler.add_error_v(error=err, origin='Health Check')
+    if minute == 0 or minute == 30:
+        # # Checks health of Web App API. Notifies system administrator if not running via SMS text.
+        try:
+            network.health_check()
+        except Exception as err:
+            error_handler.add_error_v(error=err, origin='Health Check')
 
-            # SET CONTACT 1
-            # Concatenate First and Last name of non-business customer_tools and
-            # fill contact 1 field in counterpoint (if null)
-            try:
-                customers.set_contact_1()
-            except Exception as err:
-                error_handler.add_error_v(error=err, origin='Set Contact 1')
+        # SET CONTACT 1
+        # Concatenate First and Last name of non-business customer_tools and
+        # fill contact 1 field in counterpoint (if null)
+        try:
+            customers.set_contact_1()
+        except Exception as err:
+            error_handler.add_error_v(error=err, origin='Set Contact 1')
 
-            # TIERED WHOLESALE PRICING LEVELS
-            # Reassessing tiered pricing for all customers based on current year
-            try:
-                tiered_pricing.reassess_tiered_pricing(
-                    start_date=date_presets.one_year_ago, end_date=date_presets.today, demote=False
-                )
-            except Exception as err:
-                error_handler.add_error_v(error=err, origin='Tiered Pricing')
+        # TIERED WHOLESALE PRICING LEVELS
+        # Reassessing tiered pricing for all customers based on current year
+        try:
+            tiered_pricing.reassess_tiered_pricing(
+                start_date=date_presets.one_year_ago, end_date=date_presets.today, demote=False
+            )
+        except Exception as err:
+            error_handler.add_error_v(error=err, origin='Tiered Pricing')
 
-        if minute == 0:
-            # -----------------
-            # EVERY HOUR TASKS
-            # -----------------
-
-            # NETWORK CONNECTIVITY
-            # Check server for internet connection. Restart is there is no connection to internet.
-            network.restart_server_if_disconnected()
-
-        # ----------------------
-        # EVERY OTHER HOUR TASKS
-        # ----------------------
-        # Between 6 AM and 8 PM - Performed on even hours
-        if minute == 0 and 20 >= hour >= 6 and hour % 2 == 0:
-            # ITEM STATUS CODES
-            # Move active product_tools with zero stock into inactive status
-            # unless they are on order, hold, quote
-            try:
-                set_inactive_status.set_products_to_inactive(eh=ScheduledTasksErrorHandler)
-            except Exception as err:
-                error_handler.add_error_v(error=err, origin='Inactive Status')
-
-            # BRANDS
-            # Set all items with no brand to the company brand
-            # Set all products with specific keywords to correct e-commerce brand
-            try:
-                brands.update_brands()
-            except Exception as err:
-                error_handler.add_error_v(error=err, origin='Brands')
-
-            # STOCK BUFFER
-            # Set stock buffers based on rules by vendor, category
-            try:
-                stock_buffer.stock_buffer_updates()
-            except Exception as err:
-                error_handler.add_error_v(error=err, origin='Stock Buffer')
-
+    if minute == 0:
         # -----------------
-        # ONE PER DAY TASKS
+        # EVERY HOUR TASKS
         # -----------------
-        if hour == 5 and minute == 0:
-            try:
-                customers.fix_first_and_last_sale_dates()
-            except Exception as err:
-                error_handler.add_error_v(error=err, origin='Fix First and Last Sale Dates')
 
-            try:
-                SortOrderEngine.sort()
-            except Exception as err:
-                error_handler.add_error_v(error=err, origin='Sort Order')
+        # NETWORK CONNECTIVITY
+        # Check server for internet connection. Restart is there is no connection to internet.
+        network.restart_server_if_disconnected()
 
-        # 11:30 AM TASKS
-        if hour == 11 and minute == 30:
-            # STOCK NOTIFICATION EMAIL WITH COUPON GENERATION
-            # Read CSV file, check all items for stock, send auto generated emails to customer_tools
-            # with product photo, product description (if exists), coupon (if applicable), and
-            # direct purchase links. Generate coupon and send to big for e-comm use.
-            try:
-                stock_notification.send_stock_notifications()
-            except Exception as err:
-                error_handler.add_error_v(error=err, origin='Stock Notification Email')
+    # ----------------------
+    # EVERY OTHER HOUR TASKS
+    # ----------------------
+    # Between 6 AM and 8 PM - Performed on even hours
+    if minute == 0 and 20 >= hour >= 6 and hour % 2 == 0:
+        # ITEM STATUS CODES
+        # Move active product_tools with zero stock into inactive status
+        # unless they are on order, hold, quote
+        try:
+            set_inactive_status.set_products_to_inactive(eh=ScheduledTasksErrorHandler)
+        except Exception as err:
+            error_handler.add_error_v(error=err, origin='Inactive Status')
 
-        if hour == 22 and minute == 30:
-            # Nightly Off-Site Backups
-            # Will copy critical files to off-site location
-            try:
-                backups.offsite_backups()
-            except Exception as err:
-                error_handler.add_error_v(error=err, origin='Offsite Backups')
+        # BRANDS
+        # Set all items with no brand to the company brand
+        # Set all products with specific keywords to correct e-commerce brand
+        try:
+            brands.update_brands()
+        except Exception as err:
+            error_handler.add_error_v(error=err, origin='Brands')
 
-            # MERGE CUSTOMERS
-            # Merge duplicate customers by email or phone. Skips customers with open orders.
-            try:
-                merge = Merge(eh=eh)
-            except Exception as err:
-                error_handler.add_error_v(error=err, origin='Merge Customers')
+        # STOCK BUFFER
+        # Set stock buffers based on rules by vendor, category
+        try:
+            stock_buffer.stock_buffer_updates()
+        except Exception as err:
+            error_handler.add_error_v(error=err, origin='Stock Buffer')
 
-            # Delete Old Log Files
-            utilities.delete_old_files()
+    # -----------------
+    # ONE PER DAY TASKS
+    # -----------------
+    if hour == 5 and minute == 0:
+        try:
+            customers.fix_first_and_last_sale_dates(dt=dates)
+        except Exception as err:
+            error_handler.add_error_v(error=err, origin='Fix First and Last Sale Dates')
 
-        #    __          __     _         _____  ___          _   __________  ___    __  __
-        #   / _\  /\/\  / _\   /_\  /\ /\/__   \/___\/\/\    /_\ /__   \_   \/___\/\ \ \/ _\
-        #   \ \  /    \ \ \   //_\\/ / \ \ / /\//  //    \  //_\\  / /\// /\//  //  \/ /\ \
-        #   _\ \/ /\/\ \_\ \ /  _  \ \_/ // / / \_// /\/\ \/  _  \/ //\/ /_/ \_// /\  / _\ \
-        #   \__/\/    \/\__/ \_/ \_/\___/ \/  \___/\/    \/\_/ \_/\/ \____/\___/\_\ \/  \__/
+        try:
+            SortOrderEngine.sort()
+        except Exception as err:
+            error_handler.add_error_v(error=err, origin='Sort Order')
 
-        if creds.birthday_text['enabled']:
-            if day == creds.birthday_text['day']:
-                if hour == creds.birthday_text['hour'] and minute == creds.birthday_text['minute']:
-                    title = 'Birthday Text'
-                    logger.info(f'SMS/MMS Automation: {title} - {datetime.now():%H:%M:%S}')
-                    try:
-                        sms_automations.create_customer_text(
-                            origin='Automations',
-                            campaign=title,
-                            query=sms_queries.birthday,
-                            msg=birthdays.birthday_coupon_1,
-                            image_url=birthdays.BIRTHDAY_COUPON,
-                            send_rwd_bal=False,
-                            test_mode=creds.sms_automations['test_mode'],
-                            test_customer=creds.sms_automations['test_customer']['enabled'],
-                        )
+    # 11:30 AM TASKS
+    if hour == 11 and minute == 30:
+        # STOCK NOTIFICATION EMAIL WITH COUPON GENERATION
+        # Read CSV file, check all items for stock, send auto generated emails to customer_tools
+        # with product photo, product description (if exists), coupon (if applicable), and
+        # direct purchase links. Generate coupon and send to big for e-comm use.
+        try:
+            stock_notification.send_stock_notifications()
+        except Exception as err:
+            error_handler.add_error_v(error=err, origin='Stock Notification Email')
 
-                    except Exception as err:
-                        error_handler.add_error_v(error=err, origin='Birthday Text')
+    if hour == 22 and minute == 30:
+        # Nightly Off-Site Backups
+        # Will copy critical files to off-site location
+        try:
+            backups.offsite_backups()
+        except Exception as err:
+            error_handler.add_error_v(error=err, origin='Offsite Backups')
 
-        # WHOLESALE CUSTOMER TEXT MESSAGE 1 - RANDOM MESSAGE CHOICE (SMS)
-        if creds.wholesale_1_text['enabled']:
-            if hour == creds.wholesale_1_text['hour'] and minute == creds.wholesale_1_text['minute']:
-                title = 'Wholesale Text 1'
+        # MERGE CUSTOMERS
+        # Merge duplicate customers by email or phone. Skips customers with open orders.
+        try:
+            merge = Merge(eh=eh)
+        except Exception as err:
+            error_handler.add_error_v(error=err, origin='Merge Customers')
+
+        # Delete Old Log Files
+        utilities.delete_old_files()
+
+    #    __          __     _         _____  ___          _   __________  ___    __  __
+    #   / _\  /\/\  / _\   /_\  /\ /\/__   \/___\/\/\    /_\ /__   \_   \/___\/\ \ \/ _\
+    #   \ \  /    \ \ \   //_\\/ / \ \ / /\//  //    \  //_\\  / /\// /\//  //  \/ /\ \
+    #   _\ \/ /\/\ \_\ \ /  _  \ \_/ // / / \_// /\/\ \/  _  \/ //\/ /_/ \_// /\  / _\ \
+    #   \__/\/    \/\__/ \_/ \_/\___/ \/  \___/\/    \/\_/ \_/\/ \____/\___/\_\ \/  \__/
+
+    queries = sms_queries.SMSQueries(dates)
+    # WIP
+    # Need to pass in queries to get the correct dates
+    # Need to make a class for generating the messages with date objects
+    if creds.birthday_text['enabled']:
+        if day == creds.birthday_text['day']:
+            if hour == creds.birthday_text['hour'] and minute == creds.birthday_text['minute']:
+                title = 'Birthday Text'
                 logger.info(f'SMS/MMS Automation: {title} - {datetime.now():%H:%M:%S}')
                 try:
                     sms_automations.create_customer_text(
+                        dates=dates,
                         origin='Automations',
                         campaign=title,
-                        query=sms_queries.wholesale_1,
-                        msg=wholesale_sms_messages.message_1,
-                        msg_prefix=True,
+                        query=queries.birthday,
+                        msg=birthdays.birthday_coupon_1,
+                        image_url=birthdays.BIRTHDAY_COUPON,
                         send_rwd_bal=False,
                         test_mode=creds.sms_automations['test_mode'],
                         test_customer=creds.sms_automations['test_customer']['enabled'],
                     )
+
                 except Exception as err:
-                    error_handler.add_error_v(error=err, origin='Wholesale Text 1')
+                    error_handler.add_error_v(error=err, origin='Birthday Text')
 
-        # FIRST-TIME CUSTOMER TEXT MESSAGE 1 - WELCOME (SMS)
-        if creds.ftc_1_text['enabled']:
-            if hour == creds.ftc_1_text['hour'] and minute == creds.ftc_1_text['minute']:
-                title = 'First Time Cust Text 1'
-                logger.info(f'SMS/MMS Automation: {title} - {datetime.now():%H:%M:%S}')
-                try:
-                    sms_automations.create_customer_text(
-                        origin='Automations',
-                        campaign=title,
-                        query=sms_queries.ftc_text_1,
-                        msg=first_time_customers.ftc_1_body,
-                        send_rwd_bal=True,
-                        test_mode=creds.sms_automations['test_mode'],
-                        test_customer=creds.sms_automations['test_customer']['enabled'],
-                    )
-                except Exception as err:
-                    error_handler.add_error_v(error=err, origin='First Time Cust Text 1')
+    # WHOLESALE CUSTOMER TEXT MESSAGE 1 - RANDOM MESSAGE CHOICE (SMS)
+    if creds.wholesale_1_text['enabled']:
+        if hour == creds.wholesale_1_text['hour'] and minute == creds.wholesale_1_text['minute']:
+            title = 'Wholesale Text 1'
+            logger.info(f'SMS/MMS Automation: {title} - {datetime.now():%H:%M:%S}')
+            try:
+                sms_automations.create_customer_text(
+                    dates=dates,
+                    origin='Automations',
+                    campaign=title,
+                    query=sms_queries.wholesale_1,
+                    msg=wholesale_sms_messages.message_1,
+                    msg_prefix=True,
+                    send_rwd_bal=False,
+                    test_mode=creds.sms_automations['test_mode'],
+                    test_customer=creds.sms_automations['test_customer']['enabled'],
+                )
+            except Exception as err:
+                error_handler.add_error_v(error=err, origin='Wholesale Text 1')
 
-        if creds.ftc_2_text['enabled']:
-            if hour == creds.ftc_2_text['hour'] and minute == creds.ftc_2_text['minute']:
-                # FIRST-TIME CUSTOMER TEXT MESSAGE 2 - 5 OFF COUPON (MMS)
-                title = 'First Time Cust Text 2'
-                logger.info(f'SMS/MMS Automation: {title} - {datetime.now():%H:%M:%S}')
-                try:
-                    sms_automations.create_customer_text(
-                        origin='Automations',
-                        campaign=title,
-                        query=sms_queries.ftc_text_2,
-                        msg=first_time_customers.ftc_2_body,
-                        image_url=creds.five_off_coupon,
-                        send_rwd_bal=True,
-                        test_mode=creds.sms_automations['test_mode'],
-                        test_customer=creds.sms_automations['test_customer']['enabled'],
-                    )
-                except Exception as err:
-                    error_handler.add_error_v(error=err, origin='First Time Cust Text 2')
+    # FIRST-TIME CUSTOMER TEXT MESSAGE 1 - WELCOME (SMS)
+    if creds.ftc_1_text['enabled']:
+        if hour == creds.ftc_1_text['hour'] and minute == creds.ftc_1_text['minute']:
+            title = 'First Time Cust Text 1'
+            logger.info(f'SMS/MMS Automation: {title} - {datetime.now():%H:%M:%S}')
+            try:
+                sms_automations.create_customer_text(
+                    dates=dates,
+                    origin='Automations',
+                    campaign=title,
+                    query=sms_queries.ftc_text_1,
+                    msg=first_time_customers.ftc_1_body,
+                    send_rwd_bal=True,
+                    test_mode=creds.sms_automations['test_mode'],
+                    test_customer=creds.sms_automations['test_customer']['enabled'],
+                )
+            except Exception as err:
+                error_handler.add_error_v(error=err, origin='First Time Cust Text 1')
 
-        # FIRST-TIME CUSTOMER TEXT MESSAGE 3 - ASK FOR GOOGLE REVIEW (SMS)
+    if creds.ftc_2_text['enabled']:
+        if hour == creds.ftc_2_text['hour'] and minute == creds.ftc_2_text['minute']:
+            # FIRST-TIME CUSTOMER TEXT MESSAGE 2 - 5 OFF COUPON (MMS)
+            title = 'First Time Cust Text 2'
+            logger.info(f'SMS/MMS Automation: {title} - {datetime.now():%H:%M:%S}')
+            try:
+                sms_automations.create_customer_text(
+                    dates=dates,
+                    origin='Automations',
+                    campaign=title,
+                    query=sms_queries.ftc_text_2,
+                    msg=first_time_customers.ftc_2_body,
+                    image_url=creds.five_off_coupon,
+                    send_rwd_bal=True,
+                    test_mode=creds.sms_automations['test_mode'],
+                    test_customer=creds.sms_automations['test_customer']['enabled'],
+                )
+            except Exception as err:
+                error_handler.add_error_v(error=err, origin='First Time Cust Text 2')
 
-        if creds.ftc_3_text['enabled']:
-            if hour == creds.ftc_3_text['hour'] and minute == creds.ftc_3_text['minute']:
-                title = 'First Time Cust Text 3'
-                logger.info(f'SMS/MMS Automation: {title} - {datetime.now():%H:%M:%S}')
+    # FIRST-TIME CUSTOMER TEXT MESSAGE 3 - ASK FOR GOOGLE REVIEW (SMS)
 
-                try:
-                    sms_automations.create_customer_text(
-                        origin='Automations',
-                        campaign=title,
-                        query=sms_queries.ftc_text_3,
-                        msg=first_time_customers.ftc_3_body,
-                        send_rwd_bal=True,
-                        test_mode=creds.sms_automations['test_mode'],
-                        test_customer=creds.sms_automations['test_customer']['enabled'],
-                    )
-                except Exception as err:
-                    error_handler.add_error_v(error=err, origin='First Time Cust Text 3')
+    if creds.ftc_3_text['enabled']:
+        if hour == creds.ftc_3_text['hour'] and minute == creds.ftc_3_text['minute']:
+            title = 'First Time Cust Text 3'
+            logger.info(f'SMS/MMS Automation: {title} - {datetime.now():%H:%M:%S}')
 
-        # RETURNING CUSTOMER TEXT MESSAGE 1 - THANK YOU (SMS)
-        if creds.rc_1_text['enabled']:
-            if hour == creds.rc_1_text['hour'] and minute == creds.rc_1_text['minute']:
-                title = 'Returning Cust Text 1'
-                logger.info(f'SMS/MMS Automation: {title} - {datetime.now():%H:%M:%S}')
-                try:
-                    sms_automations.create_customer_text(
-                        origin='Automations',
-                        campaign=title,
-                        query=sms_queries.rc_1,
-                        msg=returning_customers.rc_1_body,
-                        send_rwd_bal=True,
-                        test_mode=creds.sms_automations['test_mode'],
-                        test_customer=creds.sms_automations['test_customer']['enabled'],
-                    )
-                except Exception as err:
-                    error_handler.add_error_v(error=err, origin='Returning Cust Text 1')
+            try:
+                sms_automations.create_customer_text(
+                    dates=dates,
+                    origin='Automations',
+                    campaign=title,
+                    query=sms_queries.ftc_text_3,
+                    msg=first_time_customers.ftc_3_body,
+                    send_rwd_bal=True,
+                    test_mode=creds.sms_automations['test_mode'],
+                    test_customer=creds.sms_automations['test_customer']['enabled'],
+                )
+            except Exception as err:
+                error_handler.add_error_v(error=err, origin='First Time Cust Text 3')
 
-        # RETURNING CUSTOMER TEXT MESSAGE 2 - 5 OFF COUPON (MMS)
-        if creds.rc_2_text['enabled']:
-            if hour == creds.rc_2_text['hour'] and minute == creds.rc_2_text['minute']:
-                title = 'Returning Cust Text 2'
-                logger.info(f'SMS/MMS Automation: {title} - {datetime.now():%H:%M:%S}')
-                try:
-                    sms_automations.create_customer_text(
-                        origin='Automations',
-                        campaign=title,
-                        query=sms_queries.rc_2,
-                        msg=returning_customers.rc_2_body,
-                        image_url=creds.five_off_coupon,
-                        send_rwd_bal=True,
-                        test_mode=creds.sms_automations['test_mode'],
-                        test_customer=creds.sms_automations['test_customer']['enabled'],
-                    )
-                except Exception as err:
-                    error_handler.add_error_v(error=err, origin='Returning Cust Text 2')
+    # RETURNING CUSTOMER TEXT MESSAGE 1 - THANK YOU (SMS)
+    if creds.rc_1_text['enabled']:
+        if hour == creds.rc_1_text['hour'] and minute == creds.rc_1_text['minute']:
+            title = 'Returning Cust Text 1'
+            logger.info(f'SMS/MMS Automation: {title} - {datetime.now():%H:%M:%S}')
+            try:
+                sms_automations.create_customer_text(
+                    dates=dates,
+                    origin='Automations',
+                    campaign=title,
+                    query=sms_queries.rc_1,
+                    msg=returning_customers.rc_1_body,
+                    send_rwd_bal=True,
+                    test_mode=creds.sms_automations['test_mode'],
+                    test_customer=creds.sms_automations['test_customer']['enabled'],
+                )
+            except Exception as err:
+                error_handler.add_error_v(error=err, origin='Returning Cust Text 1')
 
-        # RETURNING CUSTOMER TEXT MESSAGE 3 - ASK FOR GOOGLE REVIEW (SMS)
-        if creds.rc_3_text['enabled']:
-            if hour == creds.rc_3_text['hour'] and minute == creds.rc_3_text['minute']:
-                title = 'Returning Cust Text 3'
-                logger.info(f'SMS/MMS Automation: {title} - {datetime.now():%H:%M:%S}')
-                try:
-                    sms_automations.create_customer_text(
-                        origin='Automations',
-                        campaign=title,
-                        query=sms_queries.rc_3,
-                        msg=returning_customers.rc_3_body,
-                        send_rwd_bal=True,
-                        test_mode=creds.sms_automations['test_mode'],
-                        test_customer=creds.sms_automations['test_customer']['enabled'],
-                    )
-                except Exception as err:
-                    error_handler.add_error_v(error=err, origin='Returning Cust Text 3')
+    # RETURNING CUSTOMER TEXT MESSAGE 2 - 5 OFF COUPON (MMS)
+    if creds.rc_2_text['enabled']:
+        if hour == creds.rc_2_text['hour'] and minute == creds.rc_2_text['minute']:
+            title = 'Returning Cust Text 2'
+            logger.info(f'SMS/MMS Automation: {title} - {datetime.now():%H:%M:%S}')
+            try:
+                sms_automations.create_customer_text(
+                    dates=dates,
+                    origin='Automations',
+                    campaign=title,
+                    query=sms_queries.rc_2,
+                    msg=returning_customers.rc_2_body,
+                    image_url=creds.five_off_coupon,
+                    send_rwd_bal=True,
+                    test_mode=creds.sms_automations['test_mode'],
+                    test_customer=creds.sms_automations['test_customer']['enabled'],
+                )
+            except Exception as err:
+                error_handler.add_error_v(error=err, origin='Returning Cust Text 2')
 
-    except KeyboardInterrupt:
-        logger.info(f'Process Terminated by User at {datetime.now():%H:%M:%S}')
-    else:
-        # logger.success(f'Business Automations Complete at {datetime.now():%H:%M:%S}')
-        total_seconds = (datetime.now() - now).total_seconds()
-        minutes = total_seconds // 60
-        seconds = round(total_seconds % 60, 2)
-        # logger.info(f'Total time of operation: {minutes} minutes {seconds} seconds')
+    # RETURNING CUSTOMER TEXT MESSAGE 3 - ASK FOR GOOGLE REVIEW (SMS)
+    if creds.rc_3_text['enabled']:
+        if hour == creds.rc_3_text['hour'] and minute == creds.rc_3_text['minute']:
+            title = 'Returning Cust Text 3'
+            logger.info(f'SMS/MMS Automation: {title} - {datetime.now():%H:%M:%S}')
+            try:
+                sms_automations.create_customer_text(
+                    dates=dates,
+                    origin='Automations',
+                    campaign=title,
+                    query=sms_queries.rc_3,
+                    msg=returning_customers.rc_3_body,
+                    send_rwd_bal=True,
+                    test_mode=creds.sms_automations['test_mode'],
+                    test_customer=creds.sms_automations['test_customer']['enabled'],
+                )
+            except Exception as err:
+                error_handler.add_error_v(error=err, origin='Returning Cust Text 3')
 
-    finally:
-        sleep_time = 60  # 60 seconds
-        time.sleep(sleep_time)
+except KeyboardInterrupt:
+    logger.info(f'Process Terminated by User at {datetime.now():%H:%M:%S}')
+else:
+    # logger.success(f'Business Automations Complete at {datetime.now():%H:%M:%S}')
+    total_seconds = (datetime.now() - now).total_seconds()
+    minutes = total_seconds // 60
+    seconds = round(total_seconds % 60, 2)
+    # logger.info(f'Total time of operation: {minutes} minutes {seconds} seconds')

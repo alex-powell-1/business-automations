@@ -182,7 +182,7 @@ def get_total_tickets(start_day, end_day):
 
 def get_list_of_current_photo_sku():
     """Returns a sorted list of unique filenames from ItemImages Folder"""
-    list_of_files = os.listdir(creds.photo_path)
+    list_of_files = os.listdir(creds.product_images)
     list_of_sku = []
     for item in list_of_files[1:]:
         name = item.split('.')[0]

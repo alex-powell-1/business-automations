@@ -11,6 +11,7 @@ from setup.error_handler import ScheduledTasksErrorHandler as error_handler
 
 
 def create_customer_text(
+    dates,
     origin,
     campaign,
     query,
@@ -33,7 +34,8 @@ def create_customer_text(
         customer_list = creds.sms_automations['test_customer']['test_list']
     else:
         # Get List of Customers
-        response = Database.query(sms_queries.query_start + query)
+        queries = sms_queries.SMSQueries(dates)  # create an instance of the SMSQueries class to update the dates.
+        response = Database.query(queries.query_start + queries.__dict__[query])
 
         if response is not None:
             customer_list = []

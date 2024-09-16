@@ -235,14 +235,14 @@ class Catalog:
 
             all_files = []
             # Iterate over all files in the directory
-            for filename in os.listdir(creds.photo_path):
+            for filename in os.listdir(creds.product_images):
                 if filename not in ['Thumbs.db', 'desktop.ini', '.DS_Store']:
                     # filter out trailing filenames
                     if '^' in filename:
                         if filename.split('.')[0].split('^')[1].isdigit():
-                            all_files.append([filename, os.path.getsize(f'{creds.photo_path}/{filename}')])
+                            all_files.append([filename, os.path.getsize(f'{creds.product_images}/{filename}')])
                     else:
-                        all_files.append([filename, os.path.getsize(f'{creds.photo_path}/{filename}')])
+                        all_files.append([filename, os.path.getsize(f'{creds.product_images}/{filename}')])
 
             return all_files
 
@@ -1221,9 +1221,9 @@ class Catalog:
             def get_brand_photos_local():
                 result_list = []
                 # Iterate over all files in the directory
-                for filename in os.listdir(creds.brand_photo_path):
+                for filename in os.listdir(creds.brand_images):
                     if filename not in ['Thumbs.db', 'desktop.ini', '.DS_Store']:
-                        file_size = os.path.getsize(f'{creds.brand_photo_path}/{filename}')
+                        file_size = os.path.getsize(f'{creds.brand_images}/{filename}')
                         result_list.append({'image_name': filename, 'image_size': file_size})
                 return result_list
 
@@ -1376,7 +1376,7 @@ class Catalog:
                 self.search_keywords = None
                 self.image_name = None
                 self.image_url = None
-                self.image_filepath = f'{creds.brand_photo_path}/{self.cp_brand_id}.jpg'
+                self.image_filepath = f'{creds.brand_images}/{self.cp_brand_id}.jpg'
                 self.image_size = None
                 self.is_custom_url = True
                 self.custom_url = '-'.join(str(re.sub('[^A-Za-z0-9 ]+', '', self.name)).split(' '))
@@ -1401,7 +1401,7 @@ class Catalog:
                     self.search_keywords = response[0][7]
                     self.image_name = response[0][8]
                     self.image_url = response[0][9]
-                    self.image_filepath = f'{creds.brand_photo_path}/{self.cp_brand_id}.jpg'
+                    self.image_filepath = f'{creds.brand_images}/{self.cp_brand_id}.jpg'
                     self.image_size = response[0][11]
                     image_size = Catalog.get_filesize(self.image_filepath)
                     self.is_custom_url = True if response[0][12] == 1 else False
@@ -1539,9 +1539,9 @@ class Catalog:
 
             def get_brand_image(self):
                 """Get image file name from directory"""
-                for filename in os.listdir(creds.brand_photo_path):
+                for filename in os.listdir(creds.brand_images):
                     if filename.split('.')[0].lower() == self.cp_brand_id.lower():
-                        file_size = os.path.getsize(f'{creds.brand_photo_path}/{filename}')
+                        file_size = os.path.getsize(f'{creds.brand_images}/{filename}')
                         return filename, file_size
                 return None, None
 
@@ -1777,7 +1777,7 @@ class Catalog:
 
                 def get_binding_id_images():
                     binding_images = []
-                    photo_path = creds.photo_path
+                    photo_path = creds.product_images
                     list_of_files = os.listdir(photo_path)
                     if list_of_files is not None:
                         for file in list_of_files:
@@ -3520,7 +3520,7 @@ class Catalog:
             def get_local_product_images(self):
                 """Get local image information for product"""
                 product_images = []
-                photo_path = creds.photo_path
+                photo_path = creds.product_images
                 list_of_files = os.listdir(photo_path)
                 if list_of_files is not None:
                     for x in list_of_files:
@@ -3613,7 +3613,7 @@ class Catalog:
                 self.id = None
                 self.image_name = image_name  # This is the file name
                 self.sku = ''
-                self.file_path = f'{creds.photo_path}/{self.image_name}'
+                self.file_path = f'{creds.product_images}/{self.image_name}'
                 self.image_url = ''
                 self.product_id = None
                 self.variant_id = None
@@ -3706,7 +3706,7 @@ class Catalog:
                             rgb_im = im.convert('RGB')
                             print('Saving new file in JPG format.')
                             new_image_name = self.image_name.split('.')[0] + '.jpg'
-                            new_file_path = f'{creds.photo_path}/{new_image_name}'
+                            new_file_path = f'{creds.product_images}/{new_image_name}'
                             rgb_im.save(new_file_path, 'JPEG', quality=q)
                             im.close()
                             print('Removing old PNG file')
@@ -3731,7 +3731,7 @@ class Catalog:
                             if code and code != 1:
                                 im = ImageOps.exif_transpose(im)
                             new_image_name = self.image_name.split('.')[0] + '.jpg'
-                            new_file_path = f'{creds.photo_path}/{new_image_name}'
+                            new_file_path = f'{creds.product_images}/{new_image_name}'
                             im.save(new_file_path, 'JPEG', quality=q)
                             im.close()
                             os.remove(self.file_path)

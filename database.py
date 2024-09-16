@@ -11,10 +11,10 @@ import pyodbc
 
 
 class Database:
-    SERVER = creds.SERVER
-    DATABASE = creds.DATABASE
-    USERNAME = creds.USERNAME
-    PASSWORD = creds.PASSWORD
+    SERVER = creds.SQL.SERVER
+    DATABASE = creds.SQL.DATABASE
+    USERNAME = creds.SQL.USERNAME
+    PASSWORD = creds.SQL.PASSWORD
     error_handler = ProcessOutErrorHandler.error_handler
     logger = ProcessOutErrorHandler.logger
 
@@ -566,7 +566,7 @@ class Database:
             if cust_no:
                 # Check if email is subscribed to the newsletter in Counterpoint
                 query = f"""
-                SELECT {Table.CP.Customers.Column.email_subscribed_1}
+                SELECT {Table.CP.Customers.Column.email_1_is_subscribed}
                 FROM {Table.CP.Customers.table}
                 WHERE EMAIL_ADRS_1 = '{email}' or EMAIL_ADRS_2 = '{email}'
                 """
@@ -610,7 +610,7 @@ class Database:
             # Unsubscribe from Counterpoint
             query = f"""
             UPDATE {Table.CP.Customers.table}
-            SET {Table.CP.Customers.Column.email_subscribed_1} = 'N'
+            SET {Table.CP.Customers.Column.email_1_is_subscribed} = 'N'
             WHERE EMAIL_ADRS_1 = '{email}' or EMAIL_ADRS_2 = '{email}'
             """
             response = Database.query(query)
@@ -649,7 +649,7 @@ class Database:
             # Subscribe in Counterpoint
             query = f"""
             UPDATE {Table.CP.Customers.table}
-            SET {Table.CP.Customers.Column.email_subscribed_1} = 'Y'
+            SET {Table.CP.Customers.Column.email_1_is_subscribed} = 'Y'
             WHERE EMAIL_ADRS_1 = '{email}' or EMAIL_ADRS_2 = '{email}'
             """
             response = Database.query(query)
@@ -1618,7 +1618,7 @@ class Database:
             @staticmethod
             def add_email(cust_no, email, field='EMAIL_ADRS_1', subscribe=True):
                 query = f"""
-                UPDATE {Table.CP.customers}
+                UPDATE {Table.CP.Customers.table}
                 SET {field} = '{email}'
                 WHERE CUST_NO = '{cust_no}'
                 """
@@ -1640,13 +1640,13 @@ class Database:
             def update_first_sale_date(cust_no, first_sale_date):
                 if first_sale_date:
                     query = f"""
-                    UPDATE {Table.CP.customers}
+                    UPDATE {Table.CP.Customers.table}
                     SET FST_SAL_DAT = '{first_sale_date}'
                     WHERE CUST_NO = '{cust_no}'
                     """
                 else:
                     query = f"""
-                    UPDATE {Table.CP.customers}
+                    UPDATE {Table.CP.Customers.table}
                     SET FST_SAL_DAT = NULL
                     WHERE CUST_NO = '{cust_no}'
                     """
@@ -1666,13 +1666,13 @@ class Database:
             def update_last_sale_date(cust_no, last_sale_date, last_sale_amt=None):
                 if last_sale_date:
                     query = f"""
-                    UPDATE {Table.CP.customers}
+                    UPDATE {Table.CP.Customers.table}
                     SET LST_SAL_DAT = '{last_sale_date}', LST_SAL_AMT = {last_sale_amt}
                     WHERE CUST_NO = '{cust_no}'
                     """
                 else:
                     query = f"""
-                    UPDATE {Table.CP.customers}
+                    UPDATE {Table.CP.Customers.table}
                     SET LST_SAL_DAT = NULL, LST_SAL_AMT = NULL
                     WHERE CUST_NO = '{cust_no}'
                     """
@@ -1696,7 +1696,7 @@ class Database:
             @staticmethod
             def get(cust_no):
                 query = f"""
-                SELECT * FROM {Table.CP.customers}
+                SELECT * FROM {Table.CP.Customers.table}
                 WHERE CUST_NO = '{cust_no}'
                 """
                 response = Database.query(query, mapped=True)
@@ -1717,8 +1717,8 @@ class Database:
                 query = f"""
                 SELECT CP.CUST_NO, FST_NAM, LST_NAM, EMAIL_ADRS_1, PHONE_1, LOY_PTS_BAL, MW.LOY_ACCOUNT, ADRS_1, ADRS_2, CITY, STATE, ZIP_COD, CNTRY,
                 MW.SHOP_CUST_ID, MW.META_CUST_NO, CATEG_COD, MW.META_CATEG, PROF_COD_2, MW.META_BIR_MTH, PROF_COD_3, MW.META_SPS_BIR_MTH, 
-                PROF_ALPHA_1, MW.WH_PRC_TIER, {Table.CP.Customers.Column.sms_subscribed_1}, {Table.CP.Customers.Column.email_subscribed_1}, MW.ID 
-                FROM {Table.CP.customers} CP
+                PROF_ALPHA_1, MW.WH_PRC_TIER, {Table.CP.Customers.Column.sms_1_is_subscribed}, {Table.CP.Customers.Column.email_1_is_subscribed}, MW.ID 
+                FROM {Table.CP.Customers.table} CP
                 FULL OUTER JOIN {Table.Middleware.customers} MW on CP.CUST_NO = MW.cust_no
                 WHERE IS_ECOMM_CUST = 'Y' AND CP.LST_MAINT_DT > '{last_sync}' and CUST_NAM_TYP = 'P' {customer_filter}
                 """
@@ -1726,7 +1726,7 @@ class Database:
 
             def update(self):
                 query = f"""
-                UPDATE {Table.CP.customers}
+                UPDATE {Table.CP.Customers.table}
                 SET """
                 for key, value in self.__dict__.items():
                     if (
@@ -1775,7 +1775,7 @@ class Database:
                 cp_phone_input = PhoneNumber(phone).to_cp()
                 query = f"""
                     SELECT CUST_NO, FST_NAM, LST_NAM, CATEG_COD
-                    FROM {Table.CP.customers}
+                    FROM {Table.CP.Customers.table}
                     WHERE PHONE_1 = '{cp_phone_input}'
                     """
                 response = Database.query(query)
@@ -1834,7 +1834,7 @@ class Database:
                     customer_list = str(tuple(customer_list))
 
                 query = f"""
-                UPDATE {Table.CP.customers}
+                UPDATE {Table.CP.Customers.table}
                 SET LST_MAINT_DT = GETDATE()
                 WHERE CUST_NO IN {customer_list}"""
 
@@ -2423,8 +2423,8 @@ class Database:
                 return Database.query(query)
 
             def insert(
-                cp_cust_no,
                 shopify_cust_no,
+                cp_cust_no=None,
                 loyalty_point_id=None,
                 meta_cust_no_id=None,
                 meta_category_id=None,
@@ -2436,7 +2436,7 @@ class Database:
                 query = f"""
                         INSERT INTO {Table.Middleware.customers} (CUST_NO, SHOP_CUST_ID, 
                         LOY_ACCOUNT, META_CUST_NO, META_CATEG, META_BIR_MTH, META_SPS_BIR_MTH, WH_PRC_TIER)
-                        VALUES ('{cp_cust_no}', '{shopify_cust_no}', 
+                        VALUES ({f"'{cp_cust_no}'" if cp_cust_no else 'NULL'}, '{shopify_cust_no}', 
                         {loyalty_point_id if loyalty_point_id else "NULL"}, 
                         {meta_cust_no_id if meta_cust_no_id else "NULL"}, 
                         {meta_category_id if meta_category_id else "NULL"}, 
@@ -2455,8 +2455,8 @@ class Database:
                     raise Exception(error)
 
             def update(
-                cp_cust_no,
                 shopify_cust_no,
+                cp_cust_no=None,
                 loyalty_point_id=None,
                 meta_cust_no_id=None,
                 meta_category_id=None,
@@ -2465,9 +2465,18 @@ class Database:
                 meta_wholesale_price_tier_id=None,
                 eh=ProcessOutErrorHandler,
             ):
+                if cp_cust_no:
+                    where = f"CUST_NO = '{cp_cust_no}'"
+                    cust_value = ''
+                else:
+                    # If no CP Customer Number is provided, we will use the Shopify Customer Number
+                    where = f'SHOP_CUST_ID = {shopify_cust_no}'
+                    cust_value = """CUST_NO = {f"'{cp_cust_no}'" if cp_cust_no else "NULL"}, """
+
                 query = f"""
                         UPDATE {Table.Middleware.customers}
-                        SET SHOP_CUST_ID = {shopify_cust_no}, 
+                        SET SHOP_CUST_ID = {shopify_cust_no},
+                        {cust_value}
                         LOY_ACCOUNT = {loyalty_point_id if loyalty_point_id else "NULL"},
                         META_CUST_NO = {meta_cust_no_id if meta_cust_no_id else "NULL"},
                         META_CATEG = {meta_category_id if meta_category_id else "NULL"},
@@ -2475,7 +2484,7 @@ class Database:
                         META_SPS_BIR_MTH = {meta_spouse_birth_month_id if meta_spouse_birth_month_id else "NULL"},
                         WH_PRC_TIER = {meta_wholesale_price_tier_id if meta_wholesale_price_tier_id else "NULL"},
                         LST_MAINT_DT = GETDATE()
-                        WHERE CUST_NO = '{cp_cust_no}'
+                        WHERE {where}
                         """
 
                 response = Database.query(query)

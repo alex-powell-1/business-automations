@@ -20,10 +20,10 @@ def get_modified_datetime(file):
 
 def get_modified_photos(reference_date):
     """Returns a list of photos modified since a specific reference date"""
-    list_of_files = os.listdir(creds.photo_path)
+    list_of_files = os.listdir(creds.product_images)
     list_of_sku = []
     for item in list_of_files[1:]:
-        modified_date = get_modified_datetime(f"{creds.photo_path}/{item}")
+        modified_date = get_modified_datetime(f'{creds.product_images}/{item}')
         if modified_date > reference_date:
             list_of_sku.append(item)
     return list_of_sku
@@ -33,10 +33,11 @@ def get_modified_photos(reference_date):
 # date = datetime.strptime(date_as_string, '%Y-%m-%d %H:%M:%S')
 # get_modified_photos(date)
 
-#print(webDAV_engine.upload_product_photo(file='../test.jpg', server_url=f'{creds.web_dav_product_photos}/'))
+# print(webDAV_engine.upload_product_photo(file='../test.jpg', server_url=f'{creds.web_dav_product_photos}/'))
+
 
 def render_photos_to_csv():
-    list_of_files = os.listdir(creds.photo_path)
+    list_of_files = os.listdir(creds.product_images)
 
     # PANDAS IS MUCH SLOWER FOR SOME REASON
     # for item in list_of_files[1:]:
@@ -47,8 +48,9 @@ def render_photos_to_csv():
     #     create_log.write_log(df, creds.product_photo_log)
 
     import csv
-    #id = 1
-    fields = ["modified", "photo"]
+
+    # id = 1
+    fields = ['modified', 'photo']
 
     # name of csv file
     filename = creds.product_photo_log
@@ -61,27 +63,26 @@ def render_photos_to_csv():
         # writing headers (field names)
         writer.writeheader()
         for item in list_of_files[1:]:
-            modified_date = get_modified_datetime(f"{creds.photo_path}/{item}")
+            modified_date = get_modified_datetime(f'{creds.product_images}/{item}')
             mydict = {'modified': modified_date, 'photo': item}
             # writing data rows
             writer.writerow(mydict)
             # id += 1
 
-#render_photos_to_csv()
+
+# render_photos_to_csv()
 
 from csv_diff import load_csv, compare
-diff = compare(
-    load_csv(open("../one.csv")),
-    load_csv(open("../two.csv"))
-)
+
+diff = compare(load_csv(open('../one.csv')), load_csv(open('../two.csv')))
 # print(diff)
-print("Added Photos")
+print('Added Photos')
 
 for x in diff['added']:
     # This control structure should commence POST HTTP requests
     print(x)
 
-print("Removed Photos")
+print('Removed Photos')
 for x in diff['removed']:
     # This control structure should commence DELETE HTTP requests
     print(x)

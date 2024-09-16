@@ -185,3 +185,40 @@ query customerMetafields($id: ID!) {
     }
   }
 }
+
+mutation customerEmailMarketingConsentUpdate(
+  $input: CustomerEmailMarketingConsentUpdateInput!
+) {
+  customerEmailMarketingConsentUpdate(input: $input) {
+    customer {
+      id
+      email
+      emailMarketingConsent {
+        marketingState
+        marketingOptInLevel
+
+      }
+    }
+    userErrors {
+      field
+      message
+    }
+  }
+}
+
+mutation customerSmsMarketingConsentUpdate($input: CustomerSmsMarketingConsentUpdateInput!) {
+  customerSmsMarketingConsentUpdate(input: $input) {
+    userErrors {
+      field
+      message
+    }
+    customer {
+      id
+      phone
+      smsMarketingConsent {
+        marketingState
+        marketingOptInLevel
+      }
+    }
+  }
+}

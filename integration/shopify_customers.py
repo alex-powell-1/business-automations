@@ -234,11 +234,15 @@ class Customers:
 
             if self.email:
                 variables['input']['email'] = self.email
-                variables['input']['emailMarketingConsent'] = (
-                    {'marketingState': 'SUBSCRIBED'}
-                    if self.email_subscribe
-                    else {'marketingState': 'NOT_SUBSCRIBED'}
-                )
+                if not self.shopify_cust_no:
+                    # Only add email marketing consent if the customer is new
+                    # Existing customers will have their email marketing consent updated
+                    # customerEmailMarketingConsentUpdate Mutation instead
+                    variables['input']['emailMarketingConsent'] = (
+                        {'marketingState': 'SUBSCRIBED'}
+                        if self.email_subscribe
+                        else {'marketingState': 'NOT_SUBSCRIBED'}
+                    )
 
             if self.phone:
                 variables['input']['phone'] = self.phone
@@ -474,8 +478,7 @@ class Customers:
 
             if self.shopify_cust_no:
                 response = update()
-                # if self.phone:
-                # Shopify.Customer.SmsMarketingConsent.update(self)
+                Shopify.Customer.update_marketing_consent(self)
             else:
                 response = create()
 

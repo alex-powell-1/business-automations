@@ -697,13 +697,13 @@ def set_contact_1(eh=ScheduledTasksErrorHandler):
     eh.logger.info(f'Set Contact 1: Finished at {datetime.now():%H:%M:%S}')
 
 
-def fix_first_and_last_sale_dates(dt=date_presets.yesterday, eh=ScheduledTasksErrorHandler):
+def fix_first_and_last_sale_dates(dt, eh=ScheduledTasksErrorHandler):
     """Updates the first and last sale dates for customers with refunds."""
     eh.logger.info(f'Fix First and Last Sale Dates: Starting at {datetime.now():%H:%M:%S}')
     # Get a list of customers with refunds from a day ago
-    customers = db.Counterpoint.ClosedOrder.get_refund_customers(dt)
+    customers = db.Counterpoint.ClosedOrder.get_refund_customers(dt.yesterday)
     if not customers:
-        eh.logger.info(f'No customers with refunds on {dt}.')
+        eh.logger.info(f'No customers with refunds on {dt.yesterday}.')
     else:
         for customer in customers:
             #################################
