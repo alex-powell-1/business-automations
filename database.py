@@ -69,10 +69,10 @@ class Database:
             raise Exception(e)
         else:
             if mapped:
+                column_response = cursor.description
                 if sql_data:
                     code = 200
                     message = 'success'
-                    column_response = cursor.description
                     mapped_response = []  # list of dictionaries
                     row_count = len(sql_data)
                     for row in sql_data:
@@ -85,7 +85,7 @@ class Database:
                     code = 201
                     message = 'No results found'
                     row_count = 0
-                    mapped_response = None
+                    mapped_response = [{column[0]: None for column in column_response}]
 
                 sql_data = {'code': code, 'message': message, 'rows': row_count, 'data': mapped_response}
         finally:
@@ -1215,7 +1215,6 @@ class Database:
         class Customer:
             def __init__(self, cust_no):
                 self.cust = Database.Counterpoint.Customer.get(cust_no)
-                # if self.cust:
                 self.CUST_NO = self.cust['CUST_NO']
                 self.NAM = self.cust['NAM']
                 self.NAM_UPR = self.cust['NAM_UPR']
@@ -1412,191 +1411,6 @@ class Database:
                 self.EMAIL_2_OPT_IN_DT = self.cust['EMAIL_2_OPT_IN_DT']
                 self.EMAIL_2_LST_MAINT_DT = self.cust['EMAIL_2_LST_MAINT_DT']
 
-                # else:
-                #     self.CUST_NO = None
-                #     self.NAM = None
-                #     self.NAM_UPR = None
-                #     self.FST_NAM = None
-                #     self.FST_NAM_UPR = None
-                #     self.LST_NAM = None
-                #     self.LST_NAM_UPR = None
-                #     self.SALUTATION = None
-                #     self.CUST_TYP = None
-                #     self.ADRS_1 = None
-                #     self.ADRS_2 = None
-                #     self.ADRS_3 = None
-                #     self.CITY = None
-                #     self.STATE = None
-                #     self.ZIP_COD = None
-                #     self.CNTRY = None
-                #     self.PHONE_1 = None
-                #     self.PHONE_2 = None
-                #     self.FAX_1 = None
-                #     self.FAX_2 = None
-                #     self.CONTCT_1 = None
-                #     self.CONTCT_2 = None
-                #     self.EMAIL_ADRS_1 = None
-                #     self.EMAIL_ADRS_2 = None
-                #     self.URL_1 = None
-                #     self.URL_2 = None
-                #     self.PROMPT_NAM_ADRS = None
-                #     self.SLS_REP = None
-                #     self.CATEG_COD = None
-                #     self.SHIP_VIA_COD = None
-                #     self.SHIP_ZONE_COD = None
-                #     self.STR_ID = None
-                #     self.STMNT_COD = None
-                #     self.TAX_COD = None
-                #     self.TERMS_COD = None
-                #     self.COMMNT = None
-                #     self.TAX_EXEMPT_NO = None
-                #     self.TAX_EXEMPT_DAT = None
-                #     self.ALLOW_AR_CHRG = None
-                #     self.ALLOW_TKTS = None
-                #     self.NO_CR_LIM = None
-                #     self.CR_LIM = None
-                #     self.CR_RATE = None
-                #     self.NO_MAX_CHK_AMT = None
-                #     self.MAX_CHK_AMT = None
-                #     self.UNPSTD_BAL = None
-                #     self.BAL_METH = None
-                #     self.AR_ACCT_NO = None
-                #     self.BAL = None
-                #     self.ORD_BAL = None
-                #     self.NO_OF_ORDS = None
-                #     self.USE_ORD_SHIP_TO = None
-                #     self.ALLOW_ORDS = None
-                #     self.LST_AGE_DAT = None
-                #     self.LST_AGE_BAL = None
-                #     self.LST_AGE_BAL_1 = None
-                #     self.LST_AGE_BAL_2 = None
-                #     self.LST_AGE_BAL_3 = None
-                #     self.LST_AGE_BAL_4 = None
-                #     self.LST_AGE_BAL_5 = None
-                #     self.LST_AGE_BAL_2_5 = None
-                #     self.LST_AGE_BAL_3_5 = None
-                #     self.LST_AGE_BAL_4_5 = None
-                #     self.LST_AGE_BAL_OPN = None
-                #     self.LST_AGE_FUTR_DOCS = None
-                #     self.LST_AGE_METH = None
-                #     self.LST_AGE_AS_OF_DAT = None
-                #     self.LST_AGE_CUTOFF_DAT = None
-                #     self.LST_AGE_MAX_PRD_1 = None
-                #     self.LST_AGE_MAX_PRD_2 = None
-                #     self.LST_AGE_MAX_PRD_3 = None
-                #     self.LST_AGE_MAX_PRD_4 = None
-                #     self.LST_AGE_NO_OF_PRDS = None
-                #     self.LST_AGE_EVENT_NO = None
-                #     self.LST_AGE_NO_CUTOFF = None
-                #     self.LST_AGE_PAST_CUTOFF = None
-                #     self.LST_AGE_NON_STD = None
-                #     self.LST_STMNT_DAT = None
-                #     self.LST_STMNT_BAL = None
-                #     self.LST_STMNT_BAL_1 = None
-                #     self.LST_STMNT_BAL_2 = None
-                #     self.LST_STMNT_BAL_3 = None
-                #     self.LST_STMNT_BAL_4 = None
-                #     self.LST_STMNT_BAL_5 = None
-                #     self.LST_STMNT_BAL_2_5 = None
-                #     self.LST_STMNT_BAL_3_5 = None
-                #     self.LST_STMNT_BAL_4_5 = None
-                #     self.LST_STMNT_BAL_OPN = None
-                #     self.LST_STMNT_METH = None
-                #     self.LST_STMNT_BEG_DAT = None
-                #     self.LST_STMNT_END_DAT = None
-                #     self.LST_STMNT_MAX_PRD_1 = None
-                #     self.LST_STMNT_MAX_PRD_2 = None
-                #     self.LST_STMNT_MAX_PRD_3 = None
-                #     self.LST_STMNT_MAX_PRD_4 = None
-                #     self.LST_STMNT_NO_OF_PRDS = None
-                #     self.LST_STMNT_PAST_CTOFF = None
-                #     self.FST_SAL_DAT = None
-                #     self.LST_SAL_DAT = None
-                #     self.LST_SAL_AMT = None
-                #     self.LST_PMT_DAT = None
-                #     self.LST_PMT_AMT = None
-                #     self.PROF_ALPHA_1 = None
-                #     self.PROF_ALPHA_2 = None
-                #     self.PROF_ALPHA_3 = None
-                #     self.PROF_ALPHA_4 = None
-                #     self.PROF_ALPHA_5 = None
-                #     self.PROF_COD_1 = None
-                #     self.PROF_COD_2 = None
-                #     self.PROF_COD_3 = None
-                #     self.PROF_COD_4 = None
-                #     self.PROF_COD_5 = None
-                #     self.PROF_DAT_1 = None
-                #     self.PROF_DAT_2 = None
-                #     self.PROF_DAT_3 = None
-                #     self.PROF_DAT_4 = None
-                #     self.PROF_DAT_5 = None
-                #     self.PROF_NO_1 = None
-                #     self.PROF_NO_2 = None
-                #     self.PROF_NO_3 = None
-                #     self.PROF_NO_4 = None
-                #     self.PROF_NO_5 = None
-                #     self.LST_MAINT_DT = None
-                #     self.LST_MAINT_USR_ID = None
-                #     self.LST_LCK_DT = None
-                #     self.ROW_TS = None
-                #     self.WRK_STMNT_ACTIV = None
-                #     self.LWY_BAL = None
-                #     self.NO_OF_LWYS = None
-                #     self.USE_LWY_SHIP_TO = None
-                #     self.ALLOW_LWYS = None
-                #     self.IS_ECOMM_CUST = None
-                #     self.ECOMM_CUST_NO = None
-                #     self.ECOMM_AFFIL_COD = None
-                #     self.DISC_PCT = None
-                #     self.ECOMM_INIT_PWD = None
-                #     self.ECOMM_NXT_PUB_UPDT = None
-                #     self.ECOMM_NXT_PUB_FULL = None
-                #     self.ECOMM_LST_PUB_DT = None
-                #     self.ECOMM_LST_PUB_TYP = None
-                #     self.ECOMM_LST_IMP_DT = None
-                #     self.ECOMM_CREATED_CUST = None
-                #     self.ECOMM_LST_ORD_NO = None
-                #     self.ECOMM_LST_ORD_DT = None
-                #     self.ECOMM_LST_IMP_TYP = None
-                #     self.ECOMM_LST_IMP_EVENT_NO = None
-                #     self.PROMPT_FOR_CUSTOM_FLDS = None
-                #     self.LOY_PGM_COD = None
-                #     self.LOY_PTS_BAL = None
-                #     self.TOT_LOY_PTS_EARND = None
-                #     self.TOT_LOY_PTS_RDM = None
-                #     self.TOT_LOY_PTS_ADJ = None
-                #     self.LST_LOY_EARN_TKT_DAT = None
-                #     self.LST_LOY_EARN_TKT_TIM = None
-                #     self.LST_LOY_PTS_EARN = None
-                #     self.LST_LOY_EARN_TKT_NO = None
-                #     self.LST_LOY_RDM_TKT_DAT = None
-                #     self.LST_LOY_RDM_TKT_TIM = None
-                #     self.LST_LOY_PTS_RDM = None
-                #     self.LST_LOY_RDM_TKT_NO = None
-                #     self.LST_LOY_ADJ_DAT = None
-                #     self.LST_LOY_PTS_ADJ = None
-                #     self.LST_LOY_ADJ_DOC_NO = None
-                #     self.LOY_CARD_NO = None
-                #     self.FCH_COD = None
-                #     self.LST_FCH_DAT = None
-                #     self.LST_FCH_AMT = None
-                #     self.LST_FCH_PAST_DUE_AMT = None
-                #     self.LST_FCH_DOC_NO = None
-                #     self.REQ_PO_NO = None
-                #     self.RS_UTC_DT = None
-                #     self.CUST_NAM_TYP = None
-                #     self.CUST_FST_LST_NAM = None
-                #     self.LST_LOY_EARN_TKT_DT = None
-                #     self.LST_LOY_RDM_TKT_DT = None
-                #     self.PS_HDR_CUST_FLD_FRM_ID = None
-                #     self.EMAIL_STATEMENT = None
-                #     self.RS_STAT = None
-                #     self.INCLUDE_IN_MARKETING_MAILOUTS = None
-                #     self.MARKETING_MAILOUT_OPT_IN_DAT = None
-                #     self.RPT_EMAIL = None
-                #     self.MBL_PHONE_1 = None
-                #     self.MBL_PHONE_2 = None
-
                 if self.FST_NAM:
                     self.FST_NAM = self.FST_NAM.strip().title()
                 if self.LST_NAM:
@@ -1709,7 +1523,7 @@ class Database:
                 WHERE CUST_NO = '{cust_no}'
                 """
                 response = Database.query(query, mapped=True)
-                if response['code'] == 200:
+                if response['code'] == 200 or response['code'] == 201:
                     return response['data'][0]
                 else:
                     return {}
@@ -3814,7 +3628,5 @@ class Database:
 
 
 if __name__ == '__main__':
-    single_items = Database.Counterpoint.Product.get_single_items()
-    for x in single_items:
-        if Database.Shopify.Product.exists(x):
-            pass
+    cust = Database.Counterpoint.Customer('105786')
+    print(cust)

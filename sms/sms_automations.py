@@ -6,7 +6,7 @@ from setup import creds
 from database import Database
 from setup.sms_engine import SMSEngine
 from sms import sms_queries
-from sms.sms_messages import salutations
+from sms.sms_messages import SMSMessages
 from setup.error_handler import ScheduledTasksErrorHandler as error_handler
 
 
@@ -62,11 +62,11 @@ def create_customer_text(
 
         message = (
             prefix
-            + random.choice(salutations.greeting)
+            + random.choice(SMSMessages.greetings)
             + first_name
             + '! '
             + msg
-            + random.choice(salutations.farewell)
+            + random.choice(SMSMessages.farewells)
             + rewards_msg
         )
 
