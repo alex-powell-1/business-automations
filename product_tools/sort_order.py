@@ -49,9 +49,50 @@ class SortOrderEngine:
     def adjust_order(items):
         """Adjusts order of items"""
         new_items = []
+        item_skus = []
+
+        featured_items = []
+
+        try:
+            query = """
+            SELECT ITEM_NO FROM IM_ITEM WHERE PROMOTE_DT_EXP > GETDATE()
+            """
+
+            response = db.query(query)
+            response = [x[0] for x in response] if response else []
+
+            for item in items:
+                try:
+                    binding_id = products.get_binding_id(item['item_no'])
+                    if binding_id is None:
+                        if item['item_no'] in response:
+                            featured_items.append(item)
+
+                        continue
+
+                    parent = products.get_parent_product(binding_id)
+
+                    if parent is None:
+                        SortOrderEngine.error_handler.add_error_v(
+                            error=f'No parent found for {item["item_no"]}', origin='SortOrderEngine.adjust_order'
+                        )
+                        continue
+
+                    if parent in response:
+                        featured_items.append(item)
+                except Exception as e:
+                    SortOrderEngine.error_handler.add_error_v(
+                        error=f'Error getting parent: {e}', origin='SortOrderEngine.adjust_order'
+                    )
+
+        except:
+            pass
+
+        # creds.Table.CP.Item.Column.is_parent
 
         for item in items:
             new_items.append(item)
+            item_skus.append(item['item_no'])
 
         return new_items
 
@@ -118,7 +159,7 @@ class SortOrderEngine:
 
         return new_collections
 
-    def sort():
+    def sort(print_mode=False):
         """Sets sort order based on revenue data from prior year during the forecasted time period"""
         SortOrderEngine.logger.info('Sort Order: Starting')
         start_time = time.time()
@@ -182,6 +223,10 @@ class SortOrderEngine:
         ###############################################################################################
         ########################################## Last Step ##########################################
         ###############################################################################################
+
+        if print_mode:
+            print(collections)
+            return
 
         collections_list = [(collection_id, items) for collection_id, items in collections.items()]
 
