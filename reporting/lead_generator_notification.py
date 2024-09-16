@@ -1,11 +1,8 @@
 import numpy as np
 import pandas
-from jinja2 import Template
-
 import customer_tools.customers
 from setup import creds
 from setup.date_presets import *
-from setup.email_engine import Email
 from setup.error_handler import ScheduledTasksErrorHandler as error_handler
 
 
@@ -51,37 +48,7 @@ def create_new_customers():
                         state=state,
                         zip_code=zip_code,
                     )
-                    # Log on share
-                    log_data = [
-                        [
-                            str(datetime.now())[:-7],
-                            customer_number,
-                            first_name,
-                            last_name,
-                            phone_number,
-                            email,
-                            street_address,
-                            city,
-                            state,
-                            zip_code,
-                        ]
-                    ]
-                    df = pandas.DataFrame(
-                        log_data,
-                        columns=[
-                            'date',
-                            'customer_number',
-                            'first_name',
-                            'last_name',
-                            'phone_number',
-                            'email',
-                            'street',
-                            'city',
-                            'state',
-                            'zip_code',
-                        ],
-                    )
-                    create_log.write_log(df, creds.new_customer_log)
+
                     error_handler.logger.info(f'Created customer: {customer_number}: {first_name} {last_name}')
                 else:
                     error_handler.logger.info(

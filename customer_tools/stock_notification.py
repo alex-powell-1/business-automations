@@ -70,18 +70,18 @@ def send_email(greeting, email, item_number, coupon_code, photo=None):
         'greeting': greeting,
         'item': item.web_title,
         'qty': item.buffered_quantity_available,
-        'company': creds.company_name,
+        'company': creds.Company.name,
         'item_description': item.web_description,
         'item_url': item.item_url,
         'coupon_code': coupon_code,
         'coupon_offer': coupon_offer,
         'signature_name': creds.signature_name,
         'signature_title': creds.signature_title,
-        'company_phone': creds.company_phone,
-        'company_url': creds.company_url,
-        'company_reviews': creds.company_reviews,
-        'company_address_line_1': creds.company_address_html_1,
-        'company_address_line_2': creds.company_address_html_2,
+        'company_phone': creds.Company.phone,
+        'company_url': creds.Company.url,
+        'company_reviews': creds.Company.reviews,
+        'company_address_line_1': creds.Company.address_html_1,
+        'company_address_line_2': creds.Company.address_html_2,
     }
 
     email_content = jinja_template.render(email_data)
@@ -261,7 +261,7 @@ def send_stock_notifications():
                     error_handler.error_handler.add_error_v(f'Coupon Code Could Not Be Generated for {item_no}')
                     continue
 
-            item_photo = creds.product_images + f'/{item_no}.jpg'
+            item_photo = creds.Company.product_images + f'/{item_no}.jpg'
 
             if included:
                 expiration_date = datetime.datetime.now() + relativedelta(days=+5)
@@ -269,21 +269,21 @@ def send_stock_notifications():
                 combine_images(
                     item_photo,
                     f'{coupon_code}.png',
-                    combined_image_path=creds.public_files + f'/{item_no}-BARCODE.jpg',
+                    combined_image_path=creds.Company.public_files + f'/{item_no}-BARCODE.jpg',
                     barcode_text=coupon_code,
                     expires_text=f'Expires {expiration_date:%b %d, %Y}',
                 )
 
-            copy_file(item_photo, creds.public_files)
+            copy_file(item_photo, creds.Company.public_files)
 
-            local_photo = creds.public_files + f'/{item_no}.jpg'
-            product_photo = creds.api_public_files + f'/{item_no}.jpg'
+            local_photo = creds.Company.public_files + f'/{item_no}.jpg'
+            product_photo = creds.Company.API.public_files + f'/{item_no}.jpg'
 
             photos_to_remove.append(local_photo)
 
             if included:
-                photos_to_remove.append(creds.public_files + f'/{item_no}-BARCODE.jpg')
-                product_photo = creds.api_public_files + f'/{item_no}-BARCODE.jpg'
+                photos_to_remove.append(creds.Company.public_files + f'/{item_no}-BARCODE.jpg')
+                product_photo = creds.Company.API.public_files + f'/{item_no}-BARCODE.jpg'
 
             ###############################################################
             ###################### Send Text / Email ######################

@@ -24,7 +24,7 @@ def set_stock_buffer_by_vendor(buffer: int, db_filter: str, filter_input: str, o
 def set_stock_buffer(category, base_buffer=3):
     """Sets stock buffers based on 'price 1' thresholds defined in dictionary in creds"""
     product_list = get_products_by_category(category, ecomm_only=True)
-    buffer_bank = creds.buffer_bank[category]
+    buffer_bank = creds.Company.stock_buffers[category]
     for x in product_list:
         item = Product(x)
         # Highest Priced Tier
@@ -60,7 +60,7 @@ def stock_buffer_updates():
         set_stock_buffer_by_vendor(buffer=v, db_filter='ITEM_VEND_NO', filter_input=k, only_nulls=True)
     error_handler.logger.info('Vendor Updates Complete')
     # Category Updates
-    for k in creds.buffer_bank:
+    for k in creds.Company.stock_buffers:
         error_handler.logger.info(f'Setting Category Updates for {k}')
         set_stock_buffer(k)
 

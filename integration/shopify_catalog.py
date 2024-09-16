@@ -87,7 +87,7 @@ class Catalog:
                 queue_payload = {}
                 if binding_id is not None:
                     # Check if the binding ID matches the correct format. (e.g. B0001)
-                    pattern = creds.binding_id_format
+                    pattern = creds.Company.binding_id_format
                     if not bool(re.fullmatch(pattern, binding_id)):
                         message = f'Product {binding_id} has an invalid binding ID.'
                         Catalog.error_handler.add_error_v(error=message, origin='get_products()')
@@ -775,7 +775,7 @@ class Catalog:
 
             def get_category_image_path(self, local=True):
                 image_name = str(self.handle)[1:-1].replace('/', '_').replace(' ', '-') + '.jpg'
-                local_path = f'{creds.public_files}/{creds.category_images}/{image_name}'
+                local_path = f'{creds.Company.public_files}/{creds.Company.category_images}/{image_name}'
                 if os.path.exists(local_path):
                     return local_path
 
@@ -1019,7 +1019,7 @@ class Catalog:
 
                 def get_binding_id_images():
                     binding_images = []
-                    photo_path = creds.product_images
+                    photo_path = creds.Company.product_images
                     list_of_files = os.listdir(photo_path)
                     if list_of_files is not None:
                         for file in list_of_files:
@@ -3181,7 +3181,7 @@ class Catalog:
             def get_local_product_images(self):
                 """Get local image information for product"""
                 product_images = []
-                photo_path = creds.product_images
+                photo_path = creds.Company.product_images
                 list_of_files = os.listdir(photo_path)
                 if list_of_files is not None:
                     for x in list_of_files:
@@ -3209,7 +3209,7 @@ class Catalog:
                 self.db_id = None
                 self.name = image_name  # This is the file name
                 self.sku = None
-                self.file_path = f'{creds.product_images}/{self.name}'
+                self.file_path = f'{creds.Company.product_images}/{self.name}'
                 self.image_url = ''
                 self.product_id = product_id
                 self.variant_id = None
@@ -3299,7 +3299,7 @@ class Catalog:
                                 im = ImageOps.exif_transpose(im)
                             rgb_im = im.convert('RGB')
                             new_image_name = self.name.split('.')[0] + '.jpg'
-                            new_file_path = f'{creds.product_images}/{new_image_name}'
+                            new_file_path = f'{creds.Company.product_images}/{new_image_name}'
                             rgb_im.save(new_file_path, 'JPEG', quality=q)
                             im.close()
                             os.remove(self.file_path)
@@ -3324,7 +3324,7 @@ class Catalog:
                             if code and code != 1:
                                 im = ImageOps.exif_transpose(im)
                             new_image_name = self.name.split('.')[0] + '.jpg'
-                            new_file_path = f'{creds.product_images}/{new_image_name}'
+                            new_file_path = f'{creds.Company.product_images}/{new_image_name}'
                             im.save(new_file_path, 'JPEG', quality=q)
                             im.close()
                             os.remove(self.file_path)

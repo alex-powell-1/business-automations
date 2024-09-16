@@ -20,7 +20,7 @@ import os
 
 
 class Email:
-    name = creds.company_name
+    name = creds.Company.name
     address = creds.sales_email
     pw = creds.sales_password
 
@@ -45,7 +45,7 @@ class Email:
         msg.attach(msg_html)
 
         if logo:
-            with open(creds.logo, 'rb') as logo_file:
+            with open(creds.Company.logo, 'rb') as logo_file:
                 logo = logo_file.read()
                 msg_logo = MIMEImage(logo, 'jpg')
                 msg_logo.add_header('Content-ID', '<image1>')
@@ -168,11 +168,11 @@ class Email:
                     'name': name,
                     'gc_code': gc_code,
                     'amount': amount,
-                    'company': creds.company_name,
-                    'company_url': creds.company_url,
-                    'company_phone': creds.company_phone,
-                    'company_address_line_1': creds.company_address_html_1,
-                    'company_address_line_2': creds.company_address_html_2,
+                    'company': creds.Company.name,
+                    'company_url': creds.Company.url,
+                    'company_phone': creds.Company.phone,
+                    'company_address_line_1': creds.Company.address_html_1,
+                    'company_address_line_2': creds.Company.address_html_2,
                 }
 
                 email_content = jinja_template.render(email_data)
@@ -204,13 +204,13 @@ class Email:
                     'title': creds.email_subject,
                     'greeting': f'Hi {first_name},',
                     'service': creds.service,
-                    'company': creds.company_name,
+                    'company': creds.Company.name,
                     'list_items': creds.list_items,
                     'signature_name': creds.signature_name,
                     'signature_title': creds.signature_title,
-                    'company_phone': creds.company_phone,
-                    'company_url': creds.company_url,
-                    'company_reviews': creds.company_reviews,
+                    'company_phone': creds.Company.phone,
+                    'company_url': creds.Company.url,
+                    'company_reviews': creds.Company.reviews,
                 }
 
                 email_content = jinja_template.render(email_data)
@@ -388,7 +388,7 @@ class Email:
 
                     email_data = {
                         'title': 'Design Lead Followup Email',
-                        'company': creds.company_name,
+                        'company': creds.Company.name,
                         'leads': yesterday_entries,
                         'date_format': datetime,
                         'format': utilities,

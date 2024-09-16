@@ -19,9 +19,9 @@ TO_ZONE = tz.gettz('America/New_York')
 class SMSEngine:
     logger = SMSErrorHandler.logger
     error_handler = SMSErrorHandler.error_handler
-    phone = creds.twilio_phone_number
-    sid = creds.twilio_account_sid
-    token = creds.twilio_auth_token
+    phone = creds.Twilio.phone_number
+    sid = creds.Twilio.sid
+    token = creds.Twilio.token
 
     @staticmethod
     def send_text(
@@ -88,7 +88,7 @@ class SMSEngine:
                     origin=origin,
                     campaign=campaign,
                     to_phone=to_phone,
-                    from_phone=creds.twilio_phone_number,
+                    from_phone=creds.Twilio.phone_number,
                     cust_no=cust_no,
                     body=message,
                     username=username,

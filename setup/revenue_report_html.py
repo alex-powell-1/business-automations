@@ -426,7 +426,7 @@ body_end = f"""
               <table role="presentation" border="0" cellpadding="0" cellspacing="0">
                 <tr>
                   <td class="content-block">
-                    <span class="apple-link">{creds.email_footer}</span>
+                    <span class="apple-link">{creds.Company.address}</span>
                   </td>
                 </tr>
               </table>

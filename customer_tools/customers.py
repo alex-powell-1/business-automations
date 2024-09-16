@@ -1,5 +1,4 @@
 import csv
-from setup import date_presets
 import requests
 from datetime import datetime
 from setup import creds
@@ -305,10 +304,10 @@ def add_new_customer(first_name, last_name, phone_number, email_address, street_
         phone_number = PhoneNumber(phone_number).to_cp()
 
     if not is_customer(email_address=email_address, phone_number=phone_number):
-        url = f'{creds.cp_api_server}/CUSTOMER/'
+        url = f'{creds.CounterpointAPI.server}/CUSTOMER/'
         headers = {
-            'Authorization': f'Basic {creds.cp_api_user}',
-            'APIKey': creds.cp_api_key,
+            'Authorization': f'Basic {creds.CounterpointAPI.user}',
+            'APIKey': creds.CounterpointAPI.key,
             'Content-Type': 'application/json',
             'Accept': 'application/json',
         }

@@ -182,7 +182,7 @@ def get_total_tickets(start_day, end_day):
 
 def get_list_of_current_photo_sku():
     """Returns a sorted list of unique filenames from ItemImages Folder"""
-    list_of_files = os.listdir(creds.product_images)
+    list_of_files = os.listdir(creds.Company.product_images)
     list_of_sku = []
     for item in list_of_files[1:]:
         name = item.split('.')[0]
@@ -1057,61 +1057,3 @@ def report_generator(
                 split=False, anna_mode=True)}"
 
     return report
-
-
-def administrative_report(recipients, log_file):
-    print(f'Generating Admin Report Data - Starting at {datetime.now():%H:%M:%S}', file=log_file)
-    subject = f'Administrative Report - {today:%x}'
-    report_data = report_generator(
-        title='Administrative Report',
-        revenue=True,
-        cogs_report=True,
-        last_week_report=True,
-        mtd_month_report=True,
-        last_year_mtd_report=True,
-        forecasting_report=True,
-        top_items_by_category=True,
-        missing_images_report=True,
-        negatives_report=True,
-        ecomm_category_report=True,
-        non_web_enabled_report=True,
-        low_stock_items_report=True,
-        sales_rep_report=True,
-        wholesale_report=True,
-        inactive_items_report=True,
-        missing_descriptions_report=True,
-    )
-    html_contents = boiler_plate + css + body_start + report_data + body_end
-    email_engine.Email(
-        from_name=creds.company_name,
-        from_address=creds.gmail_alex_user,
-        from_pw=creds.gmail_alex_pw,
-        recipients_list=recipients,
-        subject=subject,
-        content=html_contents,
-        logo=True,
-        mode='related',
-        image=None,
-    )
-    print(f'Administrative Report: Completed at {datetime.now():%H:%M:%S}', file=log_file)
-    print('-----------------------', file=log_file)
-
-
-def revenue_report(recipients, log_file):
-    print(f'Generating Revenue Report Data - Starting at {datetime.now():%H:%M:%S}', file=log_file)
-    subject = f'Revenue Report - {today:%x}'
-    report_data = report_generator(revenue=True, cogs_report=True, title='Revenue Report')
-    html_contents = boiler_plate + css + body_start + report_data + body_end
-    email_engine.Email(
-        from_name=creds.company_name,
-        from_address=creds.gmail_alex_user,
-        from_pw=creds.gmail_alex_pw,
-        recipients_list=recipients,
-        subject=subject,
-        content=html_contents,
-        mode='related',
-        image=None,
-        logo=True,
-    )
-    print(f'Revenue Report: Completed at {datetime.now():%H:%M:%S}', file=log_file)
-    print('-----------------------', file=log_file)

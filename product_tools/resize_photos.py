@@ -10,7 +10,7 @@ BIGCOMMERCE_SIZE = (1280, 1280)
 LANDSCAPE_DESIGN_SIZE = (2560, 2560)
 EXIF_ORIENTATION = 0x0112
 
-photo_path = creds.product_images
+photo_path = creds.Company.product_images
 
 
 def resize_photos(path, mode='big'):

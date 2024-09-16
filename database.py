@@ -174,7 +174,7 @@ class Database:
                                         MESSAGE varchar(255)
                                         )""",
             'sms_subsribe': f"""
-                                        CREATE TABLE {Table.sms_subscribe}(
+                                        CREATE TABLE {Table.sms_subsribe}(
                                         CUST_NO varchar(15) NOT NULL,
                                         PHONE_1 T_BOOL DEFAULT('N'),
                                         PHONE_1_FST_SUB_DT DATETIME,
@@ -319,7 +319,7 @@ class Database:
                 media=None,
             ):
                 self.to_phone = to_phone
-                self.from_phone = from_phone or creds.twilio_phone_number
+                self.from_phone = from_phone or creds.Twilio.phone_number
                 self.cust_no = cust_no
                 self.name = name or Database.Counterpoint.Customer.get_name(cust_no)
                 self.first_name = self.name.split(' ')[0] or None
@@ -361,7 +361,7 @@ class Database:
                 to_phone = PhoneNumber(self.to_phone).to_cp()
                 from_phone = PhoneNumber(self.from_phone).to_cp()
 
-                if from_phone == PhoneNumber(creds.twilio_phone_number).to_cp():
+                if from_phone == PhoneNumber(creds.Twilio.phone_number).to_cp():
                     direction = 'OUTBOUND'
                 else:
                     direction = 'INBOUND'
@@ -427,7 +427,7 @@ class Database:
             to_phone = PhoneNumber(to_phone).to_cp()
             from_phone = PhoneNumber(from_phone).to_cp()
 
-            if from_phone == PhoneNumber(creds.twilio_phone_number).to_cp():
+            if from_phone == PhoneNumber(creds.Twilio.phone_number).to_cp():
                 direction = 'OUTBOUND'
             else:
                 direction = 'INBOUND'
@@ -833,7 +833,7 @@ class Database:
                 )
 
                 def valid(binding_id):
-                    return re.match(creds.binding_id_format, binding_id)
+                    return re.match(creds.Company.binding_id_format, binding_id)
 
                 return [binding[0] for binding in response if valid(binding[0])] if response else []
 
@@ -1398,8 +1398,18 @@ class Database:
                 self.RPT_EMAIL = self.cust['RPT_EMAIL']
                 self.MBL_PHONE_1 = self.cust['MBL_PHONE_1']
                 self.MBL_PHONE_2 = self.cust['MBL_PHONE_2']
-                self.SUBSCRIBED_SMS = self.cust['SUBSCRIBED_SMS']
-                self.SUBSCRIBED_EMAIL = self.cust['SUBSCRIBED_EMAIL']
+                self.SMS_1_IS_SUB = self.cust['SMS_1_IS_SUB']
+                self.SMS_1_OPT_IN_DT = self.cust['SMS_1_OPT_IN_DT']
+                self.SMS_1_LST_MAINT_DT = self.cust['SMS_1_LST_MAINT_DT']
+                self.SMS_2_IS_SUB = self.cust['SMS_2_IS_SUB']
+                self.SMS_2_OPT_IN_DT = self.cust['SMS_2_OPT_IN_DT']
+                self.SMS_2_LST_MAINT_DT = self.cust['SMS_2_LST_MAINT_DT']
+                self.EMAIL_1_IS_SUB = self.cust['EMAIL_1_IS_SUB']
+                self.EMAIL_1_OPT_IN_DT = self.cust['EMAIL_1_OPT_IN_DT']
+                self.EMAIL_1_LST_MAINT_DT = self.cust['EMAIL_1_LST_MAINT_DT']
+                self.EMAIL_2_IS_SUB = self.cust['EMAIL_2_IS_SUB']
+                self.EMAIL_2_OPT_IN_DT = self.cust['EMAIL_2_OPT_IN_DT']
+                self.EMAIL_2_LST_MAINT_DT = self.cust['EMAIL_2_LST_MAINT_DT']
 
                 # else:
                 #     self.CUST_NO = None
@@ -1585,8 +1595,6 @@ class Database:
                 #     self.RPT_EMAIL = None
                 #     self.MBL_PHONE_1 = None
                 #     self.MBL_PHONE_2 = None
-                #     self.SUBSCRIBED_SMS = None
-                #     self.SUBSCRIBED_EMAIL = None
 
                 if self.FST_NAM:
                     self.FST_NAM = self.FST_NAM.strip().title()

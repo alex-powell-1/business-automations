@@ -23,7 +23,7 @@ class Printer:
     error_handler = ProcessInErrorHandler.error_handler
 
     class DesignLead:
-        def print(first_name, year, month, day, delete=True):
+        def print(first_name, year, month, day, delete=True, test_mode=False):
             query = f"""
             SELECT * FROM SN_LEADS_DESIGN
             WHERE FST_NAM = '{first_name}' and DATE > '{year}-{month}-{day}'
@@ -79,7 +79,10 @@ class Printer:
                     if test_mode:
                         LeadFormErrorHandler.logger.info('Test Mode: Skipping Print')
                     else:
-                        os.startfile(ticket_name, 'print')
+                        if test_mode:
+                            LeadFormErrorHandler.logger.info('Test Mode: Skipping Print')
+                        else:
+                            os.startfile(ticket_name, 'print')
                     if delete:
                         # Delay while print job executes
                         time.sleep(4)
@@ -87,7 +90,7 @@ class Printer:
                         os.remove(ticket_name)
 
     class Order:
-        def print(order_id):
+        def print(order_id, test_mode=False):
             """Takes Shopify Order ID ex. 5642506862759 and pulls data, converts to a BigCommerce Order (for parsing)
             and prints a Word Document with the order details. The document is then printed to the default printer."""
             order = Shopify.Order.as_bc_order(order_id)
@@ -157,9 +160,9 @@ class Printer:
                     barcode = InlineImage(doc, f'./{barcode_filename}.png', height=Mm(15))  # width in mm
                     context = {
                         # Company Details
-                        'company_name': creds.company_name,
-                        'co_address': creds.company_address,
-                        'co_phone': creds.company_phone,
+                        'company_name': creds.Company.name,
+                        'co_address': creds.Company.address,
+                        'co_phone': creds.Company.phone,
                         # Order Details
                         'order_number': order['id'],
                         'order_date': date,
@@ -205,7 +208,7 @@ class Printer:
 
                     doc.render(context)
                     ticket_name = f"ticket_{order['id']}_{datetime.now().strftime("%m_%d_%y_%H_%M_%S")}.docx"
-                    file_path = creds.ticket_location + ticket_name
+                    file_path = creds.Company.ticket_location + '/' + ticket_name
                     doc.save(file_path)
 
                 except Exception as err:
@@ -218,7 +221,10 @@ class Printer:
                     Printer.logger.success(f'Creating Word Document - Success at {datetime.now():%H:%M:%S}')
                     try:
                         # Print the file to default printer
-                        os.startfile(file_path, 'print')
+                        if test_mode:
+                            Printer.logger.info('Test Mode: Skipping Print')
+                        else:
+                            os.startfile(file_path, 'print')
                     except Exception as err:
                         error_type = 'Printing'
                         Printer.error_handler.add_error_v(
@@ -229,4 +235,4 @@ class Printer:
 
 
 if __name__ == '__main__':
-    Printer.Order.print(5663865307303)
+    Printer.Order.print(5663865307303, test_mode=True)

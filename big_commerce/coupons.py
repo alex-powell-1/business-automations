@@ -179,10 +179,7 @@ def delete_expired_coupons():
                 # Delete from BigCommerce
                 bc_delete_coupon(coupon.id)
                 total += 1
-                deleted_coupon_log_file = open(creds.deleted_coupon_log, 'a')
-                for y, z in x.items():
-                    print(str(y), ': ', z, file=deleted_coupon_log_file)
-                    print(str(y), ': ', z)
+                error_handler.logger.info(f'Deleted Coupon: {coupon.code}')
 
     error_handler.logger.info(f'Deleting Expired Coupons: Finished at {datetime.now():%H:%M:%S}')
     error_handler.logger.info(f'Total Coupons Deleted: {total}')

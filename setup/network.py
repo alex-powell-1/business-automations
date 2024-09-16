@@ -30,18 +30,18 @@ def restart_server_if_disconnected():
 
 def health_check():
     error_handler.logger.info(f'API Endpoint Health Check: Starting at {datetime.now():%H:%M:%S}')
-    url = f'{creds.api_endpoint}'
+    url = f'{creds.Company.API.endpoint}'
     response = requests.get(url=url)
     if response.status_code != 200:
         error_handler.logger.warn('Flask server is not running. Restart the server')
         SMSEngine.send_text(
             origin='SERVER',
             campaign='Health Check',
-            to_phone=creds.network_notification_phone,
-            message=f'{creds.api_endpoint} is not running. Restart the server.',
+            to_phone=creds.Company.network_notification_phone,
+            message=f'{creds.Company.API.endpoint} is not running. Restart the server.',
         )
     else:
-        error_handler.logger.info(f'{creds.api_endpoint} is running.')
+        error_handler.logger.info(f'{creds.Company.API.endpoint} is running.')
 
     error_handler.logger.success(f'API Endpoint Health Check: Completed at {datetime.now():%H:%M:%S}')
 

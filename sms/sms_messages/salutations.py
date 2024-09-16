@@ -1,8 +1,16 @@
-from setup.creds import company_name
+from setup.creds import Company
 
 # ------------------------------- Greeting ----------------------------- #
-greeting = ["Hey ", "Hey there ", "Hi ", "Greetings "]
+greeting = ['Hey ', 'Hey there ', 'Hi ', 'Greetings ']
 
 # ------------------------------- Farewell ----------------------------- #
-farewell = ["See you soon! ", "Take care! ", "Bye for now! ", "See you at the nursery! ", "Happy planting! ",
-            f"\n-Beth @ {company_name}", f"\n-Brandon @ {company_name}", f"-Michelle @ {company_name}"]
+farewell = [
+    'See you soon! ',
+    'Take care! ',
+    'Bye for now! ',
+    'See you at the nursery! ',
+    'Happy planting! ',
+    f'\n-Beth @ {Company.name}',
+    f'\n-Brandon @ {Company.name}',
+    f'-Michelle @ {Company.name}',
+]

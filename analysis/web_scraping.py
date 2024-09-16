@@ -14,7 +14,7 @@ def scrape_competitor_prices():
 
     driver = webdriver.Chrome()
 
-    for k, v in creds.competitor_bank.items():
+    for k, v in creds.Company.competitors.items():
         print(f'Beginning Scraping for {k}')
         url = v['site']
         driver.get(url)

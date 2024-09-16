@@ -2,7 +2,6 @@ import pandas
 
 from setup.big_products import bc_get_variant, bc_update_product
 from database import Database
-from setup.log_engine import create_product_log
 from setup import creds
 from datetime import datetime
 
@@ -181,30 +180,11 @@ class Product:
                 # Success!
                 print(f'{self.item_no}: {self.long_descr} sort order changed from ' f'{initial_buffer} to {buffer}')
                 # Write Success Log
-                create_product_log(
-                    item_no=self.item_no,
-                    product_name=self.long_descr,
-                    qty_avail=self.quantity_available,
-                    status_1_col_name='buffer',
-                    status_1_data=self.buffer,
-                    status_2_col_name='Message',
-                    status_2_data=f'Item: {self.item_no} buffer updated from ' f'{initial_buffer} to {self.buffer}',
-                    log_location=creds.buffer_log,
-                )
+
                 # If unsuccessful:
             else:
                 print(f'{self.item_no}: {self.long_descr} failed to change sort order to {buffer}')
                 # Write failure log
-                create_product_log(
-                    item_no=self.item_no,
-                    product_name=self.long_descr,
-                    qty_avail=self.quantity_available,
-                    status_1_col_name='buffer',
-                    status_1_data=self.buffer,
-                    status_2_col_name='Message',
-                    status_2_data=f'Item: {self.item_no} buffer failed to update to {buffer}.',
-                    log_location=creds.buffer_log,
-                )
 
     def set_sort_order(self, target_sort_order=0):
         old_sort_order = self.sort_order
@@ -229,31 +209,11 @@ class Product:
                     f'{old_sort_order} to {self.sort_order}'
                 )
                 # Write Success Log
-                create_product_log(
-                    item_no=self.item_no,
-                    product_name=self.long_descr,
-                    qty_avail=self.quantity_available,
-                    status_1_col_name='sort_order',
-                    status_1_data=self.sort_order,
-                    status_2_col_name='Message',
-                    status_2_data=f'Item: {self.item_no} sort order updated from '
-                    f'{old_sort_order} to {self.sort_order}',
-                    log_location=creds.sort_order_log,
-                )
+
             # If unsuccessful:
             else:
                 print(f'{self.item_no}: {self.long_descr} failed to change sort order to {target_sort_order}')
                 # Write failure log
-                create_product_log(
-                    item_no=self.item_no,
-                    product_name=self.long_descr,
-                    qty_avail=self.quantity_available,
-                    status_1_col_name='sort_order',
-                    status_1_data=self.sort_order,
-                    status_2_col_name='Message',
-                    status_2_data=f'Item: {self.item_no} sort order failed to update.',
-                    log_location=creds.sort_order_log,
-                )
 
     def set_featured(self, status):
         if self.binding_key is None:
@@ -276,44 +236,16 @@ class Product:
             if self.featured == 'Y':
                 print(f'Item: {self.item_no} updated to featured')
                 # Write Success Log
-                create_product_log(
-                    item_no=self.item_no,
-                    product_name=self.long_descr,
-                    qty_avail=self.quantity_available,
-                    status_1_col_name='featured',
-                    status_1_data=self.featured,
-                    status_2_col_name='Message',
-                    status_2_data=f'Item: {self.item_no} updated to featured',
-                    log_location=creds.featured_products,
-                )
+
             # If Unsuccessful
             else:
                 print(f'Item: {self.item_no} failed to update to featured')
                 # Write failure Log
-                create_product_log(
-                    item_no=self.item_no,
-                    product_name=self.long_descr,
-                    qty_avail=self.quantity_available,
-                    status_1_col_name='featured',
-                    status_1_data=status,
-                    status_2_col_name='Message',
-                    status_2_data=f'Item: {self.item_no} failed to update to featured',
-                    log_location=creds.featured_products,
-                )
+
         else:
             if self.featured == 'N':
                 print(f'Item: {self.item_no} updated to NOT featured')
                 # Write Success Log
-                create_product_log(
-                    item_no=self.item_no,
-                    product_name=self.long_descr,
-                    qty_avail=self.quantity_available,
-                    status_1_col_name='featured',
-                    status_1_data=self.featured,
-                    status_2_col_name='Message',
-                    status_2_data=f'Item: {self.item_no} updated to featured',
-                    log_location=creds.featured_products,
-                )
 
     def set_sale_price(self, discount):
         sale_price = round(float(self.price_1 * (100 - discount) / 100), 2)
@@ -324,17 +256,6 @@ class Product:
         """
         Database.query(query)
         print(f'updated {self.long_descr} from ${self.price_1} to ${sale_price}')
-
-    # def get_top_child_product(self):
-    #     """Get Top Performing child product of merged product (by sales in last year window)"""
-    #     from reporting.product_reports import create_top_items_report
-    #     top_child = create_top_items_report(beginning_date=one_year_ago,
-    #                                         ending_date=last_year_forecast,
-    #                                         merged=True,
-    #                                         binding_id=self.binding_key,
-    #                                         number_of_items=1,
-    #                                         return_format=3)[0]
-    #     return top_child
 
 
 def get_ecomm_items(mode=1):
@@ -656,31 +577,6 @@ def fix_html_trash():
                     df = pandas.DataFrame(log_data, columns=['item_no', 'html_description'])
                     df.to_csv(creds.description_log, mode='a', header=False, index=False)
                     break
-
-
-def export_html_descr():
-    log = creds.description_log
-    query = """
-    SELECT ITEM_NO, HTML_DESCR
-    FROM EC_ITEM_DESCR
-    WHERE HTML_DESCR IS NOT NULL
-    """
-    response = Database.query(query)
-    if response is not None:
-        items = []
-
-        for x in response:
-            items.append([x[0], x[1]])
-
-        for y in items:
-            log_data = [[y[0], (y[1]).strip().replace('\n', '').replace('\r', '').replace('&nbsp;', '')]]
-            df = pandas.DataFrame(log_data, columns=['item_no', 'html_description'])
-            try:
-                pandas.read_csv(log)
-            except FileNotFoundError:
-                df.to_csv(log, mode='a', header=True, index=False)
-            else:
-                df.to_csv(log, mode='a', header=False, index=False)
 
 
 def set_sale_price(query, discount_percentage):

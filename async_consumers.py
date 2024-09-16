@@ -197,7 +197,7 @@ def process_design_lead(body, eh=LeadFormErrorHandler, test_mode=False):
     try:
         # Try block stands to decouple our implementation from API changes that might impact app.
         requests.post(
-            url=creds.sheety_design_url, headers={'authorization': creds.sheety_token}, json=sheety_post_body
+            url=creds.Sheety.design_url, headers={'authorization': creds.Sheety.token}, json=sheety_post_body
         )
     except Exception as err:
         error_handler.add_error_v(error=f'Error (sheety): {err}', origin='design_lead')

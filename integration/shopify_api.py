@@ -2256,14 +2256,17 @@ class Shopify:
         prefix = 'gid://shopify/WebhookSubscription'
         format = 'JSON'
         topics = [
-            {'topic': 'ORDERS_CREATE', 'url': f'{creds.api_endpoint}{Route.Shopify.order_create}'},
-            {'topic': 'REFUNDS_CREATE', 'url': f'{creds.api_endpoint}{Route.Shopify.refund_create}'},
-            {'topic': 'DRAFT_ORDERS_CREATE', 'url': f'{creds.api_endpoint}{Route.Shopify.draft_create}'},
-            {'topic': 'DRAFT_ORDERS_UPDATE', 'url': f'{creds.api_endpoint}{Route.Shopify.draft_update}'},
-            {'topic': 'CUSTOMERS_CREATE', 'url': f'{creds.api_endpoint}{Route.Shopify.customer_create}'},
-            {'topic': 'CUSTOMERS_UPDATE', 'url': f'{creds.api_endpoint}{Route.Shopify.customer_update}'},
-            {'topic': 'PRODUCTS_UPDATE', 'url': f'{creds.api_endpoint}{Route.Shopify.product_update}'},
-            {'topic': 'VARIANTS_OUT_OF_STOCK', 'url': f'{creds.api_endpoint}{Route.Shopify.variant_out_of_stock}'},
+            {'topic': 'ORDERS_CREATE', 'url': f'{creds.Company.API.endpoint}{Route.Shopify.order_create}'},
+            {'topic': 'REFUNDS_CREATE', 'url': f'{creds.Company.API.endpoint}{Route.Shopify.refund_create}'},
+            {'topic': 'DRAFT_ORDERS_CREATE', 'url': f'{creds.Company.API.endpoint}{Route.Shopify.draft_create}'},
+            {'topic': 'DRAFT_ORDERS_UPDATE', 'url': f'{creds.Company.API.endpoint}{Route.Shopify.draft_update}'},
+            {'topic': 'CUSTOMERS_CREATE', 'url': f'{creds.Company.API.endpoint}{Route.Shopify.customer_create}'},
+            {'topic': 'CUSTOMERS_UPDATE', 'url': f'{creds.Company.API.endpoint}{Route.Shopify.customer_update}'},
+            {'topic': 'PRODUCTS_UPDATE', 'url': f'{creds.Company.API.endpoint}{Route.Shopify.product_update}'},
+            {
+                'topic': 'VARIANTS_OUT_OF_STOCK',
+                'url': f'{creds.Company.API.endpoint}{Route.Shopify.variant_out_of_stock}',
+            },
         ]
 
         def get(id='', ids_only=False):
@@ -2545,4 +2548,5 @@ def refresh_order(tkt_no):
 
 
 if __name__ == '__main__':
-    print(Shopify.Webhook.create())
+    verbose = True
+    print(Shopify.Product.get(8308193460391))

@@ -6,7 +6,7 @@ from setup.error_handler import ScheduledTasksErrorHandler as error_handler
 
 def set_product_brand():
     """Sets products with specific keywords to specific brands in the event that team members do not include a brand"""
-    brand_list = creds.brand_list
+    brand_list = creds.Company.brand_list
     for k, v in brand_list.items():
         error_handler.logger.info(f'Setting {k} to {v}')
         query = f"""
@@ -20,11 +20,11 @@ def set_product_brand():
 def set_company_brand():
     query = f"""
     UPDATE IM_ITEM
-    SET PROF_COD_1 = '{creds.company_product_brand}', LST_MAINT_DT = GETDATE()
+    SET PROF_COD_1 = '{creds.Company.product_brand}', LST_MAINT_DT = GETDATE()
     WHERE PROF_COD_1 IS NULL
     """
     db.query(query)
-    error_handler.logger.info(f'Set null brand fields to {creds.company_product_brand}')
+    error_handler.logger.info(f'Set null brand fields to {creds.Company.product_brand}')
 
 
 def get_branded_products(brand):

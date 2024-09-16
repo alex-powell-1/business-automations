@@ -28,7 +28,7 @@ class Webhooks:
 
     def update(hook_id):
         url = f'{Webhooks.url}/{hook_id}'
-        payload = {'destination': creds.api_endpoint + '/bc'}
+        payload = {'destination': creds.Company.API.endpoint + '/bc'}
         response = requests.put(url=f'{Webhooks.url}/{hook_id}', json=payload, headers=Webhooks.headers)
         print(url, response.content, response.status_code)
         if response.status_code == 200:

@@ -1,11 +1,8 @@
 import os
 import time
 from datetime import datetime
+from csv_diff import load_csv, compare
 
-import csv_diff
-import pandas
-from setup import create_log
-from setup import webDAV_engine
 from setup import creds
 
 
@@ -20,10 +17,10 @@ def get_modified_datetime(file):
 
 def get_modified_photos(reference_date):
     """Returns a list of photos modified since a specific reference date"""
-    list_of_files = os.listdir(creds.product_images)
+    list_of_files = os.listdir(creds.Company.product_images)
     list_of_sku = []
     for item in list_of_files[1:]:
-        modified_date = get_modified_datetime(f'{creds.product_images}/{item}')
+        modified_date = get_modified_datetime(f'{creds.Company.product_images}/{item}')
         if modified_date > reference_date:
             list_of_sku.append(item)
     return list_of_sku
@@ -37,7 +34,7 @@ def get_modified_photos(reference_date):
 
 
 def render_photos_to_csv():
-    list_of_files = os.listdir(creds.product_images)
+    list_of_files = os.listdir(creds.Company.product_images)
 
     # PANDAS IS MUCH SLOWER FOR SOME REASON
     # for item in list_of_files[1:]:
@@ -63,7 +60,7 @@ def render_photos_to_csv():
         # writing headers (field names)
         writer.writeheader()
         for item in list_of_files[1:]:
-            modified_date = get_modified_datetime(f'{creds.product_images}/{item}')
+            modified_date = get_modified_datetime(f'{creds.Company.product_images}/{item}')
             mydict = {'modified': modified_date, 'photo': item}
             # writing data rows
             writer.writerow(mydict)
@@ -72,7 +69,6 @@ def render_photos_to_csv():
 
 # render_photos_to_csv()
 
-from csv_diff import load_csv, compare
 
 diff = compare(load_csv(open('../one.csv')), load_csv(open('../two.csv')))
 # print(diff)

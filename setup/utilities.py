@@ -92,14 +92,14 @@ def get_product_images():
     ProcessOutErrorHandler.logger.info('Getting product images.')
     product_images = []
     # Iterate over all files in the directory
-    for filename in os.listdir(creds.product_images):
+    for filename in os.listdir(creds.Company.product_images):
         if filename not in ['Thumbs.db', 'desktop.ini', '.DS_Store']:
             # filter out trailing filenames
             if '^' in filename:
                 if filename.split('.')[0].split('^')[1].isdigit():
-                    product_images.append([filename, os.path.getsize(f'{creds.product_images}/{filename}')])
+                    product_images.append([filename, os.path.getsize(f'{creds.Company.product_images}/{filename}')])
             else:
-                product_images.append([filename, os.path.getsize(f'{creds.product_images}/{filename}')])
+                product_images.append([filename, os.path.getsize(f'{creds.Company.product_images}/{filename}')])
 
     ProcessOutErrorHandler.logger.info(f'Found {len(product_images)} images.')
     return product_images

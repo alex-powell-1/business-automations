@@ -41,9 +41,9 @@ def create_inventory_csv(retail=True, eh=ScheduledTasksErrorHandler):
         df = pd.DataFrame(item_list)
 
         if retail:
-            dir = creds.retail_inventory_csv
+            dir = creds.Company.retail_inventory_csv
         else:
-            dir = creds.wholesale_inventory_csv
+            dir = creds.Company.wholesale_inventory_csv
 
         df.to_csv(
             dir, mode='w', header=False, index=False, quoting=csv.QUOTE_NONE

@@ -151,8 +151,8 @@ def access_token_expired():
     return time.time() > expires - 1000 * 60 * 20
 
 
-API_KEY = creds.constant_contact_api_key
-CLIENT_SECRET = creds.constant_contact_client_secret
+API_KEY = creds.ConstantContact.key
+CLIENT_SECRET = creds.ConstantContact.client_secret
 
 
 def refresh_access_token():

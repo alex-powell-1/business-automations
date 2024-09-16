@@ -112,7 +112,7 @@ def get_service_information():
     LeadFormErrorHandler.logger.log_file = f'design_leads_{datetime.now().strftime("%m_%d_%y")}.log'
     token = request.headers.get('Authorization').split(' ')[1]
     url = 'https://www.google.com/recaptcha/api/siteverify'
-    payload = {'secret': creds.recaptcha_secret, 'response': token}
+    payload = {'secret': creds.Company.recaptcha_secret, 'response': token}
     response = requests.post(url, data=payload)
     if not response.json()['success']:
         return 'Could not verify captcha.', 400
@@ -171,7 +171,7 @@ def get_service_information_admin():
         return hmac.compare_digest(computed_digest, sig)
 
     # Validate the SHA hash
-    if not verify_hmac(creds.design_admin_key, message, signature):
+    if not verify_hmac(creds.Company.design_admin_key, message, signature):
         return jsonify({'error': 'Invalid token'}), 401
     data = request.json
     try:
@@ -207,7 +207,7 @@ def stock_notification():
 
     token = request.headers.get('Authorization').split(' ')[1]
     url = 'https://www.google.com/recaptcha/api/siteverify'
-    payload = {'secret': creds.recaptcha_secret, 'response': token}
+    payload = {'secret': creds.Company.recaptcha_secret, 'response': token}
     response = requests.post(url, data=payload)
     if not response.json()['success']:
         return 'Could not verify captcha.', 400
@@ -427,7 +427,7 @@ def newsletter_signup():
     token = request.headers.get('Authorization').split(' ')[1]
 
     url = 'https://www.google.com/recaptcha/api/siteverify'
-    payload = {'secret': creds.recaptcha_secret, 'response': token}
+    payload = {'secret': creds.Company.recaptcha_secret, 'response': token}
     response = requests.post(url, data=payload)
     if not response.json()['success']:
         return 'Could not verify captcha.', 400
@@ -456,17 +456,17 @@ def newsletter_signup():
         jinja_template = Template(template_str)
 
         email_data = {
-            'title': f'Welcome to {creds.company_name}',
+            'title': f'Welcome to {creds.Company.name}',
             'greeting': 'Hi!',
             'service': creds.service,
             'coupon': 'NEW10',
-            'company': creds.company_name,
+            'company': creds.Company.name,
             'list_items': creds.list_items,
             'signature_name': creds.signature_name,
             'signature_title': creds.signature_title,
-            'company_phone': creds.company_phone,
-            'company_url': creds.company_url,
-            'company_reviews': creds.company_reviews,
+            'company_phone': creds.Company.phone,
+            'company_url': creds.Company.url,
+            'company_reviews': creds.Company.reviews,
         }
 
         email_content = jinja_template.render(email_data)
@@ -528,7 +528,7 @@ def incoming_sms():
     else:
         media_url = None
 
-    if body.lower() == creds.sms_sync_keyword:
+    if body.lower() == creds.Company.sms_sync_keyword:
         # Run sync process
         try:
             connection = pika.BlockingConnection(pika.ConnectionParameters('localhost'))
@@ -1015,7 +1015,7 @@ def shopify_product_update():
 def get_token():
     password = request.args.get('password')
 
-    if password.lower() == creds.commercial_availability_pw:
+    if password.lower() == creds.Company.commercial_availability_pw:
         session = authorization.Session(password)
         authorization.SESSIONS.append(session)
         return jsonify({'token': session.token, 'expires': session.expires}), 200
@@ -1035,7 +1035,7 @@ def get_commercial_availability():
         authorization.SESSIONS = [s for s in authorization.SESSIONS if s.token != token]
         return jsonify({'error': 'Invalid token'}), 401
 
-    response = requests.get(creds.commercial_availability_url)
+    response = requests.get(creds.Company.commercial_availability_url)
     if response.status_code == 200:
         return jsonify({'data': response.text}), 200
     else:
@@ -1048,7 +1048,7 @@ def get_commercial_availability():
 @app.route(Route.retail_availability, methods=['POST'])
 @limiter.limit('10/minute')  # 10 requests per minute
 def get_availability():
-    response = requests.get(creds.retail_availability_url)
+    response = requests.get(creds.Company.retail_availability_url)
     if response.status_code == 200:
         return jsonify({'data': response.text}), 200
     else:
@@ -1061,7 +1061,7 @@ def get_availability():
 @app.route(f'{Route.file_server}/<path:path>', methods=['GET'])
 def serve_file(path):
     try:
-        return send_from_directory(creds.public_files, path)
+        return send_from_directory(creds.Company.public_files, path)
     except NotFound:
         return jsonify({'error': 'File not found'}), 404
     except BadRequest:
@@ -1105,10 +1105,10 @@ def unsubscribe():
         data = {
             'title': title,
             'email': email,
-            'endpoint': f'{creds.api_endpoint}/{Route.subscribe}',
+            'endpoint': f'{creds.Company.API.endpoint}/{Route.subscribe}',
             'message': message,
             'code': code,
-            'company_url': creds.company_url,
+            'company_url': creds.Company.url,
         }
         content = jinja_template.render(data, url_for=url_for)
 
@@ -1142,10 +1142,10 @@ def resubscribe():
         data = {
             'title': title,
             'email': email,
-            'endpoint': f'{creds.api_endpoint}/{Route.unsubscribe}',
+            'endpoint': f'{creds.Company.API.endpoint}/{Route.unsubscribe}',
             'message': message,
             'code': code,
-            'company_url': creds.company_url,
+            'company_url': creds.Company.url,
         }
         content = jinja_template.render(data, url_for=url_for)
 
@@ -1177,7 +1177,7 @@ def variant_out_of_stock():
     try:
         product_id = int(webhook_data['product_id'])
 
-        shopify_product = Shopify.Product.get(product_id=product_id)
+        shopify_product = Shopify.Product.get(product_id=product_id)['product']
         if shopify_product['totalInventory'] < 1:
             collections = Shopify.Product.get_collection_ids(product_id=product_id)
             for collection in collections:
@@ -1207,7 +1207,7 @@ def robots():
 
 @app.route('/favicon.ico', methods=['GET'])
 def favicon():
-    return send_from_directory(creds.public_files, 'favicon.ico')
+    return send_from_directory(creds.Company.public_files, 'favicon.ico')
 
 
 @app.route('/', methods=['GET'])
@@ -1217,7 +1217,7 @@ def index():
 
 if __name__ == '__main__':
     if dev:
-        app.run(debug=True, port=creds.flask_port)
+        app.run(debug=True, port=creds.Company.API.port)
     else:
         running = True
         while running:
@@ -1226,7 +1226,7 @@ if __name__ == '__main__':
                 serve(
                     app,
                     host='localhost',
-                    port=creds.flask_port,
+                    port=creds.Company.API.port,
                     threads=8,
                     max_request_body_size=1073741824,  # 1 GB
                     max_request_header_size=8192,  # 8 KB

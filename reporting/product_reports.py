@@ -62,7 +62,7 @@ def get_invisible_items():
 
 def revenue_sales_report(start_date, stop_date, split=True, anna_mode=False, short=False):
     query = f"""
-    "{creds.DATABASE}"."dbo"."USP_RPT_SA_BY_X";1
+    "{creds.SQL.DATABASE}"."dbo"."USP_RPT_SA_BY_X";1
     'select distinct PS_STR.STR_ID as GRP_ID, PS_STR.DESCR as GRP_DESCR
     from PS_STR
     where ( (1=1) )
@@ -156,7 +156,7 @@ def get_total_tickets(start_day, end_day):
 
 def get_list_of_current_photo_sku():
     """Returns a sorted list of unique filenames from ItemImages Folder"""
-    list_of_files = os.listdir(creds.product_images)
+    list_of_files = os.listdir(creds.Company.product_images)
     list_of_sku = []
     for item in list_of_files[1:]:
         name = item.split('.')[0]
@@ -210,7 +210,7 @@ def create_top_items_report(
     else:
         item_filter = '(1=1)'
     top_items_query = f"""
-        "{creds.DATABASE}"."dbo"."USP_RPT_SA_BY_X";1
+        "{creds.SQL.DATABASE}"."dbo"."USP_RPT_SA_BY_X";1
         'select distinct IM_ITEM.ITEM_NO as GRP_ID, IM_ITEM.DESCR as GRP_DESCR
         from IM_ITEM
         where ( {item_filter} )
@@ -286,7 +286,7 @@ def create_top_items_report(
 
 def get_top_categories_by_sales(start_date, end_date, number_of_categories):
     query = f"""
-    "{creds.DATABASE}"."dbo"."USP_RPT_SA_BY_X";1
+    "{creds.SQL.DATABASE}"."dbo"."USP_RPT_SA_BY_X";1
     'SELECT distinct IM_CATEG_COD.CATEG_COD as GRP_ID, IM_CATEG_COD.DESCR as GRP_DESCR
     FROM IM_CATEG_COD
     where ( (1=1) )
@@ -307,7 +307,7 @@ def get_top_categories_by_sales(start_date, end_date, number_of_categories):
 
 def get_sales_rep_report(dates: Dates):
     query = f"""
-    "{creds.DATABASE}"."dbo"."USP_RPT_SA_BY_X";1 'select distinct SY_USR.USR_ID as GRP_ID, SY_USR.NAM as GRP_DESCR
+    "{creds.SQL.DATABASE}"."dbo"."USP_RPT_SA_BY_X";1 'select distinct SY_USR.USR_ID as GRP_ID, SY_USR.NAM as GRP_DESCR
     from SY_USR where ( (1=1) ) and IS_SLS_REP = ''Y''
     union
     select distinct VI_PS_TKT_HIST_LIN.SLS_REP as GRP_ID, NULL as GRP_DESCR
@@ -341,7 +341,7 @@ def get_sales_rep_report(dates: Dates):
 def wholesale_total(start_date, stop_date, number=10):
     """Creates a list of top customer_tools (by sales) within a given time frame. Sorted by revenue."""
     query = f"""
-    "{creds.DATABASE}"."dbo"."USP_RPT_SA_BY_X";1
+    "{creds.SQL.DATABASE}"."dbo"."USP_RPT_SA_BY_X";1
     'select distinct AR_CUST.CUST_NO as GRP_ID, AR_CUST.NAM as GRP_DESCR
     from AR_CUST
     where ((AR_CUST.CUST_NO <> ''CASH'' and AR_CUST.CATEG_COD = ''WHOLESALE''))
@@ -373,7 +373,7 @@ def wholesale_total(start_date, stop_date, number=10):
 def top_customer_report(start_date, stop_date, category, number=10):
     """Creates a list of top customer_tools (by sales) within a given time frame. Sorted by revenue."""
     query = f"""
-    "{creds.DATABASE}"."dbo"."USP_RPT_SA_BY_X";1
+    "{creds.SQL.DATABASE}"."dbo"."USP_RPT_SA_BY_X";1
     'select distinct AR_CUST.CUST_NO as GRP_ID, AR_CUST.NAM as GRP_DESCR
     from AR_CUST
     where ((AR_CUST.CUST_NO <> ''CASH'' and AR_CUST.CATEG_COD = ''{category}''))
@@ -593,7 +593,7 @@ def get_low_stock_items(number_of_items, dates: Dates):
     """Creates a sorted list of items with low stock. Sorted from the greatest revenue generated during a similar
     time period last year."""
     top_items_query = f"""
-    "{creds.DATABASE}"."dbo"."USP_RPT_SA_BY_X";1
+    "{creds.SQL.DATABASE}"."dbo"."USP_RPT_SA_BY_X";1
     'select distinct IM_ITEM.ITEM_NO as GRP_ID, IM_ITEM.DESCR as GRP_DESCR
     from IM_ITEM
     INNER JOIN IM_INV on IM_ITEM.ITEM_NO = IM_INV.ITEM_NO where ( (1=1) )

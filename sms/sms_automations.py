@@ -26,7 +26,7 @@ def create_customer_text(
     """Get a list of customers and create custom text messages for each customer."""
     prefix = ''
     if msg_prefix:
-        prefix = f'{creds.company_name}: '
+        prefix = f'{creds.Company.name}: '
 
     customer_list = []
 
