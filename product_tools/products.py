@@ -702,6 +702,16 @@ def get_bc_product_id(sku):
     return response[0][0] if response is not None else None
 
 
+def get_binding_id(sku):
+    query = f"""
+    SELECT USR_PROF_ALPHA_16
+    FROM IM_ITEM
+    WHERE ITEM_NO = '{sku}'
+    """
+    response = db.query(query)
+    return response[0][0] if response is not None else None
+
+
 def get_pottery_for_workshop(mode):
     query = """
     SELECT ITEM_NO
