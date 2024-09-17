@@ -49,7 +49,6 @@ class SortOrderEngine:
         items_not_found = 0
 
         for i, item in enumerate(top_ecomm_items_with_stock):
-            SortOrderEngine.logger.info(f'Processing item {i + 1}/{len(top_ecomm_items_with_stock)}')
             try:
                 collection_ids = db.Shopify.Product.get_collection_ids(product_id=item['product_id'])
 
