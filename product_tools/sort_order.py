@@ -90,7 +90,7 @@ class SortOrderEngine:
                     print(percent_off)
                     print(new_index)
 
-                    insert_item_at(item_index, new_index)
+                    # insert_item_at(item_index, new_index)
 
             return items
         except Exception as e:
