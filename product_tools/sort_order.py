@@ -77,6 +77,7 @@ class SortOrderEngine:
                 items.pop(item_index)
 
             for item_index, item in enumerate(items):
+                print('ITEM: ', item['item_no'])
                 if item['price_2'] is not None and item['price_1'] > item['price_2']:
                     prc_1 = float(item['price_1'])
                     prc_2 = float(item['price_2'])
