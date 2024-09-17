@@ -183,3 +183,4 @@ customer_update.json
 post_creds.bat
 grab_creds.sh
 /logs/*
+nssm.exe

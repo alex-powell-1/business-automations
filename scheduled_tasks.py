@@ -10,8 +10,7 @@ from customer_tools import stock_notification
 from customer_tools.merge import Merge
 from setup.email_engine import Email
 from setup import creds, date_presets, network, utilities
-from sms import sms_automations
-from sms import sms_queries
+from sms import sms_automations, sms_messages, sms_queries
 from sms.sms_messages import birthdays, first_time_customers, returning_customers, wholesale_sms_messages
 from setup import backups
 from setup.error_handler import ScheduledTasksErrorHandler
@@ -173,9 +172,8 @@ try:
     #   \__/\/    \/\__/ \_/ \_/\___/ \/  \___/\/    \/\_/ \_/\/ \____/\___/\_\ \/  \__/
 
     queries = sms_queries.SMSQueries(dates)
-    # WIP
-    # Need to pass in queries to get the correct dates
-    # Need to make a class for generating the messages with date objects
+    messages = sms_messages.SMSMessages(dates)
+
     if creds.birthday_text['enabled']:
         if day == creds.birthday_text['day']:
             if hour == creds.birthday_text['hour'] and minute == creds.birthday_text['minute']:
@@ -187,8 +185,8 @@ try:
                         origin='Automations',
                         campaign=title,
                         query=queries.birthday,
-                        msg=birthdays.birthday_coupon_1,
-                        image_url=birthdays.BIRTHDAY_COUPON,
+                        msg=messages.birthday.coupon_1,
+                        image_url=creds.Coupon.birthday,
                         send_rwd_bal=False,
                         test_mode=creds.sms_automations['test_mode'],
                         test_customer=creds.sms_automations['test_customer']['enabled'],
@@ -207,8 +205,8 @@ try:
                     dates=dates,
                     origin='Automations',
                     campaign=title,
-                    query=sms_queries.wholesale_1,
-                    msg=wholesale_sms_messages.message_1,
+                    query=queries.wholesale_1,
+                    msg=messages.wholesale.message_1,
                     msg_prefix=True,
                     send_rwd_bal=False,
                     test_mode=creds.sms_automations['test_mode'],
@@ -227,8 +225,8 @@ try:
                     dates=dates,
                     origin='Automations',
                     campaign=title,
-                    query=sms_queries.ftc_text_1,
-                    msg=first_time_customers.ftc_1_body,
+                    query=queries.ftc_text_1,
+                    msg=messages.ftc.ftc_1_body,
                     send_rwd_bal=True,
                     test_mode=creds.sms_automations['test_mode'],
                     test_customer=creds.sms_automations['test_customer']['enabled'],
@@ -246,9 +244,9 @@ try:
                     dates=dates,
                     origin='Automations',
                     campaign=title,
-                    query=sms_queries.ftc_text_2,
-                    msg=first_time_customers.ftc_2_body,
-                    image_url=creds.five_off_coupon,
+                    query=queries.ftc_text_2,
+                    msg=messages.ftc.ftc_2_body,
+                    image_url=creds.Coupon.five_off,
                     send_rwd_bal=True,
                     test_mode=creds.sms_automations['test_mode'],
                     test_customer=creds.sms_automations['test_customer']['enabled'],
@@ -268,8 +266,8 @@ try:
                     dates=dates,
                     origin='Automations',
                     campaign=title,
-                    query=sms_queries.ftc_text_3,
-                    msg=first_time_customers.ftc_3_body,
+                    query=queries.ftc_text_3,
+                    msg=messages.ftc.ftc_3_body,
                     send_rwd_bal=True,
                     test_mode=creds.sms_automations['test_mode'],
                     test_customer=creds.sms_automations['test_customer']['enabled'],
@@ -287,8 +285,8 @@ try:
                     dates=dates,
                     origin='Automations',
                     campaign=title,
-                    query=sms_queries.rc_1,
-                    msg=returning_customers.rc_1_body,
+                    query=queries.rc_1,
+                    msg=messages.rc.rc_1_body,
                     send_rwd_bal=True,
                     test_mode=creds.sms_automations['test_mode'],
                     test_customer=creds.sms_automations['test_customer']['enabled'],
@@ -306,9 +304,9 @@ try:
                     dates=dates,
                     origin='Automations',
                     campaign=title,
-                    query=sms_queries.rc_2,
-                    msg=returning_customers.rc_2_body,
-                    image_url=creds.five_off_coupon,
+                    query=queries.rc_2,
+                    msg=messages.rc.rc_2_body,
+                    image_url=creds.Coupon.five_off,
                     send_rwd_bal=True,
                     test_mode=creds.sms_automations['test_mode'],
                     test_customer=creds.sms_automations['test_customer']['enabled'],
@@ -326,8 +324,8 @@ try:
                     dates=dates,
                     origin='Automations',
                     campaign=title,
-                    query=sms_queries.rc_3,
-                    msg=returning_customers.rc_3_body,
+                    query=queries.rc_3,
+                    msg=messages.rc.rc_3_body,
                     send_rwd_bal=True,
                     test_mode=creds.sms_automations['test_mode'],
                     test_customer=creds.sms_automations['test_customer']['enabled'],
