@@ -84,7 +84,7 @@ class SortOrderEngine:
 
                     percent_off = math.floor((1 - prc_2 / prc_1) * 100)
 
-                    new_index = int(map_val(percent_off, 0, 100, item_index, 0, within_bounds=True))
+                    new_index = int(map_val(percent_off, 0, 70, item_index, 0, within_bounds=True))
 
                     print(percent_off)
                     print(new_index)
