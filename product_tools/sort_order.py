@@ -70,20 +70,27 @@ class SortOrderEngine:
             SortOrderEngine.logger.warn(f'{items_not_found} items not found in Shopify')
         return collections
 
-    def promote_fixed_price_sales(items):
+    def promote_fixed_price_sales(items: list):
         orig_items = items
         try:
 
-            def swap_items(index1, index2):
-                items[index1], items[index2] = items[index2], items[index1]
+            def insert_item_at(item_index, index1):
+                items.insert(index1, items[item_index])
+                items.pop(item_index)
 
             for item_index, item in enumerate(items):
                 if item['price_2'] is not None and item['price_1'] > item['price_2']:
                     prc_1 = float(item['price_1'])
                     prc_2 = float(item['price_2'])
+
                     percent_off = math.floor((1 - prc_2 / prc_1) * 100)
+
+                    new_index = int(map_val(percent_off, 0, 100, item_index, 0, within_bounds=True))
+
                     print(percent_off)
-                    print(int(map_val(percent_off, 0, 100, item_index, 0, within_bounds=True)))
+                    print(new_index)
+
+                    insert_item_at(item_index, new_index)
 
             return items
         except Exception as e:
