@@ -170,7 +170,18 @@ class SortOrderEngine:
                 product_id = db.Shopify.Product.get_id(item_no=item)
                 product_id = int(product_id)
 
-                new_items.append({'item_no': item, 'product_id': product_id})
+                def get_price(item_no):
+                    query = f"""
+                    SELECT PRC_1, PRC_2 FROM IM_PRC WHERE ITEM_NO = '{item_no}'
+                    """
+                    response = db.query(query)
+                    return response[0][0], response[0][1]
+
+                price_1, price_2 = get_price(item)
+
+                new_items.append(
+                    {'item_no': item, 'product_id': product_id, 'price_1': price_1, 'price_2': price_2}
+                )
             except Exception as e:
                 SortOrderEngine.error_handler.add_error_v(
                     error=f'Error parsing item {item}: {e}', origin='SortOrderEngine.parse_items'
