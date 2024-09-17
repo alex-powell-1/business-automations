@@ -2648,6 +2648,14 @@ class Database:
                 Database.Shopify.Product.Media.Image.delete(product_id=product_id)
                 Database.Shopify.Product.Media.Video.delete(product_id=product_id)
 
+            def get_by_collection_id(collection_id: int):
+                query = f"""
+                SELECT PRODUCT_ID FROM {Table.Middleware.products}
+                WHERE COLLECTION_IDS LIKE '%{collection_id}%'
+                """
+                response = db.query(query)
+                return [x[0] for x in response] if response else None
+
             def get_collection_ids(item_no=None, binding_id=None, product_id=None):
                 if item_no:
                     query = f"""
@@ -2673,6 +2681,50 @@ class Database:
                     return [int(x) for x in response[0][0].split(',')]
                 except:
                     return []
+
+            def add_collection_id(collection_id: int, item_no=None, binding_id=None, product_id=None, eh=None):
+                if eh is None:
+                    eh = Database
+
+                current_collection_ids = Database.Shopify.Product.get_collection_ids(
+                    item_no=item_no, binding_id=binding_id, product_id=product_id
+                )
+                if collection_id not in current_collection_ids:
+                    current_collection_ids.append(collection_id)
+                    query = f"""
+                    UPDATE {Table.Middleware.products}
+                    SET COLLECTION_IDS = '{','.join(current_collection_ids)}'
+                    WHERE ITEM_NO = '{item_no}'
+                    """
+                    response = Database.query(query)
+                    if response['code'] == 200:
+                        eh.logger.success(f'Collection ID added to {item_no}')
+                    else:
+                        eh.error_handler.add_error_v(
+                            error=f'Error adding collection ID to {item_no}. Response: {response["message"]}'
+                        )
+
+            def remove_collection_id(collection_id: int, item_no=None, binding_id=None, product_id=None, eh=None):
+                if eh is None:
+                    eh = Database
+
+                current_collection_ids = Database.Shopify.Product.get_collection_ids(
+                    item_no=item_no, binding_id=binding_id, product_id=product_id
+                )
+                if collection_id in current_collection_ids:
+                    current_collection_ids.remove(collection_id)
+                    query = f"""
+                    UPDATE {Table.Middleware.products}
+                    SET COLLECTION_IDS = '{','.join(current_collection_ids)}'
+                    WHERE ITEM_NO = '{item_no}'
+                    """
+                    response = Database.query(query)
+                    if response['code'] == 200:
+                        eh.logger.success(f'Collection ID removed from {item_no}')
+                    else:
+                        eh.error_handler.add_error_v(
+                            error=f'Error removing collection ID from {item_no}. Response: {response["message"]}'
+                        )
 
             class Variant:
                 def get_id(sku):
