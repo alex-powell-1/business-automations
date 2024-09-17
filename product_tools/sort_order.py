@@ -229,7 +229,7 @@ class SortOrderEngine:
 
         return new_collections
 
-    def sort(print_mode=False):
+    def sort(print_mode=False, out_of_stock_mode=True):
         """Sets sort order based on revenue data from prior year during the forecasted time period"""
         SortOrderEngine.logger.info('Sort Order: Starting')
         start_time = time.time()
@@ -317,6 +317,11 @@ class SortOrderEngine:
 
             responses = Shopify.Collection.reorder_items(collection_id=collection_id, collection_of_moves=mc)
             SortOrderEngine.logger.success(f'Collection {collection_id} processed')
+
+        if not out_of_stock_mode:
+            duration = time.time() - start_time
+            SortOrderEngine.logger.info(f'Sort Order: Completed in {duration:.2f} seconds')
+            return []
 
         responses = Shopify.Collection.move_all_out_of_stock_to_bottom(eh=SortOrderEngine.eh)
 
