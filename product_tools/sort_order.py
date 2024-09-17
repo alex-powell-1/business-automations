@@ -85,7 +85,7 @@ class SortOrderEngine:
 
                     percent_off = math.floor((1 - prc_2 / prc_1) * 100)
 
-                    new_index = int(map_val(percent_off, 0, 100, item_index, 0, within_bounds=True))
+                    new_index = int(map_val(percent_off, 0, 80, item_index, 0, within_bounds=True))
 
                     # print(percent_off)
                     # print(new_index)
@@ -305,7 +305,6 @@ class SortOrderEngine:
             SortOrderEngine.logger.info(f'Processing collection {collection_id}')
             SortOrderEngine.logger.info(f'Collection {collection_index + 1}/{len(collections_list)}')
 
-            # Change sort order to manual
             Shopify.Collection.change_sort_order_to_manual(collection_id=collection_id)
 
             mc = MovesCollection()
