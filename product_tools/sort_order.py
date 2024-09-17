@@ -73,9 +73,9 @@ class SortOrderEngine:
         try:
             for item_index, item in enumerate(items):
 
-                def insert_item_at(item_index, index1):
-                    items.insert(index1, items[item_index])
-                    items.pop(item_index)
+                def insert_item_at(index1, index2):
+                    items.insert(index2, items[index1])
+                    items.pop(index1)
 
                 print('ITEM: ', item['item_no'])
                 if item['price_2'] is not None and item['price_1'] > item['price_2']:
