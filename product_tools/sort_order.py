@@ -74,7 +74,8 @@ class SortOrderEngine:
             for item_index, item in enumerate(items):
 
                 def insert_item_at(index1, index2):
-                    items.insert(index2, items[index1])
+                    pass
+                    # items.insert(index2, items[index1])
                     # items.pop(index1)
 
                 # print('ITEM: ', item['item_no'])
