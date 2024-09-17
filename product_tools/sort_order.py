@@ -73,7 +73,7 @@ class SortOrderEngine:
         try:
 
             def insert_item_at(item_index, index1):
-                # items.insert(index1, items[item_index])
+                items.insert(index1, items[item_index])
                 items.pop(item_index)
 
             for item_index, item in enumerate(items):
