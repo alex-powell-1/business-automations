@@ -1,13 +1,11 @@
 from database import Database as db
-from setup import create_log
 from setup import creds
 from setup.date_presets import *
-from setup.error_handler import ScheduledTasksErrorHandler as error_handler
 
 
 def get_top_items(start_date, end_date, number_of_items):
     query = f"""
-    "{creds.DATABASE}"."dbo"."USP_RPT_SA_BY_X";1 
+    "{creds.SQL.DATABASE}"."dbo"."USP_RPT_SA_BY_X";1 
     'select distinct IM_ITEM.ITEM_NO as GRP_ID, IM_ITEM.DESCR as GRP_DESCR 
     from IM_ITEM where ( (1=1) ) 
     union 
@@ -64,29 +62,3 @@ def get_binding_id(list_of_items):
         else:
             continue
     return binding_id_list
-
-
-def set_always_online(item_list, parent=False):
-    error_handler.logger.info(f'Setting Always Online: Starting at {datetime.now():%H:%M:%S}')
-    if item_list is not None:
-        for x in item_list:
-            if parent:
-                where_clause = f"WHERE USR_PROF_ALPHA_16 = '{x}' AND USR_ALWAYS_ONLINE = 'N'"
-            else:
-                where_clause = f"WHERE ITEM_NO = '{x}' AND USR_ALWAYS_ONLINE = 'N'"
-            details = get_product_details(x)
-            item_number = details[0]
-            descr = details[1]
-            always_online_status = details[2]
-            qty = details[3]
-            if always_online_status == 'N':
-                query = f"""
-                UPDATE IM_ITEM
-                SET USR_ALWAYS_ONLINE = 'Y', LST_MAINT_DT = GETDATE()
-                {where_clause}
-                """
-                db.query(query)
-                print(f"Set Item: {x} to 'Always Online'")
-                always_online_status = get_product_details(x)[2]
-
-    error_handler.logger.info(f'Setting Always Online: Completed at {datetime.now():%H:%M:%S}')

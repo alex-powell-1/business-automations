@@ -584,7 +584,7 @@ def get_new_items(start_date, end_date, min_price):
 def get_qty_sold_all_items():
     """Produces a list of all items with the total number of quantity sold"""
     query = f"""
-    "{creds.DATABASE}"."dbo"."USP_RPT_SA_BY_X";1 
+    "{creds.SQL.DATABASE}"."dbo"."USP_RPT_SA_BY_X";1 
     'select distinct IM_ITEM.ITEM_NO as GRP_ID, IM_ITEM.DESCR as GRP_DESCR 
     from IM_ITEM 
     where ( (1=1) ) 

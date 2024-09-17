@@ -217,7 +217,7 @@ def process_shopify_order(order_id, eh=ProcessInErrorHandler):
 
     # PRINTING - Filter out DECLINED payments
     if order['status'] == 'UNFULFILLED' or order['status'] == 'FULFILLED':
-        Printer.Order.print(order_id)
+        Printer.print_order(order_id)
 
     elif order['status'] == 'Partially Refunded':
         eh.error_handler.add_error_v(

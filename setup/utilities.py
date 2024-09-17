@@ -14,6 +14,11 @@ import secrets
 import string
 
 
+def convert_path_to_raw(path):
+    """Converts a path to a raw string for use in Windows file paths."""
+    return r'{}'.format(path.replace('/', '\\'))
+
+
 def generate_random_code(length):
     res = ''.join(secrets.choice(string.ascii_uppercase + string.digits) for i in range(length))
 

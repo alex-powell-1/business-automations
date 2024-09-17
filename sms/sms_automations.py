@@ -1,27 +1,15 @@
 import random
-from datetime import datetime
 
 from customer_tools.customers import Customer
 from setup import creds
 from database import Database
 from setup.sms_engine import SMSEngine
-from sms import sms_queries
 from sms.sms_messages import SMSMessages
 from setup.error_handler import ScheduledTasksErrorHandler as error_handler
 
 
 def create_customer_text(
-    dates,
-    origin,
-    campaign,
-    query,
-    msg,
-    rewards_msg='',
-    image_url=None,
-    msg_prefix=False,
-    send_rwd_bal=True,
-    test_mode=False,
-    test_customer=False,
+    origin, campaign, query, msg, rewards_msg='', image_url=None, msg_prefix=False, send_rwd_bal=True
 ):
     """Get a list of customers and create custom text messages for each customer."""
     prefix = ''
@@ -30,12 +18,22 @@ def create_customer_text(
 
     customer_list = []
 
-    if test_customer:
-        customer_list = creds.sms_automations['test_customer']['test_list']
+    ############################
+    ######## Test Mode #########
+    ############################
+
+    # Test Mode
+    test_mode: bool = creds.SMSAutomations.test_mode
+
+    ############################
+    ###### Get Customers #######
+    ############################
+    # Test Customer
+    if creds.SMSAutomations.TestCustomer.enabled:
+        # Enable Test Customer in the config file to send a message to the customer(s) listed in the config file.
+        customer_list = creds.SMSAutomations.TestCustomer.cust_list
     else:
-        # Get List of Customers
-        queries = sms_queries.SMSQueries(dates)  # create an instance of the SMSQueries class to update the dates.
-        response = Database.query(queries.query_start + queries.__dict__[query])
+        response = Database.query(query)
 
         if response is not None:
             customer_list = []
@@ -44,6 +42,11 @@ def create_customer_text(
         else:
             error_handler.logger.info('No messages to send today.')
 
+    messages_to_send = len(customer_list)
+    count = 0
+    ############################
+    ###### Get Messages #######
+    ############################
     for x in customer_list:
         # Reset rewards message
         rewards_msg = ''
@@ -51,7 +54,6 @@ def create_customer_text(
         cust = Customer(x)
         cust_no = cust.number
         to_phone = cust.phone_1
-        error_handler.logger.info(f'Sending Message to {cust.name} at {to_phone}')
         first_name = cust.first_name
         reward_points = cust.rewards_points_balance
 
@@ -69,7 +71,10 @@ def create_customer_text(
             + random.choice(SMSMessages.farewells)
             + rewards_msg
         )
-
+        count += 1
+        error_handler.logger.info(
+            f'{count}/{messages_to_send}: Sending Message to {cust.name} (CUST_NO: {cust_no}) at {to_phone}:\n{message}\n'
+        )
         # Send Text
         SMSEngine.send_text(
             origin=origin,
@@ -83,20 +88,3 @@ def create_customer_text(
             url=image_url,
             test_mode=test_mode,
         )
-
-
-def remove_wholesale_from_loyalty(log_file):
-    """New customer templates automatically add new customer_tools to the BASIC program.
-    This script will remove wholesale customer_tools from a loyalty program and set balance to 0."""
-
-    print(f'Remove Wholesale From Loyalty: Starting at {datetime.now():%H:%M:%S}', file=log_file)
-
-    query = """
-    UPDATE AR_CUST
-    SET LOY_PGM_COD = NULL, LOY_PTS_BAL = '0', LOY_CARD_NO = 'VOID', LST_MAINT_DT = GETDATE()
-    WHERE CATEG_COD = 'WHOLESALE'
-    """
-    Database.query(query)
-
-    print(f'Remove Wholesale From Loyalty: Finished at {datetime.now():%H:%M:%S}', file=log_file)
-    print('-----------------------', file=log_file)

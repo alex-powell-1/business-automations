@@ -1033,7 +1033,7 @@ def get_commercial_availability():
         authorization.SESSIONS = [s for s in authorization.SESSIONS if s.token != token]
         return jsonify({'error': 'Invalid token'}), 401
 
-    response = requests.get(creds.Company.commercial_availability_url)
+    response = requests.get(creds.Company.commercial_inventory_csv)
     if response.status_code == 200:
         return jsonify({'data': response.text}), 200
     else:
@@ -1046,7 +1046,7 @@ def get_commercial_availability():
 @app.route(Route.retail_availability, methods=['POST'])
 @limiter.limit('10/minute')  # 10 requests per minute
 def get_availability():
-    response = requests.get(creds.Company.retail_availability_url)
+    response = requests.get(creds.Company.retail_inventory_csv)
     if response.status_code == 200:
         return jsonify({'data': response.text}), 200
     else:

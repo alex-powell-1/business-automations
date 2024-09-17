@@ -478,7 +478,10 @@ class Customers:
 
             if self.shopify_cust_no:
                 response = update()
-                Shopify.Customer.update_marketing_consent(self)
+                if self.phone:
+                    Shopify.Customer.update_sms_marketing_consent(self.shopify_cust_no, self.sms_subscribe)
+                if self.email:
+                    Shopify.Customer.update_email_marketing_consent(self.shopify_cust_no, self.email_subscribe)
             else:
                 response = create()
 
@@ -568,23 +571,91 @@ class Subscriber:
         self.enabled = True if enabled == 1 else False
         self.create_date = create_date
         self.shopify_cust_no = None
+        self.cp_cust_no = None
+        self.mw_id = None
+        self.loyalty_point_id = None
+        self.meta_cust_no_id = None
+        self.meta_category_id = None
+        self.meta_birth_month_id = None
+        self.meta_spouse_birth_month_id = None
+        self.meta_wholesale_price_tier_id = None
 
     def __str__(self):
         return f'{self.email} - {self.create_date} - Enabled: {self.enabled}'
 
+    def get_mw_id(self):
+        query = f"""
+        SELECT ID FROM {Table.Middleware.customers}
+        WHERE SHOP_CUST_ID = {self.shopify_cust_no}
+        """
+        response = Database.query(query)
+        return response[0][0] if response is not None else None
+
+    def sync(self):
+        if self.mw_id:
+            Database.Shopify.Customer.update(
+                cp_cust_no=self.cp_cust_no,
+                shopify_cust_no=self.shopify_cust_no,
+                loyalty_point_id=self.loyalty_point_id,
+                meta_cust_no_id=self.meta_cust_no_id,
+                meta_category_id=self.meta_category_id,
+                meta_birth_month_id=self.meta_birth_month_id,
+                meta_spouse_birth_month_id=self.meta_spouse_birth_month_id,
+                meta_wholesale_price_tier_id=self.meta_wholesale_price_tier_id,
+            )
+        else:
+            Database.Shopify.Customer.insert(
+                cp_cust_no=self.cp_cust_no,
+                shopify_cust_no=self.shopify_cust_no,
+                loyalty_point_id=self.loyalty_point_id,
+                meta_cust_no_id=self.meta_cust_no_id,
+                meta_category_id=self.meta_category_id,
+                meta_birth_month_id=self.meta_birth_month_id,
+                meta_spouse_birth_month_id=self.meta_spouse_birth_month_id,
+                meta_wholesale_price_tier_id=self.meta_wholesale_price_tier_id,
+            )
+
     def process(self):
-        if Shopify.Customer.get_by_email(self.email):
+        if Database.Counterpoint.Customer.get_by_email(self.email):
+            # Customer already exists in Counterpoint. Delete from SN_NEWS
+            query = f"""
+            DELETE FROM SN_NEWS
+            WHERE EMAIL = '{self.email}'
+            """
+            response = Database.query(query)
+            if response['code'] == 200:
+                Customers.logger.info(f'Deleted subscriber {self.email}')
             return
 
-        variables = {'input': {'email': self.email, 'emailMarketingConsent': {}}}
-        variables['input']['emailMarketingConsent'] = (
-            {'marketingState': 'SUBSCRIBED'} if self.enabled else {'marketingState': 'NOT_SUBSCRIBED'}
-        )
+        # Check if customer exists in Shopify. If exists, update shopify_cust_no
+        shopify_cust_id = Shopify.Customer.get_by_email(self.email)
+        if shopify_cust_id:
+            self.shopify_cust_no = shopify_cust_id
+            Shopify.Customer.update_email_marketing_consent(self.shopify_cust_no, self.enabled)
 
-        response = Shopify.Customer.create(variables)
-        if response:
-            self.shopify_cust_no = response['id']
-            Database.Shopify.Customer.sync(self)
+        else:
+            variables = {'input': {'email': self.email, 'emailMarketingConsent': {}, 'metafields': []}}
+            variables['input']['emailMarketingConsent'] = (
+                {'marketingState': 'SUBSCRIBED'} if self.enabled else {'marketingState': 'NOT_SUBSCRIBED'}
+            )
+
+            # Add Category
+            variables['input']['metafields'].append(
+                {
+                    'namespace': Metafield.Namespace.Customer.customer,
+                    'key': 'category',
+                    'type': 'single_line_text_field',
+                    'value': 'RETAIL',
+                }
+            )
+
+            response = Shopify.Customer.create(variables)
+            if response:
+                self.shopify_cust_no = response['id']
+                self.meta_category_id = response['metafields']['category_id']
+
+        self.mw_id = self.get_mw_id()
+        self.sync()
 
 
 class NewsletterSubscribers:
@@ -602,10 +673,15 @@ class NewsletterSubscribers:
         self.subscribers = [Subscriber(x[0], x[1], x[2]) for x in response] if response is not None else []
         if self.subscribers:
             for subscriber in self.subscribers:
-                # subscriber.process()
-                print(subscriber)
+                try:
+                    subscriber.process()
+                except Exception as e:
+                    Customers.error_handler.add_error_v(
+                        error=f'Error processing subscriber {subscriber.email}: {e}',
+                        origin='NewsletterSubscribers.sync',
+                    )
 
 
 if __name__ == '__main__':
-    customers = NewsletterSubscribers()
-    customers.sync()
+    subs = NewsletterSubscribers()
+    subs.sync()

@@ -11,7 +11,6 @@ from customer_tools.merge import Merge
 from setup.email_engine import Email
 from setup import creds, date_presets, network, utilities
 from sms import sms_automations, sms_messages, sms_queries
-from sms.sms_messages import birthdays, first_time_customers, returning_customers, wholesale_sms_messages
 from setup import backups
 from setup.error_handler import ScheduledTasksErrorHandler
 
@@ -19,14 +18,12 @@ from setup.error_handler import ScheduledTasksErrorHandler
 # -----------------
 # Scheduled Tasks
 # -----------------
-dates = date_presets.Dates()
+dates = date_presets.Dates()  # obj passed into functions to create queries and sms messages
+
 now = datetime.now()
 day = now.day
 hour = now.hour
 minute = now.minute
-
-sms_test_mode = False  # if true, will only write generated messages write to logs
-sms_test_customer = False  # if true, will only send to single employee for testing
 
 eh = ScheduledTasksErrorHandler
 error_handler = eh.error_handler
@@ -147,9 +144,9 @@ try:
         except Exception as err:
             error_handler.add_error_v(error=err, origin='Stock Notification Email')
 
-    if hour == 22 and minute == 30:
+    if hour == 10 and minute == 30:
         # Nightly Off-Site Backups
-        # Will copy critical files to off-site location
+        # Will copy selected files to off-site location
         try:
             backups.offsite_backups()
         except Exception as err:
@@ -171,25 +168,22 @@ try:
     #   _\ \/ /\/\ \_\ \ /  _  \ \_/ // / / \_// /\/\ \/  _  \/ //\/ /_/ \_// /\  / _\ \
     #   \__/\/    \/\__/ \_/ \_/\___/ \/  \___/\/    \/\_/ \_/\/ \____/\___/\_\ \/  \__/
 
-    queries = sms_queries.SMSQueries(dates)
     messages = sms_messages.SMSMessages(dates)
 
     if creds.birthday_text['enabled']:
         if day == creds.birthday_text['day']:
             if hour == creds.birthday_text['hour'] and minute == creds.birthday_text['minute']:
+                queries = sms_queries.BirthdayQueries(dates)
                 title = 'Birthday Text'
                 logger.info(f'SMS/MMS Automation: {title} - {datetime.now():%H:%M:%S}')
                 try:
                     sms_automations.create_customer_text(
-                        dates=dates,
                         origin='Automations',
                         campaign=title,
-                        query=queries.birthday,
+                        query=queries.text_1,
                         msg=messages.birthday.coupon_1,
                         image_url=creds.Coupon.birthday,
                         send_rwd_bal=False,
-                        test_mode=creds.sms_automations['test_mode'],
-                        test_customer=creds.sms_automations['test_customer']['enabled'],
                     )
 
                 except Exception as err:
@@ -198,22 +192,25 @@ try:
     # WHOLESALE CUSTOMER TEXT MESSAGE 1 - RANDOM MESSAGE CHOICE (SMS)
     if creds.wholesale_1_text['enabled']:
         if hour == creds.wholesale_1_text['hour'] and minute == creds.wholesale_1_text['minute']:
+            queries = sms_queries.WholesaleQueries(dates)
             title = 'Wholesale Text 1'
             logger.info(f'SMS/MMS Automation: {title} - {datetime.now():%H:%M:%S}')
             try:
                 sms_automations.create_customer_text(
-                    dates=dates,
                     origin='Automations',
                     campaign=title,
-                    query=queries.wholesale_1,
+                    query=queries.text_1,
                     msg=messages.wholesale.message_1,
                     msg_prefix=True,
                     send_rwd_bal=False,
-                    test_mode=creds.sms_automations['test_mode'],
-                    test_customer=creds.sms_automations['test_customer']['enabled'],
                 )
             except Exception as err:
                 error_handler.add_error_v(error=err, origin='Wholesale Text 1')
+
+    ############################################################################################################
+    ######################################### FIRST TIME CUSTOMERS #############################################
+    ############################################################################################################
+    ftc_queries = sms_queries.FTCQueries(dates)
 
     # FIRST-TIME CUSTOMER TEXT MESSAGE 1 - WELCOME (SMS)
     if creds.ftc_1_text['enabled']:
@@ -222,14 +219,11 @@ try:
             logger.info(f'SMS/MMS Automation: {title} - {datetime.now():%H:%M:%S}')
             try:
                 sms_automations.create_customer_text(
-                    dates=dates,
                     origin='Automations',
                     campaign=title,
-                    query=queries.ftc_text_1,
+                    query=ftc_queries.text_1,
                     msg=messages.ftc.ftc_1_body,
                     send_rwd_bal=True,
-                    test_mode=creds.sms_automations['test_mode'],
-                    test_customer=creds.sms_automations['test_customer']['enabled'],
                 )
             except Exception as err:
                 error_handler.add_error_v(error=err, origin='First Time Cust Text 1')
@@ -241,15 +235,12 @@ try:
             logger.info(f'SMS/MMS Automation: {title} - {datetime.now():%H:%M:%S}')
             try:
                 sms_automations.create_customer_text(
-                    dates=dates,
                     origin='Automations',
                     campaign=title,
-                    query=queries.ftc_text_2,
+                    query=ftc_queries.text_2,
                     msg=messages.ftc.ftc_2_body,
                     image_url=creds.Coupon.five_off,
                     send_rwd_bal=True,
-                    test_mode=creds.sms_automations['test_mode'],
-                    test_customer=creds.sms_automations['test_customer']['enabled'],
                 )
             except Exception as err:
                 error_handler.add_error_v(error=err, origin='First Time Cust Text 2')
@@ -263,17 +254,19 @@ try:
 
             try:
                 sms_automations.create_customer_text(
-                    dates=dates,
                     origin='Automations',
                     campaign=title,
-                    query=queries.ftc_text_3,
+                    query=ftc_queries.text_3,
                     msg=messages.ftc.ftc_3_body,
                     send_rwd_bal=True,
-                    test_mode=creds.sms_automations['test_mode'],
-                    test_customer=creds.sms_automations['test_customer']['enabled'],
                 )
             except Exception as err:
                 error_handler.add_error_v(error=err, origin='First Time Cust Text 3')
+
+    ############################################################################################################
+    ######################################### RETURNING CUSTOMERS ##############################################
+    ############################################################################################################
+    rc_queries = sms_queries.RCQueries(dates)
 
     # RETURNING CUSTOMER TEXT MESSAGE 1 - THANK YOU (SMS)
     if creds.rc_1_text['enabled']:
@@ -282,14 +275,11 @@ try:
             logger.info(f'SMS/MMS Automation: {title} - {datetime.now():%H:%M:%S}')
             try:
                 sms_automations.create_customer_text(
-                    dates=dates,
                     origin='Automations',
                     campaign=title,
-                    query=queries.rc_1,
+                    query=rc_queries.text_1,
                     msg=messages.rc.rc_1_body,
                     send_rwd_bal=True,
-                    test_mode=creds.sms_automations['test_mode'],
-                    test_customer=creds.sms_automations['test_customer']['enabled'],
                 )
             except Exception as err:
                 error_handler.add_error_v(error=err, origin='Returning Cust Text 1')
@@ -301,15 +291,12 @@ try:
             logger.info(f'SMS/MMS Automation: {title} - {datetime.now():%H:%M:%S}')
             try:
                 sms_automations.create_customer_text(
-                    dates=dates,
                     origin='Automations',
                     campaign=title,
-                    query=queries.rc_2,
+                    query=rc_queries.text_2,
                     msg=messages.rc.rc_2_body,
                     image_url=creds.Coupon.five_off,
                     send_rwd_bal=True,
-                    test_mode=creds.sms_automations['test_mode'],
-                    test_customer=creds.sms_automations['test_customer']['enabled'],
                 )
             except Exception as err:
                 error_handler.add_error_v(error=err, origin='Returning Cust Text 2')
@@ -321,14 +308,11 @@ try:
             logger.info(f'SMS/MMS Automation: {title} - {datetime.now():%H:%M:%S}')
             try:
                 sms_automations.create_customer_text(
-                    dates=dates,
                     origin='Automations',
                     campaign=title,
-                    query=queries.rc_3,
+                    query=rc_queries.text_3,
                     msg=messages.rc.rc_3_body,
                     send_rwd_bal=True,
-                    test_mode=creds.sms_automations['test_mode'],
-                    test_customer=creds.sms_automations['test_customer']['enabled'],
                 )
             except Exception as err:
                 error_handler.add_error_v(error=err, origin='Returning Cust Text 3')

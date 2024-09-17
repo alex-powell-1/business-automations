@@ -167,6 +167,10 @@ class Shopify:
                                     self.user_errors.remove(i)
                                     continue
 
+                            elif operation_name == 'customerCreate':
+                                if i == 'Email is invalid':
+                                    pass
+
                         elif operation_name == 'customerUpdate':
                             if i == 'Key must be unique within this namespace on this resource':
                                 # Delete all customer metafields for this customer and resend the payload
@@ -878,50 +882,43 @@ class Shopify:
                                 meta_wholesale_price_tier_id=meta_wholesale_tier,
                             )
 
-        def update_marketing_consent(customer: object):
-            if customer.email:
-                email_variables = {
-                    'input': {
-                        'customerId': f'gid://shopify/Customer/{customer.shopify_cust_no}',
-                        'emailMarketingConsent': {},
-                    }
+        def update_sms_marketing_consent(shopify_cust_no: int, is_subscribed: bool):
+            phone_variables = {
+                'input': {'customerId': f'gid://shopify/Customer/{shopify_cust_no}', 'smsMarketingConsent': {}}
+            }
+            if is_subscribed:
+                phone_variables['input']['smsMarketingConsent'] = {
+                    'marketingOptInLevel': 'SINGLE_OPT_IN',
+                    'marketingState': 'SUBSCRIBED',
                 }
-                if customer.email_subscribe:
-                    email_variables['input']['emailMarketingConsent'] = {
-                        'marketingOptInLevel': 'SINGLE_OPT_IN',
-                        'marketingState': 'SUBSCRIBED',
-                    }
-                else:
-                    email_variables['input']['emailMarketingConsent'] = {'marketingState': 'NOT_SUBSCRIBED'}
+            else:
+                phone_variables['input']['smsMarketingConsent'] = {'marketingState': 'NOT_SUBSCRIBED'}
 
-                response = Shopify.Query(
-                    document=Shopify.Customer.queries,
-                    variables=email_variables,
-                    operation_name='customerEmailMarketingConsentUpdate',
-                )
-                return response.data
+            response = Shopify.Query(
+                document=Shopify.Customer.queries,
+                variables=phone_variables,
+                operation_name='customerSmsMarketingConsentUpdate',
+            )
+            return response.data
 
-            if customer.phone:
-                phone_variables = {
-                    'input': {
-                        'customerId': f'gid://shopify/Customer/{customer.shopify_cust_no}',
-                        'smsMarketingConsent': {},
-                    }
+        def update_email_marketing_consent(shopify_cust_no: int, is_subscribed: bool):
+            email_variables = {
+                'input': {'customerId': f'gid://shopify/Customer/{shopify_cust_no}', 'emailMarketingConsent': {}}
+            }
+            if is_subscribed:
+                email_variables['input']['emailMarketingConsent'] = {
+                    'marketingOptInLevel': 'SINGLE_OPT_IN',
+                    'marketingState': 'SUBSCRIBED',
                 }
-                if customer.sms_subscribe:
-                    phone_variables['input']['smsMarketingConsent'] = {
-                        'marketingOptInLevel': 'SINGLE_OPT_IN',
-                        'marketingState': 'SUBSCRIBED',
-                    }
-                else:
-                    phone_variables['input']['smsMarketingConsent'] = {'marketingState': 'NOT_SUBSCRIBED'}
+            else:
+                email_variables['input']['emailMarketingConsent'] = {'marketingState': 'NOT_SUBSCRIBED'}
 
-                response = Shopify.Query(
-                    document=Shopify.Customer.queries,
-                    variables=phone_variables,
-                    operation_name='customerSmsMarketingConsentUpdate',
-                )
-                return response.data
+            response = Shopify.Query(
+                document=Shopify.Customer.queries,
+                variables=email_variables,
+                operation_name='customerEmailMarketingConsentUpdate',
+            )
+            return response.data
 
         class Metafield:
             def get(shopify_cust_no: int):

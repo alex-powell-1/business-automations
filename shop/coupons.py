@@ -1,5 +1,4 @@
 from datetime import datetime
-from dateutil.relativedelta import relativedelta
 from setup.error_handler import ScheduledTasksErrorHandler as error_handler
 
 from integration.shopify_api import Shopify

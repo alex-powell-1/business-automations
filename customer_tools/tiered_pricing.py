@@ -75,7 +75,7 @@ def reassess_tiered_pricing(start_date, end_date, demote=False):
     error_handler.logger.info(f'Assessment End Date: {end_date:%m/%d/%Y}')
 
     sales_history_query = f"""
-    "{creds.DATABASE}"."dbo"."USP_RPT_SA_BY_X";1 
+    "{creds.SQL.DATABASE}"."dbo"."USP_RPT_SA_BY_X";1 
     'select distinct AR_CUST.CUST_NO as GRP_ID, AR_CUST.NAM as GRP_DESCR 
     from AR_CUST where ((AR_CUST.CATEG_COD = ''WHOLESALE'')) 
     union 

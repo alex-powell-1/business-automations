@@ -47,7 +47,7 @@ class SMSEngine:
         error_message = None
 
         if test_mode:
-            SMSEngine.logger.info(f'Sending test sms text to {name}: {message}')
+            SMSEngine.logger.info(f'TEST MODE ENABLED: Bypassing SMS to {name}')
         else:
             # for SMS Messages
             client = Client(SMSEngine.sid, SMSEngine.token)

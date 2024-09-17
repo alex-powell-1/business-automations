@@ -9,6 +9,7 @@ from setup.error_handler import ScheduledTasksErrorHandler
 
 def create_inventory_csv(retail=True, eh=ScheduledTasksErrorHandler):
     if retail:
+        filename = 'CurrentAvailability.csv'
         # RETAIL AVAILABILITY
         query = """
         SELECT item.item_no, item.long_descr, item.PRC_1, ISNULL(inv.qty_avail, 0), item.categ_cod
@@ -18,6 +19,7 @@ def create_inventory_csv(retail=True, eh=ScheduledTasksErrorHandler):
         ORDER BY long_descr
         """
     else:
+        filename = 'CommercialAvailability.csv'
         # WHOLESALE AVAILABILITY
         query = """
         SELECT item.item_no, item.long_descr, item.REG_PRC, ISNULL(inv.qty_avail, 0), item.categ_cod 
@@ -28,6 +30,7 @@ def create_inventory_csv(retail=True, eh=ScheduledTasksErrorHandler):
         ORDER BY item.long_descr
         """
     response = db.query(query)
+
     if response is not None:
         item_list = []
         for x in response:
@@ -40,13 +43,11 @@ def create_inventory_csv(retail=True, eh=ScheduledTasksErrorHandler):
 
         df = pd.DataFrame(item_list)
 
-        if retail:
-            dir = creds.Company.retail_inventory_csv
-        else:
-            dir = creds.Company.wholesale_inventory_csv
+        directory = creds.Company.public_files + '/availability'
+        file_location = directory + '/' + filename
 
         df.to_csv(
-            dir, mode='w', header=False, index=False, quoting=csv.QUOTE_NONE
+            file_location, mode='w', header=False, index=False, quoting=csv.QUOTE_NONE
         )  # quoting fixes double quotes issue
 
 

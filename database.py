@@ -1528,6 +1528,17 @@ class Database:
                 else:
                     return {}
 
+            def get_by_email(email):
+                query = f"""
+                SELECT * FROM {Table.CP.Customers.table}
+                WHERE EMAIL_ADRS_1 = '{email}' OR EMAIL_ADRS_2 = '{email}'
+                """
+                response = Database.query(query, mapped=True)
+                if response['code'] == 200:
+                    return response['data']
+                else:
+                    return []
+
             @staticmethod
             def get_all(last_sync=datetime(1970, 1, 1), customer_no=None, customer_list=None):
                 if customer_no:
@@ -2294,7 +2305,7 @@ class Database:
                 else:
                     # If no CP Customer Number is provided, we will use the Shopify Customer Number
                     where = f'SHOP_CUST_ID = {shopify_cust_no}'
-                    cust_value = """CUST_NO = {f"'{cp_cust_no}'" if cp_cust_no else "NULL"}, """
+                    cust_value = f"""CUST_NO = {f"'{cp_cust_no}'" if cp_cust_no else "NULL"}, """
 
                 query = f"""
                         UPDATE {Table.Middleware.customers}
@@ -2321,9 +2332,8 @@ class Database:
                     raise Exception(error)
 
             def sync(customer):
-                if not customer.cp_cust_no:
-                    if customer.mw_id:
-                        Database.Shopify.Customer.delete(customer)
+                if not customer.cp_cust_no and customer.mw_id:
+                    Database.Shopify.Customer.delete(customer)
                 else:
                     if customer.mw_id:
                         Database.Shopify.Customer.update(
@@ -3628,5 +3638,4 @@ class Database:
 
 
 if __name__ == '__main__':
-    cust = Database.Counterpoint.Customer('105786')
-    print(cust)
+    print(Database.Counterpoint.Customer.get_by_email('alexpow@asdfasdf.com'))
