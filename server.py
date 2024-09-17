@@ -63,6 +63,7 @@ class EventID:
     customer_update = 0
     product_update = 0
     variant_out_of_stock = 0
+    collection_update = 0
 
 
 @app.before_request
@@ -1004,6 +1005,84 @@ def shopify_product_update():
             ProcessInErrorHandler.error_handler.add_error_v(
                 error=f'Error updating product {item_no}: {e}', origin=Route.Shopify.product_update, traceback=tb()
             )
+
+    return jsonify({'success': True}), 200
+
+
+@app.route(Route.Shopify.collection_update, methods=['POST'])
+@limiter.limit('20/minute')
+def collection_update():
+    """Webhook route for collection update"""
+
+    webhook_data = request.json
+    headers = request.headers
+    event_id = headers.get('X-Shopify-Event-Id')
+    if event_id == EventID.collection_update:
+        return jsonify({'success': True}), 200
+    EventID.collection_update = event_id
+
+    data = request.get_data()
+    hmac_header = headers.get('X-Shopify-Hmac-Sha256')
+    if not hmac_header:
+        return jsonify({'error': 'Unauthorized'}), 401
+    verified = verify_webhook(data, hmac_header)
+    if not verified:
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    ProcessInErrorHandler.logger.info(f'Collection Update: {webhook_data}')
+
+    if webhook_data['handle'] == 'sale':
+        collection_id = webhook_data['id']
+
+        #################################################################################################
+        ####################### Get all product IDs in a collection FROM SHOPIFY. #######################
+        #################################################################################################
+
+        try:
+            product_ids = Shopify.Collection.get_product_ids(collection_id=collection_id)
+        except Exception as e:
+            ProcessInErrorHandler.error_handler.add_error_v(
+                error=f'Error getting product IDs for collection {collection_id}: {e}',
+                origin=Route.Shopify.collection_update,
+                traceback=tb(),
+            )
+            return jsonify({'success': True}), 200
+
+        #################################################################################################
+        ########## Get all product IDs in a collection FROM MIDDLEWARE and compare to Shopify. ##########
+        ############ If any of them are not in Shopify, remove the collection in middleware. ############
+        #################################################################################################
+
+        current_product_ids = Database.Shopify.Product.get_by_collection_id(collection_id=collection_id)
+
+        for product_id in current_product_ids:
+            if product_id not in product_ids:
+                try:
+                    Database.Shopify.Product.remove_collection_id(
+                        collection_id=collection_id, product_id=product_id, eh=ProcessInErrorHandler
+                    )
+                except Exception as e:
+                    ProcessInErrorHandler.error_handler.add_error_v(
+                        error=f'Error removing collection ID from product {product_id}: {e}',
+                        origin=Route.Shopify.collection_update,
+                        traceback=tb(),
+                    )
+
+        #################################################################################################
+        ############ Add collection ID to all products in Shopify that are not in Middleware ############
+        #################################################################################################
+
+        for product_id in product_ids:
+            try:
+                Database.Shopify.Product.add_collection_id(
+                    collection_id=collection_id, product_id=product_id, eh=ProcessInErrorHandler
+                )
+            except Exception as e:
+                ProcessInErrorHandler.error_handler.add_error_v(
+                    error=f'Error adding collection ID to product {product_id}: {e}',
+                    origin=Route.Shopify.collection_update,
+                    traceback=tb(),
+                )
 
     return jsonify({'success': True}), 200
 

@@ -1012,6 +1012,29 @@ class Shopify:
                 id_list += [x['node']['id'].split('/')[-1] for x in response.data['products']['edges']]
             return id_list
 
+        def get_all(collection_id: int = None):
+            id_list = []
+            start = True
+
+            if collection_id:
+                while start or response.data['products']['pageInfo']['hasNextPage']:
+                    response = Shopify.Query(
+                        document=Shopify.Product.queries,
+                        variables={
+                            'collectionId': f'{Shopify.Collection.prefix}{collection_id}',
+                            'after': None if start else response.data['products']['pageInfo']['endCursor'],
+                        },
+                        operation_name='productsInCollection',
+                    )
+
+                    id_list += [x['node']['id'].split('/')[-1] for x in response.data['products']['edges']]
+
+                    start = False
+
+                return id_list
+            else:
+                return Shopify.Product.get()
+
         def create(product_payload) -> tuple:
             """Create product on shopify and return tuple of product ID, media IDs, and variant IDs"""
             # Step 1: Create base product and associated media. Default Variant is created.
@@ -1810,6 +1833,9 @@ class Shopify:
 
         def get_product_count(collection_id: int):
             return Shopify.Collection.get(collection_id=collection_id)['collection']['productsCount']['count']
+
+        def get_product_ids(collection_id: int):
+            return Shopify.Product.get_all(collection_id=collection_id)
 
         def get_out_of_stock_items(collection_id: int, eh=ProcessOutErrorHandler):
             """Get a list of out of stock items in a collection"""

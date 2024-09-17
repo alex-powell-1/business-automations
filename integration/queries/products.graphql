@@ -234,7 +234,24 @@ query productMeta($id: ID!) {
     }
 }
 
-query product($id: ID!) {
+query productsInCollection($collectionId: ID!, $after: String) {
+    products(first: 250, after: $after) {
+        edges {
+            node {
+                id
+                inCollection(id: $collectionId) {
+                    id
+                }
+            }
+        }
+        pageInfo {
+            hasNextPage
+            endCursor
+        }
+    }
+}
+
+query product($id: ID!, $collectionId: ID) {
     product(id: $id) {
         collections(first: 50) {
             edges {
@@ -244,6 +261,7 @@ query product($id: ID!) {
                 }
             }
         }
+
         createdAt
         defaultCursor
         description

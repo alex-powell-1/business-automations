@@ -12,6 +12,30 @@ import time
 
 from integration.shopify_api import Shopify, MoveInput, MovesCollection
 
+import math
+
+
+def constrain(n: float | int, low: float | int, high: float | int):
+    return max(min(n, high), low)
+
+
+def map_val(
+    n: float | int,
+    start1: float | int,
+    stop1: float | int,
+    start2: float | int,
+    stop2: float | int,
+    within_bounds: bool = False,
+):
+    newval = (n - start1) / (stop1 - start1) * (stop2 - start2) + start2
+    if not within_bounds:
+        return newval
+
+    if start2 < stop2:
+        return constrain(newval, start2, stop2)
+    else:
+        return constrain(newval, stop2, start2)
+
 
 class SortOrderEngine:
     eh = error_handler
@@ -25,8 +49,6 @@ class SortOrderEngine:
         items_not_found = 0
 
         for i, item in enumerate(top_ecomm_items_with_stock):
-            if (len(top_ecomm_items_with_stock) > 15 and i % 10 == 0) or len(top_ecomm_items_with_stock) <= 15:
-                SortOrderEngine.logger.info(f'Processing item {i + 1}/{len(top_ecomm_items_with_stock)}')
             try:
                 collection_ids = db.Shopify.Product.get_collection_ids(product_id=item['product_id'])
 
@@ -45,6 +67,37 @@ class SortOrderEngine:
         if items_not_found > 0:
             SortOrderEngine.logger.warn(f'{items_not_found} items not found in Shopify')
         return collections
+
+    def promote_fixed_price_sales(items: list):
+        orig_items = items
+        try:
+            for item_index, item in enumerate(items):
+
+                def insert_item_at(index1, index2):
+                    item = items[index1]
+                    items.pop(index1)
+                    items.insert(index2, item)
+
+                # print('ITEM: ', item['item_no'])
+                if item['price_2'] is not None and item['price_1'] > item['price_2']:
+                    prc_1 = float(item['price_1'])
+                    prc_2 = float(item['price_2'])
+
+                    percent_off = math.floor((1 - prc_2 / prc_1) * 100)
+
+                    new_index = int(map_val(percent_off, 0, 80, item_index, 0, within_bounds=True))
+
+                    # print(percent_off)
+                    # print(new_index)
+
+                    insert_item_at(item_index, new_index)
+
+            return items
+        except Exception as e:
+            SortOrderEngine.error_handler.add_error_v(
+                error=f'Error promoting fixed price sales: {e}', origin='SortOrderEngine.promote_fixed_price_sales'
+            )
+            return orig_items
 
     def adjust_order(items):
         """Adjusts order of items"""
@@ -100,7 +153,7 @@ class SortOrderEngine:
             new_items.append(item)
             item_skus.append(item['item_no'])
 
-        return featured_items + new_items
+        return featured_items + SortOrderEngine.promote_fixed_price_sales(new_items)
 
     def remove_duplicate_products(items):
         """Removes duplicate products"""
@@ -126,7 +179,18 @@ class SortOrderEngine:
                 product_id = db.Shopify.Product.get_id(item_no=item)
                 product_id = int(product_id)
 
-                new_items.append({'item_no': item, 'product_id': product_id})
+                def get_price(item_no):
+                    query = f"""
+                    SELECT PRC_1, PRC_2 FROM IM_PRC WHERE ITEM_NO = '{item_no}'
+                    """
+                    response = db.query(query)
+                    return response[0][0], response[0][1]
+
+                price_1, price_2 = get_price(item)
+
+                new_items.append(
+                    {'item_no': item, 'product_id': product_id, 'price_1': price_1, 'price_2': price_2}
+                )
             except Exception as e:
                 SortOrderEngine.error_handler.add_error_v(
                     error=f'Error parsing item {item}: {e}', origin='SortOrderEngine.parse_items'
@@ -165,7 +229,7 @@ class SortOrderEngine:
 
         return new_collections
 
-    def sort(print_mode=False):
+    def sort(print_mode=False, out_of_stock_mode=True):
         """Sets sort order based on revenue data from prior year during the forecasted time period"""
         SortOrderEngine.logger.info('Sort Order: Starting')
         start_time = time.time()
@@ -241,7 +305,6 @@ class SortOrderEngine:
             SortOrderEngine.logger.info(f'Processing collection {collection_id}')
             SortOrderEngine.logger.info(f'Collection {collection_index + 1}/{len(collections_list)}')
 
-            # Change sort order to manual
             Shopify.Collection.change_sort_order_to_manual(collection_id=collection_id)
 
             mc = MovesCollection()
@@ -253,6 +316,11 @@ class SortOrderEngine:
 
             responses = Shopify.Collection.reorder_items(collection_id=collection_id, collection_of_moves=mc)
             SortOrderEngine.logger.success(f'Collection {collection_id} processed')
+
+        if not out_of_stock_mode:
+            duration = time.time() - start_time
+            SortOrderEngine.logger.info(f'Sort Order: Completed in {duration:.2f} seconds')
+            return []
 
         responses = Shopify.Collection.move_all_out_of_stock_to_bottom(eh=SortOrderEngine.eh)
 
