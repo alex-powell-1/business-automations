@@ -71,12 +71,12 @@ class SortOrderEngine:
     def promote_fixed_price_sales(items: list):
         orig_items = items
         try:
-
-            def insert_item_at(item_index, index1):
-                items.insert(index1, items[item_index])
-                items.pop(item_index)
-
             for item_index, item in enumerate(items):
+
+                def insert_item_at(item_index, index1):
+                    items.insert(index1, items[item_index])
+                    items.pop(item_index)
+
                 print('ITEM: ', item['item_no'])
                 if item['price_2'] is not None and item['price_1'] > item['price_2']:
                     prc_1 = float(item['price_1'])
