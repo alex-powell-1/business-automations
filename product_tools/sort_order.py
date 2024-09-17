@@ -78,10 +78,11 @@ class SortOrderEngine:
                 items[index1], items[index2] = items[index2], items[index1]
 
             for item in items:
-                if item['price_2'] is not None and item['price_1'] > item['price_2']:
-                    percent_off = math.floor((1 - 3 / 8.99) * 100)
-                    print(percent_off)
-                    print(map_val(percent_off, 0, 100, len(items), 0, within_bounds=True))
+                print(item['price_1'], item['price_2'])
+                # if item['price_2'] is not None and item['price_1'] > item['price_2']:
+                #     percent_off = math.floor((1 - 3 / 8.99) * 100)
+                #     print(percent_off)
+                #     print(map_val(percent_off, 0, 100, len(items), 0, within_bounds=True))
 
             return items
         except Exception as e:
