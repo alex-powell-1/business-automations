@@ -12,6 +12,30 @@ import time
 
 from integration.shopify_api import Shopify, MoveInput, MovesCollection
 
+import math
+
+
+def constrain(n: float | int, low: float | int, high: float | int):
+    return max(min(n, high), low)
+
+
+def map_val(
+    n: float | int,
+    start1: float | int,
+    stop1: float | int,
+    start2: float | int,
+    stop2: float | int,
+    within_bounds: bool = False,
+):
+    newval = (n - start1) / (stop1 - start1) * (stop2 - start2) + start2
+    if not within_bounds:
+        return newval
+
+    if start2 < stop2:
+        return constrain(newval, start2, stop2)
+    else:
+        return constrain(newval, stop2, start2)
+
 
 class SortOrderEngine:
     eh = error_handler
@@ -45,6 +69,26 @@ class SortOrderEngine:
         if items_not_found > 0:
             SortOrderEngine.logger.warn(f'{items_not_found} items not found in Shopify')
         return collections
+
+    def promote_fixed_price_sales(items):
+        orig_items = items
+        try:
+
+            def swap_items(index1, index2):
+                items[index1], items[index2] = items[index2], items[index1]
+
+            for item in items:
+                if item['price_2'] is not None and item['price_1'] > item['price_2']:
+                    percent_off = math.floor((1 - 3 / 8.99) * 100)
+                    print(percent_off)
+                    print(map_val(percent_off, 0, 100, len(items), 0, within_bounds=True))
+
+            return items
+        except Exception as e:
+            SortOrderEngine.error_handler.add_error_v(
+                error=f'Error promoting fixed price sales: {e}', origin='SortOrderEngine.promote_fixed_price_sales'
+            )
+            return orig_items
 
     def adjust_order(items):
         """Adjusts order of items"""
@@ -100,7 +144,7 @@ class SortOrderEngine:
             new_items.append(item)
             item_skus.append(item['item_no'])
 
-        return featured_items + new_items
+        return featured_items + SortOrderEngine.promote_fixed_price_sales(new_items)
 
     def remove_duplicate_products(items):
         """Removes duplicate products"""
