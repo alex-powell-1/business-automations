@@ -49,8 +49,7 @@ class SortOrderEngine:
         items_not_found = 0
 
         for i, item in enumerate(top_ecomm_items_with_stock):
-            if (len(top_ecomm_items_with_stock) > 15 and i % 10 == 0) or len(top_ecomm_items_with_stock) <= 15:
-                SortOrderEngine.logger.info(f'Processing item {i + 1}/{len(top_ecomm_items_with_stock)}')
+            SortOrderEngine.logger.info(f'Processing item {i + 1}/{len(top_ecomm_items_with_stock)}')
             try:
                 collection_ids = db.Shopify.Product.get_collection_ids(product_id=item['product_id'])
 
@@ -90,7 +89,7 @@ class SortOrderEngine:
                     print(percent_off)
                     print(new_index)
 
-                    # insert_item_at(item_index, new_index)
+                    insert_item_at(item_index, new_index)
 
             return items
         except Exception as e:
