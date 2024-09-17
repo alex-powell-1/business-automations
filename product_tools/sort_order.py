@@ -77,13 +77,13 @@ class SortOrderEngine:
             def swap_items(index1, index2):
                 items[index1], items[index2] = items[index2], items[index1]
 
-            for item in items:
+            for item_index, item in enumerate(items):
                 if item['price_2'] is not None and item['price_1'] > item['price_2']:
                     prc_1 = float(item['price_1'])
                     prc_2 = float(item['price_2'])
                     percent_off = math.floor((1 - prc_2 / prc_1) * 100)
                     print(percent_off)
-                    print(int(map_val(percent_off, 0, 100, len(items), 0, within_bounds=True)))
+                    print(int(map_val(percent_off, 0, 100, item_index, 0, within_bounds=True)))
 
             return items
         except Exception as e:
