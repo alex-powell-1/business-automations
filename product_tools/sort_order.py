@@ -77,7 +77,7 @@ class SortOrderEngine:
                     items.insert(index2, items[index1])
                     # items.pop(index1)
 
-                print('ITEM: ', item['item_no'])
+                # print('ITEM: ', item['item_no'])
                 if item['price_2'] is not None and item['price_1'] > item['price_2']:
                     prc_1 = float(item['price_1'])
                     prc_2 = float(item['price_2'])
@@ -86,8 +86,8 @@ class SortOrderEngine:
 
                     new_index = int(map_val(percent_off, 0, 70, item_index, 0, within_bounds=True))
 
-                    print(percent_off)
-                    print(new_index)
+                    # print(percent_off)
+                    # print(new_index)
 
                     insert_item_at(item_index, new_index)
 
