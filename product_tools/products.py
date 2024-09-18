@@ -600,7 +600,7 @@ def get_all_new_items(start_date):
     on lin.ITEM_NO = item.ITEM_NO
     INNER JOIN SN_SHOP_PROD mw
     on mw.ITEM_NO = lin.ITEM_NO
-    WHERE lin.RECVR_DAT > '{start_date}' and (inv.QTY_AVAIL - item.PROF_NO_1) > 0
+    WHERE lin.RECVR_DAT > '{start_date}' and (inv.QTY_AVAIL - item.PROF_NO_1) > 0 and lin.EXT_COST >= 1000
     AND item.IS_ECOMM_ITEM = 'Y'
     GROUP BY mw.PRODUCT_ID, mw.ITEM_NO
     ORDER BY mw.PRODUCT_ID, MAX(lin.EXT_COST) desc, mw.ITEM_NO
