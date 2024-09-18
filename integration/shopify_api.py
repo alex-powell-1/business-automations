@@ -1899,7 +1899,6 @@ class Shopify:
                 ]
 
                 if len(items) == 0:
-                    eh.logger.info(f'No out of stock items found in collection {collection_id}')
                     return
 
                 response = Shopify.Collection.move_to_bottom(
