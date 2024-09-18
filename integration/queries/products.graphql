@@ -239,9 +239,7 @@ query productsInCollection($collectionId: ID!, $after: String) {
         edges {
             node {
                 id
-                inCollection(id: $collectionId) {
-                    id
-                }
+                inCollection(id: $collectionId)
             }
         }
         pageInfo {
@@ -251,7 +249,7 @@ query productsInCollection($collectionId: ID!, $after: String) {
     }
 }
 
-query product($id: ID!, $collectionId: ID) {
+query product($id: ID!) {
     product(id: $id) {
         collections(first: 50) {
             edges {

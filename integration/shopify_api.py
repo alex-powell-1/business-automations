@@ -892,7 +892,7 @@ class Shopify:
                     'marketingState': 'SUBSCRIBED',
                 }
             else:
-                phone_variables['input']['smsMarketingConsent'] = {'marketingState': 'NOT_SUBSCRIBED'}
+                phone_variables['input']['smsMarketingConsent'] = {'marketingState': 'UNSUBSCRIBED'}
 
             response = Shopify.Query(
                 document=Shopify.Customer.queries,
@@ -911,7 +911,7 @@ class Shopify:
                     'marketingState': 'SUBSCRIBED',
                 }
             else:
-                email_variables['input']['emailMarketingConsent'] = {'marketingState': 'NOT_SUBSCRIBED'}
+                email_variables['input']['emailMarketingConsent'] = {'marketingState': 'UNSUBSCRIBED'}
 
             response = Shopify.Query(
                 document=Shopify.Customer.queries,
@@ -1015,7 +1015,7 @@ class Shopify:
         def get_all(collection_id: int = None):
             id_list = []
             start = True
-
+            response = None
             if collection_id:
                 while start or response.data['products']['pageInfo']['hasNextPage']:
                     response = Shopify.Query(
@@ -2279,17 +2279,18 @@ class Shopify:
         prefix = 'gid://shopify/WebhookSubscription'
         format = 'JSON'
         topics = [
-            {'topic': 'ORDERS_CREATE', 'url': f'{creds.Company.API.endpoint}{Route.Shopify.order_create}'},
-            {'topic': 'REFUNDS_CREATE', 'url': f'{creds.Company.API.endpoint}{Route.Shopify.refund_create}'},
-            {'topic': 'DRAFT_ORDERS_CREATE', 'url': f'{creds.Company.API.endpoint}{Route.Shopify.draft_create}'},
-            {'topic': 'DRAFT_ORDERS_UPDATE', 'url': f'{creds.Company.API.endpoint}{Route.Shopify.draft_update}'},
-            {'topic': 'CUSTOMERS_CREATE', 'url': f'{creds.Company.API.endpoint}{Route.Shopify.customer_create}'},
-            {'topic': 'CUSTOMERS_UPDATE', 'url': f'{creds.Company.API.endpoint}{Route.Shopify.customer_update}'},
-            {'topic': 'PRODUCTS_UPDATE', 'url': f'{creds.Company.API.endpoint}{Route.Shopify.product_update}'},
-            {
-                'topic': 'VARIANTS_OUT_OF_STOCK',
-                'url': f'{creds.Company.API.endpoint}{Route.Shopify.variant_out_of_stock}',
-            },
+            # {'topic': 'ORDERS_CREATE', 'url': f'{creds.Company.API.endpoint}{Route.Shopify.order_create}'},
+            # {'topic': 'REFUNDS_CREATE', 'url': f'{creds.Company.API.endpoint}{Route.Shopify.refund_create}'},
+            # {'topic': 'DRAFT_ORDERS_CREATE', 'url': f'{creds.Company.API.endpoint}{Route.Shopify.draft_create}'},
+            # {'topic': 'DRAFT_ORDERS_UPDATE', 'url': f'{creds.Company.API.endpoint}{Route.Shopify.draft_update}'},
+            # {'topic': 'CUSTOMERS_CREATE', 'url': f'{creds.Company.API.endpoint}{Route.Shopify.customer_create}'},
+            # {'topic': 'CUSTOMERS_UPDATE', 'url': f'{creds.Company.API.endpoint}{Route.Shopify.customer_update}'},
+            # {'topic': 'PRODUCTS_UPDATE', 'url': f'{creds.Company.API.endpoint}{Route.Shopify.product_update}'},
+            # {
+            #     'topic': 'VARIANTS_OUT_OF_STOCK',
+            #     'url': f'{creds.Company.API.endpoint}{Route.Shopify.variant_out_of_stock}',
+            # },
+            {'topic': 'COLLECTIONS_UPDATE', 'url': f'{creds.Company.API.endpoint}{Route.Shopify.collection_update}'}
         ]
 
         def get(id='', ids_only=False):
@@ -2572,4 +2573,4 @@ def refresh_order(tkt_no):
 
 if __name__ == '__main__':
     verbose = True
-    print(Shopify.Webhook.get())
+    print(Shopify.Webhook.create())

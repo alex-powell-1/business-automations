@@ -40,6 +40,7 @@ class Customers:
         return [self.Customer(x) for x in response] if response is not None else []
 
     def get_cp_customers(self):
+        """Get all customers from Counterpoint that are e-commerce customers."""
         query = f"""
         SELECT CUST_NO FROM {Table.CP.Customers.table}
         WHERE IS_ECOMM_CUST = 'Y'
@@ -48,27 +49,35 @@ class Customers:
         return [x[0] for x in response] if response is not None else []
 
     def get_mw_customers(self):
+        """Get all customers from the Middleware. Exclude entries that have a null CUST_NO.
+        These are newsletter subscribers that have never made a purchase."""
         query = f"""
         SELECT CUST_NO FROM {Table.Middleware.customers}
+        WHERE CUST_NO IS NOT NULL
         """
         response = Database.query(query)
         return [x[0] for x in response] if response is not None else []
 
     def process_deletes(self):
-        # cp_customer_res = Database.Counterpoint.Customer.get_all()
-        # cp_customers = [x[0] for x in cp_customer_res] if cp_customer_res is not None else []
+        Customers.logger.header('Processing Deletes')
         cp_customers = self.get_cp_customers()
         mw_customers = self.get_mw_customers()
         # Find Customers in MW that are not in CP
-        deletes = []
+        delete_queue = []
         for mw_customer in mw_customers:
             if mw_customer not in cp_customers:
-                deletes.append(mw_customer)
-        if deletes:
-            for delete in deletes:
-                shopify_cust_no = Database.Shopify.Customer.get_id(delete)
+                delete_queue.append(mw_customer)
+
+        if delete_queue:
+            count = 1
+            for x in delete_queue:
+                Customers.logger.info(f'{count}/{len(delete_queue)}: Deleting customer CUST_NO: {x}')
+                shopify_cust_no = Database.Shopify.Customer.get_id(x)
                 Shopify.Customer.delete(shopify_cust_no)
                 Database.Shopify.Customer.delete(shopify_cust_no)
+                count += 1
+        else:
+            Customers.logger.info('No customers to delete.')
 
     def sync(self):
         self.process_deletes()
@@ -243,6 +252,8 @@ class Customers:
                         if self.email_subscribe
                         else {'marketingState': 'NOT_SUBSCRIBED'}
                     )
+            else:
+                variables['input']['email'] = None
 
             if self.phone:
                 variables['input']['phone'] = self.phone
@@ -256,6 +267,8 @@ class Customers:
                         if self.sms_subscribe
                         else {'marketingState': 'NOT_SUBSCRIBED'}
                     )
+            else:
+                variables['input']['phone'] = None
 
             # Add Customer Number
             if not self.meta_cust_no_id:
