@@ -13,7 +13,6 @@ from traceback import print_exc as tb
 from setup.utilities import PhoneNumber, local_to_utc
 from datetime import datetime
 
-import threading
 import concurrent.futures
 
 

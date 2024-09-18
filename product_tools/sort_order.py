@@ -4,6 +4,8 @@ from setup.date_presets import *
 from setup.error_handler import ScheduledTasksErrorHandler as error_handler
 from database import Database as db
 
+import concurrent.futures
+
 import time
 
 from integration.shopify_api import Shopify, MoveInput, MovesCollection
@@ -149,7 +151,7 @@ class SortOrderEngine:
         except:
             pass
 
-        print(featured_items)
+        # print(featured_items)
 
         for item in items:
             if item['item_no'] in item_skus:
@@ -313,11 +315,8 @@ class SortOrderEngine:
 
         collections_list = [(collection_id, items) for collection_id, items in collections.items()]
 
-        for collection_index, collection in enumerate(collections_list):
+        def task(collection):
             collection_id, items = collection
-            SortOrderEngine.logger.info(f'Processing collection {collection_id}')
-            SortOrderEngine.logger.info(f'Collection {collection_index + 1}/{len(collections_list)}')
-
             Shopify.Collection.change_sort_order_to_manual(collection_id=collection_id)
 
             mc = MovesCollection()
@@ -328,7 +327,15 @@ class SortOrderEngine:
                 mc.add(move)
 
             responses = Shopify.Collection.reorder_items(collection_id=collection_id, collection_of_moves=mc)
-            SortOrderEngine.logger.success(f'Collection {collection_id} processed')
+
+        SortOrderEngine.logger.info('Processing collections')
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
+            responses = executor.map(task, collections_list)
+
+        # for collection_index, collection in enumerate(collections_list):
+        #     pass
+        SortOrderEngine.logger.success('Collections processed')
 
         if not out_of_stock_mode:
             duration = time.time() - start_time
