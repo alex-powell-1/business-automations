@@ -114,7 +114,7 @@ class GiftCertificates:
 
             query = f"""
             SELECT FST_NAM, LST_NAM, EMAIL_ADRS_1
-            FROM {creds.ar_cust_table}
+            FROM {creds.Table.CP.Customers.table}
             WHERE CUST_NO = '{self.cust_no}'
             """
 

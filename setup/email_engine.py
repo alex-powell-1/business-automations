@@ -21,8 +21,8 @@ import os
 
 class Email:
     name = creds.Company.name
-    address = creds.sales_email
-    pw = creds.sales_password
+    address = creds.Gmail.Sales.username
+    pw = creds.Gmail.Sales.password
 
     def render(
         to_name,

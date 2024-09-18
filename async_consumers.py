@@ -14,7 +14,7 @@ from customer_tools.customers import lookup_customer, add_new_customer
 import threading
 import subprocess
 from setup.sms_engine import SMSEngine
-from setup.utilities import PhoneNumber
+from setup.utilities import PhoneNumber, convert_path_to_raw
 from integration.shopify_api import Shopify
 from integration.orders import Order as ShopifyOrder
 from setup.print_engine import Printer
@@ -34,8 +34,8 @@ def sync_on_demand(phone_number):
     phone_response = None
 
     try:
-        file = creds.sync_batch_file
-        path = creds.batch_file_path
+        file = creds.BatchFiles.sync
+        path = convert_path_to_raw(creds.BatchFiles.directory)
         p = subprocess.Popen(args=file, cwd=path, shell=True)
         stdout, stderr = p.communicate()
 
@@ -248,27 +248,27 @@ if __name__ == '__main__':
 
         queues = [
             {
-                'queue_name': creds.consumer_shopify_draft_create,
+                'queue_name': creds.Consumer.draft_create,
                 'callback': on_draft_created,
                 'error_handler': ProcessInErrorHandler,
             },
             {
-                'queue_name': creds.consumer_shopify_draft_update,
+                'queue_name': creds.Consumer.draft_update,
                 'callback': on_draft_updated,
                 'error_handler': ProcessInErrorHandler,
             },
             {
-                'queue_name': creds.consumer_sync_on_demand,
+                'queue_name': creds.Consumer.sync_on_demand,
                 'callback': sync_on_demand,
                 'error_handler': ProcessOutErrorHandler,
             },
             {
-                'queue_name': creds.consumer_shopify_orders,
+                'queue_name': creds.Consumer.orders,
                 'callback': process_shopify_order,
                 'error_handler': ProcessInErrorHandler,
             },
             {
-                'queue_name': creds.consumer_design_lead_form,
+                'queue_name': creds.Consumer.design_lead_form,
                 'callback': process_design_lead,
                 'error_handler': LeadFormErrorHandler,
             },

@@ -102,7 +102,7 @@ def verify_webhook(data, hmac_header):
     Compare the computed HMAC digest based on the client secret and the request contents
     to the reported HMAC in the headers.
     """
-    calculated_hmac = base64.b64encode(hmac.new(creds.shopify_secret_key.encode(), data, hashlib.sha256).digest())
+    calculated_hmac = base64.b64encode(hmac.new(creds.Shopify.secret_key.encode(), data, hashlib.sha256).digest())
     return hmac.compare_digest(calculated_hmac, hmac_header.encode())
 
 
@@ -133,11 +133,11 @@ def get_service_information():
 
         channel = connection.channel()
 
-        channel.queue_declare(queue=creds.consumer_design_lead_form, durable=True)
+        channel.queue_declare(queue=creds.Consumer.design_lead_form, durable=True)
 
         channel.basic_publish(
             exchange='',
-            routing_key=creds.consumer_design_lead_form,
+            routing_key=creds.Consumer.design_lead_form,
             body=payload,
             properties=pika.BasicProperties(delivery_mode=pika.DeliveryMode.Persistent),
         )
@@ -178,10 +178,10 @@ def get_service_information_admin():
     try:
         connection = pika.BlockingConnection(pika.ConnectionParameters('localhost'))
         channel = connection.channel()
-        channel.queue_declare(queue=creds.consumer_design_lead_form, durable=True)
+        channel.queue_declare(queue=creds.Consumer.design_lead_form, durable=True)
         channel.basic_publish(
             exchange='',
-            routing_key=creds.consumer_design_lead_form,
+            routing_key=creds.Consumer.design_lead_form,
             body=json.dumps(data),
             properties=pika.BasicProperties(delivery_mode=pika.DeliveryMode.Persistent),
         )
@@ -535,11 +535,11 @@ def incoming_sms():
             connection = pika.BlockingConnection(pika.ConnectionParameters('localhost'))
             channel = connection.channel()
 
-            channel.queue_declare(queue=creds.consumer_sync_on_demand, durable=True)
+            channel.queue_declare(queue=creds.Consumer.sync_on_demand, durable=True)
 
             channel.basic_publish(
                 exchange='',
-                routing_key=creds.consumer_sync_on_demand,
+                routing_key=creds.Consumer.sync_on_demand,
                 body=from_phone,
                 properties=pika.BasicProperties(delivery_mode=pika.DeliveryMode.Persistent),
             )
@@ -640,11 +640,11 @@ def shopify():
         connection = pika.BlockingConnection(pika.ConnectionParameters('localhost'))
         channel = connection.channel()
 
-        channel.queue_declare(queue=creds.consumer_shopify_orders, durable=True)
+        channel.queue_declare(queue=creds.Consumer.orders, durable=True)
 
         channel.basic_publish(
             exchange='',
-            routing_key=creds.consumer_shopify_orders,
+            routing_key=creds.Consumer.orders,
             body=str(order_id),
             properties=pika.BasicProperties(delivery_mode=pika.DeliveryMode.Persistent),
         )
@@ -685,11 +685,11 @@ def shopify_draft_create():
         connection = pika.BlockingConnection(pika.ConnectionParameters('localhost'))
         channel = connection.channel()
 
-        channel.queue_declare(queue=creds.consumer_shopify_draft_create, durable=True)
+        channel.queue_declare(queue=creds.Consumer.draft_create, durable=True)
 
         channel.basic_publish(
             exchange='',
-            routing_key=creds.consumer_shopify_draft_create,
+            routing_key=creds.Consumer.draft_create,
             body=str(order_id),
             properties=pika.BasicProperties(delivery_mode=pika.DeliveryMode.Persistent),
         )
@@ -729,11 +729,11 @@ def shopify_draft_update():
         connection = pika.BlockingConnection(pika.ConnectionParameters('localhost'))
         channel = connection.channel()
 
-        channel.queue_declare(queue=creds.consumer_shopify_draft_update, durable=True)
+        channel.queue_declare(queue=creds.Consumer.draft_update, durable=True)
 
         channel.basic_publish(
             exchange='',
-            routing_key=creds.consumer_shopify_draft_update,
+            routing_key=creds.Consumer.draft_update,
             body=str(order_id),
             properties=pika.BasicProperties(delivery_mode=pika.DeliveryMode.Persistent),
         )
@@ -1138,7 +1138,7 @@ def get_availability():
 @app.route(f'{Route.file_server}/<path:path>', methods=['GET'])
 def serve_file(path):
     try:
-        return send_from_directory(creds.Company.public_files, path)
+        return send_from_directory(creds.Company.public_files_local_path, path)
     except NotFound:
         return jsonify({'error': 'File not found'}), 404
     except BadRequest:
@@ -1284,7 +1284,7 @@ def robots():
 
 @app.route('/favicon.ico', methods=['GET'])
 def favicon():
-    return send_from_directory(creds.Company.public_files, 'favicon.ico')
+    return send_from_directory(creds.Company.public_files_local_path, 'favicon.ico')
 
 
 @app.route('/', methods=['GET'])

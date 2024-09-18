@@ -43,7 +43,7 @@ def create_inventory_csv(retail=True, eh=ScheduledTasksErrorHandler):
 
         df = pd.DataFrame(item_list)
 
-        directory = creds.Company.public_files + '/availability'
+        directory = creds.Company.public_files_local_path + '/availability'
         file_location = directory + '/' + filename
 
         df.to_csv(
