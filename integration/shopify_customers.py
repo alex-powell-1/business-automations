@@ -1,7 +1,8 @@
 from database import Database
 import concurrent.futures
 from integration.shopify_api import Shopify
-from setup.creds import Table, Metafield
+from setup.creds import Table
+from setup import creds
 from datetime import datetime
 import json
 from traceback import format_exc as tb
@@ -270,11 +271,17 @@ class Customers:
             else:
                 variables['input']['phone'] = None
 
+            ############################################################################################
+            ######################################## METAFIELDS ########################################
+            ############################################################################################
+
+            namespace = creds.Shopify.Metafield.Namespace.Customer.customer
+
             # Add Customer Number
             if not self.meta_cust_no_id:
                 variables['input']['metafields'].append(
                     {
-                        'namespace': Metafield.Namespace.Customer.customer,
+                        'namespace': namespace,
                         'key': 'number',
                         'type': 'single_line_text_field',
                         'value': self.cp_cust_no,
@@ -290,7 +297,7 @@ class Customers:
                 if not self.meta_category_id:
                     variables['input']['metafields'].append(
                         {
-                            'namespace': Metafield.Namespace.Customer.customer,
+                            'namespace': namespace,
                             'key': 'category',
                             'type': 'single_line_text_field',
                             'value': self.category,
@@ -309,7 +316,7 @@ class Customers:
                 if not self.meta_birth_month_id:
                     variables['input']['metafields'].append(
                         {
-                            'namespace': Metafield.Namespace.Customer.customer,
+                            'namespace': namespace,
                             'key': 'birth_month',
                             'type': 'number_integer',
                             'value': json.dumps(self.meta_birth_month),
@@ -331,7 +338,7 @@ class Customers:
                 if not self.meta_spouse_birth_month_id:
                     variables['input']['metafields'].append(
                         {
-                            'namespace': Metafield.Namespace.Customer.customer,
+                            'namespace': namespace,
                             'key': 'birth_month_spouse',
                             'type': 'number_integer',
                             'value': json.dumps(self.meta_spouse_birth_month),
@@ -353,7 +360,7 @@ class Customers:
                 if not self.meta_wholesale_price_tier_id:
                     variables['input']['metafields'].append(
                         {
-                            'namespace': Metafield.Namespace.Customer.customer,
+                            'namespace': namespace,
                             'key': 'wholesale_price_tier',
                             'type': 'number_integer',
                             'value': json.dumps(self.meta_wholesale_price_tier),
@@ -655,7 +662,7 @@ class Subscriber:
             # Add Category
             variables['input']['metafields'].append(
                 {
-                    'namespace': Metafield.Namespace.Customer.customer,
+                    'namespace': creds.Shopify.Metafield.Namespace.Customer.customer,
                     'key': 'category',
                     'type': 'single_line_text_field',
                     'value': 'RETAIL',

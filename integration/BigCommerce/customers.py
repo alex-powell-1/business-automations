@@ -41,7 +41,7 @@ class Customers:
                 customer_list = str(tuple(customer_list))
 
             query = f"""
-			UPDATE {creds.ar_cust_table}
+			UPDATE {creds.Table.CP.Customers.table}
 			SET LST_MAINT_DT = GETDATE()
 			WHERE CUST_NO IN {customer_list}"""
 
@@ -58,7 +58,7 @@ class Customers:
     def get_cp_customers(self):
         query = f"""
         SELECT CUST_NO, FST_NAM, LST_NAM, EMAIL_ADRS_1, PHONE_1, LOY_PTS_BAL, ADRS_1, CITY, STATE, ZIP_COD, CNTRY
-        FROM {creds.ar_cust_table}
+        FROM {creds.Table.CP.Customers.table}
         WHERE
         LST_MAINT_DT > '{self.last_sync}' and
         CUST_NAM_TYP = 'P'
@@ -466,7 +466,7 @@ class Customers:
 
             def get_processing_method():
                 del_query = f"""
-                SELECT CUST_NO FROM {creds.ar_cust_table}
+                SELECT CUST_NO FROM {creds.Table.CP.Customers.table}
                 WHERE CUST_NO = '{self.cust_no}'
                 """
 

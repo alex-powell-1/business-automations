@@ -1,7 +1,7 @@
 from setup import creds
 from datetime import datetime
 from setup.error_handler import ProcessOutErrorHandler
-from setup.utilities import PhoneNumber
+from setup.utilities import PhoneNumber, convert_path_to_raw
 from setup.sms_engine import SMSEngine
 import subprocess
 
@@ -15,8 +15,8 @@ def sync_on_demand(phone_number):
     phone_response = None
 
     try:
-        file = creds.sync_batch_file
-        path = creds.batch_file_path
+        file = creds.BatchFiles.sync
+        path = convert_path_to_raw(creds.BatchFiles.directory)
         p = subprocess.Popen(args=file, cwd=path, shell=True)
         stdout, stderr = p.communicate()
 

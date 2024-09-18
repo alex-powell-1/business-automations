@@ -1,5 +1,5 @@
 from setup import creds
-from setup.creds import Metafield, Route
+from setup.creds import Route
 import requests
 import json
 from time import sleep
@@ -14,7 +14,7 @@ from setup.utilities import PhoneNumber, local_to_utc
 from datetime import datetime
 
 
-verbose_print = False
+verbose_print = True
 
 
 class MoveInput:
@@ -57,8 +57,8 @@ class Shopify:
     eh = ProcessOutErrorHandler
     logger = eh.logger
     error_handler = eh.error_handler
-    token = creds.shopify_admin_token
-    shop_url = creds.shopify_shop_url
+    token = creds.Shopify.admin_token
+    shop_url = creds.Shopify.shop_url
     headers = {'X-Shopify-Access-Token': token, 'Content-Type': 'application/json'}
 
     class Query:
@@ -736,7 +736,7 @@ class Shopify:
         def get_customer_metafields(metafields: list):
             result = {}
             for x in metafields:
-                if x['node']['namespace'] == Metafield.Namespace.Customer.customer:
+                if x['node']['namespace'] == creds.Shopify.Metafield.Namespace.Customer.customer:
                     if x['node']['key'] == 'number':
                         result['cust_no_id'] = x['node']['id'].split('/')[-1]
                     elif x['node']['key'] == 'category':
@@ -1161,46 +1161,22 @@ class Shopify:
                     )
 
         def publish(product_id: int, online_store=True, POS=True, shop=True, inbox=True, google=True):
+            """Publish product to specified channels"""
+            operation = 'publishablePublish'
+            channels = creds.Shopify.SalesChannel
+            variables = {'id': f'{Shopify.Product.prefix}{product_id}', 'input': []}
             if online_store:
-                variables = {
-                    'id': f'{Shopify.Product.prefix}{product_id}',
-                    'input': {'publicationId': creds.shopify_channel_online_store},
-                }
-                Shopify.Query(
-                    document=Shopify.Product.queries, variables=variables, operation_name='publishablePublish'
-                )
+                variables['input'].append({'publicationId': channels.online_store})
             if POS:
-                variables = {
-                    'id': f'{Shopify.Product.prefix}{product_id}',
-                    'input': {'publicationId': creds.shopify_channel_pos},
-                }
-                Shopify.Query(
-                    document=Shopify.Product.queries, variables=variables, operation_name='publishablePublish'
-                )
+                variables['input'].append({'publicationId': channels.pos})
             if shop:
-                variables = {
-                    'id': f'{Shopify.Product.prefix}{product_id}',
-                    'input': {'publicationId': creds.shopify_channel_shop},
-                }
-                Shopify.Query(
-                    document=Shopify.Product.queries, variables=variables, operation_name='publishablePublish'
-                )
+                variables['input'].append({'publicationId': channels.shop})
             if inbox:
-                variables = {
-                    'id': f'{Shopify.Product.prefix}{product_id}',
-                    'input': {'publicationId': creds.shopify_channel_inbox},
-                }
-                Shopify.Query(
-                    document=Shopify.Product.queries, variables=variables, operation_name='publishablePublish'
-                )
+                variables['input'].append({'publicationId': channels.inbox})
             if google:
-                variables = {
-                    'id': f'{Shopify.Product.prefix}{product_id}',
-                    'input': {'publicationId': creds.shopify_channel_google},
-                }
-                Shopify.Query(
-                    document=Shopify.Product.queries, variables=variables, operation_name='publishablePublish'
-                )
+                variables['input'].append({'publicationId': channels.google})
+
+            Shopify.Query(document=Shopify.Product.queries, variables=variables, operation_name=operation)
 
         def get_collections(product_id: int):
             response = Shopify.Query(
@@ -1588,13 +1564,13 @@ class Shopify:
                 product_specifications = []
                 if metafields:
                     for x in metafields:
-                        if x['namespace'] == Metafield.Namespace.Product.specification:
+                        if x['namespace'] == creds.Shopify.Metafield.Namespace.Product.specification:
                             product_specifications.append(
                                 {'id': x['id'].split('/')[-1], 'key': x['key'], 'value': x['value']}
                             )
                 product_status = []
                 for x in metafields:
-                    if x['namespace'] == Metafield.Namespace.Product.status:
+                    if x['namespace'] == creds.Shopify.Metafield.Namespace.Product.status:
                         product_status.append({'id': x['id'].split('/')[-1], 'key': x['key'], 'value': x['value']})
                 return {'product_specifications': product_specifications, 'product_status': product_status}
 
@@ -2575,4 +2551,4 @@ def refresh_order(tkt_no):
 
 if __name__ == '__main__':
     verbose = True
-    print(Shopify.Webhook.create())
+    Shopify.MetafieldDefinition.sync()

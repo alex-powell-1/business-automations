@@ -11,7 +11,7 @@ from PIL import Image, ImageOps
 from database import Database
 
 from setup import creds
-from setup.creds import Table, Metafield
+from setup.creds import Table
 from database import Database as db
 from setup.utilities import get_product_images, convert_to_utc, parse_custom_url, get_filesize
 
@@ -563,7 +563,7 @@ class Catalog:
 
         def process_menus(self):
             """Recursively updates menus in Shopify."""
-            main_menu = {'id': creds.shopify_menu_main, 'title': 'Menu menu', 'handle': 'main-menu', 'items': []}
+            main_menu = {'id': creds.Shopify.Menu.main, 'title': 'Menu menu', 'handle': 'main-menu', 'items': []}
 
             def menu_helper(category):
                 # Sort category children by sort order
@@ -775,7 +775,7 @@ class Catalog:
 
             def get_category_image_path(self, local=True):
                 image_name = str(self.handle)[1:-1].replace('/', '_').replace(' ', '-') + '.jpg'
-                local_path = f'{creds.Company.public_files}/{creds.Company.category_images}/{image_name}'
+                local_path = f'{creds.Company.public_files_local_path}/{creds.Company.category_images}/{image_name}'
                 if os.path.exists(local_path):
                     return local_path
 
@@ -783,7 +783,7 @@ class Catalog:
                 payload = {'input': {'title': self.name, 'handle': self.handle, 'sortOrder': 'BEST_SELLING'}}
                 # New items - Add store channel
                 if not self.collection_id:
-                    payload['input']['publications'] = {'publicationId': creds.shopify_channel_online_store}
+                    payload['input']['publications'] = {'publicationId': creds.Shopify.SalesChannel.online_store}
                 # Updates - Add Collection ID
                 if self.collection_id:
                     payload['input']['id'] = f'gid://shopify/Collection/{self.collection_id}'
@@ -1550,7 +1550,7 @@ class Catalog:
                         Catalog.error_handler.add_error_v(f'Error deleting metafield: {e}')
                         query = f"""
                         UPDATE {Table.Middleware.products}
-                        SET {Metafield.Product.color} = NULL
+                        SET {creds.Shopify.Metafield.Product.color} = NULL
                         WHERE PRODUCT_ID = {self.product_id}
                         """
                         db.query(query)
@@ -1575,7 +1575,7 @@ class Catalog:
                         Catalog.error_handler.add_error_v(f'Error deleting metafield: {e}')
                         query = f"""
                         UPDATE {Table.Middleware.products}
-                        SET {Metafield.Product.bloom_color} = NULL
+                        SET {creds.Shopify.Metafield.Product.bloom_color} = NULL
                         WHERE PRODUCT_ID = {self.product_id}
                         """
                         db.query(query)
@@ -1898,7 +1898,7 @@ class Catalog:
                     if not self.is_preorder:
                         variant_payload['inventoryQuantities'] = {
                             'availableQuantity': child.buffered_quantity,
-                            'locationId': creds.shopify_location_1387,
+                            'locationId': creds.Shopify.Location.n2,
                         }
 
                 if child.price_2:
@@ -1968,7 +1968,7 @@ class Catalog:
             if not self.is_preorder:
                 payload['input']['inventoryQuantities'] = {}
                 payload['input']['inventoryQuantities']['availableQuantity'] = self.buffered_quantity
-                payload['input']['inventoryQuantities']['locationId'] = creds.shopify_location_1387
+                payload['input']['inventoryQuantities']['locationId'] = creds.Shopify.Location.n2
 
             if self.weight:
                 payload['input']['inventoryItem']['measurement'] = {
@@ -1990,7 +1990,7 @@ class Catalog:
                     payload['input']['quantities'].append(
                         {
                             'inventoryItemId': f'gid://shopify/InventoryItem/{child.inventory_id}',
-                            'locationId': creds.shopify_location_1387,
+                            'locationId': creds.Shopify.Location.n2,
                             'quantity': child.buffered_quantity,
                         }
                     )
@@ -2068,7 +2068,7 @@ class Catalog:
                     single_payload = self.get_single_variant_payload()
                     variant_response = Shopify.Product.Variant.update_single(single_payload)
 
-                # Add Product to Online Store Sales Channel
+                # Add Product to Sales Channel - by default, all are turned on.
                 Shopify.Product.publish(self.product_id)
 
             def update():

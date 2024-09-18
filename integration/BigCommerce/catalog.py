@@ -58,11 +58,11 @@ class Catalog:
         # Get all products that have been updated since the last sync
 
         query = f"""
-        SELECT ITEM_NO, ITEM.{creds.cp_field_binding_id} as 'Binding ID'
+        SELECT ITEM_NO, ITEM.{creds.Table.CP.Item.Column.binding_id} as 'Binding ID'
         FROM IM_ITEM ITEM
         WHERE ITEM.LST_MAINT_DT > '{self.last_sync: %Y-%m-%d %H:%M:%S}' and
         ITEM.IS_ECOMM_ITEM = 'Y'
-        ORDER BY {creds.cp_field_binding_id} DESC
+        ORDER BY {creds.Table.CP.Item.Column.binding_id} DESC
         """
         response = Database.query(query)
         print(response)
@@ -86,7 +86,7 @@ class Catalog:
                         query = f"""
                         SELECT ITEM_NO
                         FROM IM_ITEM
-                        WHERE {creds.cp_field_binding_id} = '{binding_id}' AND IS_ECOMM_ITEM = 'Y' AND IS_ADM_TKT = 'Y'"""
+                        WHERE {creds.Table.CP.Item.Column.binding_id} = '{binding_id}' AND IS_ECOMM_ITEM = 'Y' AND IS_ADM_TKT = 'Y'"""
 
                         get_parent_response = Database.query(query)
 
@@ -135,7 +135,7 @@ class Catalog:
             remove_parent_query = f"""
                     UPDATE IM_ITEM 
                     SET IS_ADM_TKT = 'N', LST_MAINT_DT = GETDATE()
-                    WHERE {creds.cp_field_binding_id} = '{binding_id}'
+                    WHERE {creds.Table.CP.Item.Column.binding_id} = '{binding_id}'
                     """
             remove_parent_response = Database.query(remove_parent_query)
             if remove_parent_response['code'] == 200:
@@ -354,9 +354,9 @@ class Catalog:
             if binding_list:
                 if len(binding_list) > 1:
                     binding_list = tuple(binding_list)
-                    where_filter = f' or {creds.cp_field_binding_id} in {binding_list}'
+                    where_filter = f' or {creds.Table.CP.Item.Column.binding_id} in {binding_list}'
                 else:
-                    where_filter = f" or {creds.cp_field_binding_id} = '{binding_list[0]}'"
+                    where_filter = f" or {creds.Table.CP.Item.Column.binding_id} = '{binding_list[0]}'"
             else:
                 where_filter = ''
 
@@ -469,7 +469,7 @@ class Catalog:
 
     @staticmethod
     def get_product(item_no):
-        query = f"SELECT ITEM_NO, {creds.cp_field_binding_id} FROM IM_ITEM WHERE ITEM_NO = '{item_no}'"
+        query = f"SELECT ITEM_NO, {creds.Table.CP.Item.Column.binding_id} FROM IM_ITEM WHERE ITEM_NO = '{item_no}'"
         response = Database.query(query)
         if response is not None:
             sku = response[0][0]
@@ -499,7 +499,7 @@ class Catalog:
                 query = f"""
                 SELECT ITEM_NO, PRC_1
                 FROM IM_ITEM
-                WHERE {creds.cp_field_binding_id} = '{binding_id}'
+                WHERE {creds.Table.CP.Item.Column.binding_id} = '{binding_id}'
                 """
                 response = db.query(query)
                 if response is not None:
@@ -509,7 +509,7 @@ class Catalog:
                 query = f"""
                 SELECT ITEM_NO
                 FROM IM_ITEM
-                WHERE {creds.cp_field_binding_id} = '{binding_id}' and IS_ECOMM_ITEM = 'Y'
+                WHERE {creds.Table.CP.Item.Column.binding_id} = '{binding_id}' and IS_ECOMM_ITEM = 'Y'
                 """
                 response = db.query(query)
                 if response is not None:
@@ -535,7 +535,7 @@ class Catalog:
             """
         else:
             query = f"""
-            SELECT {creds.cp_field_binding_id}
+            SELECT {creds.Table.CP.Item.Column.binding_id}
             FROM IM_ITEM
             WHERE ITEM_NO = '{sku}'
             """
@@ -1716,7 +1716,7 @@ class Catalog:
                 query = f"""
                 SELECT ITEM_NO
                 FROM IM_ITEM
-                WHERE {creds.cp_field_binding_id} = '{self.binding_id}' and IS_ECOMM_ITEM = 'Y'
+                WHERE {creds.Table.CP.Item.Column.binding_id} = '{self.binding_id}' and IS_ECOMM_ITEM = 'Y'
                 ORDER BY PRC_1
                 """
                 # Get children and append to child list in order of price
@@ -1940,7 +1940,7 @@ class Catalog:
                             query = f"""
                             UPDATE IM_ITEM
                             SET ADDL_DESCR_1 = '{self.long_descr}'
-                            WHERE {creds.cp_field_binding_id} = '{self.binding_id}' and IS_ADM_TKT = 'Y'"""
+                            WHERE {creds.Table.CP.Item.Column.binding_id} = '{self.binding_id}' and IS_ADM_TKT = 'Y'"""
 
                         # Single Product use sku
                         else:
@@ -1960,7 +1960,7 @@ class Catalog:
                         query = f"""
                         SELECT COUNT(ITEM_NO)
                         FROM IM_ITEM
-                        WHERE ADDL_DESCR_1 = '{self.web_title.replace("'", "''")}' AND {creds.cp_field_binding_id} != '{self.binding_id}' AND IS_ECOMM_ITEM = 'Y'"""
+                        WHERE ADDL_DESCR_1 = '{self.web_title.replace("'", "''")}' AND {creds.Table.CP.Item.Column.binding_id} != '{self.binding_id}' AND IS_ECOMM_ITEM = 'Y'"""
 
                     else:
                         query = f"""
@@ -1989,7 +1989,7 @@ class Catalog:
                                 query = f"""
                                 UPDATE IM_ITEM
                                 SET ADDL_DESCR_1 = '{self.web_title.replace("'", "''")}'
-                                WHERE {creds.cp_field_binding_id} = '{self.binding_id}' and IS_ADM_TKT = 'Y'
+                                WHERE {creds.Table.CP.Item.Column.binding_id} = '{self.binding_id}' and IS_ADM_TKT = 'Y'
                                 
                                 """
                             else:
@@ -2959,7 +2959,7 @@ class Catalog:
                 reset_brand_query = f"""
                 UPDATE IM_ITEM
                 SET PROF_COD_1 = "SETTLEMYRE", LST_MOD_DT = GETDATE()
-                WHERE {creds.cp_field_binding_id} = '{self.binding_id}' AND IS_ADM_TKT = 'Y'
+                WHERE {creds.Table.CP.Item.Column.binding_id} = '{self.binding_id}' AND IS_ADM_TKT = 'Y'
                 """
             else:
                 reset_brand_query = f"""
@@ -3117,7 +3117,7 @@ class Catalog:
             query = f"""
                     UPDATE IM_ITEM 
                     SET IS_ADM_TKT = 'N', LST_MAINT_DT = GETDATE()
-                    WHERE {creds.cp_field_binding_id} = '{self.binding_id}'
+                    WHERE {creds.Table.CP.Item.Column.binding_id} = '{self.binding_id}'
                     """
             Database.query(query)
             print('Parent status removed from all children.')
@@ -3252,7 +3252,7 @@ class Catalog:
                 Will check IM_ITEM. IM_PRC, IM_INV, EC_ITEM_DESCR, EC_CATEG_ITEM, and Image tables
                 have an after update Trigger implemented for updating IM_ITEM.LST_MAINT_DT."""
 
-                query = f""" select ITEM.{creds.cp_field_binding_id} as 'Binding ID(0)', ITEM.IS_ECOMM_ITEM as 'Web 
+                query = f""" select ITEM.{creds.Table.CP.Item.Column.binding_id} as 'Binding ID(0)', ITEM.IS_ECOMM_ITEM as 'Web 
                 Enabled(1)', ISNULL(ITEM.IS_ADM_TKT, 'N') as 'Is Parent(2)', BC_PROD.PRODUCT_ID as 'Product ID (3)', 
                 BC_PROD.VARIANT_ID as 'Variant ID(4)', ITEM.USR_CPC_IS_ENABLED 
                 as 'Web Visible(5)', ITEM.USR_ALWAYS_ONLINE as 'ALWAYS ONLINE(6)', ITEM.IS_FOOD_STMP_ITEM as 
@@ -3762,7 +3762,7 @@ class Catalog:
                 def get_item_no_from_image_name(image_name):
                     def get_binding_id(item_no):
                         query = f"""
-                               SELECT {creds.cp_field_binding_id} FROM IM_ITEM
+                               SELECT {creds.Table.CP.Item.Column.binding_id} FROM IM_ITEM
                                WHERE ITEM_NO = '{item_no}'
                                """
                         response = Database.query(query)

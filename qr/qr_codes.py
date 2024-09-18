@@ -22,7 +22,7 @@ class QR:
     def generate(self):
         qr = qrcode.make(f'{self.url}?qr={self.qr_code}')
         type(qr)  # qrcode.image.pil.PilImage
-        qr.save(f'{creds.Company.public_files}/qr/{self.filename}.png')
+        qr.save(f'{creds.Company.public_files_local_path}/qr/{self.filename}.png')
         QR.insert(
             qr_code=self.qr_code,
             url=self.url,

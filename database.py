@@ -1,6 +1,6 @@
 import random
 from setup import creds
-from setup.creds import Table, Metafield
+from setup.creds import Table
 from setup.utilities import PhoneNumber
 from setup.error_handler import ProcessOutErrorHandler
 from datetime import datetime, timedelta
@@ -2435,10 +2435,10 @@ class Database:
                         query += f' {column} = NULL'
                     else:
                         # Delete All Metafield Column Data for Customer
-                        cust_meta_columns = Metafield.Customer.__dict__.keys()
+                        cust_meta_columns = creds.Shopify.Metafield.Customer.__dict__.keys()
                         for column in cust_meta_columns:
                             if not column.startswith('__'):
-                                key = Metafield.Customer.__dict__[column]
+                                key = creds.Shopify.Metafield.Customer.__dict__[column]
                                 query += f' {key} = NULL,'
                         # Remove trailing comma
                         if query[-1] == ',':
@@ -3295,11 +3295,11 @@ class Database:
                         query += f' {column} = NULL'
                     else:
                         # Delete All Metafield Column Data for Customer
-                        prod_meta_columns = Metafield.Product.__dict__.keys()
+                        prod_meta_columns = creds.Shopify.Metafield.Product.__dict__.keys()
                         if prod_meta_columns:
                             for column in prod_meta_columns:
                                 if not column.startswith('__'):
-                                    key = Metafield.Product.__dict__[column]
+                                    key = creds.Shopify.Metafield.Product.__dict__[column]
                                     query += f' {key} = NULL,'
                             # Remove trailing comma
                             if query[-1] == ',':

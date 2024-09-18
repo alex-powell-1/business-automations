@@ -373,7 +373,8 @@ class OrderAPI(DocumentAPI):
     # Write entry into PS_DOC_HDR_LOY_PGM
     def write_ps_doc_hdr_loy_pgm(self, doc_id, cust_no, points_earned: float, points_redeemed: float):
         query = f"""
-        SELECT LOY_PTS_BAL FROM {creds.ar_cust_table}
+        SELECT LOY_PTS_BAL 
+        FROM {creds.Table.CP.Customers.table}
         WHERE CUST_NO = '{cust_no}'
         """
         response = Database.query(query)
@@ -1447,7 +1448,7 @@ class OrderAPI(DocumentAPI):
 
             if payment['PAY_COD'] == 'LOYALTY':
                 query = f"""
-                UPDATE {creds.ar_cust_table}
+                UPDATE {creds.Table.CP.Customers.table}
                 SET LOY_PTS_BAL = LOY_PTS_BAL + {abs(math.floor(float(payment["AMT"])))}
                 WHERE CUST_NO = '{payload["PS_DOC_HDR"]["CUST_NO"]}'
                 """
@@ -1565,7 +1566,7 @@ class OrderAPI(DocumentAPI):
         for payment in payload['PS_DOC_HDR']['PS_DOC_PMT']:
             if payment['PAY_COD'] == 'LOYALTY':
                 query = f"""
-                UPDATE {creds.ar_cust_table}
+                UPDATE {creds.Table.CP.Customers.table}
                 SET LOY_PTS_BAL = LOY_PTS_BAL - {abs(math.floor(float(payment["AMT"])))}
                 WHERE CUST_NO = '{payload["PS_DOC_HDR"]["CUST_NO"]}'
                 """
