@@ -13,8 +13,10 @@ from traceback import print_exc as tb
 from setup.utilities import PhoneNumber, local_to_utc
 from datetime import datetime
 
+import concurrent.futures
 
-verbose_print = True
+
+verbose_print = False
 
 
 class MoveInput:
@@ -1815,7 +1817,6 @@ class Shopify:
 
         def get_out_of_stock_items(collection_id: int, eh=ProcessOutErrorHandler):
             """Get a list of out of stock items in a collection"""
-            eh.logger.info(f'Getting out of stock items for collection {collection_id}')
             try:
                 response = None
                 variables = {'collectionID': f'{Shopify.Collection.prefix}{collection_id}', 'after': None}
@@ -1836,7 +1837,6 @@ class Shopify:
 
                         data.append(edge['node']['id'].split('/')[-1])
 
-                eh.logger.success(f'Found {len(data)} out of stock items in collection {collection_id}')
                 return data
             except Exception as e:
                 eh.error_handler.add_error_v(
@@ -1847,7 +1847,6 @@ class Shopify:
 
         def reorder_250_items(collection_id: int, moves: list[MoveInput], eh=ProcessOutErrorHandler):
             """Reorder up to 250 items within a collection. ONLY WORKS ON MANUALLY SORTED COLLECTIONS"""
-            eh.logger.info(f'Reordering {len(moves)} items in collection {collection_id}')
 
             response = Shopify.Query(
                 document=Shopify.Collection.queries,
@@ -1865,27 +1864,21 @@ class Shopify:
 
             list_of_moves = collection_of_moves.get()
 
-            eh.logger.info(f'Reordering {len(list_of_moves)} items in collection {collection_id}')
+            def task(moves):
+                return Shopify.Collection.reorder_250_items(collection_id=collection_id, moves=moves, eh=eh)
 
-            for moves in list_of_moves:
-                data = Shopify.Collection.reorder_250_items(collection_id=collection_id, moves=moves, eh=eh)
-                responses.append(data)
+            with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
+                responses = executor.map(task, list_of_moves)
 
             return responses
 
         def move_to_bottom(collection_id: int, product_id_list: list[int], eh=ProcessOutErrorHandler):
             """Move a list of items to the bottom of a collection"""
-            eh.logger.info(
-                f'Setting up moves for {len(product_id_list)} items to bottom of collection {collection_id}'
-            )
-
             count = Shopify.Collection.get_product_count(collection_id=collection_id)
             mc = MovesCollection()
             for i, product_id in enumerate(product_id_list):
                 move = MoveInput(item_id=product_id, position=count - i)
                 mc.add(move)
-
-            eh.logger.success('Setting up moves complete.')
 
             return Shopify.Collection.reorder_items(collection_id=collection_id, collection_of_moves=mc, eh=eh)
 
@@ -1898,7 +1891,7 @@ class Shopify:
 
             responses = []
 
-            for i, collection_id in enumerate(collections):
+            def task(collection_id):
                 Shopify.Collection.change_sort_order_to_manual(collection_id=collection_id)
 
                 items = [
@@ -1906,19 +1899,16 @@ class Shopify:
                 ]
 
                 if len(items) == 0:
-                    eh.logger.info(f'No out of stock items found in collection {collection_id}')
-                    eh.logger.success(f'{i + 1}/{len(collections)} collections processed')
-                    continue
-
-                eh.logger.info(f'Found {len(items)} out of stock items in collection {collection_id}')
+                    return
 
                 response = Shopify.Collection.move_to_bottom(
                     collection_id=collection_id, product_id_list=items, eh=eh
                 )
 
-                eh.logger.success(f'{i + 1}/{len(collections)} collections processed')
-
                 responses.append(response)
+
+            with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
+                responses = executor.map(task, collections)
 
             eh.logger.success(f'Moved all out of stock items to bottom of {len(collections)} collections')
 

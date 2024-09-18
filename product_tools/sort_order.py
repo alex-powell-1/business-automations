@@ -4,6 +4,8 @@ from setup.date_presets import *
 from setup.error_handler import ScheduledTasksErrorHandler as error_handler
 from database import Database as db
 
+import concurrent.futures
+
 import time
 
 from integration.shopify_api import Shopify, MoveInput, MovesCollection
@@ -102,7 +104,7 @@ class SortOrderEngine:
         # {'item_no': item, 'product_id': product_id, 'price_1': price_1, 'price_2': price_2}
         new_items = [
             {'item_no': x[0], 'product_id': x[1], 'price_1': None, 'price_2': None}
-            for x in products.get_new_items(start_date=Dates().one_month_ago)
+            for x in products.get_all_new_items(start_date=Dates().one_month_ago)
         ]
 
         return new_items
@@ -149,7 +151,7 @@ class SortOrderEngine:
         except:
             pass
 
-        print(featured_items)
+        # print(featured_items)
 
         for item in items:
             if item['item_no'] in item_skus:
@@ -304,7 +306,7 @@ class SortOrderEngine:
         SortOrderEngine.logger.success('Excluded collections removed')
 
         ###############################################################################################
-        ########################################## Last Step ##########################################
+        ##################################### Process Collections #####################################
         ###############################################################################################
 
         if print_mode:
@@ -313,11 +315,8 @@ class SortOrderEngine:
 
         collections_list = [(collection_id, items) for collection_id, items in collections.items()]
 
-        for collection_index, collection in enumerate(collections_list):
+        def task(collection):
             collection_id, items = collection
-            SortOrderEngine.logger.info(f'Processing collection {collection_id}')
-            SortOrderEngine.logger.info(f'Collection {collection_index + 1}/{len(collections_list)}')
-
             Shopify.Collection.change_sort_order_to_manual(collection_id=collection_id)
 
             mc = MovesCollection()
@@ -327,13 +326,23 @@ class SortOrderEngine:
                 move = MoveInput(item_id=product_id, position=item_index)
                 mc.add(move)
 
-            responses = Shopify.Collection.reorder_items(collection_id=collection_id, collection_of_moves=mc)
-            SortOrderEngine.logger.success(f'Collection {collection_id} processed')
+            return Shopify.Collection.reorder_items(collection_id=collection_id, collection_of_moves=mc)
+
+        SortOrderEngine.logger.info(f'Processing {len(collections_list)} collections')
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
+            responses = executor.map(task, collections_list)
+
+        SortOrderEngine.logger.success('Collections processed')
 
         if not out_of_stock_mode:
             duration = time.time() - start_time
             SortOrderEngine.logger.info(f'Sort Order: Completed in {duration:.2f} seconds')
             return []
+
+        ###############################################################################################
+        #################### Move all out of stock items to bottom of collections. ####################
+        ###############################################################################################
 
         responses = Shopify.Collection.move_all_out_of_stock_to_bottom(eh=SortOrderEngine.eh)
 
