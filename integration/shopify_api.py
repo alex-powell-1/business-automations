@@ -17,7 +17,7 @@ import threading
 import concurrent.futures
 
 
-verbose_print = True
+verbose_print = False
 
 
 class MoveInput:
