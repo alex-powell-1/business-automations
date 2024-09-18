@@ -1864,9 +1864,11 @@ class Shopify:
 
             list_of_moves = collection_of_moves.get()
 
-            for moves in list_of_moves:
-                data = Shopify.Collection.reorder_250_items(collection_id=collection_id, moves=moves, eh=eh)
-                responses.append(data)
+            def task(moves):
+                return Shopify.Collection.reorder_250_items(collection_id=collection_id, moves=moves, eh=eh)
+
+            with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
+                responses = executor.map(task, list_of_moves)
 
             return responses
 
