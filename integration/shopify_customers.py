@@ -88,22 +88,20 @@ class Customers:
             fail_count = {'number': 0, 'customer': []}
             queue_size = len(self.customers)
             Customers.logger.header(f'Syncing Customers: {queue_size}')
-            for customer in self.customers:
-                try:
-                    with concurrent.futures.ThreadPoolExecutor(max_workers=40) as executor:
-                        executor.submit(customer.process())
-                except Exception as e:
-                    self.error_handler.add_error_v(
-                        error=f'Error processing customer {customer.cp_cust_no}: {e}',
-                        origin='Customers.sync',
-                        traceback=tb(),
-                    )
-                    fail_count['number'] += 1
-                    fail_count['customer'].append(customer.cp_cust_no)
-                else:
+
+            def task(customer: Customers.Customer) -> None:
+                return customer.process()
+
+            with concurrent.futures.ThreadPoolExecutor(max_workers=creds.max_workers) as executor:
+                results = executor.map(task, self.customers)
+
+            for x in results:
+                result, cust_no = x
+                if result:
                     success_count += 1
-                finally:
-                    queue_size -= 1
+                else:
+                    fail_count['number'] += 1
+                    fail_count['customer'].append(cust_no)
 
             if fail_count['number'] > 0:
                 Customers.logger.warn(f'Customers failed to sync: {fail_count["number"]}')
@@ -493,22 +491,33 @@ class Customers:
                 Customers.logger.info(f'Updating customer {self.cp_cust_no}')
                 return Shopify.Customer.update(self.write_customer_payload())
 
-            if not self.shopify_cust_no:
-                self.check_for_existing_customer()
+            try:
+                if not self.shopify_cust_no:
+                    self.check_for_existing_customer()
 
-            if self.shopify_cust_no:
-                response = update()
-                if self.phone:
-                    Shopify.Customer.update_sms_marketing_consent(self.shopify_cust_no, self.sms_subscribe)
-                if self.email:
-                    Shopify.Customer.update_email_marketing_consent(self.shopify_cust_no, self.email_subscribe)
+                if self.shopify_cust_no:
+                    response = update()
+                    if self.phone:
+                        Shopify.Customer.update_sms_marketing_consent(self.shopify_cust_no, self.sms_subscribe)
+                    if self.email:
+                        Shopify.Customer.update_email_marketing_consent(self.shopify_cust_no, self.email_subscribe)
+                else:
+                    response = create()
+
+                self.get_ids(response)
+                self.update_loyalty_points()
+
+                Database.Shopify.Customer.sync(self)
+
+            except Exception as e:
+                Customers.error_handler.add_error_v(
+                    error=f'Error processing customer {self.cp_cust_no}: {e}',
+                    origin='Customers.Customer.process',
+                    traceback=tb(),
+                )
+                return False, self.cp_cust_no
             else:
-                response = create()
-
-            self.get_ids(response)
-            self.update_loyalty_points()
-
-            Database.Shopify.Customer.sync(self)
+                return True, self.cp_cust_no
 
         def get_ids(self, response):
             self.shopify_cust_no = response['id']

@@ -3,6 +3,7 @@ from reporting.product_reports import create_top_items_report
 from setup.date_presets import *
 from setup.error_handler import ScheduledTasksErrorHandler as error_handler
 from database import Database as db
+from setup import creds
 
 import concurrent.futures
 
@@ -330,7 +331,7 @@ class SortOrderEngine:
 
         SortOrderEngine.logger.info(f'Processing {len(collections_list)} collections')
 
-        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=creds.max_workers) as executor:
             responses = executor.map(task, collections_list)
 
         SortOrderEngine.logger.success('Collections processed')

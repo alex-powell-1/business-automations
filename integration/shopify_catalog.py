@@ -14,6 +14,7 @@ from setup import creds
 from setup.creds import Table
 from database import Database as db
 from setup.utilities import get_product_images, convert_to_utc, parse_custom_url, get_filesize
+from concurrent.futures import ThreadPoolExecutor
 
 from setup.error_handler import ProcessOutErrorHandler
 
@@ -317,33 +318,24 @@ class Catalog:
             if not self.inventory_only or self.verbose:
                 Catalog.logger.info(f'Syncing {queue_length} products.\n')
 
-            while len(self.sync_queue) > 0:
-                start_time = time.time()
-                try:
-                    target = self.sync_queue.pop()
-                    prod = self.Product(target, last_sync=self.last_sync, inventory_only=self.inventory_only)
-                    prod.get(last_sync=self.last_sync)
-                    if not self.inventory_only or self.verbose:
-                        Catalog.logger.info(
-                            f'Processing Product: {prod.sku}, Binding: {prod.binding_id}, Title: {prod.web_title}'
-                        )
-                    if prod.validate():
-                        prod.process()
+            def task(target):
+                prod = self.Product(target, last_sync=self.last_sync, inventory_only=self.inventory_only)
+                prod.get(last_sync=self.last_sync)
+                if prod.validate():
+                    return prod.process()
+                else:
+                    return False, target
+
+            with ThreadPoolExecutor(max_workers=creds.max_workers) as executor:
+                results = executor.map(task, self.sync_queue)
+
+                for x in results:
+                    success, item = x
+                    if success:
                         success_count += 1
                     else:
                         fail_count['number'] += 1
-
-                    queue_length -= 1
-                    if not self.inventory_only or self.verbose:
-                        Catalog.logger.info(
-                            f'Product {prod.sku} processed in {time.time() - start_time} seconds. Products Remaining: {queue_length}\n\n'
-                        )
-                except Exception as e:
-                    fail_count['number'] += 1
-                    fail_count['items'].append(target)
-                    Catalog.error_handler.add_error_v(
-                        error=f'Error processing {target}. {e}', origin='Catalog Sync', traceback=tb()
-                    )
+                        fail_count['items'].append(item)
 
             if not self.inventory_only:
                 if self.verbose:
@@ -357,21 +349,29 @@ class Catalog:
                     )
 
             if fail_count['items']:
-                # Retry failed items one time. This will generally fix any issues with the product that
-                # were caused by broken mappings to the middleware database.
-                # Currently, this is running for inventory sync and full sync. Something to consider changing...
-                for item in fail_count['items']:
-                    # Delete the failed item from Shopify and Middleware
-                    Catalog.Product.delete(sku=item['sku'])
-                    # Retry the item
-                    prod = self.Product(target, last_sync=self.last_sync, inventory_only=self.inventory_only)
-                    prod.get(last_sync=self.last_sync)
-                    if not self.inventory_only or self.verbose:
-                        Catalog.logger.info(
-                            f'Processing Product: {prod.sku}, Binding: {prod.binding_id}, Title: {prod.web_title}'
-                        )
-                    if prod.validate():
-                        prod.process()
+
+                def retry(target):
+                    Catalog.Product.delete(sku=target['sku'])
+                    return task(target)
+
+                with ThreadPoolExecutor(max_workers=creds.max_workers) as executor:
+                    results = executor.map(retry, fail_count['items'])
+
+                    for x in results:
+                        success, item = x
+                        if success:
+                            success_count += 1
+                        else:
+                            fail_count['number'] += 1
+
+                    Catalog.logger.info(
+                        '-----------------------\n'
+                        'Retry Complete.\n'
+                        f'Success Count: {success_count}\n'
+                        f'Fail Count: {fail_count["number"]}\n'
+                        f'Fail Items: {fail_count["items"]}\n'
+                        '-----------------------\n'
+                    )
 
     @staticmethod
     def get_deletion_target(primary_source, secondary_source):
@@ -805,6 +805,7 @@ class Catalog:
         def __init__(self, product_data, last_sync=datetime(1970, 1, 1), inventory_only=False):
             self.last_sync = last_sync
             self.inventory_only = inventory_only
+            self.product_data = product_data
             self.sku = product_data['sku']
             self.binding_id = product_data['binding_id'] if 'binding_id' in product_data else None
             # Determine if Bound
@@ -2100,17 +2101,26 @@ class Catalog:
                     variant_payload = self.get_single_variant_payload()
                     variant_response = Shopify.Product.Variant.update_single(variant_payload)
 
-            if not self.inventory_only:
-                if self.product_id:
-                    update()
-                else:
-                    create()
-                # Update Middleware (Insert or Update)
-                Database.Shopify.Product.sync(product=self)
+            try:
+                if not self.inventory_only:
+                    if self.product_id:
+                        update()
+                    else:
+                        create()
+                    # Update Middleware (Insert or Update)
+                    Database.Shopify.Product.sync(product=self)
 
-            # Update Inventory
-            if not self.is_preorder:
-                Shopify.Inventory.update(self.get_inventory_payload())
+                # Update Inventory
+                if not self.is_preorder:
+                    Shopify.Inventory.update(self.get_inventory_payload())
+            except Exception as e:
+                Catalog.error_handler.add_error_v(
+                    f'Error processing product: {e}', origin='Product.process', traceback=tb()
+                )
+                return False, self.product_data
+
+            else:
+                return True, self.product_data
 
         def replace_image(self, image) -> bool:
             """Replace image in Shopify and SQL."""

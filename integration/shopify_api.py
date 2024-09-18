@@ -79,13 +79,6 @@ class Shopify:
                     except:
                         print(i)
 
-            if self.errors:
-                Shopify.error_handler.add_error_v(f'Error: {self.errors}')
-
-            if self.user_errors:
-                Shopify.error_handler.add_error_v(
-                    f'User Error: {self.user_errors}\nResponse: {json.dumps(self.response, indent=4)}'
-                )
             if self.errors or self.user_errors:
                 if self.user_errors:
                     for i in self.user_errors:
@@ -216,11 +209,15 @@ class Shopify:
                                 continue
 
                         else:
+                            Shopify.error_handler.add_error_v(
+                                f'User Error: {self.user_errors}\nResponse: {json.dumps(self.response, indent=4)}'
+                            )
                             # Uncaught user error
                             raise Exception(
                                 f'Operation Name: {operation_name}\n\nUser Error: {self.user_errors}\n\nVariables: {variables}'
                             )
                 else:
+                    Shopify.error_handler.add_error_v(f'Error: {self.errors}')
                     raise Exception(
                         f'Operation Name: {operation_name}\n\nError: {self.errors}\n\nUser Error: {self.user_errors}\n\nVariables: {variables}'
                     )
@@ -1867,7 +1864,7 @@ class Shopify:
             def task(moves):
                 return Shopify.Collection.reorder_250_items(collection_id=collection_id, moves=moves, eh=eh)
 
-            with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=creds.max_workers) as executor:
                 responses = executor.map(task, list_of_moves)
 
             return responses
@@ -1907,7 +1904,7 @@ class Shopify:
 
                 responses.append(response)
 
-            with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=creds.max_workers) as executor:
                 responses = executor.map(task, collections)
 
             eh.logger.success(f'Moved all out of stock items to bottom of {len(collections)} collections')

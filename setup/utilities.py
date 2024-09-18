@@ -12,6 +12,7 @@ import pytz
 from traceback import format_exc as tb
 import secrets
 import string
+from concurrent.futures import ThreadPoolExecutor
 
 
 def convert_path_to_raw(path):
@@ -95,9 +96,10 @@ def scrub(string: str):
 
 def get_product_images():
     ProcessOutErrorHandler.logger.info('Getting product images.')
+
     product_images = []
-    # Iterate over all files in the directory
-    for filename in os.listdir(creds.Company.product_images):
+
+    def task(filename):
         if filename not in ['Thumbs.db', 'desktop.ini', '.DS_Store']:
             # filter out trailing filenames
             if '^' in filename:
@@ -105,6 +107,9 @@ def get_product_images():
                     product_images.append([filename, os.path.getsize(f'{creds.Company.product_images}/{filename}')])
             else:
                 product_images.append([filename, os.path.getsize(f'{creds.Company.product_images}/{filename}')])
+
+    with ThreadPoolExecutor(max_workers=creds.max_workers) as executor:
+        executor.map(task, os.listdir(creds.Company.product_images))
 
     ProcessOutErrorHandler.logger.info(f'Found {len(product_images)} images.')
     return product_images
@@ -408,4 +413,4 @@ def delete_old_files(directory=None, days=14, eh=ScheduledTasksErrorHandler):
 
 
 if '__main__' == __name__:
-    print(generate_random_code(16))
+    print(get_product_images())
