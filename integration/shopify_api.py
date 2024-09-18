@@ -13,6 +13,9 @@ from traceback import print_exc as tb
 from setup.utilities import PhoneNumber, local_to_utc
 from datetime import datetime
 
+import threading
+import concurrent.futures
+
 
 verbose_print = True
 
@@ -1898,7 +1901,7 @@ class Shopify:
 
             responses = []
 
-            for i, collection_id in enumerate(collections):
+            def task(collection_id):
                 Shopify.Collection.change_sort_order_to_manual(collection_id=collection_id)
 
                 items = [
@@ -1907,18 +1910,16 @@ class Shopify:
 
                 if len(items) == 0:
                     eh.logger.info(f'No out of stock items found in collection {collection_id}')
-                    eh.logger.success(f'{i + 1}/{len(collections)} collections processed')
-                    continue
-
-                eh.logger.info(f'Found {len(items)} out of stock items in collection {collection_id}')
+                    return
 
                 response = Shopify.Collection.move_to_bottom(
                     collection_id=collection_id, product_id_list=items, eh=eh
                 )
 
-                eh.logger.success(f'{i + 1}/{len(collections)} collections processed')
-
                 responses.append(response)
+
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                responses = executor.map(task, collections)
 
             eh.logger.success(f'Moved all out of stock items to bottom of {len(collections)} collections')
 
