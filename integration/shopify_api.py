@@ -1818,7 +1818,6 @@ class Shopify:
 
         def get_out_of_stock_items(collection_id: int, eh=ProcessOutErrorHandler):
             """Get a list of out of stock items in a collection"""
-            eh.logger.info(f'Getting out of stock items for collection {collection_id}')
             try:
                 response = None
                 variables = {'collectionID': f'{Shopify.Collection.prefix}{collection_id}', 'after': None}
@@ -1839,7 +1838,6 @@ class Shopify:
 
                         data.append(edge['node']['id'].split('/')[-1])
 
-                eh.logger.success(f'Found {len(data)} out of stock items in collection {collection_id}')
                 return data
             except Exception as e:
                 eh.error_handler.add_error_v(
