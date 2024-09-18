@@ -1848,7 +1848,6 @@ class Shopify:
 
         def reorder_250_items(collection_id: int, moves: list[MoveInput], eh=ProcessOutErrorHandler):
             """Reorder up to 250 items within a collection. ONLY WORKS ON MANUALLY SORTED COLLECTIONS"""
-            eh.logger.info(f'Reordering {len(moves)} items in collection {collection_id}')
 
             response = Shopify.Query(
                 document=Shopify.Collection.queries,
@@ -1876,17 +1875,11 @@ class Shopify:
 
         def move_to_bottom(collection_id: int, product_id_list: list[int], eh=ProcessOutErrorHandler):
             """Move a list of items to the bottom of a collection"""
-            eh.logger.info(
-                f'Setting up moves for {len(product_id_list)} items to bottom of collection {collection_id}'
-            )
-
             count = Shopify.Collection.get_product_count(collection_id=collection_id)
             mc = MovesCollection()
             for i, product_id in enumerate(product_id_list):
                 move = MoveInput(item_id=product_id, position=count - i)
                 mc.add(move)
-
-            eh.logger.success('Setting up moves complete.')
 
             return Shopify.Collection.reorder_items(collection_id=collection_id, collection_of_moves=mc, eh=eh)
 
