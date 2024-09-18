@@ -99,8 +99,17 @@ class SortOrderEngine:
             )
             return orig_items
 
+    def promote_sale_items(items: list):
+        return SortOrderEngine.promote_fixed_price_sales(items)
+
     def get_new_items():
-        return []
+        # {'item_no': item, 'product_id': product_id, 'price_1': price_1, 'price_2': price_2}
+        new_items = [
+            {'item_no': x[0], 'product_id': x[1], 'price_1': None, 'price_2': None}
+            for x in products.get_new_items(start_date=Dates().one_month_ago)
+        ]
+
+        return new_items
 
     def adjust_order(items):
         """Adjusts order of items"""
@@ -144,8 +153,6 @@ class SortOrderEngine:
         except:
             pass
 
-        # creds.Table.CP.Item.Column.is_parent
-
         print(featured_items)
 
         for item in items:
@@ -162,7 +169,7 @@ class SortOrderEngine:
             featured_items
             + top_4_ecomm_items
             + SortOrderEngine.get_new_items()
-            + SortOrderEngine.promote_fixed_price_sales(ecomm_items)
+            + SortOrderEngine.promote_sale_items(ecomm_items)
         )
 
     def remove_duplicate_products(items):

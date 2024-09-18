@@ -93,6 +93,7 @@ class Dates:
         self.two_day_ago = self.today + relativedelta(days=-2)
         self.three_day_ago = self.today + relativedelta(days=-3)
         self.one_week_ago = self.today + relativedelta(weeks=-1)
+        self.one_month_ago = self.today + relativedelta(months=-1)
 
         # Month
         self.month_start = datetime(year=self.today.year, month=self.today.month, day=1)
