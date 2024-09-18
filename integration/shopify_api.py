@@ -1864,8 +1864,6 @@ class Shopify:
 
             list_of_moves = collection_of_moves.get()
 
-            eh.logger.info(f'Reordering collection {collection_id}')
-
             for moves in list_of_moves:
                 data = Shopify.Collection.reorder_250_items(collection_id=collection_id, moves=moves, eh=eh)
                 responses.append(data)

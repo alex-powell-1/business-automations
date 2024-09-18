@@ -328,7 +328,7 @@ class SortOrderEngine:
 
             responses = Shopify.Collection.reorder_items(collection_id=collection_id, collection_of_moves=mc)
 
-        SortOrderEngine.logger.info('Processing collections')
+        SortOrderEngine.logger.info(f'Processing {len(collections_list)} collections')
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
             responses = executor.map(task, collections_list)
