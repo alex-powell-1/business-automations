@@ -590,6 +590,30 @@ def get_new_items(start_date):
         return []
 
 
+def get_all_new_items(start_date):
+    query = f"""
+    SELECT mw.PRODUCT_ID, mw.ITEM_NO, MAX(lin.EXT_COST)
+    FROM PO_RECVR_HIST_LIN lin
+    INNER JOIN IM_INV inv
+    ON lin.ITEM_NO = inv.ITEM_NO
+    INNER JOIN IM_ITEM item
+    on lin.ITEM_NO = item.ITEM_NO
+    INNER JOIN SN_SHOP_PROD mw
+    on mw.ITEM_NO = lin.ITEM_NO
+    WHERE lin.RECVR_DAT > '{start_date}' and (inv.QTY_AVAIL - item.PROF_NO_1) > 0
+    AND item.IS_ECOMM_ITEM = 'Y'
+    GROUP BY mw.PRODUCT_ID, mw.ITEM_NO
+    ORDER BY mw.PRODUCT_ID, MAX(lin.EXT_COST) desc, mw.ITEM_NO
+    """
+
+    try:
+        response = db.query(query)
+
+        return [[x[1], x[0]] for x in response] if response else []
+    except:
+        return []
+
+
 def get_qty_sold_all_items():
     """Produces a list of all items with the total number of quantity sold"""
     query = f"""
