@@ -564,21 +564,30 @@ def get_items_with_no_sales_history():
     return result
 
 
-def get_new_items(start_date, end_date, min_price):
+def get_new_items(start_date):
     query = f"""
-    SELECT ITEM.ITEM_NO
-    FROM PO_RECVR_HIST_LIN REC
-    INNER JOIN IM_ITEM ITEM ON ITEM.ITEM_NO = REC.ITEM_NO
-    WHERE RECVR_DAT >= '{start_date}' and RECVR_DAT <= '{end_date}' 
-    AND ITEM.PRC_1 >= '{min_price}'
-    ORDER BY RECVR_DAT DESC
+    SELECT mw.PRODUCT_ID, mw.ITEM_NO, MAX(lin.EXT_COST)
+    FROM PO_RECVR_HIST_LIN lin
+    INNER JOIN IM_INV inv
+    ON lin.ITEM_NO = inv.ITEM_NO
+    INNER JOIN IM_ITEM item
+    on lin.ITEM_NO = item.ITEM_NO
+    INNER JOIN SN_SHOP_PROD mw
+    on mw.ITEM_NO = lin.ITEM_NO
+    WHERE lin.RECVR_DAT > '{start_date}' and (inv.QTY_AVAIL - item.PROF_NO_1) > 0
+    AND item.IS_ECOMM_ITEM = 'Y'
+    GROUP BY mw.PRODUCT_ID, mw.ITEM_NO
+    ORDER BY mw.PRODUCT_ID, MAX(lin.EXT_COST) desc, mw.ITEM_NO
+    OFFSET 0 ROWS
+    FETCH NEXT 25 ROWS ONLY
     """
-    response = db.query(query)
-    if response is not None:
-        result = []
-        for x in response:
-            result.append((x[0]))
-        return result
+
+    try:
+        response = db.query(query)
+
+        return [[x[1], x[0]] for x in response] if response else []
+    except:
+        return []
 
 
 def get_qty_sold_all_items():
