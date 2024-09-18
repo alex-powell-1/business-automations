@@ -1923,6 +1923,8 @@ class Shopify:
             responses = []
 
             for i, collection_id in enumerate(collections):
+                Shopify.Collection.change_sort_order_to_manual(collection_id=collection_id)
+
                 items = [
                     int(x) for x in Shopify.Collection.get_out_of_stock_items(collection_id=collection_id, eh=eh)
                 ]
