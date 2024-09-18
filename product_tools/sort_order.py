@@ -306,7 +306,7 @@ class SortOrderEngine:
         SortOrderEngine.logger.success('Excluded collections removed')
 
         ###############################################################################################
-        ########################################## Last Step ##########################################
+        ##################################### Process Collections #####################################
         ###############################################################################################
 
         if print_mode:
@@ -333,14 +333,16 @@ class SortOrderEngine:
         with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
             responses = executor.map(task, collections_list)
 
-        # for collection_index, collection in enumerate(collections_list):
-        #     pass
         SortOrderEngine.logger.success('Collections processed')
 
         if not out_of_stock_mode:
             duration = time.time() - start_time
             SortOrderEngine.logger.info(f'Sort Order: Completed in {duration:.2f} seconds')
             return []
+
+        ###############################################################################################
+        #################### Move all out of stock items to bottom of collections. ####################
+        ###############################################################################################
 
         responses = Shopify.Collection.move_all_out_of_stock_to_bottom(eh=SortOrderEngine.eh)
 
