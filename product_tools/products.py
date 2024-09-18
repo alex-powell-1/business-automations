@@ -8,6 +8,9 @@ from setup.error_handler import ScheduledTasksErrorHandler as error_handler
 from datetime import datetime
 
 
+min_ext_cost = 1000
+
+
 class Product:
     def __init__(self, item_number):
         self.item_no = item_number
@@ -600,7 +603,7 @@ def get_all_new_items(start_date):
     on lin.ITEM_NO = item.ITEM_NO
     INNER JOIN SN_SHOP_PROD mw
     on mw.ITEM_NO = lin.ITEM_NO
-    WHERE lin.RECVR_DAT > '{start_date}' and (inv.QTY_AVAIL - item.PROF_NO_1) > 0 and lin.EXT_COST >= 1000
+    WHERE lin.RECVR_DAT > '{start_date}' and (inv.QTY_AVAIL - item.PROF_NO_1) > 0 and lin.EXT_COST >= {min_ext_cost}
     AND item.IS_ECOMM_ITEM = 'Y'
     GROUP BY mw.PRODUCT_ID, mw.ITEM_NO
     ORDER BY mw.PRODUCT_ID, MAX(lin.EXT_COST) desc, mw.ITEM_NO
