@@ -581,15 +581,15 @@ class Catalog:
 
                 return menu_item
 
-            # # Temporary Static Auto-Collection for Sales
-            main_menu['items'].append(
-                {
-                    'title': 'Sale',
-                    'type': 'COLLECTION',
-                    'resourceId': 'gid://shopify/Collection/319281397927',
-                    'items': [],
-                }
-            )
+            # # # Temporary Static Auto-Collection for Sales
+            # main_menu['items'].append(
+            #     {
+            #         'title': 'Sale',
+            #         'type': 'COLLECTION',
+            #         'resourceId': 'gid://shopify/Collection/319281397927',
+            #         'items': [],
+            #     }
+            # )
             # Recursively call this function for each child category
             for category in self.heads:
                 main_menu['items'].append(menu_helper(category))

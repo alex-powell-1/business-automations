@@ -876,10 +876,11 @@ class Database:
                 """
                 response = Database.query(query)
                 if response['code'] == 200:
-                    eh.logger.success(f'Sale price set for {sku}.')
+                    pass
                 elif response['code'] == 201:
                     eh.logger.warn(f'Set Sale Price: No rows affected for {sku}.')
                 else:
+                    print(response['code'])
                     error = f'Error setting sale price for {sku}. \n Query: {query}\nResponse: {response}'
                     eh.error_handler.add_error_v(error=error)
                     raise Exception(error)
@@ -911,15 +912,15 @@ class Database:
                         error=f'Error: {response["code"]}\n {response["message"]}, origin="Sale Price Removal")'
                     )
 
-            def set_sale_status(items, status, description=None, eh=ProcessOutErrorHandler):
-                if len(items) > 1:
-                    where_filter = f' WHERE ITEM_NO IN {tuple(items)}'
-                else:
-                    where_filter = f" WHERE ITEM_NO = '{items[0]}'"
+            def set_sale_status(items: list, status, description=None, eh=ProcessOutErrorHandler):
+                if not items:
+                    raise Exception('No items provided to set sale status.')
+
+                where_filter = f' WHERE ITEM_NO IN ({','.join([f"'{x}'" for x in items])})'
 
                 query = f"""
                     UPDATE {Table.CP.Item.table}
-                    SET IS_ON_SALE = '{status}', LST_MAINT_DT = GETDATE()
+                    SET IS_ON_SALE = '{"Y" if status else "N"}', LST_MAINT_DT = GETDATE()
                     """
                 if description:
                     query += f", SALE_DESCR = '{description}'"
@@ -932,6 +933,11 @@ class Database:
                 response = Database.query(query)
                 if response['code'] == 200:
                     eh.logger.success(f'Sale status updated for {items}.')
+                    if status:
+                        Database.Counterpoint.Product.add_to_sale_category(sku_list=items)
+                    else:
+                        Database.Counterpoint.Product.remove_from_sale_category(sku_list=items)
+
                 elif response['code'] == 201:
                     eh.logger.warn(f'Sale status not updated for {items}.')
                 else:
@@ -952,6 +958,48 @@ class Database:
                     eh.logger.warn(f'Product {sku} not found in {Table.CP.Item.table}.')
                 else:
                     error = f'Error setting product {sku} to active status. \n Query: {query}\nResponse: {response}'
+                    eh.error_handler.add_error_v(error=error)
+                    raise Exception(error)
+
+            def add_to_sale_category(sku_list: list, eh=ProcessOutErrorHandler):
+                if not sku_list:
+                    raise Exception('No SKU provided to add to sale category.')
+                success = 0
+                fail = 0
+                for x in sku_list:
+                    query = f"""
+                    INSERT INTO EC_CATEG_ITEM(ITEM_NO, CATEG_ID, ENTRY_SEQ_NO, LST_MAINT_DT, LST_MAINT_USR_ID)
+                    VALUES('{x}', '{creds.on_sale_category}', '1', GETDATE(), 'POS')
+                    """
+
+                    response = Database.query(query)
+                    if response['code'] == 200:
+                        success += 1
+                    elif response['code'] == '23000':
+                        pass
+                    else:
+                        fail += 1
+                        error = (
+                            f'Error adding product {x} to sale category. \n Query: {query}\nResponse: {response}'
+                        )
+                        eh.error_handler.add_error_v(error=error)
+
+                eh.logger.success(f'{success}/{len(sku_list)} products added to sale category.')
+                if fail:
+                    eh.logger.warn(f'{fail} products not added to sale category.')
+
+            def remove_from_sale_category(sku_list: list, eh=ProcessOutErrorHandler):
+                query = f"""
+                DELETE FROM EC_CATEG_ITEM
+                WHERE ITEM_NO in ({','.join([f"'{x}'" for x in sku_list])}) AND CATEG_ID = '{creds.on_sale_category}'
+                """
+                response = Database.query(query)
+                if response['code'] == 200:
+                    eh.logger.success(f'Products: {sku_list} removed from sale category.')
+                elif response['code'] == 201:
+                    eh.logger.warn(f'Products: {sku_list} not found in sale category.')
+                else:
+                    error = f'Error removing products {sku_list} from sale category. \n Query: {query}\nResponse: {response}'
                     eh.error_handler.add_error_v(error=error)
                     raise Exception(error)
 
@@ -2663,7 +2711,7 @@ class Database:
                 SELECT PRODUCT_ID FROM {Table.Middleware.products}
                 WHERE COLLECTION_IDS LIKE '%{collection_id}%'
                 """
-                response = db.query(query)
+                response = Database.query(query)
                 return [x[0] for x in response] if response else None
 
             def get_collection_ids(item_no=None, binding_id=None, product_id=None):
@@ -2701,14 +2749,17 @@ class Database:
                 )
                 if collection_id not in current_collection_ids:
                     current_collection_ids.append(collection_id)
+
                     query = f"""
                     UPDATE {Table.Middleware.products}
-                    SET COLLECTION_IDS = '{','.join(current_collection_ids)}'
+                    SET CATEG_ID = '{','.join([str(x) for x in current_collection_ids])}'
                     WHERE ITEM_NO = '{item_no}'
                     """
                     response = Database.query(query)
                     if response['code'] == 200:
                         eh.logger.success(f'Collection ID added to {item_no}')
+                    elif response['code'] == 201:
+                        return
                     else:
                         eh.error_handler.add_error_v(
                             error=f'Error adding collection ID to {item_no}. Response: {response["message"]}'
@@ -2725,7 +2776,7 @@ class Database:
                     current_collection_ids.remove(collection_id)
                     query = f"""
                     UPDATE {Table.Middleware.products}
-                    SET COLLECTION_IDS = '{','.join(current_collection_ids)}'
+                    SET CATEG_ID = '{','.join(current_collection_ids)}'
                     WHERE ITEM_NO = '{item_no}'
                     """
                     response = Database.query(query)
@@ -3447,9 +3498,7 @@ class Database:
                 """
                 response = Database.query(query)
                 if response['code'] == 200:
-                    Database.logger.success(
-                        f'Promotion {rule.grp_cod}-Rule: {rule.seq_no} inserted successfully into Middleware.'
-                    )
+                    pass
                 else:
                     Database.error_handler.add_error_v(
                         error=f'Error: {response["code"]}\n\nQuery: {query}\n\nResponse:{response["message"]}',
@@ -3466,9 +3515,7 @@ class Database:
                 """
                 response = Database.query(query)
                 if response['code'] == 200:
-                    Database.logger.success(
-                        f'Promotion {rule.grp_cod}-Rule: {rule.seq_no} updated successfully in Middleware.'
-                    )
+                    pass
                 elif response['code'] == 201:
                     Database.logger.warn(
                         f'Promotion {rule.grp_cod}-Rule: {rule.seq_no} not found for update in Middleware.'
@@ -3651,7 +3698,7 @@ class Database:
                 def delete(group_cod, rul_seq_no, item_no):
                     query = f"""
                     DELETE FROM {Table.Middleware.promotion_lines_fixed}
-                    WHERE GRP_COD = '{group_cod}' AND RUL_SEQ_NO = {rul_seq_no} AND ITEM_NO = '{item_no}'
+                    WHERE GRP_COD = '{group_cod}' AND RUL_SEQ_NO = '{rul_seq_no}' AND ITEM_NO = '{item_no}'
                     """
                     response = Database.query(query)
 

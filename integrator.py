@@ -27,6 +27,7 @@ class Integrator:
 
     def __init__(self):
         self.last_sync = get_last_sync(file_name='./integration/last_sync_integrator.txt')
+
         if customer_sync:
             self.customers = Customers(last_sync=self.last_sync)
         if promotions_sync:
