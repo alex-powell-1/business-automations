@@ -1918,7 +1918,7 @@ class Shopify:
 
                 responses.append(response)
 
-            with concurrent.futures.ThreadPoolExecutor() as executor:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
                 responses = executor.map(task, collections)
 
             eh.logger.success(f'Moved all out of stock items to bottom of {len(collections)} collections')
