@@ -99,6 +99,9 @@ class SortOrderEngine:
             )
             return orig_items
 
+    def get_new_items():
+        return []
+
     def adjust_order(items):
         """Adjusts order of items"""
         new_items = []
@@ -138,7 +141,6 @@ class SortOrderEngine:
                     SortOrderEngine.error_handler.add_error_v(
                         error=f'Error getting parent: {e}', origin='SortOrderEngine.adjust_order'
                     )
-
         except:
             pass
 
@@ -153,7 +155,15 @@ class SortOrderEngine:
             new_items.append(item)
             item_skus.append(item['item_no'])
 
-        return featured_items + SortOrderEngine.promote_fixed_price_sales(new_items)
+        top_4_ecomm_items = new_items[:4]
+        ecomm_items = new_items[4:]
+
+        return (
+            featured_items
+            + top_4_ecomm_items
+            + SortOrderEngine.get_new_items()
+            + SortOrderEngine.promote_fixed_price_sales(ecomm_items)
+        )
 
     def remove_duplicate_products(items):
         """Removes duplicate products"""
