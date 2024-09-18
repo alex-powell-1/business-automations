@@ -326,7 +326,7 @@ class SortOrderEngine:
                 move = MoveInput(item_id=product_id, position=item_index)
                 mc.add(move)
 
-            responses = Shopify.Collection.reorder_items(collection_id=collection_id, collection_of_moves=mc)
+            return Shopify.Collection.reorder_items(collection_id=collection_id, collection_of_moves=mc)
 
         SortOrderEngine.logger.info(f'Processing {len(collections_list)} collections')
 
