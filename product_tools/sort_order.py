@@ -166,6 +166,7 @@ class SortOrderEngine:
 
         return (
             featured_items
+            + products.get_current_preorder_items_for_sort_order()
             + top_4_ecomm_items
             + SortOrderEngine.get_new_items()
             + SortOrderEngine.promote_sale_items(ecomm_items)
