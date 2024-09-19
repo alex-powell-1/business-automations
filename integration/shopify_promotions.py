@@ -12,14 +12,23 @@ class Promotions:
     logger = ProcessOutErrorHandler.logger
     error_handler = ProcessOutErrorHandler.error_handler
 
-    def __init__(self, last_sync=None):
+    def __init__(self, last_sync=None, verbose=False, enabled=True):
         self.last_sync = last_sync
+        self.verbose = verbose
         self.promotions: list[Promotions.Promotion] = []
         self.sync_queue: list[Promotions.Promotion] = []
         self.update_count = 0
         self.sale_badges = {}
         self.sale_badge_items = []
         self.get_promotions()
+        if enabled:
+            self.get_sync_queue()
+
+    def __str__(self) -> str:
+        result = ''
+        if self.sync_queue:
+            result = f'Promotions to Process: {len(self.sync_queue)}\n'
+        return result
 
     def get_promotions(self):
         promo_data = Database.Counterpoint.Promotion.get()
@@ -41,7 +50,7 @@ class Promotions:
                     Promotions.Promotion.delete(shopify_discount_code_id=shopify_id)
                     delete_count += 1
 
-            if delete_count == 0:
+            if delete_count == 0 and self.verbose:
                 Promotions.logger.info('PROMOTIONS: No Promotions to delete.')
 
     def get_sync_queue(self):
@@ -51,7 +60,6 @@ class Promotions:
 
     def sync(self):
         self.process_deletes()
-        self.get_sync_queue()
 
         if not self.sync_queue:
             Promotions.logger.info('PROMOTIONS: No Promotions to update.')

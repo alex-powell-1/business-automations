@@ -293,7 +293,7 @@ def product_update():
     if item_no and description:
         # Update product description in Counterpoint - Skip timestamp update (avoid loop)
         Database.Counterpoint.Product.HTMLDescription.update(
-            item_no=item_no, html_descr=description, update_timestamp=False
+            item_no=item_no, html_descr=description, update_timestamp=False, eh=ProcessInErrorHandler
         )
 
     # Get SEO data

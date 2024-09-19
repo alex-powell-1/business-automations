@@ -29,7 +29,13 @@ class Catalog:
     error_handler = eh.error_handler
 
     def __init__(
-        self, last_sync=datetime(1970, 1, 1), inventory_only=False, verbose=True, test_mode=False, test_queue=None
+        self,
+        last_sync=datetime(1970, 1, 1),
+        inventory_only=False,
+        verbose=False,
+        test_mode=False,
+        test_queue=None,
+        enabled=True,
     ):
         self.last_sync = last_sync
         self.inventory_only = inventory_only
@@ -47,12 +53,19 @@ class Catalog:
         self.sync_queue = []
         self.queue_binding_ids = set()
         self.get_products()
+        if self.test_mode:
+            self.sync_queue = self.test_queue
+        elif enabled:
+            self.get_sync_queue()
 
     def __str__(self):
-        return f'Items to Process: {len(self.sync_queue)}\n'
+        result = ''
+        if self.sync_queue:
+            result = f'Items to Process: {len(self.sync_queue)}\n'
+        return result
 
     def get_products(self):
-        # Get data for self.cp_items and self.mw_items
+        """Get data for self.cp_items and self.mw_items"""
         counterpoint_items = db.query(f"SELECT ITEM_NO FROM {Table.CP.Item.table} WHERE IS_ECOMM_ITEM = 'Y'")
         self.cp_items = [x[0] for x in counterpoint_items] if counterpoint_items else []
 
@@ -60,9 +73,7 @@ class Catalog:
         self.mw_items = [x[0] for x in middleware_items] if middleware_items else []
 
     def get_sync_queue(self, test_mode=False):
-        # Create the Sync Queue
-        # ---------------------
-        # Get all products that have been updated since the last sync
+        """Get all products that have been updated since the last sync"""
         if self.inventory_only:
             query = f"""
             SELECT ITEM.ITEM_NO, ITEM.{Table.CP.Item.Column.binding_id} as 'Binding ID'
@@ -139,11 +150,13 @@ class Catalog:
             if self.sync_queue:
                 self.queue_binding_ids = set(x['binding_id'] for x in self.sync_queue if 'binding_id' in x)
 
-            Catalog.logger.info(f'Sync Queue: {self.sync_queue}')
+            if self.verbose:
+                Catalog.logger.info(f'Sync Queue: {self.sync_queue}')
 
     def process_product_deletes(self):
         # This compares the CP and MW product lists and deletes any products that are not in both lists.
-        Catalog.logger.info('Processing Product Deletions.')
+        if self.verbose:
+            Catalog.logger.info('Processing Product Deletions.')
 
         delete_targets = Catalog.get_deletion_target(secondary_source=self.mw_items, primary_source=self.cp_items)
 
@@ -188,9 +201,10 @@ class Catalog:
             for x in delete_targets:
                 Catalog.Product.delete(sku=x)
         else:
-            Catalog.logger.info('No products to delete.')
-
-        Catalog.logger.info('Processing Product Additions.')
+            if self.verbose:
+                Catalog.logger.info('No products to delete.')
+        if self.verbose:
+            Catalog.logger.info('Processing Product Additions.')
         if add_targets:
             Catalog.logger.info(f'Product Add Targets: {add_targets}')
             for x in add_targets:
@@ -202,21 +216,21 @@ class Catalog:
 
                 if product_id is not None:
                     variant = Catalog.Product.Variant(sku=variant_sku)
-                    print('Will Add Variant for variant_sku')
-                    for k, v in variant.__dict__.items():
-                        print(f'{k}: {v}')
+                    pass
                     # Shopify.Product.Variant.create(variant)
         else:
-            Catalog.logger.info('No products to add.')
+            if self.verbose:
+                Catalog.logger.info('No products to add.')
 
     def process_media(self):
         """Assesses Image folder. Deletes images from MW and Shopify.
         Updates LST_MAINT_DT in CP if new images have been added."""
 
         def process_images():
-            Catalog.logger.info('Processing Image Updates.')
+            if self.verbose:
+                Catalog.logger.info('Processing Image Updates.')
             start_time = time.time()
-            self.product_images = get_product_images()
+            self.product_images = get_product_images(eh=self.eh, verbose=self.verbose)
             mw_images = Database.Shopify.Product.Media.Image.get(column='IMAGE_NAME, SIZE')
             self.mw_image_list = [[x[0], x[1]] for x in mw_images] if mw_images else []
 
@@ -230,7 +244,8 @@ class Catalog:
                     Catalog.logger.info(f'Deleting Image {x[0]}.\n')
                     Catalog.Product.Image.delete(x[0])
             else:
-                Catalog.logger.info('No image deletions found.')
+                if self.verbose:
+                    Catalog.logger.info('No image deletions found.')
 
             # # Update Item LST_MAINT_DT if new images have been deleted/added/changed.
             # update_list = delete_targets
@@ -267,7 +282,8 @@ class Catalog:
             # Catalog.logger.info(f'Image Add/Delete Processing Complete. Time: {time.time() - start_time}')
 
         def process_videos():
-            Catalog.logger.info('Processing Video Updates.')
+            if self.verbose:
+                Catalog.logger.info('Processing Video Updates.')
             start_time = time.time()
             self.product_videos = Database.Counterpoint.Product.Media.Video.get()
             mw_video_data = Database.Shopify.Product.Media.Video.get(column='ITEM_NO, URL')
@@ -282,9 +298,10 @@ class Catalog:
                     Catalog.logger.info(f'Deleting Video for:\nITEM: {x[0]}\nURL: {x[1]}\n')
                     Catalog.Product.Video.delete(sku=x[0], url=x[1])
             else:
-                Catalog.logger.info('No video deletions found.')
-
-            Catalog.logger.info(f'Video Add/Delete Processing Complete. Time: {time.time() - start_time}')
+                if self.verbose:
+                    Catalog.logger.info('No video deletions found.')
+            if self.verbose:
+                Catalog.logger.info(f'Video Add/Delete Processing Complete. Time: {time.time() - start_time}')
 
         process_images()
         process_videos()
@@ -295,12 +312,6 @@ class Catalog:
         if not self.inventory_only:
             if not self.test_mode:
                 self.category_tree.sync()
-
-        # Get Product Sync Queue
-        if self.test_mode:
-            self.sync_queue = self.test_queue
-        else:
-            self.get_sync_queue()  # Get all products that have been updated since the last sync
 
         if not self.inventory_only and not initial:
             self.process_product_deletes()
@@ -316,7 +327,7 @@ class Catalog:
             fail_count = {'number': 0, 'items': []}
 
             if not self.inventory_only or self.verbose:
-                Catalog.logger.info(f'Syncing {queue_length} products.\n')
+                Catalog.logger.info(f'Syncing {queue_length} products.')
 
             def task(target):
                 prod = self.Product(target, last_sync=self.last_sync, inventory_only=self.inventory_only)
@@ -338,15 +349,14 @@ class Catalog:
                         fail_count['items'].append(item)
 
             if not self.inventory_only:
-                if self.verbose:
-                    Catalog.logger.info(
-                        '-----------------------\n'
-                        'Sync Complete.\n'
-                        f'Success Count: {success_count}\n'
-                        f'Fail Count: {fail_count["number"]}\n'
-                        f'Fail Items: {fail_count["items"]}\n'
-                        '-----------------------\n'
-                    )
+                Catalog.logger.info(
+                    '-----------------------\n'
+                    'Sync Complete.\n'
+                    f'Success Count: {success_count}\n'
+                    f'Fail Count: {fail_count["number"]}\n'
+                    f'Fail Items: {fail_count["items"]}\n'
+                    '-----------------------\n'
+                )
 
             if fail_count['items']:
 
@@ -365,7 +375,7 @@ class Catalog:
                             fail_count['number'] += 1
 
                     Catalog.logger.info(
-                        '-----------------------\n'
+                        '\n-----------------------\n'
                         'Retry Complete.\n'
                         f'Success Count: {success_count}\n'
                         f'Fail Count: {fail_count["number"]}\n'
@@ -452,8 +462,9 @@ class Catalog:
         Catalog.logger.info(errors)
 
     class CategoryTree:
-        def __init__(self, last_sync=datetime(1970, 1, 1)):
+        def __init__(self, last_sync=datetime(1970, 1, 1), verbose=False):
             self.last_sync = last_sync
+            self.verbose = verbose
             self.categories = set()
             self.heads = []
             self.get_tree()
@@ -802,8 +813,9 @@ class Catalog:
                 return payload
 
     class Product:
-        def __init__(self, product_data, last_sync=datetime(1970, 1, 1), inventory_only=False):
+        def __init__(self, product_data, last_sync=datetime(1970, 1, 1), verbose=False, inventory_only=False):
             self.last_sync = last_sync
+            self.verbose = verbose
             self.inventory_only = inventory_only
             self.product_data = product_data
             self.sku = product_data['sku']
@@ -1291,7 +1303,9 @@ class Catalog:
             # Test for missing price 1
             if self.default_price == 0:
                 if self.in_store_only:
-                    Catalog.logger.warn(f'In-Store-Only Product {self.sku} is missing a price 1. Will Pass.')
+                    if self.verbose:
+                        Catalog.logger.warn(f'In-Store-Only Product {self.sku} is missing a price 1. Will Pass.')
+                    pass
                 else:
                     message = f'Product {self.sku} is missing a price 1. Validation failed.'
                     Catalog.error_handler.add_error_v(error=message, origin='Input Validation')
@@ -1308,7 +1322,8 @@ class Catalog:
                 # Test for missing product images
                 if len(self.images) == 0:
                     message = f'Product {self.binding_id} is missing images. Will turn visibility to off.'
-                    Catalog.logger.warn(message)
+                    if self.verbose:
+                        Catalog.logger.warn(message)
                     self.visible = False
 
             # BOUND PRODUCTS
@@ -1341,7 +1356,8 @@ class Catalog:
                 try:
                     return [int(x) for x in response[0][0].split(',')]
                 except:
-                    Catalog.logger.warn(f'Error getting current collections for {self.sku}, Query: {query}')
+                    if self.verbose:
+                        Catalog.logger.warn(f'Error getting current collections for {self.sku}, Query: {query}')
                     return []
             except:
                 Catalog.error_handler.add_error_v(
@@ -1755,7 +1771,7 @@ class Catalog:
 
                 # Upload new images
                 uploaded_files = Shopify.Product.Files.create(
-                    variables=stagedUploadsCreateVariables, file_list=file_list
+                    variables=stagedUploadsCreateVariables, file_list=file_list, eh=Catalog.eh
                 )
 
                 for file in uploaded_files:
@@ -1939,7 +1955,7 @@ class Catalog:
                             }
 
                             uploaded_file = Shopify.Product.Files.create(
-                                variables=stagedUploadsCreateVariables, file_list=file_list
+                                variables=stagedUploadsCreateVariables, file_list=file_list, eh=Catalog.eh
                             )
                             variant_payload['mediaSrc'] = uploaded_file[0]['url']
                             child.has_variant_image = True
@@ -2002,13 +2018,16 @@ class Catalog:
             variant_image_payload = []
             for child in self.variants:
                 if not child.has_variant_image:
-                    print(f'Variant {child.sku} is missing an image. Checking images for variant')
+                    if self.verbose:
+                        Catalog.logger.info(f'Variant {child.sku} is missing an image. Checking images for variant')
                     for image in child.images:
-                        print(f'Checking Image: {image.name}')
+                        if self.verbose:
+                            Catalog.logger.info(f'Checking Image: {image.name}')
                         if image.is_variant_image:
-                            print(f'Image: {image.name} is the variant image')
-                            print(f'Image ID: {image.shopify_id}')
-                            print(f'Variant ID: {child.variant_id}')
+                            if self.verbose:
+                                Catalog.logger.info(f'Image: {image.name} is the variant image')
+                                Catalog.logger.info(f'Image ID: {image.shopify_id}')
+                                Catalog.logger.info(f'Variant ID: {child.variant_id}')
                             variant_image_payload.append(
                                 {
                                     'id': f'{Shopify.Product.Variant.prefix}{child.variant_id}',
@@ -2108,18 +2127,21 @@ class Catalog:
                     else:
                         create()
                     # Update Middleware (Insert or Update)
-                    Database.Shopify.Product.sync(product=self)
+                    Database.Shopify.Product.sync(product=self, eh=Catalog.eh, verbose=self.verbose)
 
                 # Update Inventory
                 if not self.is_preorder:
                     Shopify.Inventory.update(self.get_inventory_payload())
             except Exception as e:
+                title = self.web_title + ' - ' + (self.binding_id if self.binding_id else self.sku)
                 Catalog.error_handler.add_error_v(
-                    f'Error processing product: {e}', origin='Product.process', traceback=tb()
+                    f'Error processing product {title}: {e}', origin='Product.process', traceback=tb()
                 )
                 return False, self.product_data
 
             else:
+                title = self.web_title + ' - ' + (self.binding_id if self.binding_id else self.sku)
+                Catalog.logger.success(f'Product {title} processed successfully.')
                 return True, self.product_data
 
         def replace_image(self, image) -> bool:
@@ -2287,7 +2309,8 @@ class Catalog:
         @staticmethod
         def delete(sku, update_timestamp=False):
             """Delete Product from Shopify and Middleware."""
-            print(f'Deleting Product {sku}.')
+            if creds.Integrator.verbose_logging:
+                Catalog.logger.info(f'Deleting Product {sku}.')
 
             def delete_product(sku, product_id, update_timestamp=False):
                 """Helper function."""
@@ -2304,7 +2327,6 @@ class Catalog:
 
             # Get Product ID
             product_id = Database.Shopify.Product.get_id(item_no=sku)
-            print(f'Product ID: {product_id}')
 
             # Add Binding ID to Payload if it exists
             binding_id = Database.Shopify.Product.get_binding_id(product_id=product_id)
@@ -2312,26 +2334,29 @@ class Catalog:
                 delete_payload['binding_id'] = binding_id
 
             if binding_id:
-                print('Delete: Binding ID Exists')
                 total_variants_in_mw = Catalog.Product.get_family_members(binding_id=binding_id, count=True)
                 # Delete Single Product/Variants
                 if total_variants_in_mw < 3:
-                    print('Case 1')
+                    if creds.Integrator.verbose_logging:
+                        Catalog.logger.info('Case 1')
                     # Must have at least 3 Products before deletion to remain a bound product. Will delete product.
                     delete_product(sku=sku, product_id=product_id, update_timestamp=update_timestamp)
 
                 elif Catalog.Product.is_parent(sku):
-                    print('Case 2 - Parent Product. Will delete product.')
+                    if creds.Integrator.verbose_logging:
+                        Catalog.logger.info('Case 2 - Parent Product. Will delete product.')
                     delete_product(sku=sku, product_id=product_id, update_timestamp=update_timestamp)
 
                 else:
-                    print('Case 3 - Child Product. Will delete variant.')
+                    if creds.Integrator.verbose_logging:
+                        Catalog.logger.info('Case 3 - Child Product. Will delete variant.')
                     option_id = Database.Shopify.Product.Variant.get_option_id(sku=sku)
                     opt_val_id = Database.Shopify.Product.Variant.get_option_value_id(sku=sku)
                     variant_id = Database.Shopify.Product.Variant.get_id(sku=sku)
-                    print(f'Option ID: {option_id}')
-                    print(f'Option Value ID: {opt_val_id}')
-                    print(f'Variant ID: {variant_id}')
+                    if creds.Integrator.verbose_logging:
+                        Catalog.logger.info(f'Option ID: {option_id}')
+                        Catalog.logger.info(f'Option Value ID: {opt_val_id}')
+                        Catalog.logger.info(f'Variant ID: {variant_id}')
 
                     Shopify.Product.Option.update(
                         product_id=product_id, option_id=option_id, option_values_to_delete=[opt_val_id]
@@ -2365,7 +2390,8 @@ class Catalog:
                 return response[0][0] == 1
 
         def remove_parent(self):
-            print('Entering Remove Parent Function of Product Class')
+            if self.verbose:
+                Catalog.logger.info('Entering Remove Parent Function of Product Class')
             """Remove parent status from all children"""
             query = f"""
                     UPDATE {Table.CP.Item.table} 
@@ -2373,7 +2399,8 @@ class Catalog:
                     WHERE {Table.CP.Item.Column.binding_id} = '{self.binding_id}'
                     """
             db.query(query)
-            print('Parent status removed from all children.')
+            if self.verbose:
+                Catalog.logger.info('Parent status removed from all children.')
 
         def is_last_variant(self, binding_id):
             """Check if this is the last variant in the parent product."""
@@ -2521,7 +2548,8 @@ class Catalog:
                 Catalog.error_handler.add_error_v(error=f'Error updating timestamp for {sku}. Response: {response}')
 
         class Variant:
-            def __init__(self, sku, last_sync=datetime(1970, 1, 1), inventory_only=False):
+            def __init__(self, sku, last_sync=datetime(1970, 1, 1), verbose=False, inventory_only=False):
+                self.verbose = verbose
                 self.sku = sku
                 self.last_sync = last_sync
                 self.inventory_only = inventory_only
@@ -3144,9 +3172,6 @@ class Catalog:
                         )
                         return None
 
-                    # for k, v in details.items():
-                    #     print(f'{k}: {v}')
-
                     return details
 
             def validate(self):
@@ -3214,7 +3239,8 @@ class Catalog:
                 )
 
         class Image:
-            def __init__(self, image_name: str, product_id: int = None):
+            def __init__(self, image_name: str, product_id: int = None, verbose=False):
+                self.verbose = verbose
                 self.type = 'IMAGE'
                 self.db_id = None
                 self.name = image_name  # This is the file name
@@ -3468,10 +3494,13 @@ class Catalog:
                 Shopify.Product.Media.Image.delete(
                     product_id=product_id, shopify_id=image_id, variant_id=variant_id
                 )
-                Database.Shopify.Product.Media.Image.delete(image_id=image_id)
+                Database.Shopify.Product.Media.Image.delete(
+                    image_id=image_id, eh=Catalog.eh, verbose=creds.Integrator.verbose_logging
+                )
 
         class Video:
-            def __init__(self, url, sku, binding_id):
+            def __init__(self, url, sku, binding_id, verbose=False):
+                self.verbose = verbose
                 self.db_id = None
                 self.sku = sku
                 self.shopify_id = None
@@ -3557,11 +3586,15 @@ class Catalog:
                 video_id = Database.Shopify.Product.Media.Video.get(sku=sku, url=url, column='VIDEO_ID')
                 if video_id:
                     Shopify.Product.Media.delete(product_id=product_id, media_type='video', media_id=video_id)
-                    Database.Shopify.Product.Media.Video.delete(video_id=video_id)
+                    Database.Shopify.Product.Media.Video.delete(
+                        video_id=video_id, eh=Catalog.eh, verbose=creds.Integrator.verbose_logging
+                    )
 
                 else:
                     # Shopify Video ID not found. Attempt MW cleanup with SKU and URL
-                    Database.Shopify.Product.Media.Video.delete(url=url, sku=sku)
+                    Database.Shopify.Product.Media.Video.delete(
+                        url=url, sku=sku, eh=Catalog.eh, verbose=creds.Integrator.verbose_logging
+                    )
 
         class Modifier:
             """Placeholder for modifier class"""

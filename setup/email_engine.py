@@ -108,8 +108,8 @@ class Email:
         if staff:
             # Dictionary of recipients in creds config
             for person in recipients_list:
-                to_name = creds.staff[person]['full_name']
-                to_address = creds.staff[person]['email']
+                to_name = creds.Company.staff[person]['full_name']
+                to_address = creds.Company.staff[person]['email']
                 msg = Email.render(
                     to_name=to_name,
                     to_address=to_address,

@@ -96,8 +96,9 @@ def scrub(string: str):
     return re.sub('[^A-Za-z0-9 ]+', '', string)
 
 
-def get_product_images():
-    ProcessOutErrorHandler.logger.info('Getting product images.')
+def get_product_images(eh=ProcessOutErrorHandler, verbose=False):
+    if verbose:
+        eh.logger.info('Getting product images.')
 
     product_images = []
 
@@ -112,8 +113,8 @@ def get_product_images():
 
     with ThreadPoolExecutor(max_workers=creds.Integrator.max_workers) as executor:
         executor.map(task, os.listdir(creds.Company.product_images))
-
-    ProcessOutErrorHandler.logger.info(f'Found {len(product_images)} images.')
+    if verbose:
+        eh.logger.info(f'Found {len(product_images)} images.')
     return product_images
 
 
