@@ -612,8 +612,54 @@ def get_all_new_items(start_date):
 
     try:
         response = db.query(query)
-
         return [[x[1], x[0]] for x in response] if response else []
+    except:
+        return []
+
+
+def get_preorder_items():
+    query = """
+    SELECT I.ITEM_NO FROM IM_ITEM I 
+    INNER JOIN SN_SHOP_PROD S on S.ITEM_NO = I.ITEM_NO
+    WHERE USR_IS_PREORDER = 'Y' AND USR_PREORDER_REL_DT > GETDATE() AND IS_ECOMM_ITEM = 'Y'
+    """
+
+    try:
+        response = db.query(query)
+        return [x[0] for x in response] if response else []
+    except:
+        return []
+
+
+def get_preorder_product_ids():
+    query = """
+    SELECT PRODUCT_ID FROM IM_ITEM I 
+    INNER JOIN SN_SHOP_PROD S on S.ITEM_NO = I.ITEM_NO
+    WHERE USR_IS_PREORDER = 'Y' AND USR_PREORDER_REL_DT > GETDATE() AND IS_ECOMM_ITEM = 'Y'
+    """
+
+    try:
+        response = db.query(query)
+        return [x[0] for x in response] if response else []
+    except:
+        return []
+
+
+def get_current_preorder_items_for_sort_order():
+    query = """
+    SELECT I.ITEM_NO, PRODUCT_ID, P.PRC_1, P.PRC_2 FROM IM_ITEM I 
+    INNER JOIN SN_SHOP_PROD S on S.ITEM_NO = I.ITEM_NO
+    INNER JOIN IM_PRC P on P.ITEM_NO = I.ITEM_NO
+    WHERE USR_IS_PREORDER = 'Y' AND USR_PREORDER_REL_DT > GETDATE() AND IS_ECOMM_ITEM = 'Y' 
+    """
+
+    try:
+        response = db.query(query)
+        return (
+            [{'item_no': x[0], 'product_id': x[1], 'price_1': x[2], 'price_2': x[3]} for x in response]
+            if response
+            else []
+        )
     except:
         return []
 

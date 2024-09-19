@@ -165,7 +165,8 @@ class SortOrderEngine:
         ecomm_items = new_items[4:]
 
         return (
-            featured_items
+            products.get_current_preorder_items_for_sort_order()
+            + featured_items
             + top_4_ecomm_items
             + SortOrderEngine.get_new_items()
             + SortOrderEngine.promote_sale_items(ecomm_items)

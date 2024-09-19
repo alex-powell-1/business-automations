@@ -12,8 +12,11 @@ from customer_tools.customers import lookup_customer
 from traceback import print_exc as tb
 from setup.utilities import PhoneNumber, local_to_utc
 from datetime import datetime
+from product_tools import products
 
 import concurrent.futures
+
+import threading
 
 
 class MoveInput:
@@ -1818,6 +1821,8 @@ class Shopify:
 
                 data = []
 
+                preorder_product_ids = products.get_preorder_product_ids()
+
                 while response is None or response.data['products']['pageInfo']['hasNextPage']:
                     if response is not None:
                         variables['after'] = response.data['products']['pageInfo']['endCursor']
@@ -1830,7 +1835,12 @@ class Shopify:
                         if not edge['node']['inCollection']:
                             continue
 
-                        data.append(edge['node']['id'].split('/')[-1])
+                        id = edge['node']['id'].split('/')[-1]
+
+                        if id in preorder_product_ids:
+                            continue
+
+                        data.append(id)
 
                 return data
             except Exception as e:
@@ -1886,8 +1896,16 @@ class Shopify:
 
             responses = []
 
-            def task(collection_id):
+            def change_sort_order_to_manual(collection_id):
                 Shopify.Collection.change_sort_order_to_manual(collection_id=collection_id)
+
+            def task(collection_id):
+                # Spawn a new thread to run change the sort order to manual
+                thread = threading.Thread(target=change_sort_order_to_manual, args=(collection_id,))
+
+                # Start the thread.
+                # Our task will continue to run at the same time.
+                thread.start()
 
                 items = [
                     int(x) for x in Shopify.Collection.get_out_of_stock_items(collection_id=collection_id, eh=eh)
@@ -1895,6 +1913,9 @@ class Shopify:
 
                 if len(items) == 0:
                     return
+
+                # Wait for the thread to finish if it hasn't already.
+                thread.join()
 
                 response = Shopify.Collection.move_to_bottom(
                     collection_id=collection_id, product_id_list=items, eh=eh
