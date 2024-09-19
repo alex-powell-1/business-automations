@@ -12,6 +12,7 @@ from customer_tools.customers import lookup_customer
 from traceback import print_exc as tb
 from setup.utilities import PhoneNumber, local_to_utc
 from datetime import datetime
+from product_tools import products
 
 import concurrent.futures
 
@@ -1820,6 +1821,8 @@ class Shopify:
 
                 data = []
 
+                preorder_product_ids = products.get_preorder_product_ids()
+
                 while response is None or response.data['products']['pageInfo']['hasNextPage']:
                     if response is not None:
                         variables['after'] = response.data['products']['pageInfo']['endCursor']
@@ -1832,7 +1835,12 @@ class Shopify:
                         if not edge['node']['inCollection']:
                             continue
 
-                        data.append(edge['node']['id'].split('/')[-1])
+                        id = edge['node']['id'].split('/')[-1]
+
+                        if id in preorder_product_ids:
+                            continue
+
+                        data.append(id)
 
                 return data
             except Exception as e:
