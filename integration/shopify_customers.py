@@ -70,7 +70,8 @@ class Customers:
         return [x[0] for x in response] if response is not None else []
 
     def process_deletes(self):
-        Customers.logger.header('Processing Deletes')
+        if self.verbose:
+            Customers.logger.header('Processing Deletes')
         cp_customers = self.get_cp_customers()
         mw_customers = self.get_mw_customers()
         # Find Customers in MW that are not in CP
@@ -88,7 +89,8 @@ class Customers:
                 Database.Shopify.Customer.delete(shopify_cust_no)
                 count += 1
         else:
-            Customers.logger.info('No customers to delete.')
+            if self.verbose:
+                Customers.logger.info('No customers to delete.')
 
     def sync(self):
         self.process_deletes()
@@ -112,6 +114,15 @@ class Customers:
                 else:
                     fail_count['number'] += 1
                     fail_count['customer'].append(cust_no)
+
+            Customers.logger.info(
+                '\n-----------------------\n'
+                'Customer Sync Complete.\n'
+                f'Success Count: {success_count}\n'
+                f'Fail Count: {fail_count['number']}\n'
+                f'Fail Items: {fail_count['customer']}\n'
+                '-----------------------\n'
+            )
 
             if fail_count['number'] > 0:
                 Customers.logger.warn(f'Customers failed to sync: {fail_count["number"]}')

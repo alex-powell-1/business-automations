@@ -427,4 +427,4 @@ def verify_webhook(data, hmac_header):
 
 
 if '__main__' == __name__:
-    print(PhoneNumber('8282341265').to_cp())
+    print(generate_random_code(8))

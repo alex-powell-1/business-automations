@@ -350,8 +350,8 @@ class Catalog:
 
             if not self.inventory_only:
                 Catalog.logger.info(
-                    '-----------------------\n'
-                    'Sync Complete.\n'
+                    '\n-----------------------\n'
+                    'Catalog Sync Complete.\n'
                     f'Success Count: {success_count}\n'
                     f'Fail Count: {fail_count["number"]}\n'
                     f'Fail Items: {fail_count["items"]}\n'
@@ -376,7 +376,7 @@ class Catalog:
 
                     Catalog.logger.info(
                         '\n-----------------------\n'
-                        'Retry Complete.\n'
+                        'Catalog Retry Complete.\n'
                         f'Success Count: {success_count}\n'
                         f'Fail Count: {fail_count["number"]}\n'
                         f'Fail Items: {fail_count["items"]}\n'

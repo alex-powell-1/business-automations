@@ -33,7 +33,6 @@ class Integrator:
 
     def __str__(self):
         result = f'Integrator:' f'Last Sync: {self.last_sync}\n----------------\n'
-        result += f'Verbose Logging: {self.verbose}\n'
         result += self.customers.__str__()
         result += self.promotions.__str__()
         result += self.catalog.__str__()
@@ -54,7 +53,7 @@ class Integrator:
 
     def sync(self, initial=False):
         start_sync_time = datetime.now()
-        self.logger.header('Sync Starting')
+        self.logger.header(f'Last Sync: {self.last_sync}\nSync Start Time: {start_sync_time}')
         if self.customer_sync:
             self.customers.sync()
         if self.promotions_sync:
@@ -223,9 +222,9 @@ if __name__ == '__main__':
                     now = datetime.now()
                     hour = now.hour
                     if 18 > hour > 7:
-                        minutes_between_sync = creds.Integrator.daytime_run_interval
+                        minutes_between_sync = creds.Integrator.int_day_run_interval
                     else:
-                        minutes_between_sync = creds.Integrator.nighttime_run_interval
+                        minutes_between_sync = creds.Integrator.int_night_run_interval
 
                     delay = minutes_between_sync * 60
 

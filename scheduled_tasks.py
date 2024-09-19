@@ -1,5 +1,4 @@
 from datetime import datetime
-
 from customer_tools import tiered_pricing
 from customer_tools import customers
 from product_tools import brands
@@ -12,6 +11,7 @@ from setup import creds, date_presets, network, utilities
 from sms import sms_automations, sms_messages, sms_queries
 from setup import backups
 from setup.error_handler import ScheduledTasksErrorHandler
+from setup.sms_engine import SMSEngine
 import time
 
 
@@ -141,6 +141,16 @@ while True:
                 customers.fix_first_and_last_sale_dates(dt=dates)
             except Exception as err:
                 error_handler.add_error_v(error=err, origin='Fix First and Last Sale Dates')
+
+        if hour == 10 and minute == 0:  # 10 AM
+            test_text = f"""From Server: This is a test message. Today is {dates.today}.
+            Yesterday was {dates.yesterday}. Tomorrow is {dates.tomorrow}."""
+            SMSEngine.send_text(
+                origin='SERVER',
+                campaign='Alex Test',
+                to_phone=creds.Company.network_notification_phone,
+                message=test_text,
+            )
 
         if hour == 11 and minute == 30:  # 11:30 AM
             # STOCK NOTIFICATION EMAIL WITH COUPON GENERATION
