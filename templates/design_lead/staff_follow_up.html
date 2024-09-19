@@ -50,7 +50,7 @@
                                             <li><p>Email: {{ item['email'] }}</p></li>
 
                                             {% if item['phone'] != None %}
-                                            <li><p>Phone: {{ format.PhoneNumber(item['phone']).to_cp() }}</p></li>
+                                            <li><p>Phone: {{ item['phone'] }}</p></li>
                                             {% endif %}
 
                                             {% if item['street'] != None %}

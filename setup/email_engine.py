@@ -353,7 +353,7 @@ class Email:
                             'first_name': x[3],
                             'last_name': x[4],
                             'email': x[5],
-                            'phone': x[6],
+                            'phone': utilities.PhoneNumber(x[6]).to_cp(),
                             'interested_in': [],
                             'timeline': x[13],
                             'street': x[14],
@@ -381,7 +381,7 @@ class Email:
                     error_handler.logger.info('No entries to send.')
                 else:
                     error_handler.logger.info(f'{len(yesterday_entries)} leads from yesterday. Constructing Email')
-                    with open('./templates/design_lead/follow_up.html', 'r') as template_file:
+                    with open('./templates/design_lead/staff_follow_up.html', 'r') as template_file:
                         template_str = template_file.read()
 
                     jinja_template = Template(template_str)
@@ -391,7 +391,6 @@ class Email:
                         'company': creds.Company.name,
                         'leads': yesterday_entries,
                         'date_format': datetime,
-                        'format': utilities,
                     }
 
                     email_content = jinja_template.render(email_data)

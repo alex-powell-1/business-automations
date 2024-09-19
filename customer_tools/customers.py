@@ -132,8 +132,8 @@ def export_retail_customer_csv(eh=ScheduledTasksErrorHandler):
                 'Point Balance',
             ]
 
-            open(creds.retail_customer_backup, 'w', encoding='utf-8')
-            export_file = open(creds.retail_customer_backup, 'a')
+            open(creds.Backups.Customer.retail, 'w', encoding='utf-8')
+            export_file = open(creds.Backups.Customer.retail, 'a')
             w = csv.writer(export_file)
 
             w.writerow(header_list)
@@ -177,8 +177,8 @@ def export_wholesale_customer_csv(eh=ScheduledTasksErrorHandler):
         else:
             header_list = ['Customer Number', 'First Name', 'Last Name', 'Email Address', 'Phone Number']
 
-            open(creds.wholesale_customer_backup, 'w')
-            export_file = open(creds.wholesale_customer_backup, 'a', encoding='utf-8')
+            open(creds.Backups.Customer.wholesale, 'w')
+            export_file = open(creds.Backups.Customer.wholesale, 'a', encoding='utf-8')
             w = csv.writer(export_file)
 
             w.writerow(header_list)

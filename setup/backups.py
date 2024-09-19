@@ -9,7 +9,12 @@ from setup.error_handler import ScheduledTasksErrorHandler as error_handler
 def offsite_backups():
     error_handler.logger.info(f'Offsite Backups: Starting at {datetime.now():%H:%M:%S}')
 
-    backups = {'configuration': {'src': creds.configuration, 'dst': creds.offsite_configuration}}
+    backups = {
+        'configuration': {
+            'src': creds.Backups.Config.source,
+            'dst': f'{creds.Backups.Config.destination}_{datetime.now():%m_%d_%y}',
+        }
+    }
 
     for backup in backups:
         error_handler.logger.info(f'Starting Backup for {backup}')
