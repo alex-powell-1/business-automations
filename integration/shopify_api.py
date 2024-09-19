@@ -1896,12 +1896,12 @@ class Shopify:
 
             responses = []
 
-            def manual(collection_id):
+            def change_sort_order_to_manual(collection_id):
                 Shopify.Collection.change_sort_order_to_manual(collection_id=collection_id)
 
             def task(collection_id):
                 # Spawn a new thread to run change the sort order to manual
-                thread = threading.Thread(target=manual, args=(collection_id,))
+                thread = threading.Thread(target=change_sort_order_to_manual, args=(collection_id,))
 
                 # Start the thread.
                 # Our task will continue to run at the same time.
