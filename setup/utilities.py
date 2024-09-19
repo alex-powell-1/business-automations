@@ -13,6 +13,8 @@ from traceback import format_exc as tb
 import secrets
 import string
 from concurrent.futures import ThreadPoolExecutor
+import hashlib
+import hmac
 
 
 def convert_path_to_raw(path):
@@ -410,6 +412,15 @@ def delete_old_files(directory=None, days=14, eh=ScheduledTasksErrorHandler):
                 delete_helper(creds.Logs.__dict__[x])
     else:
         delete_helper(directory)
+
+
+def verify_webhook(data, hmac_header):
+    """
+    Compare the computed HMAC digest based on the client secret and the request contents
+    to the reported HMAC in the headers.
+    """
+    calculated_hmac = base64.b64encode(hmac.new(creds.Shopify.secret_key.encode(), data, hashlib.sha256).digest())
+    return hmac.compare_digest(calculated_hmac, hmac_header.encode())
 
 
 if '__main__' == __name__:

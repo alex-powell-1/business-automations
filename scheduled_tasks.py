@@ -5,7 +5,6 @@ from customer_tools import customers
 from product_tools import brands
 from product_tools import set_inactive_status
 from product_tools import stock_buffer
-from product_tools.sort_order import SortOrderEngine
 from customer_tools import stock_notification
 from customer_tools.merge import Merge
 from setup.email_engine import Email

@@ -193,6 +193,9 @@ class SortOrderEngine:
         for item in items:
             try:
                 product_id = db.Shopify.Product.get_id(item_no=item)
+                if not product_id:
+                    continue
+
                 product_id = int(product_id)
 
                 def get_price(item_no):
