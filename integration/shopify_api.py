@@ -16,6 +16,8 @@ from product_tools import products
 
 import concurrent.futures
 
+import threading
+
 
 verbose_print = False
 
@@ -1896,8 +1898,12 @@ class Shopify:
 
             responses = []
 
-            def task(collection_id):
+            def manual(collection_id):
                 Shopify.Collection.change_sort_order_to_manual(collection_id=collection_id)
+
+            def task(collection_id):
+                thread = threading.Thread(target=manual, args=(collection_id,))
+                thread.start()
 
                 items = [
                     int(x) for x in Shopify.Collection.get_out_of_stock_items(collection_id=collection_id, eh=eh)
