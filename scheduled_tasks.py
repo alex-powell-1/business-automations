@@ -48,7 +48,7 @@ while True:
             item_report = creds.Reports.Item
             if item_report.enabled and item_report.hour == hour:
                 try:
-                    Email.Staff.ItemReport.send(recipients=item_report.recipients, dates=dates)
+                    Email.Staff.ItemReport.send(recipients=item_report.recipients)
                 except Exception as err:
                     error_handler.add_error_v(error=err, origin='Item Report')
 
@@ -142,11 +142,6 @@ while True:
                 customers.fix_first_and_last_sale_dates(dt=dates)
             except Exception as err:
                 error_handler.add_error_v(error=err, origin='Fix First and Last Sale Dates')
-
-            try:
-                SortOrderEngine.sort()
-            except Exception as err:
-                error_handler.add_error_v(error=err, origin='Sort Order')
 
         if hour == 11 and minute == 30:  # 11:30 AM
             # STOCK NOTIFICATION EMAIL WITH COUPON GENERATION

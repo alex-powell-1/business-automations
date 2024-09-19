@@ -199,15 +199,16 @@ class Product:
 
     def get_product_id(self):
         query = f"""
-		SELECT PRODUCT_ID FROM {creds.bc_product_table}
-		WHERE ITEM_NO = '{self.binding_key}'"""
+		SELECT PRODUCT_ID FROM {creds.Table.Middleware.products}
+		WHERE ITEM_NO = '{self.item_no}'"""
         response = db.query(query)
+
         return response[0][0] if response is not None else None
 
     def get_variant_id(self):
         query = f"""
         SELECT VARIANT_ID
-        FROM {creds.bc_product_table}
+        FROM {creds.Table.Middleware.products}
         WHERE ITEM_NO = '{self.item_no}'
         """
         if self.binding_key is not None:
@@ -420,7 +421,7 @@ def get_ecomm_items(mode=1, in_stock_only=False):
     if mode == 3:
         query = f"""
             SELECT ITEM_NO, PRODUCT_ID
-            FROM {creds.bc_product_table}
+            FROM {creds.Table.Middleware.products}
             """
         response = db.query(query)
         return [[x[0], x[1]] for x in response] if response is not None else []
@@ -477,7 +478,7 @@ def get_variant_names(binding_id):
 def get_variant_info_from_big(sku):
     query = f"""
     SELECT PRODUCT_ID, VARIANT_ID
-    FROM {creds.bc_product_table}
+    FROM {creds.Table.Middleware.products}
     AND ITEM_NO = '{sku}'
     """
     response = db.query(query)
@@ -731,7 +732,7 @@ def get_products(query):
 def get_bc_product_id(sku):
     query = f"""
     SELECT PRODUCT_ID
-    FROM {creds.bc_product_table}
+    FROM {creds.Table.Middleware.products}
     WHERE ITEM_NO = '{sku}'
     """
     response = db.query(query)

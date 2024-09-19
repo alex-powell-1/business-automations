@@ -413,4 +413,4 @@ def delete_old_files(directory=None, days=14, eh=ScheduledTasksErrorHandler):
 
 
 if '__main__' == __name__:
-    print(get_product_images())
+    print(PhoneNumber('8282341265').to_cp())

@@ -230,7 +230,6 @@ class Email:
                 error_handler.logger.info(f'Generating Admin Report Data - Starting at {datetime.now():%H:%M:%S}')
 
                 subject = f'Administrative Report - {dates.today:%x}'
-
                 report_data = product_reports.report_generator(
                     title='Administrative Report',
                     dates=dates,
@@ -273,6 +272,7 @@ class Email:
 
                 report_data = product_reports.report_generator(
                     title='Low Stock Report',
+                    dates=dates,
                     revenue=False,
                     cogs_report=False,
                     last_week_report=False,
@@ -416,7 +416,4 @@ class Email:
 
 
 if __name__ == '__main__':
-    # Email.Customer.GiftCard.send(
-    #     name='Karen Randle', email='knrandle@att.net', gc_code='5792-5157-4820', amount=100
-    # )
-    pass
+    Email.Staff.DesignLeadNotification.send(recipients=creds.Reports.MarketingLeads.recipients)

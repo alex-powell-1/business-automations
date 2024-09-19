@@ -1,7 +1,7 @@
 from product_tools import products
 from reporting.product_reports import create_top_items_report
 from setup.date_presets import *
-from setup.error_handler import ScheduledTasksErrorHandler as error_handler
+from setup.error_handler import ProcessOutErrorHandler as error_handler
 from database import Database as db
 from setup import creds
 

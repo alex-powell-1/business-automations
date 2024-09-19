@@ -7,7 +7,7 @@ from setup import creds
 
 from setup import date_presets
 from datetime import datetime
-
+from product_tools.sort_order import SortOrderEngine
 from setup.error_handler import ProcessOutErrorHandler
 from setup.utilities import get_last_sync, set_last_sync
 
@@ -18,6 +18,7 @@ from traceback import format_exc as tb
 customer_sync = True
 promotions_sync = True
 catalog_sync = True
+sort_collections = True
 
 
 class Integrator:
@@ -60,6 +61,8 @@ class Integrator:
             self.promotions.sync()
         if catalog_sync:
             self.catalog.sync(initial=initial)
+        if sort_collections:
+            SortOrderEngine.sort()
 
         set_last_sync(file_name='./integration/last_sync_integrator.txt', start_time=start_sync_time)
         completion_time = (datetime.now() - start_sync_time).seconds
