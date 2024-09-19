@@ -22,20 +22,20 @@ class CounterPointAPI:
     error_handler = ProcessInErrorHandler.error_handler
 
     def __init__(self, session: requests.Session = requests.Session()):
-        self.base_url = creds.CounterpointAPI.server
+        self.base_url = creds.Counterpoint.API.server
         self.session = session
         self.logger = CounterPointAPI.logger
         self.error_handler = CounterPointAPI.error_handler
 
         self.get_headers = {
-            'Authorization': f'Basic {creds.CounterpointAPI.user}',
-            'APIKey': creds.CounterpointAPI.key,
+            'Authorization': f'Basic {creds.Counterpoint.API.user}',
+            'APIKey': creds.Counterpoint.API.key,
             'Accept': 'application/json',
         }
 
         self.post_headers = {
-            'Authorization': f'Basic {creds.CounterpointAPI.user}',
-            'APIKey': creds.CounterpointAPI.key,
+            'Authorization': f'Basic {creds.Counterpoint.API.user}',
+            'APIKey': creds.Counterpoint.API.key,
             'Content-Type': 'application/json',
             'Accept': 'application/json',
         }

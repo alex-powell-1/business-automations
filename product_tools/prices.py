@@ -134,7 +134,7 @@ def memorial_day_sale() -> None:
         # WHERE ITEM_NO = '{x}'
         #
         # INSERT INTO EC_CATEG_ITEM(ITEM_NO, CATEG_ID, ENTRY_SEQ_NO, LST_MAINT_DT, LST_MAINT_USR_ID)
-        # VALUES('{x}', '{creds.on_sale_category}', '{counter}', GETDATE(), 'AP')
+        # VALUES('{x}', '{creds.Counterpoint.Categories.on_sale}', '{counter}', GETDATE(), 'AP')
         # """
         query = f"""
                 UPDATE IM_PRC
@@ -183,7 +183,7 @@ def memorial_day_sale() -> None:
             WHERE ITEM_NO = '{x}'
             
             INSERT INTO EC_CATEG_ITEM(ITEM_NO, CATEG_ID, ENTRY_SEQ_NO, LST_MAINT_DT, LST_MAINT_USR_ID)
-            VALUES('{x}', '{creds.on_sale_category}', '{counter}', GETDATE(), 'AP')
+            VALUES('{x}', '{creds.Counterpoint.Categories.on_sale}', '{counter}', GETDATE(), 'AP')
             """
         try:
             db.query(query)
@@ -199,7 +199,7 @@ def memorial_day_sale() -> None:
 def remove_item_from_on_sale_section():
     query = f"""
     select ITEM_NO from EC_CATEG_ITEM
-    WHERE CATEG_ID = '{creds.on_sale_category}'
+    WHERE CATEG_ID = '{creds.Counterpoint.Categories.on_sale}'
     """
     response = db.query(query)
     items = [x[0] for x in response] if response else []
@@ -209,6 +209,6 @@ def remove_item_from_on_sale_section():
         if item.price_2 is None:
             query = f"""
             DELETE FROM EC_CATEG_ITEM
-            WHERE ITEM_NO = '{x}' AND CATEG_ID = '{creds.on_sale_category}'"""
+            WHERE ITEM_NO = '{x}' AND CATEG_ID = '{creds.Counterpoint.Categories.on_sale}'"""
             db.query(query)
             print(f'Removed {item.long_descr} from on sale section')

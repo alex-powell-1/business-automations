@@ -1,5 +1,5 @@
 from setup import creds
-from setup.creds import Route
+from setup.creds import API
 import requests
 import json
 from time import sleep
@@ -1864,7 +1864,7 @@ class Shopify:
             def task(moves):
                 return Shopify.Collection.reorder_250_items(collection_id=collection_id, moves=moves, eh=eh)
 
-            with concurrent.futures.ThreadPoolExecutor(max_workers=creds.max_workers) as executor:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=creds.Integrator.max_workers) as executor:
                 responses = executor.map(task, list_of_moves)
 
             return responses
@@ -1904,7 +1904,7 @@ class Shopify:
 
                 responses.append(response)
 
-            with concurrent.futures.ThreadPoolExecutor(max_workers=creds.max_workers) as executor:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=creds.Integrator.max_workers) as executor:
                 responses = executor.map(task, collections)
 
             eh.logger.success(f'Moved all out of stock items to bottom of {len(collections)} collections')
@@ -2244,18 +2244,15 @@ class Shopify:
         prefix = 'gid://shopify/WebhookSubscription'
         format = 'JSON'
         topics = [
-            # {'topic': 'ORDERS_CREATE', 'url': f'{creds.Company.API.endpoint}{Route.Shopify.order_create}'},
-            # {'topic': 'REFUNDS_CREATE', 'url': f'{creds.Company.API.endpoint}{Route.Shopify.refund_create}'},
-            # {'topic': 'DRAFT_ORDERS_CREATE', 'url': f'{creds.Company.API.endpoint}{Route.Shopify.draft_create}'},
-            # {'topic': 'DRAFT_ORDERS_UPDATE', 'url': f'{creds.Company.API.endpoint}{Route.Shopify.draft_update}'},
-            # {'topic': 'CUSTOMERS_CREATE', 'url': f'{creds.Company.API.endpoint}{Route.Shopify.customer_create}'},
-            # {'topic': 'CUSTOMERS_UPDATE', 'url': f'{creds.Company.API.endpoint}{Route.Shopify.customer_update}'},
-            # {'topic': 'PRODUCTS_UPDATE', 'url': f'{creds.Company.API.endpoint}{Route.Shopify.product_update}'},
-            # {
-            #     'topic': 'VARIANTS_OUT_OF_STOCK',
-            #     'url': f'{creds.Company.API.endpoint}{Route.Shopify.variant_out_of_stock}',
-            # },
-            {'topic': 'COLLECTIONS_UPDATE', 'url': f'{creds.Company.API.endpoint}{Route.Shopify.collection_update}'}
+            {'topic': 'ORDERS_CREATE', 'url': f'{API.endpoint}{API.Route.Shopify.order_create}'},
+            {'topic': 'REFUNDS_CREATE', 'url': f'{API.endpoint}{API.Route.Shopify.refund_create}'},
+            {'topic': 'DRAFT_ORDERS_CREATE', 'url': f'{API.endpoint}{API.Route.Shopify.draft_create}'},
+            {'topic': 'DRAFT_ORDERS_UPDATE', 'url': f'{API.endpoint}{API.Route.Shopify.draft_update}'},
+            {'topic': 'CUSTOMERS_CREATE', 'url': f'{API.endpoint}{API.Route.Shopify.customer_create}'},
+            {'topic': 'CUSTOMERS_UPDATE', 'url': f'{API.endpoint}{API.Route.Shopify.customer_update}'},
+            {'topic': 'PRODUCTS_UPDATE', 'url': f'{API.endpoint}{API.Route.Shopify.product_update}'},
+            {'topic': 'VARIANTS_OUT_OF_STOCK', 'url': f'{API.endpoint}{API.Route.Shopify.variant_out_of_stock}'},
+            {'topic': 'COLLECTIONS_UPDATE', 'url': f'{API.endpoint}{API.Route.Shopify.collection_update}'},
         ]
 
         def get(id='', ids_only=False):

@@ -110,7 +110,7 @@ def get_product_images():
             else:
                 product_images.append([filename, os.path.getsize(f'{creds.Company.product_images}/{filename}')])
 
-    with ThreadPoolExecutor(max_workers=creds.max_workers) as executor:
+    with ThreadPoolExecutor(max_workers=creds.Integrator.max_workers) as executor:
         executor.map(task, os.listdir(creds.Company.product_images))
 
     ProcessOutErrorHandler.logger.info(f'Found {len(product_images)} images.')
@@ -402,7 +402,9 @@ def delete_old_files(directory=None, days=14, eh=ScheduledTasksErrorHandler):
                     os.remove(os.path.join(directory, f))
                     pass
                 except Exception as e:
-                    eh.error_handler.add_error('Error deleting file.', origin='delete_old_files', traceback=tb())
+                    eh.error_handler.add_error(
+                        f'Error deleting file.{e}', origin='delete_old_files', traceback=tb()
+                    )
                 else:
                     eh.logger.info(f'Deleted file: {directory}/{f}')
 

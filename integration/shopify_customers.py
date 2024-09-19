@@ -92,7 +92,7 @@ class Customers:
             def task(customer: Customers.Customer) -> None:
                 return customer.process()
 
-            with concurrent.futures.ThreadPoolExecutor(max_workers=creds.max_workers) as executor:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=creds.Integrator.max_workers) as executor:
                 results = executor.map(task, self.customers)
 
             for x in results:

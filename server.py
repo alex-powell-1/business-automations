@@ -9,7 +9,7 @@ from jsonschema import ValidationError
 from waitress import serve
 
 from setup import creds
-from setup.creds import Route
+from setup.creds import API
 from setup.error_handler import ProcessInErrorHandler, ProcessOutErrorHandler, Logger
 
 from traceback import format_exc as tb
@@ -18,24 +18,22 @@ from routes import shopify
 from routes import marketing
 from routes import inventory
 from routes import sms
-from routes import limiter
+from routes.limiter import limiter
 
 app = flask.Flask(__name__)
 
 # Rate Limiting
-limiter.limiter.init_app(app)
+limiter.init_app(app)
 
-# Register Blueprints
+# Register API Route Blueprints
 app.register_blueprint(shopify.shopify_routes)  # Shopify Routes
 app.register_blueprint(marketing.marketing_routes)  # Marketing Routes
 app.register_blueprint(inventory.availability_routes)  # Inventory Availability Routes
 app.register_blueprint(sms.sms_routes)  # SMS Routes
 
-
 CORS(app)
 
-# When False, app is served by Waitress
-dev = False
+dev = False  # When False, app is served by Waitress
 
 
 @app.before_request
@@ -62,10 +60,11 @@ def handle_exception(e):
     ProcessInErrorHandler.error_handler.add_error_v(
         error=f'An error occurred: {e}', origin=f'exception - {url}', traceback=tb()
     )
-    return jsonify({'error': f'An error occurred {e}'}), 500
+    return jsonify({'error': 'Internal Server Error'}), 500
 
 
-@app.route(f'{Route.file_server}/<path:path>', methods=['GET'])
+@app.route(f'{API.Route.file_server}/<path:path>', methods=['GET'])
+@limiter.limit(creds.API.default_rate)
 def serve_file(path):
     try:
         return send_from_directory(creds.Company.public_files_local_path, path)
@@ -75,15 +74,13 @@ def serve_file(path):
         return jsonify({'error': 'Bad request'}), 400
     except Exception as e:
         ProcessOutErrorHandler.error_handler.add_error_v(
-            error=f'Error serving file: {e}', origin=Route.file_server, traceback=tb()
+            error=f'Error serving file: {e}', origin=API.Route.file_server, traceback=tb()
         )
         return jsonify({'error': 'Internal server error'}), 500
 
 
-# @limiter.limit('10/minute')  # 10 requests per minute
 @app.route('/robots.txt', methods=['GET'])
 def robots():
-    # disallow all robots
     return (
         """
     User-agent: *
@@ -105,7 +102,7 @@ def index():
 
 if __name__ == '__main__':
     if dev:
-        app.run(debug=True, port=creds.Company.API.port)
+        app.run(debug=True, port=API.port)
     else:
         running = True
         while running:
@@ -114,7 +111,7 @@ if __name__ == '__main__':
                 serve(
                     app,
                     host='localhost',
-                    port=creds.Company.API.port,
+                    port=API.port,
                     threads=8,
                     max_request_body_size=1073741824,  # 1 GB
                     max_request_header_size=8192,  # 8 KB

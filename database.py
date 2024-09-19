@@ -969,7 +969,7 @@ class Database:
                 for x in sku_list:
                     query = f"""
                     INSERT INTO EC_CATEG_ITEM(ITEM_NO, CATEG_ID, ENTRY_SEQ_NO, LST_MAINT_DT, LST_MAINT_USR_ID)
-                    VALUES('{x}', '{creds.on_sale_category}', '1', GETDATE(), 'POS')
+                    VALUES('{x}', '{creds.Counterpoint.Categories.on_sale}', '1', GETDATE(), 'POS')
                     """
 
                     response = Database.query(query)
@@ -991,7 +991,7 @@ class Database:
             def remove_from_sale_category(sku_list: list, eh=ProcessOutErrorHandler):
                 query = f"""
                 DELETE FROM EC_CATEG_ITEM
-                WHERE ITEM_NO in ({','.join([f"'{x}'" for x in sku_list])}) AND CATEG_ID = '{creds.on_sale_category}'
+                WHERE ITEM_NO in ({','.join([f"'{x}'" for x in sku_list])}) AND CATEG_ID = '{creds.Counterpoint.Categories.on_sale}'
                 """
                 response = Database.query(query)
                 if response['code'] == 200:

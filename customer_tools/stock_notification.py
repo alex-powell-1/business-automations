@@ -10,6 +10,7 @@ import customer_tools.customers
 from setup.utilities import generate_random_code
 from product_tools.products import Product
 from setup import creds
+from setup.creds import API
 from setup.email_engine import Email
 from setup.error_handler import ScheduledTasksErrorHandler as error_handler
 
@@ -277,13 +278,13 @@ def send_stock_notifications():
             copy_file(item_photo, creds.Company.public_files_local_path)
 
             local_photo = creds.Company.public_files_local_path + f'/{item_no}.jpg'
-            product_photo = creds.Company.API.public_files + f'/{item_no}.jpg'
+            product_photo = API.public_files + f'/{item_no}.jpg'
 
             photos_to_remove.append(local_photo)
 
             if included:
                 photos_to_remove.append(creds.Company.public_files_local_path + f'/{item_no}-BARCODE.jpg')
-                product_photo = creds.Company.API.public_files + f'/{item_no}-BARCODE.jpg'
+                product_photo = API.public_files + f'/{item_no}-BARCODE.jpg'
 
             ###############################################################
             ###################### Send Text / Email ######################

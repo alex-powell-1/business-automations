@@ -2,7 +2,7 @@ from database import Database
 from integration.shopify_api import Shopify
 from integration.shopify_customers import Customers
 from flask import request, jsonify, Blueprint
-from setup.creds import Route
+from setup.creds import API
 import pika
 from setup.utilities import verify_webhook, tb, convert_utc_to_local
 from setup.error_handler import ProcessInErrorHandler, Logger, OutOfStockErrorHandler
@@ -27,10 +27,10 @@ class EventID:
 
 shopify_routes = Blueprint('shopify_routes', __name__, template_folder='routes')
 
-default_rate = creds.Route.Limiter.default_rate
+default_rate = creds.API.default_rate
 
 
-@shopify_routes.route(Route.Shopify.order_create, methods=['POST'])
+@shopify_routes.route(API.Route.Shopify.order_create, methods=['POST'])
 @limiter.limit(default_rate)
 def orders():
     """Webhook route for incoming orders. Sends to RabbitMQ queue for asynchronous processing"""
@@ -74,14 +74,14 @@ def orders():
     except Exception as e:
         ProcessInErrorHandler.error_handler.add_error_v(
             error=f'Error sending order {order_id} to RabbitMQ: {e}',
-            origin=Route.Shopify.order_create,
+            origin=API.Route.Shopify.order_create,
             traceback=tb(),
         )
 
     return jsonify({'success': True}), 200
 
 
-@shopify_routes.route(Route.Shopify.draft_create, methods=['POST'])
+@shopify_routes.route(API.Route.Shopify.draft_create, methods=['POST'])
 @limiter.limit(default_rate)
 def draft_create():
     """Webhook route for newly created draft orders. Sends to RabbitMQ queue for asynchronous processing"""
@@ -119,14 +119,14 @@ def draft_create():
     except Exception as e:
         ProcessInErrorHandler.error_handler.add_error_v(
             error=f'Error sending order {order_id} to RabbitMQ: {e}',
-            origin=Route.Shopify.draft_create,
+            origin=API.Route.Shopify.draft_create,
             traceback=tb(),
         )
 
     return jsonify({'success': True}), 200
 
 
-@shopify_routes.route(Route.Shopify.draft_update, methods=['POST'])
+@shopify_routes.route(API.Route.Shopify.draft_update, methods=['POST'])
 @limiter.limit(default_rate)
 def draft_update():
     """Webhook route for updated draft orders. Sends to RabbitMQ queue for asynchronous processing"""
@@ -163,14 +163,14 @@ def draft_update():
     except Exception as e:
         ProcessInErrorHandler.error_handler.add_error_v(
             error=f'Error sending order {order_id} to RabbitMQ: {e}',
-            origin=Route.Shopify.draft_update,
+            origin=API.Route.Shopify.draft_update,
             traceback=tb(),
         )
 
     return jsonify({'success': True}), 200
 
 
-@shopify_routes.route(Route.Shopify.customer_create, methods=['POST'])
+@shopify_routes.route(API.Route.Shopify.customer_create, methods=['POST'])
 @limiter.limit(default_rate)
 def customer_create():
     """Webhook route for updated customers. Sends to RabbitMQ queue for asynchronous processing"""
@@ -223,7 +223,7 @@ def customer_create():
 
         except Exception as e:
             error_handler.add_error_v(
-                error=f'Error adding customer {id}: {e}', origin=Route.Shopify.customer_create, traceback=tb()
+                error=f'Error adding customer {id}: {e}', origin=API.Route.Shopify.customer_create, traceback=tb()
             )
             return jsonify({'error': 'Error adding customer'}), 500
         else:
@@ -234,7 +234,7 @@ def customer_create():
     return jsonify({'success': True}), 200
 
 
-@shopify_routes.route(Route.Shopify.customer_update, methods=['POST'])
+@shopify_routes.route(API.Route.Shopify.customer_update, methods=['POST'])
 @limiter.limit(default_rate)
 def customer_update():
     """Webhook route for updated customers. Sends to RabbitMQ queue for asynchronous processing"""
@@ -260,7 +260,7 @@ def customer_update():
     return jsonify({'success': True}), 200
 
 
-@shopify_routes.route(Route.Shopify.product_update, methods=['POST'])
+@shopify_routes.route(API.Route.Shopify.product_update, methods=['POST'])
 @limiter.limit(default_rate)
 def product_update():
     """Webhook route for updated products. Sends to RabbitMQ queue for asynchronous processing"""
@@ -425,13 +425,15 @@ def product_update():
             Database.Counterpoint.Product.update(update_payload)
         except Exception as e:
             ProcessInErrorHandler.error_handler.add_error_v(
-                error=f'Error updating product {item_no}: {e}', origin=Route.Shopify.product_update, traceback=tb()
+                error=f'Error updating product {item_no}: {e}',
+                origin=API.Route.Shopify.product_update,
+                traceback=tb(),
             )
 
     return jsonify({'success': True}), 200
 
 
-@shopify_routes.route(Route.Shopify.collection_update, methods=['POST'])
+@shopify_routes.route(API.Route.Shopify.collection_update, methods=['POST'])
 @limiter.limit(default_rate)
 def collection_update():
     """Webhook route for collection update"""
@@ -456,7 +458,7 @@ def collection_update():
     return jsonify({'success': True}), 200
 
 
-@shopify_routes.route(Route.Shopify.variant_out_of_stock, methods=['POST'])
+@shopify_routes.route(API.Route.Shopify.variant_out_of_stock, methods=['POST'])
 @limiter.limit(default_rate)
 def variant_out_of_stock():
     """Webhook route for notification when a product variant is out of stock."""

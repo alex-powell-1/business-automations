@@ -418,7 +418,7 @@ class Promotions:
                                 WHERE ITEM_NO = '{i}'
                                 
                                 INSERT INTO EC_CATEG_ITEM(ITEM_NO, CATEG_ID, ENTRY_SEQ_NO, LST_MAINT_DT, LST_MAINT_USR_ID)
-                                VALUES('{i}', '{creds.on_sale_category}', '{counter}', '{new_timestamp}', 'POS')
+                                VALUES('{i}', '{creds.Counterpoint.Categories.on_sale}', '{counter}', '{new_timestamp}', 'POS')
                                 """
                                 # Updating Sale Price, Last Maintenance Date, and Adding to On Sale Category
                                 response = self.db.query(query)
@@ -460,7 +460,7 @@ class Promotions:
                         {where_filter}
 
                         DELETE FROM EC_CATEG_ITEM
-                        {where_filter} AND CATEG_ID = '{creds.on_sale_category}'"""
+                        {where_filter} AND CATEG_ID = '{creds.Counterpoint.Categories.on_sale}'"""
                         # Removing Sale Price, Last Maintenance Date, and Removing from On Sale Category
                         response = self.db.query(query)
 

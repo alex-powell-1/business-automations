@@ -223,9 +223,9 @@ if __name__ == '__main__':
                     now = datetime.now()
                     hour = now.hour
                     if 18 > hour > 7:
-                        minutes_between_sync = creds.Company.integrator_run_interval
+                        minutes_between_sync = creds.Integrator.daytime_run_interval
                     else:
-                        minutes_between_sync = 60
+                        minutes_between_sync = creds.Integrator.nighttime_run_interval
 
                     delay = minutes_between_sync * 60
 

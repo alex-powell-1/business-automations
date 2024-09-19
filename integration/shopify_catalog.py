@@ -326,7 +326,7 @@ class Catalog:
                 else:
                     return False, target
 
-            with ThreadPoolExecutor(max_workers=creds.max_workers) as executor:
+            with ThreadPoolExecutor(max_workers=creds.Integrator.max_workers) as executor:
                 results = executor.map(task, self.sync_queue)
 
                 for x in results:
@@ -354,7 +354,7 @@ class Catalog:
                     Catalog.Product.delete(sku=target['sku'])
                     return task(target)
 
-                with ThreadPoolExecutor(max_workers=creds.max_workers) as executor:
+                with ThreadPoolExecutor(max_workers=creds.Integrator.max_workers) as executor:
                     results = executor.map(retry, fail_count['items'])
 
                     for x in results:

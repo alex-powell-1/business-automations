@@ -4,14 +4,14 @@ import requests
 import time
 from routes.limiter import limiter
 from setup import creds, authorization
-from setup.creds import Route
+from setup.creds import API
 from setup.error_handler import ProcessInErrorHandler
 
 
 availability_routes = Blueprint('availability_routes', __name__)
 
 
-@availability_routes.route(Route.token, methods=['POST'])
+@availability_routes.route(API.Route.token, methods=['POST'])
 @limiter.limit('10/minute')  # 10 requests per minute
 def get_token():
     password = request.args.get('password')
@@ -21,11 +21,11 @@ def get_token():
         authorization.SESSIONS.append(session)
         return jsonify({'token': session.token, 'expires': session.expires}), 200
 
-    ProcessInErrorHandler.error_handler.add_error_v(error=f'Invalid password: {password} ', origin=Route.token)
+    ProcessInErrorHandler.error_handler.add_error_v(error=f'Invalid password: {password} ', origin=API.Route.token)
     return jsonify({'error': 'Invalid username or password'}), 401
 
 
-@availability_routes.route(Route.commercial_availability, methods=['POST'])
+@availability_routes.route(API.Route.commercial_availability, methods=['POST'])
 @limiter.limit('10/minute')  # 10 requests per minute
 def get_commercial_availability():
     token = request.args.get('token')
@@ -41,12 +41,12 @@ def get_commercial_availability():
         return jsonify({'data': response.text}), 200
     else:
         ProcessInErrorHandler.error_handler.add_error_v(
-            error='Error fetching data', origin=Route.commercial_availability, traceback=tb()
+            error='Error fetching data', origin=API.Route.commercial_availability, traceback=tb()
         )
         return jsonify({'error': 'Error fetching data'}), 500
 
 
-@availability_routes.route(Route.retail_availability, methods=['POST'])
+@availability_routes.route(API.Route.retail_availability, methods=['POST'])
 @limiter.limit('10/minute')  # 10 requests per minute
 def get_availability():
     response = requests.get(creds.Company.retail_inventory_csv)
@@ -54,6 +54,6 @@ def get_availability():
         return jsonify({'data': response.text}), 200
     else:
         ProcessInErrorHandler.error_handler.add_error_v(
-            error='Error fetching data', origin=Route.retail_availability
+            error='Error fetching data', origin=API.Route.retail_availability
         )
         return jsonify({'error': 'Error fetching data'}), 500

@@ -1,6 +1,6 @@
 from database import Database
 from setup import creds
-from setup.creds import Route
+from setup.creds import API
 from setup.error_handler import ProcessInErrorHandler
 from flask import Blueprint, request, jsonify, url_for
 from jinja2 import Template
@@ -26,7 +26,7 @@ from routes.limiter import limiter
 marketing_routes = Blueprint('marketing_routes', __name__, template_folder='routes')
 
 
-@marketing_routes.route(Route.design, methods=['POST'])
+@marketing_routes.route(API.Route.design, methods=['POST'])
 @limiter.limit('20/minute')  # 10 requests per minute
 def marketing_lead_design():
     """Route for information request about company service. Sends JSON to RabbitMQ for asynchronous processing."""
@@ -65,14 +65,14 @@ def marketing_lead_design():
         connection.close()
     except Exception as e:
         LeadFormErrorHandler.error_handler.add_error_v(
-            error=f'Error sending design request to RabbitMQ: {e}', origin=Route.design, traceback=tb()
+            error=f'Error sending design request to RabbitMQ: {e}', origin=API.Route.design, traceback=tb()
         )
         return jsonify({'error': 'Internal server error'}), 500
     else:
         return 'Your information has been received. Please check your email for more information from our team.'
 
 
-@marketing_routes.route(Route.design_admin, methods=['POST'])
+@marketing_routes.route(API.Route.design_admin, methods=['POST'])
 @limiter.limit('20/minute')  # 10 requests per minute
 def marketing_lead_design_admin():
     """Route for information request about company service. Sends JSON to RabbitMQ for asynchronous processing."""
@@ -108,14 +108,14 @@ def marketing_lead_design_admin():
         connection.close()
     except Exception as e:
         LeadFormErrorHandler.error_handler.add_error_v(
-            error=f'Error sending design request to RabbitMQ: {e}', origin=Route.design_admin, traceback=tb()
+            error=f'Error sending design request to RabbitMQ: {e}', origin=API.Route.design_admin, traceback=tb()
         )
         return jsonify({'error': 'Internal server error'}), 500
     else:
         return 'Your information has been received. Please check your email for more information from our team.'
 
 
-@marketing_routes.route(Route.stock_notify, methods=['POST'])
+@marketing_routes.route(API.Route.stock_notify, methods=['POST'])
 @limiter.limit('20/minute')  # 10 requests per minute
 def stock_notification():
     """Get contact and product information from user who wants notification of when
@@ -147,7 +147,7 @@ def stock_notification():
             return 'Invalid email address.', 400
     except Exception as e:
         ProcessInErrorHandler.error_handler.add_error_v(
-            error=f'Invalid input data: {e}', origin=Route.stock_notify, traceback=tb()
+            error=f'Invalid input data: {e}', origin=API.Route.stock_notify, traceback=tb()
         )
         return f'An error occurred: {str(e)}', 500
     else:
@@ -198,7 +198,7 @@ def stock_notification():
                 return 'An error occurred. Please try again.', 500
 
 
-@marketing_routes.route(Route.newsletter, methods=['POST'])
+@marketing_routes.route(API.Route.newsletter, methods=['POST'])
 @limiter.limit('20 per minute')
 def newsletter_signup():
     """Route for website pop-up. Offers user a coupon and adds their information to a csv."""
@@ -266,13 +266,13 @@ def newsletter_signup():
             res = Database.Newsletter.subscribe(email)
             if res['code'] != 200:
                 ProcessInErrorHandler.error_handler.add_error_v(
-                    error=f'Error adding {email} to newsletter: {res["message"]}', origin=Route.newsletter
+                    error=f'Error adding {email} to newsletter: {res["message"]}', origin=API.Route.newsletter
                 )
                 return 'Error adding email to newsletter.', 500
             return 'OK', 200
 
 
-@marketing_routes.route(Route.unsubscribe, methods=['GET'])
+@marketing_routes.route(API.Route.unsubscribe, methods=['GET'])
 @limiter.limit('20 per minute')
 def unsubscribe():
     email = request.args.get('email')
@@ -298,7 +298,7 @@ def unsubscribe():
         data = {
             'title': title,
             'email': email,
-            'endpoint': f'{creds.Company.API.endpoint}/{Route.subscribe}',
+            'endpoint': f'{API.endpoint}/{API.Route.subscribe}',
             'message': message,
             'code': code,
             'company_url': creds.Company.url,
@@ -308,7 +308,7 @@ def unsubscribe():
     return content, 200
 
 
-@marketing_routes.route(Route.subscribe, methods=['GET'])
+@marketing_routes.route(API.Route.subscribe, methods=['GET'])
 @limiter.limit('20 per minute')
 def resubscribe():
     email = request.args.get('email')
@@ -335,7 +335,7 @@ def resubscribe():
         data = {
             'title': title,
             'email': email,
-            'endpoint': f'{creds.Company.API.endpoint}/{Route.unsubscribe}',
+            'endpoint': f'{API.endpoint}/{API.Route.unsubscribe}',
             'message': message,
             'code': code,
             'company_url': creds.Company.url,
@@ -345,7 +345,7 @@ def resubscribe():
     return content, 200
 
 
-@marketing_routes.route(f'{Route.qr}/<qr_id>', methods=['GET'])
+@marketing_routes.route(f'{API.Route.qr}/<qr_id>', methods=['GET'])
 def qr_tracker(qr_id):
     QR.visit(qr_id)
     return jsonify({'success': True}), 200

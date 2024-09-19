@@ -1,7 +1,7 @@
 from flask import Blueprint, request
 from twilio.twiml.messaging_response import MessagingResponse
 from setup import creds
-from setup.creds import Route
+from setup.creds import API
 from database import Database
 from traceback import format_exc as tb
 import urllib.parse
@@ -12,7 +12,7 @@ from setup.error_handler import ProcessInErrorHandler
 sms_routes = Blueprint('sms_routes', __name__, template_folder='routes')
 
 
-@sms_routes.route(Route.sms, methods=['POST'])
+@sms_routes.route(API.Route.sms, methods=['POST'])
 @limiter.limit('10/second')  # rate limiter
 def incoming_sms():
     """Webhook route for incoming SMS/MMS messages to be used with client messenger application.
@@ -46,7 +46,7 @@ def incoming_sms():
     else:
         media_url = None
 
-    if body.lower() == creds.Company.sms_sync_keyword:
+    if body.lower() == creds.Integrator.sms_sync_keyword:
         # Run sync process
         try:
             connection = pika.BlockingConnection(pika.ConnectionParameters('localhost'))
@@ -65,7 +65,7 @@ def incoming_sms():
         except Exception as e:
             ProcessInErrorHandler.error_handler.add_error_v(
                 error=f'Error sending sync request  to RabbitMQ: {e}',
-                origin=Route.Shopify.order_create,
+                origin=API.Route.Shopify.order_create,
                 traceback=tb(),
             )
 
@@ -102,7 +102,7 @@ def incoming_sms():
     ]:
         Database.SMS.unsubscribe(
             origin='WEBHOOK',
-            campaign=Route.sms,
+            campaign=API.Route.sms,
             cust_no=customer_number,
             name=full_name,
             category=category,
@@ -113,7 +113,7 @@ def incoming_sms():
     elif body.lower().strip() in ['start', 'subscribe', 'start please', 'please start', 'opt in', 'add me']:
         Database.SMS.subscribe(
             origin='WEBHOOK',
-            campaign=Route.sms,
+            campaign=API.Route.sms,
             cust_no=customer_number,
             name=full_name,
             category=category,
