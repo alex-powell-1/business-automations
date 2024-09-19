@@ -15,12 +15,22 @@ class Customers:
     logger = ProcessOutErrorHandler.logger
     error_handler = ProcessOutErrorHandler.error_handler
 
-    def __init__(self, last_sync=datetime(1970, 1, 1), test_mode=False, test_customer=None):
+    def __init__(
+        self, last_sync=datetime(1970, 1, 1), verbose=False, test_mode=False, test_customer=None, enabled=True
+    ):
         self.last_sync = last_sync
+        self.verbose = verbose
         self.test_mode = test_mode
         self.test_customer = test_customer
         self.update_customer_timestamps()
-        self.customers = self.get_updated_customers()
+        if enabled:
+            self.customers: list[Customers.Customer] = self.get_updated_customers()
+
+    def __str__(self):
+        result = ''
+        if self.customers:
+            result = f'Customers to process: {len(self.customers)}\n'
+        return result
 
     def update_customer_timestamps(self):
         """Update the last maintenance date for all customers in the Middleware who have been updated in

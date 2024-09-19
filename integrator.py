@@ -15,29 +15,29 @@ import sys
 import time
 from traceback import format_exc as tb
 
-customer_sync = True
-promotions_sync = True
-catalog_sync = True
-sort_collections = True
-
 
 class Integrator:
-    eh = ProcessOutErrorHandler
-    error_handler = eh.error_handler
-    logger = eh.logger
-
     def __init__(self):
-        self.last_sync = get_last_sync(file_name='./integration/last_sync_integrator.txt')
-
-        if customer_sync:
-            self.customers = Customers(last_sync=self.last_sync)
-        if promotions_sync:
-            self.promotions = Promotions(last_sync=self.last_sync)
-        if catalog_sync:
-            self.catalog = Catalog(last_sync=self.last_sync)
+        self.last_sync: datetime = get_last_sync(file_name='./integration/last_sync_integrator.txt')
+        self.eh = ProcessOutErrorHandler
+        self.error_handler = self.eh.error_handler
+        self.logger = self.eh.logger
+        self.customer_sync: bool = creds.Integrator.customer_sync
+        self.promotions_sync: bool = creds.Integrator.promotion_sync
+        self.catalog_sync: bool = creds.Integrator.catalog_sync
+        self.sort_collections: bool = creds.Integrator.collection_sorting
+        self.verbose: bool = creds.Integrator.verbose_logging
+        self.customers = Customers(last_sync=self.last_sync, verbose=self.verbose, enabled=self.customer_sync)
+        self.promotions = Promotions(last_sync=self.last_sync, verbose=self.verbose, enabled=self.promotions_sync)
+        self.catalog = Catalog(last_sync=self.last_sync, verbose=self.verbose, enabled=self.catalog_sync)
 
     def __str__(self):
-        return f'Integrator\n' f'Last Sync: {self.last_sync}\n'
+        result = f'Integrator:' f'Last Sync: {self.last_sync}\n----------------\n'
+        result += f'Verbose Logging: {self.verbose}\n'
+        result += self.customers.__str__()
+        result += self.promotions.__str__()
+        result += self.catalog.__str__()
+        return result
 
     def initialize(self, rebuild=False):
         """Initialize the integrator by deleting the catalog, rebuilding the tables, and syncing the catalog."""
@@ -55,20 +55,20 @@ class Integrator:
     def sync(self, initial=False):
         start_sync_time = datetime.now()
         self.logger.header('Sync Starting')
-        if customer_sync:
+        if self.customer_sync:
             self.customers.sync()
-        if promotions_sync:
+        if self.promotions_sync:
             self.promotions.sync()
-        if catalog_sync:
+        if self.catalog_sync:
             self.catalog.sync(initial=initial)
-        if sort_collections:
-            SortOrderEngine.sort()
+        if self.sort_collections:
+            SortOrderEngine.sort(eh=self.eh)
 
         set_last_sync(file_name='./integration/last_sync_integrator.txt', start_time=start_sync_time)
         completion_time = (datetime.now() - start_sync_time).seconds
-        Integrator.logger.info(f'Sync completion time: {completion_time} seconds')
-        if Integrator.error_handler.errors:
-            Integrator.error_handler.print_errors()
+        self.logger.info(f'Sync completion time: {completion_time} seconds')
+        if self.error_handler.errors:
+            self.error_handler.print_errors()
 
 
 def main_menu():
@@ -197,7 +197,7 @@ if __name__ == '__main__':
             if len(sys.argv) > 2:
                 if sys.argv[2] == 'product':
                     if len(sys.argv) > 3:
-                        integrator.catalog.delete_product(sku=sys.argv[3])
+                        integrator.catalog.Product.delete(sku=sys.argv[3])
                     else:
                         print('Please provide a sku to delete.')
 
@@ -244,8 +244,13 @@ if __name__ == '__main__':
                 sys.exit(0)
 
             except Exception as e:
-                Integrator.error_handler.add_error_v(error=e, origin='Integrator.py', traceback=tb())
+                integrator.error_handler.add_error_v(error=e, origin='Integrator.py', traceback=tb())
 
     else:
         integrator = Integrator()
-        integrator.sync()
+        print(integrator)
+        input = input('Sync? (y/n): ')
+        if input.lower() == 'y':
+            integrator.sync()
+        else:
+            sys.exit(0)

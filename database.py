@@ -2661,7 +2661,7 @@ class Database:
                     except KeyError:
                         return None
 
-            def sync(product):
+            def sync(product, eh=ProcessOutErrorHandler, verbose=False):
                 for variant in product.variants:
                     if variant.mw_db_id:
                         Database.Shopify.Product.Variant.update(product=product, variant=variant)
@@ -2672,14 +2672,14 @@ class Database:
                     for m in product.media:
                         if m.db_id is None:
                             if m.type == 'IMAGE':
-                                Database.Shopify.Product.Media.Image.insert(m)
+                                Database.Shopify.Product.Media.Image.insert(m, eh=eh, verbose=verbose)
                             elif m.type == 'EXTERNAL_VIDEO':
-                                Database.Shopify.Product.Media.Video.insert(m)
+                                Database.Shopify.Product.Media.Video.insert(m, eh=eh, verbose=verbose)
                         else:
                             if m.type == 'IMAGE':
-                                Database.Shopify.Product.Media.Image.update(m)
+                                Database.Shopify.Product.Media.Image.update(m, eh=eh, verbose=verbose)
                             elif m.type == 'EXTERNAL_VIDEO':
-                                Database.Shopify.Product.Media.Video.update(m)
+                                Database.Shopify.Product.Media.Video.update(m, eh=eh, verbose=verbose)
 
             def insert(product):
                 for variant in product.variants:
@@ -2827,7 +2827,7 @@ class Database:
                     if response is not None:
                         return response[0][0]
 
-                def insert(product, variant):
+                def insert(product, variant, eh=ProcessOutErrorHandler, verbose=False):
                     if product.shopify_collections:
                         collection_string = ','.join(str(x) for x in product.shopify_collections)
                     else:
@@ -2874,17 +2874,18 @@ class Database:
                         """
                     response = Database.query(insert_query)
                     if response['code'] == 200:
-                        Database.logger.success(
-                            f'SKU: {variant.sku}, Binding ID: {variant.binding_id} - INSERT Variant {product.sku}'
-                        )
+                        if verbose:
+                            eh.logger.success(
+                                f'SKU: {variant.sku}, Binding ID: {variant.binding_id} - INSERT Variant {product.sku}'
+                            )
                     else:
                         error = f'Query: {insert_query}\n\nResponse: {response}'
-                        Database.error_handler.add_error_v(
+                        eh.error_handler.add_error_v(
                             error=error, origin=f'Database.Shopify.Product.insert(SKU: {variant.sku})'
                         )
                         raise Exception(error)
 
-                def update(product, variant):
+                def update(product, variant, eh=ProcessOutErrorHandler, verbose=False):
                     if product.shopify_collections:
                         collection_string = ','.join(str(x) for x in product.shopify_collections)
                     else:
@@ -2927,33 +2928,35 @@ class Database:
                         """
                     response = Database.query(update_query)
                     if response['code'] == 200:
-                        Database.logger.success(
-                            f'SKU: {variant.sku}, Binding ID: {variant.binding_id} - UPDATE Variant'
-                        )
+                        if verbose:
+                            eh.logger.success(
+                                f'SKU: {variant.sku}, Binding ID: {variant.binding_id} - UPDATE Variant'
+                            )
                     elif response['code'] == 201:
-                        Database.logger.warn(
+                        eh.logger.warn(
                             f'SKU: {variant.sku}, Binding ID: {variant.binding_id} - UPDATE Variant: No Rows Affected'
                         )
                     else:
                         error = f'Query: {update_query}\n\nResponse: {response}'
-                        Database.error_handler.add_error_v(
+                        eh.error_handler.add_error_v(
                             error=error, origin=f'Database.Shopify.Product.Variant.update(SKU: {variant.sku})'
                         )
                         raise Exception(error)
 
-                def delete(variant_id):
+                def delete(variant_id, eh=ProcessOutErrorHandler, verbose=False):
                     if variant_id:
                         query = f'DELETE FROM {Table.Middleware.products} WHERE VARIANT_ID = {variant_id}'
                     else:
-                        Database.logger.warn('No variant ID provided for deletion.')
+                        eh.logger.warn('No variant ID provided for deletion.')
                         return
                     response = Database.query(query)
 
                     if response['code'] == 200:
-                        Database.logger.success(f'Variant {variant_id} deleted from Middleware.')
+                        if verbose:
+                            eh.logger.success(f'Variant {variant_id} deleted from Middleware.')
                     else:
                         error = f'Error deleting variant {variant_id} from Middleware. \n Query: {query}\nResponse: {response}'
-                        Database.error_handler.add_error_v(error=error)
+                        eh.error_handler.add_error_v(error=error)
                         raise Exception(error)
 
                 class Media:
@@ -3015,7 +3018,7 @@ class Database:
                         except:
                             return None
 
-                    def insert(image):
+                    def insert(image, eh=ProcessOutErrorHandler, verbose=False):
                         img_insert = f"""
                         INSERT INTO {Table.Middleware.images} (IMAGE_NAME, ITEM_NO, FILE_PATH,
                         PRODUCT_ID, IMAGE_ID, THUMBNAIL, IMAGE_NUMBER, SORT_ORDER,
@@ -3029,15 +3032,16 @@ class Database:
                         {image.size})"""
                         insert_img_response = Database.query(img_insert)
                         if insert_img_response['code'] == 200:
-                            Database.logger.success(f'SQL INSERT Image {image.name}: Success')
+                            if verbose:
+                                eh.logger.success(f'SQL INSERT Image {image.name}: Success')
                         else:
                             error = f'Error inserting image {image.name} into Middleware. \nQuery: {img_insert}\nResponse: {insert_img_response}'
-                            Database.error_handler.add_error_v(
+                            eh.error_handler.add_error_v(
                                 error=error, origin=f'Database.Shopify.Product.Media.Image.insert({image.name})'
                             )
                             raise Exception(error)
 
-                    def update(image):
+                    def update(image, eh=ProcessOutErrorHandler, verbose=False):
                         q = f"""
                         UPDATE {Table.Middleware.images}
                         SET IMAGE_NAME = '{image.name}', ITEM_NO = '{image.sku}', FILE_PATH = '{image.file_path}',
@@ -3052,19 +3056,27 @@ class Database:
 
                         res = Database.query(q)
                         if res['code'] == 200:
-                            Database.logger.success(f'SQL UPDATE Image {image.name}: Success')
+                            if verbose:
+                                eh.logger.success(f'SQL UPDATE Image {image.name}: Success')
                         elif res['code'] == 201:
-                            Database.logger.warn(f'SQL UPDATE Image {image.name}: Not found')
+                            eh.logger.warn(f'SQL UPDATE Image {image.name}: Not found')
                         else:
                             error = (
                                 f'Error updating image {image.name} in Middleware. \nQuery: {q}\nResponse: {res}'
                             )
-                            Database.error_handler.add_error_v(
+                            eh.error_handler.add_error_v(
                                 error=error, origin=f'Database.Shopify.Product.Media.Image.update({image.name})'
                             )
                             raise Exception(error)
 
-                    def delete(image=None, image_id=None, image_name=None, product_id=None):
+                    def delete(
+                        image=None,
+                        image_id=None,
+                        image_name=None,
+                        product_id=None,
+                        eh=ProcessOutErrorHandler,
+                        verbose=False,
+                    ):
                         prod_id = None
 
                         if image_id:
@@ -3092,12 +3104,14 @@ class Database:
                             q = f"DELETE FROM {Table.Middleware.images} WHERE PRODUCT_ID = '{product_id}'"
 
                         else:
-                            Database.logger.warn('No image or image_id provided for deletion.')
+                            if verbose:
+                                eh.logger.warn('No image or image_id provided for deletion.')
                             return
 
                         res = Database.query(q)
                         if res['code'] == 200:
-                            Database.logger.success(f'{res['affected rows']} images deleted from Middleware.')
+                            if verbose:
+                                eh.logger.success(f'{res['affected rows']} images deleted from Middleware.')
                             if (image_id or image) and prod_id:
                                 # Decrement sort order of remaining images
                                 query = f"""
@@ -3107,18 +3121,21 @@ class Database:
                                 """
                                 response = Database.query(query)
                                 if response['code'] == 200:
-                                    Database.logger.success('Decrement Photos: Success')
+                                    if verbose:
+                                        eh.logger.success('Decrement Photos: Success')
                                 elif response['code'] == 201:
-                                    Database.logger.warn('Decrement Photos: No Rows Affected')
+                                    if verbose:
+                                        eh.logger.warn('Decrement Photos: No Rows Affected')
                                 else:
                                     error = f'Error decrementing sort order of images in Middleware. \nQuery: {query}\nResponse: {response}'
-                                    Database.error_handler.add_error_v(
+                                    eh.error_handler.add_error_v(
                                         error=error,
                                         origin=f'Database.Shopify.Product.Media.Image.delete(query:\n{q})',
                                     )
                                     raise Exception(error)
                         elif res['code'] == 201:
-                            Database.logger.warn(f'IMAGE DELETE: Not found\n\nQuery: {q}\n')
+                            if verbose:
+                                eh.logger.warn(f'IMAGE DELETE: Not found\n\nQuery: {q}\n')
                         else:
                             if image:
                                 error = f'Error deleting image {image.name} in Middleware. \nQuery: {q}\nResponse: {res}'
@@ -3126,7 +3143,7 @@ class Database:
                                 error = f'Error deleting image with ID {image_id} in Middleware. \nQuery: {q}\nResponse: {res}'
                             elif product_id:
                                 error = f'Error deleting images for product {product_id} in Middleware. \nQuery: {q}\nResponse: {res}'
-                            Database.error_handler.add_error_v(
+                            eh.error_handler.add_error_v(
                                 error=error, origin=f'Database.Shopify.Product.Media.Image.delete(query:\n{q})'
                             )
                             raise Exception(error)
@@ -3163,7 +3180,7 @@ class Database:
                                 except:
                                     return None
 
-                    def insert(video):
+                    def insert(video, eh=ProcessOutErrorHandler, verbose=False):
                         query = f"""
                         INSERT INTO {Table.Middleware.videos} (ITEM_NO, URL, VIDEO_NAME, FILE_PATH, 
                         PRODUCT_ID, VIDEO_ID, SORT_ORDER, BINDING_ID, DESCR, SIZE)
@@ -3179,13 +3196,14 @@ class Database:
                         """
                         response = Database.query(query)
                         if response['code'] == 200:
-                            Database.logger.success(f'Video {video.shopify_id} added to Middleware.')
+                            if verbose:
+                                eh.logger.success(f'Video {video.shopify_id} added to Middleware.')
                         else:
                             error = f'Error adding video {video.shopify_id} to Middleware. \nQuery: {query}\nResponse: {response}'
-                            Database.error_handler.add_error_v(error=error)
+                            eh.error_handler.add_error_v(error=error)
                             raise Exception(error)
 
-                    def update(video):
+                    def update(video, eh=ProcessOutErrorHandler, verbose=False):
                         query = f"""
                         UPDATE {Table.Middleware.videos}
                         SET 
@@ -3203,15 +3221,24 @@ class Database:
                         """
                         response = Database.query(query)
                         if response['code'] == 200:
-                            Database.logger.success(f'Video {video.shopify_id} updated in Middleware.')
+                            if verbose:
+                                eh.logger.success(f'Video {video.shopify_id} updated in Middleware.')
                         elif response['code'] == 201:
-                            Database.logger.warn(f'UPDATE: Video {video.shopify_id} not found.\n\nQuery: {query}')
+                            eh.logger.warn(f'UPDATE: Video {video.shopify_id} not found.\n\nQuery: {query}')
                         else:
                             error = f'Error updating video {video.shopify_id} in Middleware. \nQuery: {query}\nResponse: {response}'
-                            Database.error_handler.add_error_v(error=error)
+                            eh.error_handler.add_error_v(error=error)
                             raise Exception(error)
 
-                    def delete(video=None, video_id=None, url=None, sku=None, product_id=None):
+                    def delete(
+                        video=None,
+                        video_id=None,
+                        url=None,
+                        sku=None,
+                        product_id=None,
+                        eh=ProcessOutErrorHandler,
+                        verbose=False,
+                    ):
                         """Delete video from Middleware and decrement the sort order of remaining item videos."""
                         sort_order = None
                         if video:  # Video Object
@@ -3240,11 +3267,13 @@ class Database:
                         response = Database.query(query)
                         if response['code'] == 200:
                             if video_id:
-                                Database.logger.success(f'Video {video_id} deleted from Middleware.')
+                                if verbose:
+                                    eh.logger.success(f'Video {video_id} deleted from Middleware.')
                             elif url and sku:
-                                Database.logger.success(f'Video {url} for product {sku} deleted from Middleware.')
+                                eh.logger.success(f'Video {url} for product {sku} deleted from Middleware.')
 
-                            Database.logger.success(f'{response['affected rows']} videos deleted from Middleware.')
+                            if verbose:
+                                eh.logger.success(f'{response['affected rows']} videos deleted from Middleware.')
 
                             if product_id and sort_order:
                                 # Decrement sort order of remaining videos
@@ -3255,25 +3284,28 @@ class Database:
                                 """
                                 decrement_response = Database.query(query)
                                 if decrement_response['code'] == 200:
-                                    Database.logger.success('Sort order decremented for remaining videos.')
+                                    if verbose:
+                                        eh.logger.success('Sort order decremented for remaining videos.')
                                 elif decrement_response['code'] == 201:
-                                    Database.logger.warn('No rows affected for sort order decrement.')
+                                    if verbose:
+                                        eh.logger.warn('No rows affected for sort order decrement.')
                                 else:
                                     error = f'Error decrementing sort order for remaining videos. \nQuery: {query}\nResponse: {decrement_response}'
-                                    Database.error_handler.add_error_v(error=error)
+                                    eh.error_handler.add_error_v(error=error)
                                     raise Exception(error)
 
                         elif response['code'] == 201:
-                            if video_id:
-                                Database.logger.warn(f'DELETE: Video {video_id} not found.')
-                            elif product_id:
-                                Database.logger.warn(
-                                    f'Videos for product {product_id} not found in Middleware.\n\nQuery: {query}\n'
-                                )
-                            elif url and sku:
-                                Database.logger.warn(
-                                    f'Video {url} for product {sku} not found in Middleware.\n\nQuery: {query}\n'
-                                )
+                            if verbose:
+                                if video_id:
+                                    eh.logger.warn(f'DELETE: Video {video_id} not found.')
+                                elif product_id:
+                                    eh.logger.warn(
+                                        f'Videos for product {product_id} not found in Middleware.\n\nQuery: {query}\n'
+                                    )
+                                elif url and sku:
+                                    eh.logger.warn(
+                                        f'Video {url} for product {sku} not found in Middleware.\n\nQuery: {query}\n'
+                                    )
                         else:
                             if video_id:
                                 error = f'Error deleting video {video_id} from Middleware. \n Query: {query}\nResponse: {response}'
@@ -3281,7 +3313,7 @@ class Database:
                                 error = f'Error deleting videos for product {product_id} from Middleware. \n Query: {query}\nResponse: {response}'
                             elif url and sku:
                                 error = f'Error deleting video {url} for product {sku} from Middleware. \n Query: {query}\nResponse: {response}'
-                            Database.error_handler.add_error_v(error=error)
+                            eh.error_handler.add_error_v(error=error)
                             raise Exception(error)
 
             class Metafield:

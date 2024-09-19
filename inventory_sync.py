@@ -3,7 +3,7 @@ from product_tools import inventory_upload
 
 
 from datetime import datetime
-
+from setup import creds
 from setup.error_handler import ProcessOutErrorHandler
 from traceback import format_exc as tb
 from setup.utilities import get_last_sync, set_last_sync
@@ -17,7 +17,7 @@ class Inventory:
 
     def __init__(self, verbose=False):
         self.last_sync = get_last_sync(file_name='./integration/last_sync_inventory.txt')
-        self.verbose = verbose
+        self.verbose = creds.Integrator.verbose_logging
         self.catalog = Catalog(last_sync=self.last_sync, inventory_only=True, verbose=self.verbose)
 
     def __str__(self):
@@ -41,10 +41,10 @@ if __name__ == '__main__':
         now = datetime.now()
         hour = now.hour
         if 18 > hour > 7:
-            delay = 10
+            delay = creds.Integrator.inv_day_run_interval
             step = 6
         else:
-            delay = 300
+            delay = creds.Integrator.inv_night_run_interval
             step = 10
         try:
             # Upload Inventory to file share.

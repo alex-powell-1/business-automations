@@ -19,9 +19,6 @@ import concurrent.futures
 import threading
 
 
-verbose_print = False
-
-
 class MoveInput:
     def __init__(self, item_id: int, position: int):
         self.item_id = f'gid://shopify/Product/{item_id}'
@@ -67,7 +64,8 @@ class Shopify:
     headers = {'X-Shopify-Access-Token': token, 'Content-Type': 'application/json'}
 
     class Query:
-        def __init__(self, document, variables=None, operation_name=None, verbose=True):
+        def __init__(self, document, variables=None, operation_name=None):
+            self.verbose = creds.Integrator.verbose_logging
             self.response = self.execute_query(document, variables, operation_name)
             self.data = self.response['data'] if 'data' in self.response else None
             self.errors = self.response['errors'] if 'errors' in self.response else None
@@ -80,7 +78,7 @@ class Shopify:
                                 for k in self.data[i][j]:
                                     self.user_errors.append(k['message'])
                     except:
-                        print(i)
+                        pass
 
             if self.errors or self.user_errors:
                 if self.user_errors:
@@ -225,7 +223,7 @@ class Shopify:
                         f'Operation Name: {operation_name}\n\nError: {self.errors}\n\nUser Error: {self.user_errors}\n\nVariables: {variables}'
                     )
 
-            if verbose_print:
+            if self.verbose:
                 print(operation_name, self)
 
         def __str__(self):
@@ -1315,7 +1313,6 @@ class Shopify:
                         return
 
                 def create(product_id: int, variant_data: list):
-                    print(variant_data)
                     variables = {
                         'productId': f'{Shopify.Product.prefix}{product_id}',
                         'variantMedia': [{'variantId': x['id'], 'mediaIds': x['imageId']} for x in variant_data],
@@ -1402,8 +1399,6 @@ class Shopify:
                         id = f'{Shopify.Product.Media.Video.prefix}{m.shopify_id}'
                     else:
                         raise Exception(f'Invalid media type: {m.type}')
-
-                    print(f'ID: {id}')
 
                     variables['moves'].append({'id': id, 'newPosition': str(m.sort_order)})
 
@@ -1668,7 +1663,7 @@ class Shopify:
                         for i in response_data['parameters']
                     ]
 
-            def create(file_list, variables: dict) -> list:
+            def create(file_list, variables: dict, eh=ProcessOutErrorHandler) -> list:
                 """Create staged media upload targets and upload files to google cloud storage. Return list of URLs"""
                 response = Shopify.Query(
                     document=Shopify.Product.Files.queries,
@@ -1691,7 +1686,9 @@ class Shopify:
                     with open(file_path, 'rb') as f:
                         response = requests.post(url=file.url, files={'file': f}, data=form_data)
                         if 200 <= response.status_code < 300:
-                            print(f'File {file_path.name} uploaded successfully. Code: {response.status_code}')
+                            eh.logger.info(
+                                f'File {file_path.name} uploaded successfully. Code: {response.status_code}'
+                            )
                             url_list.append({'file_path': file_list[i], 'url': file.resourceUrl})
                             i += 1
                         else:
@@ -1701,7 +1698,8 @@ class Shopify:
 
         class SEO:
             def get(product_id: int):
-                Shopify.logger.info(f'Getting SEO for product {product_id}')
+                if verbose:
+                    Shopify.logger.info(f'Getting SEO for product {product_id}')
                 response = Shopify.Query(
                     document=Shopify.Product.queries,
                     variables={'id': f'{Shopify.Product.prefix}{product_id}'},
