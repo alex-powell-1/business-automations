@@ -1902,7 +1902,11 @@ class Shopify:
                 Shopify.Collection.change_sort_order_to_manual(collection_id=collection_id)
 
             def task(collection_id):
+                # Spawn a new thread to run change the sort order to manual
                 thread = threading.Thread(target=manual, args=(collection_id,))
+
+                # Start the thread.
+                # Our task will continue to run at the same time.
                 thread.start()
 
                 items = [
@@ -1911,6 +1915,9 @@ class Shopify:
 
                 if len(items) == 0:
                     return
+
+                # Wait for the thread to finish if it hasn't already.
+                thread.join()
 
                 response = Shopify.Collection.move_to_bottom(
                     collection_id=collection_id, product_id_list=items, eh=eh
