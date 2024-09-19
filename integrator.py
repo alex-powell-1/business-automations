@@ -62,7 +62,7 @@ class Integrator:
         if self.catalog_sync:
             self.catalog.sync(initial=initial)
         if self.sort_collections:
-            SortOrderEngine.sort(eh=self.eh)
+            SortOrderEngine.sort()
 
         set_last_sync(file_name='./integration/last_sync_integrator.txt', start_time=start_sync_time)
         completion_time = (datetime.now() - start_sync_time).seconds
