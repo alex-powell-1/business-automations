@@ -206,6 +206,10 @@ if __name__ == '__main__':
         if sys.argv[1] == 'input':
             main_menu()
         else:
+            if '-y' in sys.argv:  # Run the integrator without user input
+                print(integrator)
+                integrator.sync(eh=integrator.eh, operation=integrator.module)
+
             if '-v' in sys.argv:  # Set verbose logging
                 integrator.verbose = True
 
@@ -247,5 +251,3 @@ if __name__ == '__main__':
             integrator.sync(eh=integrator.eh, operation=integrator.module)
         else:
             sys.exit(0)
-
-    # SortOrderEngine.sort(verbose=True, print_mode=True)

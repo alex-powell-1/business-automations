@@ -12,9 +12,8 @@ from datetime import datetime
 from integration.draft_orders import on_draft_created, on_draft_updated
 from customer_tools.customers import lookup_customer, add_new_customer
 import threading
-import subprocess
 from setup.sms_engine import SMSEngine
-from setup.utilities import PhoneNumber, convert_path_to_raw
+from setup.utilities import PhoneNumber
 from integration.shopify_api import Shopify
 from integration.orders import Order as ShopifyOrder
 from setup.print_engine import Printer
@@ -23,6 +22,7 @@ from database import Database
 from docxtpl import DocxTemplate
 import os
 import json
+from integrator import Integrator
 
 
 def sync_on_demand(phone_number):
@@ -34,10 +34,8 @@ def sync_on_demand(phone_number):
     phone_response = None
 
     try:
-        file = creds.BatchFiles.sync
-        path = convert_path_to_raw(creds.BatchFiles.directory)
-        p = subprocess.Popen(args=file, cwd=path, shell=True)
-        stdout, stderr = p.communicate()
+        integrator = Integrator()
+        integrator.sync()
 
     except Exception as e:
         error_handler.add_error_v(error=f'Error: {e}', origin='sync_on_demand')
