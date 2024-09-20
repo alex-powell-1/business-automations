@@ -105,7 +105,7 @@ class SortOrderEngine:
         # {'item_no': item, 'product_id': product_id, 'price_1': price_1, 'price_2': price_2}
         new_items = [
             {'item_no': x[0], 'product_id': x[1], 'price_1': None, 'price_2': None}
-            for x in products.get_all_new_items(start_date=Dates().one_month_ago)
+            for x in products.get_new_items(start_date=Dates().one_month_ago)
         ]
 
         return new_items

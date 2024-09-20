@@ -578,12 +578,10 @@ def get_new_items(start_date):
     on lin.ITEM_NO = item.ITEM_NO
     INNER JOIN SN_SHOP_PROD mw
     on mw.ITEM_NO = lin.ITEM_NO
-    WHERE lin.RECVR_DAT > '{start_date}' and (inv.QTY_AVAIL - item.PROF_NO_1) > 0
+    WHERE lin.RECVR_DAT > '{start_date}' and (inv.QTY_AVAIL - item.PROF_NO_1) > 0 and lin.EXT_COST >= {min_ext_cost}
     AND item.IS_ECOMM_ITEM = 'Y'
     GROUP BY mw.PRODUCT_ID, mw.ITEM_NO
-    ORDER BY mw.PRODUCT_ID, MAX(lin.EXT_COST) desc, mw.ITEM_NO
-    OFFSET 0 ROWS
-    FETCH NEXT 25 ROWS ONLY
+    ORDER BY MAX(lin.EXT_COST) desc, mw.PRODUCT_ID, mw.ITEM_NO
     """
 
     try:
@@ -604,10 +602,10 @@ def get_all_new_items(start_date):
     on lin.ITEM_NO = item.ITEM_NO
     INNER JOIN SN_SHOP_PROD mw
     on mw.ITEM_NO = lin.ITEM_NO
-    WHERE lin.RECVR_DAT > '{start_date}' and (inv.QTY_AVAIL - item.PROF_NO_1) > 0 and lin.EXT_COST >= {min_ext_cost}
+    WHERE lin.RECVR_DAT > '{start_date}' and (inv.QTY_AVAIL - item.PROF_NO_1) > 0
     AND item.IS_ECOMM_ITEM = 'Y'
     GROUP BY mw.PRODUCT_ID, mw.ITEM_NO
-    ORDER BY mw.PRODUCT_ID, MAX(lin.EXT_COST) desc, mw.ITEM_NO
+    ORDER BY MAX(lin.EXT_COST) desc, mw.PRODUCT_ID, mw.ITEM_NO
     """
 
     try:
@@ -618,69 +616,63 @@ def get_all_new_items(start_date):
 
 
 def get_all_new_new_items(start_date):
-    new_items = get_all_new_items(start_date)
+    query = f"""
+    SELECT mw.PRODUCT_ID, mw.ITEM_NO, MAX(lin.EXT_COST)
+    FROM PO_RECVR_HIST_LIN lin
+    INNER JOIN IM_INV inv
+    ON lin.ITEM_NO = inv.ITEM_NO
+    INNER JOIN IM_ITEM item
+    on lin.ITEM_NO = item.ITEM_NO
+    INNER JOIN SN_SHOP_PROD mw
+    on mw.ITEM_NO = lin.ITEM_NO
+    WHERE lin.RECVR_DAT > '{start_date}' and (inv.QTY_AVAIL - item.PROF_NO_1) > 0
+    AND item.IS_ECOMM_ITEM = 'Y'
+    AND item.ITEM_NO in (
+        SELECT ITEM_NO FROM PO_RECVR_HIST_LIN WHERE RECVR_DAT < '{start_date}'
+    )
+    GROUP BY mw.PRODUCT_ID, mw.ITEM_NO
+    ORDER BY MAX(lin.EXT_COST) desc, mw.PRODUCT_ID, mw.ITEM_NO
+    """
 
-    new_list = []
-
-    for item in new_items:
-        item_no = item[0]
-        if db.Shopify.Product.exists(item_no):
-            continue
-
-        new_list.append(item)
-
-    return new_list
+    try:
+        response = db.query(query)
+        return [[x[1], x[0]] for x in response] if response else []
+    except:
+        return []
 
 
 def get_all_back_in_stock_items(start_date):
-    new_items = get_all_new_items(start_date)
+    query = f"""
+    SELECT mw.PRODUCT_ID, mw.ITEM_NO, MAX(lin.EXT_COST)
+    FROM PO_RECVR_HIST_LIN lin
+    INNER JOIN IM_INV inv
+    ON lin.ITEM_NO = inv.ITEM_NO
+    INNER JOIN IM_ITEM item
+    on lin.ITEM_NO = item.ITEM_NO
+    INNER JOIN SN_SHOP_PROD mw
+    on mw.ITEM_NO = lin.ITEM_NO
+    WHERE lin.RECVR_DAT > '{start_date}' and (inv.QTY_AVAIL - item.PROF_NO_1) > 0
+    AND item.IS_ECOMM_ITEM = 'Y'
+    AND item.ITEM_NO not in (
+        SELECT ITEM_NO FROM PO_RECVR_HIST_LIN WHERE RECVR_DAT < '{start_date}'
+    )
+    GROUP BY mw.PRODUCT_ID, mw.ITEM_NO
+    ORDER BY MAX(lin.EXT_COST) desc, mw.PRODUCT_ID, mw.ITEM_NO
+    """
 
-    new_list = []
-
-    for item in new_items:
-        item_no = item[0]
-        if not db.Shopify.Product.exists(item_no):
-            continue
-
-        new_list.append(item)
-
-    return new_list
+    try:
+        response = db.query(query)
+        return [[x[1], x[0]] for x in response] if response else []
+    except:
+        return []
 
 
 def get_25_new_new_items(start_date):
-    new_items = get_all_new_items(start_date)
-
-    new_list = []
-
-    for item in new_items:
-        if len(new_list) == 25:
-            break
-
-        item_no = item[0]
-        if db.Shopify.Product.exists(item_no):
-            continue
-
-        new_list.append(item)
-
-    return new_list
+    return get_all_new_new_items(start_date)[:25]
 
 
 def get_25_back_in_stock_items(start_date):
-    new_items = get_all_new_items(start_date)
-
-    new_list = []
-
-    for item in new_items:
-        if len(new_list) == 25:
-            break
-
-        item_no = item[0]
-        if not db.Shopify.Product.exists(item_no):
-            continue
-
-        new_list.append(item)
-
-    return new_list
+    return get_all_back_in_stock_items(start_date)[:25]
 
 
 def get_preorder_items():
