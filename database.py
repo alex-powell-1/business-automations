@@ -1010,6 +1010,41 @@ class Database:
                     eh.error_handler.add_error_v(error=error)
                     raise Exception(error)
 
+            def add_to_new(sku_list: list, eh=ProcessOutErrorHandler):
+                query = f"""
+                UPDATE IM_ITEM
+                SET ECOMM_NEW = 'Y'
+                WHERE ITEM_NO in ({','.join([f"'{x}'" for x in sku_list])})
+                """
+                response = Database.query(query)
+
+                if response['code'] == 200:
+                    eh.logger.success(f'Products: {sku_list} updated to NEW.')
+                elif response['code'] == 201:
+                    eh.logger.warn(f'Products: {sku_list} not found.')
+                else:
+                    error = f'Error updating products {sku_list}. \n Query: {query}\nResponse: {response}'
+                    eh.error_handler.add_error_v(error=error)
+                    raise Exception(error)
+
+            def add_to_back_in_stock(sku_list: list, eh=ProcessOutErrorHandler):
+                query = f"""
+                UPDATE IM_ITEM
+                SET IS_BACK_IN_STOCK = 'Y'
+                WHERE ITEM_NO in ({','.join([f"'{x}'" for x in sku_list])})
+                """
+
+                response = Database.query(query)
+
+                if response['code'] == 200:
+                    eh.logger.success(f'Products: {sku_list} updated to BACK IN STOCK.')
+                elif response['code'] == 201:
+                    eh.logger.warn(f'Products: {sku_list} not found.')
+                else:
+                    error = f'Error updating products {sku_list}. \n Query: {query}\nResponse: {response}'
+                    eh.error_handler.add_error_v(error=error)
+                    raise Exception(error)
+
             @staticmethod
             def set_inactive(sku, eh=ProcessOutErrorHandler):
                 query = f"""

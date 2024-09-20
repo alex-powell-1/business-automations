@@ -8,6 +8,8 @@ from setup.error_handler import ProcessInErrorHandler
 
 import datetime
 
+import threading
+
 logger = ProcessInErrorHandler.logger
 error_handler = ProcessInErrorHandler.error_handler
 
@@ -222,16 +224,48 @@ def on_draft_created(draft_id):
     try:
         logger.info('Getting information from draft order...')
 
-        lines = HoldOrder.get_lines_from_draft_order(draft_id)
-        cust_no = Shopify.Order.Draft.get_cust_no(draft_id)
-        doc = HoldOrder.create(lines=lines, cust_no=cust_no)
+        def get_lines():
+            global lines
+            lines = HoldOrder.get_lines_from_draft_order(draft_id)
 
-        note = Shopify.Order.Draft.get_note(draft_id)
+        def get_cust_no():
+            global cust_no
+            cust_no = Shopify.Order.Draft.get_cust_no(draft_id)
 
-        events = Shopify.Order.Draft.get_events(draft_id)
+        lines_thread = threading.Thread(target=get_lines)
+        cust_no_thread = threading.Thread(target=get_cust_no)
 
+        lines_thread.start()
+        cust_no_thread.start()
+
+        lines_thread.join()
+        cust_no_thread.join()
+
+        def get_doc():
+            global doc
+            doc = HoldOrder.create(lines=lines, cust_no=cust_no)
+
+        def get_note():
+            global note
+            note = Shopify.Order.Draft.get_note(draft_id)
+
+        def get_events():
+            global events
+            events = Shopify.Order.Draft.get_events(draft_id)
+
+        doc_thread = threading.Thread(target=get_doc)
+        note_thread = threading.Thread(target=get_note)
+        events_thread = threading.Thread(target=get_events)
+
+        doc_thread.start()
+        note_thread.start()
+        events_thread.start()
+
+        doc_thread.join()
+        note_thread.join()
         doc.add_note(note)
 
+        events_thread.join()
         for event in events:
             doc.add_note(f"[{format_date(event['createdAt'])}] {event['message']}", 'TIMELINE')
 
@@ -240,11 +274,24 @@ def on_draft_created(draft_id):
         logger.success('Info retrieved.')
         logger.info('Posting hold order...')
 
-        response = HoldOrder.post_pl(
-            payload=pl,
-            discount=Shopify.Order.Draft.get_discount(draft_id),
-            sub_tot=Shopify.Order.Draft.get_subtotal(draft_id),
-        )
+        def get_discount():
+            global discount
+            discount = Shopify.Order.Draft.get_discount(draft_id)
+
+        def get_sub_tot():
+            global sub_tot
+            sub_tot = Shopify.Order.Draft.get_subtotal(draft_id)
+
+        discount_thread = threading.Thread(target=get_discount)
+        sub_tot_thread = threading.Thread(target=get_sub_tot)
+
+        discount_thread.start()
+        sub_tot_thread.start()
+
+        discount_thread.join()
+        sub_tot_thread.join()
+
+        response = HoldOrder.post_pl(payload=pl, discount=discount, sub_tot=sub_tot)
 
         if (
             response is None
