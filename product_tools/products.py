@@ -617,6 +617,72 @@ def get_all_new_items(start_date):
         return []
 
 
+def get_all_new_new_items(start_date):
+    new_items = get_all_new_items(start_date)
+
+    new_list = []
+
+    for item in new_items:
+        item_no = item[0]
+        if db.Shopify.Product.exists(item_no):
+            continue
+
+        new_list.append(item)
+
+    return new_list
+
+
+def get_all_back_in_stock_items(start_date):
+    new_items = get_all_new_items(start_date)
+
+    new_list = []
+
+    for item in new_items:
+        item_no = item[0]
+        if not db.Shopify.Product.exists(item_no):
+            continue
+
+        new_list.append(item)
+
+    return new_list
+
+
+def get_25_new_new_items(start_date):
+    new_items = get_all_new_items(start_date)
+
+    new_list = []
+
+    for item in new_items:
+        if len(new_list) == 25:
+            break
+
+        item_no = item[0]
+        if db.Shopify.Product.exists(item_no):
+            continue
+
+        new_list.append(item)
+
+    return new_list
+
+
+def get_25_back_in_stock_items(start_date):
+    new_items = get_all_new_items(start_date)
+
+    new_list = []
+
+    for item in new_items:
+        if len(new_list) == 25:
+            break
+
+        item_no = item[0]
+        if not db.Shopify.Product.exists(item_no):
+            continue
+
+        new_list.append(item)
+
+    return new_list
+
+
 def get_preorder_items():
     query = """
     SELECT I.ITEM_NO FROM IM_ITEM I 
