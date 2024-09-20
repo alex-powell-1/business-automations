@@ -1,6 +1,6 @@
 from database import Database
 from integration.shopify_api import Shopify
-from integration.shopify_customers import Customers
+from integration.customers_api import Customers
 from flask import request, jsonify, Blueprint
 from setup.creds import API
 import pika
@@ -291,7 +291,6 @@ def product_update():
     logger.log(f'Webhook: Product Update, SKU:{item_no}, Product ID: {product_id}, Web Title: {title}')
 
     if item_no and description:
-        # Update product description in Counterpoint - Skip timestamp update (avoid loop)
         Database.Counterpoint.Product.HTMLDescription.update(
             item_no=item_no, html_descr=description, update_timestamp=False, eh=ProcessInErrorHandler
         )
@@ -434,7 +433,7 @@ def product_update():
 
 
 @shopify_routes.route(API.Route.Shopify.collection_update, methods=['POST'])
-@limiter.limit(default_rate)
+@limiter.limit('100/second')
 def collection_update():
     """Webhook route for collection update"""
 

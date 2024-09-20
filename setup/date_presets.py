@@ -87,6 +87,13 @@ reporting_periods = {
 
 class Dates:
     def __init__(self):
+        self.now = datetime.now()
+        self.minute = self.now.minute
+        self.hour = self.now.hour
+        self.day = self.now.day
+        self.month = self.now.month
+        self.year = self.now.year
+
         self.today = date.today()
         self.yesterday = self.today + relativedelta(days=-1)
         self.two_weeks_ago = self.today + relativedelta(weeks=-2)

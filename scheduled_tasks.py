@@ -13,78 +13,70 @@ from setup import backups
 from setup.error_handler import ScheduledTasksErrorHandler
 from setup.sms_engine import SMSEngine
 import time
+from traceback import format_exc as tb
+from setup.utilities import timer
+import sys
 
 
-# -----------------
-# Scheduled Tasks
-# -----------------
-while True:
-    dates = date_presets.Dates()  # obj passed into functions to create queries and sms messages
+class ScheduledTasks:
+    def __init__(self):
+        self.module = str(sys.modules[__name__]).split('\\')[-1].split('.')[0].title()
+        self.dates = date_presets.Dates()
+        self.eh = ScheduledTasksErrorHandler
+        self.error_handler = self.eh.error_handler
+        self.logger = self.eh.logger
+        self.verbose = False
 
-    now = datetime.now()
-    day = now.day
-    hour = now.hour
-    minute = now.minute
-
-    eh = ScheduledTasksErrorHandler
-    error_handler = eh.error_handler
-    logger = eh.logger
-
-    try:
-        #######################################################################################################
-        ############################################### REPORTS ###############################################
-        #######################################################################################################
-        if minute == 0:
-            # ADMINISTRATIVE REPORT - Generate report/email to administrative team list
-            admin_report = creds.Reports.Administrative
-            if admin_report.enabled and admin_report.hour == hour:
+    @timer
+    def generate_reports(self):
+        """Generate and send reports to staff"""
+        # ADMINISTRATIVE REPORT - for administrative team and management
+        admin_report = creds.Reports.Administrative
+        if admin_report.enabled:
+            if admin_report.hour == self.dates.hour and admin_report.minute == self.dates.minute:
                 try:
-                    Email.Staff.AdminReport.send(recipients=admin_report.recipients, dates=dates)
+                    Email.Staff.AdminReport.send(recipients=admin_report.recipients, dates=self.dates)
                 except Exception as err:
-                    error_handler.add_error_v(error=err, origin='Administrative Report')
+                    self.error_handler.add_error_v(error=err, origin='Administrative Report')
 
-            # ITEMS REPORT EMAIL - for product management team
-            item_report = creds.Reports.Item
-            if item_report.enabled and item_report.hour == hour:
+        # ITEMS REPORT - for product management team
+        item_report = creds.Reports.Item
+        if item_report.enabled:
+            if item_report.hour == self.dates.hour and item_report.minute == self.dates.minute:
                 try:
                     Email.Staff.ItemReport.send(recipients=item_report.recipients)
                 except Exception as err:
-                    error_handler.add_error_v(error=err, origin='Item Report')
+                    self.error_handler.add_error_v(error=err, origin='Item Report')
 
-            # LOW STOCK REPORT EMAIL - for product management team
-            low_stock_report = creds.Reports.LowStock
-            if low_stock_report.enabled and low_stock_report.hour == hour:
+        # LOW STOCK REPORT - for product management team
+        low_stock_report = creds.Reports.LowStock
+        if low_stock_report.enabled:
+            if low_stock_report.hour == self.dates.hour and low_stock_report.minute == self.dates.minute:
                 try:
-                    Email.Staff.LowStockReport.send(recipients=low_stock_report.recipients, dates=dates)
+                    Email.Staff.LowStockReport.send(recipients=low_stock_report.recipients, dates=self.dates)
                 except Exception as err:
-                    error_handler.add_error_v(error=err, origin='Low Stock Report')
+                    self.error_handler.add_error_v(error=err, origin='Low Stock Report')
 
-            ######################################################################################################
-            ################################## MARKETING LEAD NOTIFCATION EMAIL ##################################
-            ######################################################################################################
-
-            # LANDSCAPE DESIGN LEAD NOTIFICATION EMAIL - Customer Followup Email to Sales Team
+            # MARKETING LEAD NOTIFICATION EMAIL - for Sales team
             design_leads = creds.Reports.MarketingLeads
-            if design_leads.enabled and design_leads.hour == hour:
-                try:
-                    Email.Staff.DesignLeadNotification.send(recipients=design_leads.recipients)
-                except Exception as err:
-                    error_handler.add_error_v(error=err, origin='Lead Notification Email')
+            if design_leads.enabled:
+                if design_leads.hour == self.dates.hour and design_leads.minute == self.dates.minute:
+                    try:
+                        Email.Staff.DesignLeadNotification.send(recipients=design_leads.recipients)
+                    except Exception as err:
+                        self.error_handler.add_error_v(error=err, origin='Lead Notification Email')
 
-        #######################################################################################################
-        ######################################### TWICE PER HOUR TASKS ########################################
-        #######################################################################################################
-
-        if minute == 0 or minute == 30:
-            # NETWORK CONNECTIVITY
-            # Check server for internet connection. Restart is there is no connection to internet.
+    @timer
+    def twice_per_hour_tasks(self):
+        if self.dates.minute == 0 or self.dates.minute == 30:
+            # NETWORK CONNECTIVITY - Check server for internet connection. Restart if not connected.
             network.restart_server_if_disconnected()
 
-            # # Checks health of Web App API. Notifies system administrator if not running via SMS text.
+            # Checks health of Web App API. Notifies system administrator if not running via SMS text.
             try:
                 network.health_check()
             except Exception as err:
-                error_handler.add_error_v(error=err, origin='Health Check')
+                self.error_handler.add_error_v(error=err, origin='Health Check')
 
             # SET CONTACT 1
             # Concatenate First and Last name of non-business customer_tools and
@@ -92,7 +84,7 @@ while True:
             try:
                 customers.set_contact_1()
             except Exception as err:
-                error_handler.add_error_v(error=err, origin='Set Contact 1')
+                self.error_handler.add_error_v(error=err, origin='Set Contact 1')
 
             # TIERED WHOLESALE PRICING LEVELS
             # Reassessing tiered pricing for all customers based on current year
@@ -101,21 +93,19 @@ while True:
                     start_date=date_presets.one_year_ago, end_date=date_presets.today, demote=False
                 )
             except Exception as err:
-                error_handler.add_error_v(error=err, origin='Tiered Pricing')
+                self.error_handler.add_error_v(error=err, origin='Tiered Pricing')
 
-        ###################################################################################################
-        ###################################### EVERY-OTHER HOURLY TASKS #####################################
-        ###################################################################################################
-
+    @timer
+    def every_other_hourly_tasks(self):
         # Between 6 AM and 8 PM - Performed on even hours
-        if minute == 0 and 20 >= hour >= 6 and hour % 2 == 0:
+        if self.dates.minute == 0 and 20 >= self.dates.hour >= 6 and self.dates.hour % 2 == 0:
             # ITEM STATUS CODES
             # Move active product_tools with zero stock into inactive status
             # unless they are on order, hold, quote
             try:
-                set_inactive_status.set_products_to_inactive(eh=ScheduledTasksErrorHandler)
+                set_inactive_status.set_products_to_inactive(eh=self.eh)
             except Exception as err:
-                error_handler.add_error_v(error=err, origin='Inactive Status')
+                self.error_handler.add_error_v(error=err, origin='Inactive Status')
 
             # BRANDS
             # Set all items with no brand to the company brand
@@ -123,28 +113,26 @@ while True:
             try:
                 brands.update_brands()
             except Exception as err:
-                error_handler.add_error_v(error=err, origin='Brands')
+                self.error_handler.add_error_v(error=err, origin='Brands')
 
             # STOCK BUFFER
             # Set stock buffers based on rules by vendor, category
             try:
                 stock_buffer.stock_buffer_updates()
             except Exception as err:
-                error_handler.add_error_v(error=err, origin='Stock Buffer')
+                self.error_handler.add_error_v(error=err, origin='Stock Buffer')
 
-        ###################################################################################################
-        ########################################### DAILY TASKS ###########################################
-        ###################################################################################################
-
-        if hour == 5 and minute == 0:  # 5 AM
+    @timer
+    def once_per_day_tasks(self):
+        if self.dates.hour == 5 and self.dates.minute == 0:  # 5 AM
             try:
-                customers.fix_first_and_last_sale_dates(dt=dates)
+                customers.fix_first_and_last_sale_dates(dt=self.dates)
             except Exception as err:
-                error_handler.add_error_v(error=err, origin='Fix First and Last Sale Dates')
+                self.error_handler.add_error_v(error=err, origin='Fix First and Last Sale Dates')
 
-        if hour == 10 and minute == 0:  # 10 AM
-            test_text = f"""From Server: This is a test message. Today is {dates.today}.
-            Yesterday was {dates.yesterday}. Tomorrow is {dates.tomorrow}."""
+        if self.dates.hour == 10 and self.dates.minute == 0:  # 10 AM
+            test_text = f"""From Server: This is a test message. Today is {self.dates.today}.
+            Yesterday was {self.dates.yesterday}. Tomorrow is {self.dates.tomorrow}."""
             SMSEngine.send_text(
                 origin='SERVER',
                 campaign='Alex Test',
@@ -152,7 +140,7 @@ while True:
                 message=test_text,
             )
 
-        if hour == 11 and minute == 30:  # 11:30 AM
+        if self.dates.hour == 11 and self.dates.minute == 30:  # 11:30 AM
             # STOCK NOTIFICATION EMAIL WITH COUPON GENERATION
             # Read CSV file, check all items for stock, send auto generated emails to customer_tools
             # with product photo, product description (if exists), coupon (if applicable), and
@@ -160,41 +148,39 @@ while True:
             try:
                 stock_notification.send_stock_notifications()
             except Exception as err:
-                error_handler.add_error_v(error=err, origin='Stock Notification Email')
+                self.error_handler.add_error_v(error=err, origin='Stock Notification Email')
 
-        if hour == 22 and minute == 30:  # 10:30 PM
+        if self.dates.hour == 22 and self.dates.minute == 30:  # 10:30 PM
             # Nightly Off-Site Backups
             # Will copy selected files to off-site location
             try:
                 backups.offsite_backups()
             except Exception as err:
-                error_handler.add_error_v(error=err, origin='Offsite Backups')
+                self.error_handler.add_error_v(error=err, origin='Offsite Backups')
 
             # MERGE CUSTOMERS
             # Merge duplicate customers by email or phone. Skips customers with open orders.
             try:
-                merge = Merge(eh=eh)
+                Merge(eh=self.eh)
             except Exception as err:
-                error_handler.add_error_v(error=err, origin='Merge Customers')
+                self.error_handler.add_error_v(error=err, origin='Merge Customers')
 
             # Delete Old Log Files
             utilities.delete_old_files()
 
-        ###################################################################################################
-        ########################################### SMS AUTOMATIONS #######################################
-        ###################################################################################################
-
+    @timer
+    def sms_automations(self):
         sms = creds.SMSAutomations
         origin = 'Automations'
 
         if not sms.enabled:
-            logger.warn('SMS Automations are disabled.')
+            self.logger.warn('SMS Automations are disabled.')
         else:
-            messages = sms_messages.SMSMessages(dates)
-            birthday_queries = sms_queries.BirthdayQueries(dates)
-            wholesale_queries = sms_queries.WholesaleQueries(dates)
-            ftc_queries = sms_queries.FTCQueries(dates)
-            rc_queries = sms_queries.RCQueries(dates)
+            messages = sms_messages.SMSMessages(self.dates)
+            birthday_queries = sms_queries.BirthdayQueries(self.dates)
+            wholesale_queries = sms_queries.WholesaleQueries(self.dates)
+            ftc_queries = sms_queries.FTCQueries(self.dates)
+            rc_queries = sms_queries.RCQueries(self.dates)
 
             #############################################################################################
             #################################### BIRTHDAY CUSTOMER AUTOMATIONS ##########################
@@ -202,20 +188,21 @@ while True:
 
             birthday_1 = sms.Campaigns.Birthday
             if birthday_1.enabled:
-                if day == birthday_1.day and hour == birthday_1.hour and minute == birthday_1.minute:
-                    logger.info(f'SMS/MMS Automation: {birthday_1.title} - {datetime.now():%H:%M:%S}')
-                    try:
-                        sms_automations.create_customer_text(
-                            origin=origin,
-                            campaign=birthday_1.title,
-                            query=birthday_queries.text_1,
-                            msg=messages.birthday.coupon_1,
-                            image_url=creds.Coupon.birthday,
-                            send_rwd_bal=False,
-                        )
+                if self.dates.day == birthday_1.day:
+                    if self.dates.hour == birthday_1.hour and self.dates.minute == birthday_1.minute:
+                        self.logger.info(f'SMS/MMS Automation: {birthday_1.title} - {datetime.now():%H:%M:%S}')
+                        try:
+                            sms_automations.create_customer_text(
+                                origin=origin,
+                                campaign=birthday_1.title,
+                                query=birthday_queries.text_1,
+                                msg=messages.birthday.coupon_1,
+                                image_url=creds.Coupon.birthday,
+                                send_rwd_bal=False,
+                            )
 
-                    except Exception as err:
-                        error_handler.add_error_v(error=err, origin=birthday_1.title)
+                        except Exception as err:
+                            self.error_handler.add_error_v(error=err, origin=birthday_1.title)
 
             #############################################################################################
             ############################### Wholesale Customer Automations ##############################
@@ -223,8 +210,8 @@ while True:
 
             wholesale_1 = sms.Campaigns.Wholesale1
             if wholesale_1.enabled:
-                if hour == wholesale_1.hour and minute == wholesale_1.minute:
-                    logger.info(f'SMS/MMS Automation: {wholesale_1.title} - {datetime.now():%H:%M:%S}')
+                if self.dates.hour == wholesale_1.hour and self.dates.minute == wholesale_1.minute:
+                    self.logger.info(f'SMS/MMS Automation: {wholesale_1.title} - {datetime.now():%H:%M:%S}')
                     try:
                         sms_automations.create_customer_text(
                             origin=origin,
@@ -235,7 +222,7 @@ while True:
                             send_rwd_bal=False,
                         )
                     except Exception as err:
-                        error_handler.add_error_v(error=err, origin=wholesale_1.title)
+                        self.error_handler.add_error_v(error=err, origin=wholesale_1.title)
 
             #############################################################################################
             ############################## First-Time Customer Automations ##############################
@@ -244,8 +231,8 @@ while True:
             # FIRST-TIME CUSTOMER TEXT MESSAGE 1 - WELCOME (SMS)
             ftc1 = creds.SMSAutomations.Campaigns.FTC1
             if ftc1.enabled:
-                if hour == ftc1.hour and minute == ftc1.minute:
-                    logger.info(f'SMS/MMS Automation: {ftc1.title} - {datetime.now():%H:%M:%S}')
+                if self.dates.hour == ftc1.hour and self.dates.minute == ftc1.minute:
+                    self.logger.info(f'SMS/MMS Automation: {ftc1.title} - {datetime.now():%H:%M:%S}')
                     try:
                         sms_automations.create_customer_text(
                             origin=origin,
@@ -255,13 +242,13 @@ while True:
                             send_rwd_bal=True,
                         )
                     except Exception as err:
-                        error_handler.add_error_v(error=err, origin=ftc1.title)
+                        self.error_handler.add_error_v(error=err, origin=ftc1.title)
 
             ftc2 = creds.SMSAutomations.Campaigns.FTC2
             if ftc2.enabled:
-                if hour == ftc2.hour and minute == ftc2.minute:
+                if self.dates.hour == ftc2.hour and self.dates.minute == ftc2.minute:
                     # FIRST-TIME CUSTOMER TEXT MESSAGE 2 - 5 OFF COUPON (MMS)
-                    logger.info(f'SMS/MMS Automation: {ftc2.title} - {datetime.now():%H:%M:%S}')
+                    self.logger.info(f'SMS/MMS Automation: {ftc2.title} - {datetime.now():%H:%M:%S}')
                     try:
                         sms_automations.create_customer_text(
                             origin=origin,
@@ -272,14 +259,14 @@ while True:
                             send_rwd_bal=True,
                         )
                     except Exception as err:
-                        error_handler.add_error_v(error=err, origin=ftc2.title)
+                        self.error_handler.add_error_v(error=err, origin=ftc2.title)
 
             # FIRST-TIME CUSTOMER TEXT MESSAGE 3 - ASK FOR GOOGLE REVIEW (SMS)
 
             ftc3 = creds.SMSAutomations.Campaigns.FTC3
             if ftc3.enabled:
-                if hour == ftc3.hour and minute == ftc3.minute:
-                    logger.info(f'SMS/MMS Automation: {ftc3.title} - {datetime.now():%H:%M:%S}')
+                if self.dates.hour == ftc3.hour and self.dates.minute == ftc3.minute:
+                    self.logger.info(f'SMS/MMS Automation: {ftc3.title} - {datetime.now():%H:%M:%S}')
 
                     try:
                         sms_automations.create_customer_text(
@@ -290,7 +277,7 @@ while True:
                             send_rwd_bal=True,
                         )
                     except Exception as err:
-                        error_handler.add_error_v(error=err, origin=ftc3.title)
+                        self.error_handler.add_error_v(error=err, origin=ftc3.title)
 
             #############################################################################################
             ############################## Returning Customer Automations ###############################
@@ -299,8 +286,8 @@ while True:
             # RETURNING CUSTOMER TEXT MESSAGE 1 - THANK YOU (SMS)
             rc1 = sms.Campaigns.RC1
             if rc1.enabled:
-                if hour == rc1.hour and minute == rc1.minute:
-                    logger.info(f'SMS/MMS Automation: {rc1.title} - {datetime.now():%H:%M:%S}')
+                if self.dates.hour == rc1.hour and self.dates.minute == rc1.minute:
+                    self.logger.info(f'SMS/MMS Automation: {rc1.title} - {datetime.now():%H:%M:%S}')
                     try:
                         sms_automations.create_customer_text(
                             origin=origin,
@@ -310,12 +297,12 @@ while True:
                             send_rwd_bal=True,
                         )
                     except Exception as err:
-                        error_handler.add_error_v(error=err, origin=rc1.title)
+                        self.error_handler.add_error_v(error=err, origin=rc1.title)
 
             # RETURNING CUSTOMER TEXT MESSAGE 2 - 5 OFF COUPON (MMS)
             rc2 = sms.Campaigns.RC2
-            if rc2.enabled and hour == rc2.hour and minute == rc2.minute:
-                logger.info(f'SMS/MMS Automation: {rc2.title} - {datetime.now():%H:%M:%S}')
+            if rc2.enabled and self.dates.hour == rc2.hour and self.dates.minute == rc2.minute:
+                self.logger.info(f'SMS/MMS Automation: {rc2.title} - {datetime.now():%H:%M:%S}')
                 try:
                     sms_automations.create_customer_text(
                         origin=origin,
@@ -326,12 +313,12 @@ while True:
                         send_rwd_bal=True,
                     )
                 except Exception as err:
-                    error_handler.add_error_v(error=err, origin=rc2.title)
+                    self.error_handler.add_error_v(error=err, origin=rc2.title)
 
             # RETURNING CUSTOMER TEXT MESSAGE 3 - ASK FOR GOOGLE REVIEW (SMS)
             rc3 = sms.Campaigns.RC3
-            if rc3.enabled and hour == rc3.hour and minute == rc3.minute:
-                logger.info(f'SMS/MMS Automation: {rc3.title} - {datetime.now():%H:%M:%S}')
+            if rc3.enabled and self.dates.hour == rc3.hour and self.dates.minute == rc3.minute:
+                self.logger.info(f'SMS/MMS Automation: {rc3.title} - {datetime.now():%H:%M:%S}')
                 try:
                     sms_automations.create_customer_text(
                         origin=origin,
@@ -341,15 +328,33 @@ while True:
                         send_rwd_bal=True,
                     )
                 except Exception as err:
-                    error_handler.add_error_v(error=err, origin=rc3.title)
+                    self.error_handler.add_error_v(error=err, origin=rc3.title)
 
-    except KeyboardInterrupt:
-        logger.info(f'Process Terminated by User at {datetime.now():%H:%M:%S}')
+    @timer
+    def run(self):
+        self.generate_reports(eh=self.eh, operation='Generate Reports')
+        self.twice_per_hour_tasks(eh=self.eh, operation='Twice Per Hour Tasks')
+        self.every_other_hourly_tasks(eh=self.eh, operation='Every Other Hourly Tasks')
+        self.once_per_day_tasks(eh=self.eh, operation='Once Per Day Tasks')
+        self.sms_automations(eh=self.eh, operation='SMS Automations')
+
+
+if __name__ == '__main__':
+    tasks = ScheduledTasks()
+    if len(sys.argv) > 1:
+        if '-v' in sys.argv:
+            tasks.verbose = True
+        if '-l' in sys.argv:  # Run the integrator in a loop
+            while True:
+                try:
+                    tasks = ScheduledTasks()  # Reinitialize to reset dates
+                    tasks.run(eh=tasks.eh, operation='Scheduled Tasks')
+                except KeyboardInterrupt:
+                    tasks.logger.info(f'Process Terminated by User at {datetime.now():%H:%M:%S}')
+                except Exception as err:
+                    tasks.error_handler.add_error_v(error=err, origin='Scheduled Tasks', traceback=tb())
+                finally:
+                    time.sleep(60)
+
     else:
-        # logger.success(f'Business Automations Complete at {datetime.now():%H:%M:%S}')
-        total_seconds = (datetime.now() - now).total_seconds()
-        minutes = total_seconds // 60
-        seconds = round(total_seconds % 60, 2)
-        # logger.info(f'Total time of operation: {minutes} minutes {seconds} seconds')
-    finally:
-        time.sleep(60)
+        tasks.run(eh=tasks.eh, operation=tasks.module)

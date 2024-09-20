@@ -70,8 +70,9 @@ class Customers:
         return [x[0] for x in response] if response is not None else []
 
     def process_deletes(self):
+        origin = 'Customers.process_deletes'
         if self.verbose:
-            Customers.logger.header('Processing Deletes')
+            Customers.logger.header('Processing Deletes', origin=origin)
         cp_customers = self.get_cp_customers()
         mw_customers = self.get_mw_customers()
         # Find Customers in MW that are not in CP
@@ -83,23 +84,24 @@ class Customers:
         if delete_queue:
             count = 1
             for x in delete_queue:
-                Customers.logger.info(f'{count}/{len(delete_queue)}: Deleting customer CUST_NO: {x}')
+                Customers.logger.info(f'{count}/{len(delete_queue)}: Deleting customer CUST_NO: {x}', origin=origin)
                 shopify_cust_no = Database.Shopify.Customer.get_id(x)
                 Shopify.Customer.delete(shopify_cust_no)
                 Database.Shopify.Customer.delete(shopify_cust_no)
                 count += 1
         else:
             if self.verbose:
-                Customers.logger.info('No customers to delete.')
+                Customers.logger.info('No customers to delete.', origin=origin)
 
     def sync(self):
+        origin = 'CUSTOMER SYNC: '
         self.process_deletes()
 
         if self.customers:
             success_count = 0
             fail_count = {'number': 0, 'customer': []}
             queue_size = len(self.customers)
-            Customers.logger.header(f'Syncing Customers: {queue_size}')
+            Customers.logger.header(f'Syncing Customers: {queue_size}', origin=origin)
 
             def task(customer: Customers.Customer) -> None:
                 return customer.process()
@@ -125,13 +127,13 @@ class Customers:
             )
 
             if fail_count['number'] > 0:
-                Customers.logger.warn(f'Customers failed to sync: {fail_count["number"]}')
-                Customers.logger.warn(f'Failed Customers: {fail_count["customer"]}')
+                Customers.logger.warn(f'Customers failed to sync: {fail_count["number"]}', origin=origin)
+                Customers.logger.warn(f'Failed Customers: {fail_count["customer"]}', origin=origin)
             if success_count > 0:
                 Customers.logger.success(f'Customers synced: {success_count}')
 
         else:
-            Customers.logger.warn('No customers to sync.')
+            Customers.logger.warn(message='No customers to sync.', origin=origin)
 
     class Customer:
         def __init__(self, cust_result):
@@ -505,11 +507,9 @@ class Customers:
 
         def process(self):
             def create():
-                Customers.logger.info(f'Creating customer {self.cp_cust_no}')
                 return Shopify.Customer.create(self.write_customer_payload())
 
             def update():
-                Customers.logger.info(f'Updating customer {self.cp_cust_no}')
                 return Shopify.Customer.update(self.write_customer_payload())
 
             try:
@@ -538,6 +538,7 @@ class Customers:
                 )
                 return False, self.cp_cust_no
             else:
+                Customers.logger.success(f'Customer {self.cp_cust_no} processed.', origin='Customer.process')
                 return True, self.cp_cust_no
 
         def get_ids(self, response):
@@ -596,10 +597,10 @@ class Customers:
             """
             response = Database.query(query)
             if response['code'] == 200:
-                Customers.logger.success(f'Customer {self.cp_cust_no} loyalty points set to 0.')
+                Customers.logger.success(f'Customer {self.cp_cust_no} loyalty points set to 0.', origin='Customer')
             else:
                 Customers.error_handler.add_error_v(
-                    error=f'Error setting customer {self.cp_cust_no} loyalty points to 0.'
+                    error=f'Error setting customer {self.cp_cust_no} loyalty points to 0.', origin='Customer'
                 )
 
         @staticmethod

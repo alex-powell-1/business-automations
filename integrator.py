@@ -1,6 +1,7 @@
-from integration.shopify_catalog import Catalog
-from integration.shopify_customers import Customers
-from integration.shopify_promotions import Promotions
+from integration.catalog_api import Catalog
+from integration.customers_api import Customers
+from integration.promotions_api import Promotions
+
 from database import Database
 from integration import interface
 from setup import creds
@@ -9,7 +10,7 @@ from setup import date_presets
 from datetime import datetime
 from product_tools.sort_order import SortOrderEngine
 from setup.error_handler import ProcessOutErrorHandler
-from setup.utilities import get_last_sync, set_last_sync
+from setup.utilities import get_last_sync, set_last_sync, timer
 
 import sys
 import time
@@ -19,6 +20,7 @@ from traceback import format_exc as tb
 class Integrator:
     def __init__(self):
         self.last_sync: datetime = get_last_sync(file_name='./integration/last_sync_integrator.txt')
+        self.module = str(sys.modules[__name__]).split('\\')[-1].split('.')[0].title()
         self.eh = ProcessOutErrorHandler
         self.error_handler = self.eh.error_handler
         self.logger = self.eh.logger
@@ -32,15 +34,22 @@ class Integrator:
         self.catalog = Catalog(last_sync=self.last_sync, verbose=self.verbose, enabled=self.catalog_sync)
 
     def __str__(self):
-        result = f'Integrator:' f'Last Sync: {self.last_sync}\n----------------\n'
-        result += self.customers.__str__()
-        result += self.promotions.__str__()
-        result += self.catalog.__str__()
+        result = creds.Integrator.header + f'\nLast Sync: {self.last_sync}\n----------------\n'
+        sync_tasks = ''
+        sync_tasks += self.customers.__str__()
+        sync_tasks += self.promotions.__str__()
+        sync_tasks += self.catalog.__str__()
+        if sync_tasks:
+            result += sync_tasks
+        else:
+            result += 'No customers, promotions, collections, or products to sync.\n'
+            if self.sort_collections:
+                result += 'Collection Sorting: Enabled\n'
         return result
 
     def initialize(self, rebuild=False):
         """Initialize the integrator by deleting the catalog, rebuilding the tables, and syncing the catalog."""
-        start_time = time.time()
+        start_time = datetime.now()
         self.catalog.delete()  # Will delete all products, and collections  NEED TO TEST ON DEV STORE
         # self.customers.()
         if rebuild:
@@ -51,9 +60,11 @@ class Integrator:
         # self.customers = Customers(last_sync=business_start)
         Integrator.logger.info(message=f'Initialization Complete. ' f'Total time: {time.time() - start_time}')
 
+    @timer
     def sync(self, initial=False):
+        """Sync the catalog, customers, and promotions."""
         start_sync_time = datetime.now()
-        self.logger.header(f'Last Sync: {self.last_sync}\nSync Start Time: {start_sync_time}')
+
         if self.customer_sync:
             self.customers.sync()
         if self.promotions_sync:
@@ -61,11 +72,10 @@ class Integrator:
         if self.catalog_sync:
             self.catalog.sync(initial=initial)
         if self.sort_collections:
-            SortOrderEngine.sort()
+            SortOrderEngine.sort(verbose=self.verbose)
 
         set_last_sync(file_name='./integration/last_sync_integrator.txt', start_time=start_sync_time)
-        completion_time = (datetime.now() - start_sync_time).seconds
-        self.logger.info(f'Sync completion time: {completion_time} seconds')
+
         if self.error_handler.errors:
             self.error_handler.print_errors()
 
@@ -187,69 +197,49 @@ def user_menu_choices():
 
 
 if __name__ == '__main__':
-    # Argument parsing
+    integrator = Integrator()
+
     if len(sys.argv) > 1:
-        integrator = Integrator()
-        if sys.argv[1] == 'initialize':
-            integrator.initialize()
-        elif sys.argv[1] == 'delete':
-            if len(sys.argv) > 2:
-                if sys.argv[2] == 'product':
-                    if len(sys.argv) > 3:
-                        integrator.catalog.Product.delete(sku=sys.argv[3])
-                    else:
-                        print('Please provide a sku to delete.')
-
-                elif sys.argv[2] == 'catalog':
-                    integrator.catalog.delete_catalog()
-
-                elif sys.argv[2] == 'brands':
-                    integrator.catalog.delete_brands()
-
-                elif sys.argv[2] == 'categories':
-                    integrator.catalog.delete_categories()
-
-                elif sys.argv[2] == 'products':
-                    integrator.catalog.delete_products()
-        # CLI interface
-        elif sys.argv[1] == 'input':
+        if sys.argv[1] == 'input':
             main_menu()
+        else:
+            if '-v' in sys.argv:  # Set verbose logging
+                integrator.verbose = True
 
-        elif '-l' in sys.argv:
-            try:
-                # Run the integrator in a loop
-                while True:
-                    now = datetime.now()
-                    hour = now.hour
-                    if 18 > hour > 7:
-                        minutes_between_sync = creds.Integrator.int_day_run_interval
-                    else:
-                        minutes_between_sync = creds.Integrator.int_night_run_interval
+            if '-l' in sys.argv:  # Run the integrator in a loop
+                try:
+                    while True:
+                        now = datetime.now()
+                        hour = now.hour
+                        if 18 > hour > 7:
+                            minutes_between_sync = creds.Integrator.int_day_run_interval
+                        else:
+                            minutes_between_sync = creds.Integrator.int_night_run_interval
 
-                    delay = minutes_between_sync * 60
+                        delay = minutes_between_sync * 60
 
-                    try:
-                        integrator = Integrator()
-                        integrator.sync()
-                        time.sleep(delay)
+                        try:
+                            integrator = Integrator()  # Reinitialize the integrator each time
+                            integrator.sync(eh=integrator.eh, operation=integrator.module)
+                            time.sleep(delay)
 
-                    except Exception as e:
-                        integrator.error_handler.add_error_v(
-                            error=f'Error: {e}', origin='integrator.py', traceback=tb()
-                        )
-                        time.sleep(60)
+                        except Exception as e:
+                            integrator.error_handler.add_error_v(
+                                error=f'Error: {e}', origin=integrator.module, traceback=tb()
+                            )
+                            time.sleep(60)
 
-            except KeyboardInterrupt:
-                sys.exit(0)
+                except KeyboardInterrupt:
+                    sys.exit(0)
 
-            except Exception as e:
-                integrator.error_handler.add_error_v(error=e, origin='Integrator.py', traceback=tb())
+                except Exception as e:
+                    integrator.error_handler.add_error_v(error=e, origin=integrator.module, traceback=tb())
 
     else:
         integrator = Integrator()
         print(integrator)
-        input = input('Sync? (y/n): ')
+        input = input('Continue? (y/n): ')
         if input.lower() == 'y':
-            integrator.sync()
+            integrator.sync(eh=integrator.eh, operation=integrator.module)
         else:
             sys.exit(0)

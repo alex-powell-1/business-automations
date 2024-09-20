@@ -15,10 +15,10 @@ class Logger:
         last_ending = self.log_file.split('/')[-1]
         self.log_file = self.log_file.replace(last_ending, new_ending)
 
-    def header(self, message: str):
+    def header(self, message: str, origin=''):
         self.update_log_file()
         timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        template = f'[{timestamp}] {message}'
+        template = f'[{timestamp}] {origin} {message}'
         self.log('------------------')
         self.log(template)
         self.log('------------------')
@@ -29,26 +29,26 @@ class Logger:
         with open(self.log_file, 'a') as file:
             file.write(f'{message}\n')
 
-    def success(self, message: str):
+    def success(self, message: str, origin=''):
         self.update_log_file()
         timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        template = f'[SUCCESS] [{timestamp}] {message}'
+        template = f'[SUCCESS] [{timestamp}] {origin} {message}'
 
         self.log(template)
         print(template)
 
-    def info(self, message: str):
+    def info(self, message: str, origin=''):
         self.update_log_file()
         timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        template = f'[INFO] [{timestamp}] {message}'
+        template = f'[INFO] [{timestamp}] {origin} {message}'
 
         self.log(template)
         print(template)
 
-    def warn(self, message: str):
+    def warn(self, message: str, origin=''):
         self.update_log_file()
         timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        template = f'[WARNING] [{timestamp}] {message}'
+        template = f'[WARNING] [{timestamp}] {origin} {message}'
 
         self.log(template)
         print(template)

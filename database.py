@@ -2,7 +2,7 @@ import random
 from setup import creds
 from setup.creds import Table
 from setup.utilities import PhoneNumber
-from setup.error_handler import ProcessOutErrorHandler
+from setup.error_handler import ProcessOutErrorHandler, ProcessInErrorHandler
 from datetime import datetime, timedelta
 from traceback import format_exc as tb
 from time import sleep
@@ -860,7 +860,8 @@ class Database:
             def get_single_items():
                 query = f"""
                 SELECT ITEM_NO FROM {Table.CP.Item.table}
-                WHERE {Table.CP.Item.Column.web_enabled} = 'Y' AND {Table.CP.Item.Column.binding_id} IS NULL
+                WHERE {Table.CP.Item.Column.web_enabled} = 'Y' 
+                AND {Table.CP.Item.Column.binding_id} IS NULL
                 """
                 response = Database.query(query)
                 if response:
@@ -868,7 +869,7 @@ class Database:
                 else:
                     return None
 
-            def set_sale_price(sku, price, eh=ProcessOutErrorHandler):
+            def set_sale_price(sku, price, verbose=False, eh=ProcessOutErrorHandler):
                 query = f"""
                 UPDATE {Table.CP.item_prices}
                 SET PRC_2 = {price}, LST_MAINT_DT = GETDATE()
@@ -876,16 +877,18 @@ class Database:
                 """
                 response = Database.query(query)
                 if response['code'] == 200:
-                    pass
+                    if verbose:
+                        eh.logger.success(f'Sale Price set for {sku}.')
                 elif response['code'] == 201:
-                    eh.logger.warn(f'Set Sale Price: No rows affected for {sku}.')
+                    if verbose:
+                        eh.logger.warn(f'Set Sale Price: No rows affected for {sku}.')
                 else:
                     print(response['code'])
                     error = f'Error setting sale price for {sku}. \n Query: {query}\nResponse: {response}'
                     eh.error_handler.add_error_v(error=error)
                     raise Exception(error)
 
-            def remove_sale_price(items, eh=ProcessOutErrorHandler):
+            def remove_sale_price(items, verbose=False, eh=ProcessOutErrorHandler):
                 if len(items) > 1:
                     where_filter = f'WHERE ITEM_NO IN {tuple(items)}'
                 else:
@@ -904,15 +907,17 @@ class Database:
                 response = Database.query(query)
 
                 if response['code'] == 200:
-                    eh.logger.success(f'Sale Price removed successfully from {items}.')
+                    if verbose:
+                        eh.logger.success(f'Sale Price removed successfully from {items}.')
                 elif response['code'] == 201:
-                    eh.logger.warn(f'No Rows Affected for {items}')
+                    if verbose:
+                        eh.logger.warn(f'No Rows Affected for {items}')
                 else:
                     eh.error_handler.add_error_v(
                         error=f'Error: {response["code"]}\n {response["message"]}, origin="Sale Price Removal")'
                     )
 
-            def set_sale_status(items: list, status, description=None, eh=ProcessOutErrorHandler):
+            def set_sale_status(items: list, status, description=None, verbose=False, eh=ProcessOutErrorHandler):
                 if not items:
                     raise Exception('No items provided to set sale status.')
 
@@ -932,14 +937,16 @@ class Database:
                 # Updating Sale Price, Sale Flag, Sale Description, Last Maintenance Date
                 response = Database.query(query)
                 if response['code'] == 200:
-                    eh.logger.success(f'Sale status updated for {items}.')
+                    if verbose:
+                        eh.logger.success(f'Sale status updated for {items}.')
                     if status:
                         Database.Counterpoint.Product.add_to_sale_category(sku_list=items)
                     else:
                         Database.Counterpoint.Product.remove_from_sale_category(sku_list=items)
 
                 elif response['code'] == 201:
-                    eh.logger.warn(f'Sale status not updated for {items}.')
+                    if verbose:
+                        eh.logger.warn(f'Sale status not updated for {items}.')
                 else:
                     error = f'Error updating sale status for {items}. \n Query: {query}\nResponse: {response}'
                     eh.error_handler.add_error_v(error=error)
@@ -1127,7 +1134,7 @@ class Database:
                     raise Exception(error)
 
             @staticmethod
-            def update_timestamp(item_no, eh=ProcessOutErrorHandler):
+            def update_timestamp(item_no, verbose=False, eh=ProcessOutErrorHandler):
                 query = f"""
                 UPDATE IM_ITEM
                 SET LST_MAINT_DT = GETDATE()
@@ -1135,16 +1142,18 @@ class Database:
                 """
                 response = Database.query(query)
                 if response['code'] == 200:
-                    eh.logger.success(f'Timestamp updated for {item_no}.')
+                    if verbose:
+                        eh.logger.success(f'Timestamp updated for {item_no}.')
                 elif response['code'] == 201:
-                    eh.logger.warn(f'No rows affected for {item_no}.')
+                    if verbose:
+                        eh.logger.warn(f'No rows affected for {item_no}.')
                 else:
                     error = f'Error updating timestamp for {item_no}. \n Query: {query}\nResponse: {response}'
                     eh.error_handler.add_error_v(error=error)
                     raise Exception(error)
 
             @staticmethod
-            def update_buffer(item_no, buffer, update_timestamp=True, eh=ProcessOutErrorHandler):
+            def update_buffer(item_no, buffer, update_timestamp=True, verbose=False, eh=ProcessOutErrorHandler):
                 """Update the stock buffer for an item in Counterpoint."""
                 query = f"""
                 UPDATE {Table.CP.Item.table}
@@ -1153,11 +1162,13 @@ class Database:
                 """
                 response = Database.query(query)
                 if response['code'] == 200:
-                    eh.logger.success(f'Buffer updated for {item_no}.')
+                    if verbose:
+                        eh.logger.success(f'Buffer updated for {item_no}.')
                     if update_timestamp:
-                        Database.Counterpoint.Product.update_timestamp(item_no, eh=eh)
+                        Database.Counterpoint.Product.update_timestamp(item_no, verbose=verbose, eh=eh)
                 elif response['code'] == 201:
-                    eh.logger.warn(f'No rows affected for {item_no}.')
+                    if verbose:
+                        eh.logger.warn(f'No rows affected for {item_no}.')
                 else:
                     error = f'Error updating buffer for {item_no}. \n Query: {query}\nResponse: {response}'
                     eh.error_handler.add_error_v(error=error)
@@ -1174,7 +1185,7 @@ class Database:
                     """
                     return Database.query(query)
 
-                def update(item_no, html_descr, update_timestamp=True, eh=ProcessOutErrorHandler):
+                def update(item_no, html_descr, update_timestamp=True, verbose=False, eh=ProcessInErrorHandler):
                     html_descr = Database.sql_scrub(html_descr)
                     query = f"""
                     UPDATE EC_ITEM_DESCR
@@ -1183,20 +1194,22 @@ class Database:
                     """
                     response = Database.query(query)
                     if response['code'] == 200:
-                        eh.logger.success(f'HTML Description updated for item {item_no}.')
+                        if verbose:
+                            eh.logger.success(f'HTML Description updated for item {item_no}.')
                         if update_timestamp:
-                            Database.Counterpoint.Product.update_timestamp(item_no, eh=eh)
+                            Database.Counterpoint.Product.update_timestamp(item_no, eh=eh, verbose=verbose)
                     elif response['code'] == 201:
-                        eh.logger.warn(f'No HTML Description found for ITEM_NO: {item_no}.')
+                        if verbose:
+                            eh.logger.warn(f'No HTML Description found for ITEM_NO: {item_no}.')
                         Database.Counterpoint.Product.HTMLDescription.insert(
-                            item_no, html_descr, update_timestamp, eh=eh
+                            item_no, html_descr, update_timestamp, verbose=verbose, eh=eh
                         )
                     else:
                         error = f'Error updating HTML Description for item {item_no}. \n Query: {query}\nResponse: {response}'
                         eh.error_handler.add_error_v(error=error)
                         raise Exception(error)
 
-                def insert(item_no, html_descr, update_timestamp=True, eh=ProcessOutErrorHandler):
+                def insert(item_no, html_descr, update_timestamp=True, verbose=False, eh=ProcessInErrorHandler):
                     html_descr = Database.sql_scrub(html_descr)
                     query = f"""
                     INSERT INTO {Table.CP.Item.HTMLDescription.table} (ITEM_NO, HTML_DESCR, LST_MAINT_DT, 
@@ -1205,9 +1218,10 @@ class Database:
                     """
                     response = Database.query(query)
                     if response['code'] == 200:
-                        eh.logger.success(f'INSERT: HTML Description for {item_no}.')
+                        if verbose:
+                            eh.logger.success(f'INSERT: HTML Description for {item_no}.')
                         if update_timestamp:
-                            Database.Counterpoint.Product.update_timestamp(item_no, eh=eh)
+                            Database.Counterpoint.Product.update_timestamp(item_no, verbose=verbose, eh=eh)
                     else:
                         error = f'Error adding HTML Description for item {item_no}. \nQuery: {query}\nResponse: {response}'
                         eh.error_handler.add_error_v(error=error)

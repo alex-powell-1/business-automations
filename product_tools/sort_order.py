@@ -41,7 +41,7 @@ class SortOrderEngine:
     error_handler = eh.error_handler
     logger = error_handler.logger
 
-    def group_ecomm_items_by_collection(top_ecomm_items_with_stock):
+    def group_ecomm_items_by_collection(top_ecomm_items_with_stock, verbose=False):
         """Groups top ecomm items by collection"""
         collections: dict[str, list[dict[str, str | int]]] = {}
 
@@ -64,7 +64,8 @@ class SortOrderEngine:
                 items_not_found += 1
 
         if items_not_found > 0:
-            SortOrderEngine.logger.warn(f'{items_not_found} items not found in Shopify')
+            if verbose:
+                SortOrderEngine.logger.warn(f'{items_not_found} items not found in Shopify')
         return collections
 
     def promote_fixed_price_sales(items: list):
@@ -119,7 +120,9 @@ class SortOrderEngine:
 
         try:
             query = """
-            SELECT ITEM_NO FROM IM_ITEM WHERE PROMOTE_DT_EXP > GETDATE()
+            SELECT ITEM_NO 
+            FROM IM_ITEM 
+            WHERE PROMOTE_DT_EXP > GETDATE()
             """
 
             response = db.query(query)
@@ -185,7 +188,7 @@ class SortOrderEngine:
 
         return new_items
 
-    def parse_items(items):
+    def parse_items(items, verbose=False):
         """Parses items for sorting"""
         new_items = []
 
@@ -218,11 +221,12 @@ class SortOrderEngine:
                 items_not_found += 1
 
         if items_not_found > 0:
-            SortOrderEngine.logger.warn(f'{items_not_found} items not found in Shopify')
+            if verbose:
+                SortOrderEngine.logger.warn(f'COLLECTIONS SORT: {items_not_found} items not found in Shopify')
 
         return new_items
 
-    def remove_excluded_collections(collections: dict) -> dict:
+    def remove_excluded_collections(collections: dict, verbose=False) -> dict:
         """Removes excluded collections from collections dictionary"""
         new_collections = {}
 
@@ -245,20 +249,22 @@ class SortOrderEngine:
             if do_sort:
                 new_collections[collection_id] = items
             else:
-                SortOrderEngine.logger.info(f'Excluding collection {collection_id}')
+                if verbose:
+                    SortOrderEngine.logger.info(f'COLLECTIONS SORT: Excluding collection {collection_id}')
 
         return new_collections
 
-    def sort(print_mode=False, out_of_stock_mode=True):
+    def sort(print_mode=False, out_of_stock_mode=True, verbose=False):
         """Sets sort order based on revenue data from prior year during the forecasted time period"""
-        SortOrderEngine.logger.info('Sort Order: Starting')
+        SortOrderEngine.logger.info('COLLECTIONS SORT: Starting')
         start_time = time.time()
 
         ###############################################################################################
         ############################### Get top ecomm items with stock. ###############################
         ###############################################################################################
 
-        SortOrderEngine.logger.info('Getting top ecomm items with stock')
+        if verbose:
+            SortOrderEngine.logger.info('COLLECTIONS SORT: Getting top ecomm items with stock')
         top_ecomm_items_with_stock = create_top_items_report(
             beginning_date=one_year_ago,
             ending_date=last_year_forecast,
@@ -268,47 +274,58 @@ class SortOrderEngine:
             in_stock_only=True,
         )
         # top_ecomm_items_with_stock = ['BTSP5OZ']
-        SortOrderEngine.logger.success('Top ecomm items with stock retrieved')
+        if verbose:
+            SortOrderEngine.logger.success('COLLECTIONS SORT: Top ecomm items with stock retrieved')
 
         ###############################################################################################
         ######################################### Parse Items #########################################
         ###############################################################################################
 
-        SortOrderEngine.logger.info('Parsing items')
-        top_ecomm_items_with_stock = SortOrderEngine.parse_items(top_ecomm_items_with_stock)
-        SortOrderEngine.logger.success('Items parsed')
+        if verbose:
+            SortOrderEngine.logger.info('COLLECTIONS SORT: Parsing items')
+        top_ecomm_items_with_stock = SortOrderEngine.parse_items(top_ecomm_items_with_stock, verbose=verbose)
+        if verbose:
+            SortOrderEngine.logger.success('COLLECTIONS SORT: Items parsed')
 
         ###############################################################################################
         ###################################### Remove Duplicates ######################################
         ###############################################################################################
 
-        SortOrderEngine.logger.info('Removing duplicates')
+        if verbose:
+            SortOrderEngine.logger.info('COLLECTIONS SORT: Removing duplicates')
         top_ecomm_items_with_stock = SortOrderEngine.remove_duplicate_products(top_ecomm_items_with_stock)
-        SortOrderEngine.logger.success('Duplicates removed')
+        if verbose:
+            SortOrderEngine.logger.success('COLLECTIONS SORT: Duplicates removed')
 
         ###############################################################################################
         ######################################## Adjust Order. ########################################
         ###############################################################################################
 
-        SortOrderEngine.logger.info('Adjusting order')
+        if verbose:
+            SortOrderEngine.logger.info('COLLECTIONS SORT: Adjusting order')
         top_ecomm_items_with_stock = SortOrderEngine.adjust_order(top_ecomm_items_with_stock)
-        SortOrderEngine.logger.success('Order adjusted')
+        if verbose:
+            SortOrderEngine.logger.success('COLLECTIONS SORT: Order adjusted')
 
         ###############################################################################################
         ############################### Group eComm Items By Collection ###############################
         ###############################################################################################
 
-        SortOrderEngine.logger.info('Grouping ecomm items by collection')
+        if verbose:
+            SortOrderEngine.logger.info('COLLECTIONS SORT: Grouping ecomm items by collection')
         collections: dict = SortOrderEngine.group_ecomm_items_by_collection(top_ecomm_items_with_stock)
-        SortOrderEngine.logger.success('Ecomm items grouped by collection')
+        if verbose:
+            SortOrderEngine.logger.success('Ecomm items grouped by collection')
 
         ###############################################################################################
         ################################# Remove excluded collections #################################
         ###############################################################################################
 
-        SortOrderEngine.logger.info('Removing excluded collections')
-        collections = SortOrderEngine.remove_excluded_collections(collections)
-        SortOrderEngine.logger.success('Excluded collections removed')
+        if verbose:
+            SortOrderEngine.logger.info('COLLECTIONS SORT: Removing excluded collections')
+        collections = SortOrderEngine.remove_excluded_collections(collections, verbose=verbose)
+        if verbose:
+            SortOrderEngine.logger.success('COLLECTIONS SORT: Excluded collections removed')
 
         ###############################################################################################
         ##################################### Process Collections #####################################
@@ -333,16 +350,18 @@ class SortOrderEngine:
 
             return Shopify.Collection.reorder_items(collection_id=collection_id, collection_of_moves=mc)
 
-        SortOrderEngine.logger.info(f'Processing {len(collections_list)} collections')
+        if verbose:
+            SortOrderEngine.logger.info(f'COLLECTIONS SORT: Processing {len(collections_list)} collections')
 
         with concurrent.futures.ThreadPoolExecutor(max_workers=creds.Integrator.max_workers) as executor:
             responses = executor.map(task, collections_list)
 
-        SortOrderEngine.logger.success('Collections processed')
+        if verbose:
+            SortOrderEngine.logger.success('COLLECTIONS SORT:Collections processed')
 
         if not out_of_stock_mode:
             duration = time.time() - start_time
-            SortOrderEngine.logger.info(f'Sort Order: Completed in {duration:.2f} seconds')
+            SortOrderEngine.logger.info(f'COLLECTIONS SORT: : Completed in {duration:.2f} seconds')
             return []
 
         ###############################################################################################
@@ -353,7 +372,7 @@ class SortOrderEngine:
 
         duration = time.time() - start_time
 
-        SortOrderEngine.logger.info(f'Sort Order: Completed in {duration:.2f} seconds')
+        SortOrderEngine.logger.info(f'COLLECTIONS SORT: Completed in {duration:.2f} seconds')
 
         return responses
 

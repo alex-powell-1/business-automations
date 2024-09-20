@@ -13,6 +13,7 @@ from traceback import print_exc as tb
 from setup.utilities import PhoneNumber, local_to_utc
 from datetime import datetime
 from product_tools import products
+import random
 
 import concurrent.futures
 
@@ -68,7 +69,7 @@ class Shopify:
             self.verbose = creds.Integrator.verbose_logging
             self.response = self.execute_query(document, variables, operation_name)
             self.data = self.response['data'] if 'data' in self.response else None
-            self.errors = self.response['errors'] if 'errors' in self.response else None
+            self.errors: list = self.response['errors'] if 'errors' in self.response else []
             self.user_errors = []
             if self.data:
                 for i in self.data:
@@ -218,6 +219,13 @@ class Shopify:
                                 f'Operation Name: {operation_name}\n\nUser Error: {self.user_errors}\n\nVariables: {variables}'
                             )
                 else:
+                    # Errors
+                    for i in self.errors:
+                        if i['message'] == 'Throttled':
+                            sleep(random.randint(20, 50) / 10)
+                            self.errors.remove(i)
+                            return self.__init__(document, variables, operation_name)
+
                     Shopify.error_handler.add_error_v(f'Error: {self.errors}')
                     raise Exception(
                         f'Operation Name: {operation_name}\n\nError: {self.errors}\n\nUser Error: {self.user_errors}\n\nVariables: {variables}'
@@ -1887,12 +1895,15 @@ class Shopify:
 
             return Shopify.Collection.reorder_items(collection_id=collection_id, collection_of_moves=mc, eh=eh)
 
-        def move_all_out_of_stock_to_bottom(eh=ProcessOutErrorHandler):
+        def move_all_out_of_stock_to_bottom(verbose=False, eh=ProcessOutErrorHandler):
             """Move all out of stock items to the bottom of all collections"""
 
             collections = [int(x['id']) for x in Shopify.Collection.get()]
 
-            eh.logger.info(f'Moving all out of stock items to bottom of {len(collections)} collections')
+            if verbose:
+                eh.logger.info(
+                    f'COLLECTIONS SORT: Moving all out of stock items to bottom of {len(collections)} collections'
+                )
 
             responses = []
 
@@ -1926,7 +1937,10 @@ class Shopify:
             with concurrent.futures.ThreadPoolExecutor(max_workers=creds.Integrator.max_workers) as executor:
                 responses = executor.map(task, collections)
 
-            eh.logger.success(f'Moved all out of stock items to bottom of {len(collections)} collections')
+            if verbose:
+                eh.logger.success(
+                    f'COLLECTIONS SORT: Moved all out of stock items to bottom of {len(collections)} collections'
+                )
 
             return responses
 
@@ -2419,13 +2433,14 @@ class Shopify:
 
             class Basic:
                 @staticmethod
-                def create(
+                def create_product_discount(
                     name,
                     amount,
                     min_purchase,
                     code,
                     max_uses,
                     expiration,
+                    all=True,
                     product_variants_to_add=[],
                     product_variants_to_remove=[],
                     products_to_add=[],
@@ -2447,7 +2462,7 @@ class Shopify:
                                 },
                                 'customerGets': {
                                     'items': {
-                                        'all': True,
+                                        'all': all,
                                         'products': {
                                             'productVariantsToAdd': product_variants_to_add,
                                             'productVariantsToRemove': product_variants_to_remove,

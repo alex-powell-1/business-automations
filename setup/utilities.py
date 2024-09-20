@@ -17,14 +17,28 @@ import hashlib
 import hmac
 
 
+def timer(func):
+    def wrapper(*args, eh=ScheduledTasksErrorHandler, operation='', **kwargs):
+        start_time = time.time()
+        result = func(*args, **kwargs)
+        time_taken = time.time() - start_time
+        if operation:
+            operation = f'{operation}: '
+
+        eh.logger.info(f'{operation}Time taken: {time_taken // 60} minutes, {round(time_taken % 60, 2)} seconds.')
+        return result
+
+    return wrapper
+
+
 def convert_path_to_raw(path):
     """Converts a path to a raw string for use in Windows file paths."""
     return r'{}'.format(path.replace('/', '\\'))
 
 
+@timer
 def generate_random_code(length):
     res = ''.join(secrets.choice(string.ascii_uppercase + string.digits) for i in range(length))
-
     return res
 
 
@@ -116,18 +130,6 @@ def get_product_images(eh=ProcessOutErrorHandler, verbose=False):
     if verbose:
         eh.logger.info(f'Found {len(product_images)} images.')
     return product_images
-
-
-def timer(func):
-    """Decorator function to time the execution of a function."""
-
-    def wrapper_function(*args, **kwargs):
-        start_time = time.time()
-        result = func(*args, **kwargs)
-        print(f'{time.time() - start_time} seconds.')
-        return result
-
-    return wrapper_function
 
 
 def convert_to_rfc2822(date: datetime):

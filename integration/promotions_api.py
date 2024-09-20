@@ -324,9 +324,10 @@ class Promotions:
                     if bogo:
                         Database.Shopify.Promotion.BxgyLine.delete(item_no_list=delete_list)
                     elif fixed_price:
-                        Database.Shopify.Promotion.FixLine.delete(
-                            group_cod=self.grp_cod, rul_seq_no=rule.seq_no, item_no_list=delete_list
-                        )
+                        for item in delete_list:
+                            Database.Shopify.Promotion.FixLine.delete(
+                                group_cod=self.grp_cod, rul_seq_no=rule.seq_no, item_no_list=item
+                            )
                     Database.Counterpoint.Product.set_sale_status(items=delete_list, status=False)
 
         def set_sale_status(self, rule: 'Promotions.Promotion.PriceRule'):

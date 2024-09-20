@@ -320,14 +320,14 @@ class Catalog:
 
         if not self.sync_queue:
             if not self.inventory_only:  # don't log this for inventory sync.
-                Catalog.logger.success('No products to sync.')
+                Catalog.logger.success('No products to sync.', origin='CATALOG SYNC: ')
         else:
             queue_length = len(self.sync_queue)
             success_count = 0
             fail_count = {'number': 0, 'items': []}
 
             if not self.inventory_only or self.verbose:
-                Catalog.logger.info(f'Syncing {queue_length} products.')
+                Catalog.logger.info(f'Syncing {queue_length} products.', origin='CATALOG SYNC: ')
 
             def task(target):
                 prod = self.Product(target, last_sync=self.last_sync, inventory_only=self.inventory_only)

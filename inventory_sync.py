@@ -1,4 +1,4 @@
-from integration.shopify_catalog import Catalog
+from integration.catalog_api import Catalog
 from product_tools import inventory_upload
 
 
@@ -15,7 +15,7 @@ class Inventory:
     logger = eh.logger
     error_handler = eh.error_handler
 
-    def __init__(self, verbose=False):
+    def __init__(self):
         self.last_sync = get_last_sync(file_name='./integration/last_sync_inventory.txt')
         self.verbose = creds.Integrator.verbose_logging
         self.catalog = Catalog(last_sync=self.last_sync, inventory_only=True, verbose=self.verbose)
@@ -35,8 +35,7 @@ class Inventory:
 
 
 if __name__ == '__main__':
-    verbose_logging = False
-
+    inventory = Inventory()
     while True:
         now = datetime.now()
         hour = now.hour
@@ -48,10 +47,10 @@ if __name__ == '__main__':
             step = 10
         try:
             # Upload Inventory to file share.
-            inventory_upload.upload_inventory(verbose=verbose_logging, eh=Inventory.eh)
+            inventory_upload.upload_inventory(verbose=inventory.verbose, eh=Inventory.eh)
 
             for i in range(step):
-                inventory = Inventory(verbose=verbose_logging)
+                inventory = Inventory()
                 inventory.sync()
                 sleep(delay)
 
