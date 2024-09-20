@@ -1,6 +1,10 @@
 setup/creds.py
 config.json
 ngrok.exe
+ngrok/ngrok.exe
+ngrok/ngrok.yml
+integration/last_sync_integrator.txt
+integration/last_sync_inventory.txt
 sandbox.py
 .vscode/
 .ruff_cache/
