@@ -568,7 +568,7 @@ def get_items_with_no_sales_history():
     return result
 
 
-def get_new_items(start_date):
+def get_new_items(start_date) -> list[list[str | int]]:
     query = f"""
     SELECT mw.PRODUCT_ID, mw.ITEM_NO, MAX(lin.EXT_COST)
     FROM PO_RECVR_HIST_LIN lin
@@ -592,7 +592,7 @@ def get_new_items(start_date):
         return []
 
 
-def get_all_new_items(start_date):
+def get_all_new_items(start_date) -> list[list[str | int]]:
     query = f"""
     SELECT mw.PRODUCT_ID, mw.ITEM_NO, MAX(lin.EXT_COST)
     FROM PO_RECVR_HIST_LIN lin
@@ -615,7 +615,10 @@ def get_all_new_items(start_date):
         return []
 
 
-def get_all_new_new_items(start_date):
+def get_all_new_new_items(start_date) -> list[list[str | int]]:
+    """Returns a list of all new items that did not previously exist in Counterpoint."""
+    """Return: [ [ item_no, product_id ] ]"""
+
     query = f"""
     SELECT mw.PRODUCT_ID, mw.ITEM_NO, MAX(lin.EXT_COST)
     FROM PO_RECVR_HIST_LIN lin
@@ -641,7 +644,10 @@ def get_all_new_new_items(start_date):
         return []
 
 
-def get_all_back_in_stock_items(start_date):
+def get_all_back_in_stock_items(start_date) -> list[list[str | int]]:
+    """Returns a list of all back in stock items that DID previously exist in Counterpoint."""
+    """Return: [ [ item_no, product_id ] ]"""
+
     query = f"""
     SELECT mw.PRODUCT_ID, mw.ITEM_NO, MAX(lin.EXT_COST)
     FROM PO_RECVR_HIST_LIN lin
@@ -667,11 +673,11 @@ def get_all_back_in_stock_items(start_date):
         return []
 
 
-def get_25_new_new_items(start_date):
+def get_25_new_new_items(start_date) -> list[list[str | int]]:
     return get_all_new_new_items(start_date)[:25]
 
 
-def get_25_back_in_stock_items(start_date):
+def get_25_back_in_stock_items(start_date) -> list[list[str | int]]:
     return get_all_back_in_stock_items(start_date)[:25]
 
 
