@@ -842,7 +842,6 @@ class Shopify:
                     for meta in metafields:
                         if meta['node']['namespace'] == 'customer' and meta['node']['key'] == 'number':
                             meta_cust_id = meta['node']['id'].split('/')[-1]
-                            print(f'Meta Cust ID: {meta_cust_id}')
                         elif meta['node']['namespace'] == 'customer' and meta['node']['key'] == 'category':
                             meta_category = meta['node']['id'].split('/')[-1]
                             print(f'Meta Category: {meta_category}')
@@ -863,7 +862,6 @@ class Shopify:
 
                     loyalty_id = Shopify.Customer.StoreCredit.add_store_credit(shop_cust_id, 1)
                     Shopify.Customer.StoreCredit.remove_store_credit(shop_cust_id, 1)
-                    print(f'Loyalty ID: {loyalty_id}')
 
                     cust_number = lookup_customer(email, phone)
                     if cust_number:
@@ -1705,7 +1703,7 @@ class Shopify:
                 return url_list
 
         class SEO:
-            def get(product_id: int):
+            def get(product_id: int, verbose=False):
                 if verbose:
                     Shopify.logger.info(f'Getting SEO for product {product_id}')
                 response = Shopify.Query(
@@ -1758,7 +1756,6 @@ class Shopify:
                     document=Shopify.Collection.queries,
                     variables={'id': f'{Shopify.Collection.prefix}{collection_id}'},
                     operation_name='collection',
-                    verbose=False,
                 )
                 return response.data
 
@@ -1890,7 +1887,7 @@ class Shopify:
             count = Shopify.Collection.get_product_count(collection_id=collection_id)
             mc = MovesCollection()
             for i, product_id in enumerate(product_id_list):
-                move = MoveInput(item_id=product_id, position=count - i)
+                move = MoveInput(item_id=product_id, position=count - (i + 1))
                 mc.add(move)
 
             return Shopify.Collection.reorder_items(collection_id=collection_id, collection_of_moves=mc, eh=eh)
@@ -1974,7 +1971,7 @@ class Shopify:
                             self.key = i['value']
                     self.public_url = self.resourceUrl + self.key
 
-            def create(file_list, variables: dict) -> list:
+            def create(file_list, variables: dict, verbose, eh=ProcessOutErrorHandler) -> list:
                 """Create staged media upload targets and upload files to google cloud storage. Return list of URLs"""
                 response = Shopify.Query(
                     document=Shopify.Collection.Files.queries,
@@ -1997,7 +1994,10 @@ class Shopify:
                     with open(file_path, 'rb') as f:
                         response = requests.post(url=file.url, files={'file': f}, data=form_data)
                         if 200 <= response.status_code < 300:
-                            print(f'File {file_path.name} uploaded successfully. Code: {response.status_code}')
+                            if verbose:
+                                eh.logger.success(
+                                    f'File {file_path.name} uploaded successfully. Code: {response.status_code}'
+                                )
                             url_list.append({'file_path': file_list[i], 'url': file.public_url})
                             i += 1
                         else:
@@ -2568,5 +2568,5 @@ def refresh_order(tkt_no):
 
 
 if __name__ == '__main__':
-    verbose = True
-    Shopify.MetafieldDefinition.sync()
+    Shopify.Collection.move_all_out_of_stock_to_bottom(verbose=True)
+    # print(Shopify.Collection.get(collection_id=321536983207))

@@ -1010,36 +1010,85 @@ class Database:
                     eh.error_handler.add_error_v(error=error)
                     raise Exception(error)
 
-            def add_to_new(sku_list: list, eh=ProcessOutErrorHandler):
+            def add_to_new(sku_list: list, verbose=False, eh=ProcessOutErrorHandler):
                 query = f"""
                 UPDATE IM_ITEM
-                SET ECOMM_NEW = 'Y'
+                SET ECOMM_NEW = 'Y', LST_MAINT_DT = GETDATE()
                 WHERE ITEM_NO in ({','.join([f"'{x}'" for x in sku_list])})
+                AND ECOMM_NEW = 'N'
                 """
                 response = Database.query(query)
 
                 if response['code'] == 200:
-                    eh.logger.success(f'Products: {sku_list} updated to NEW.')
+                    if verbose:
+                        eh.logger.success(f'Products: {sku_list} updated to NEW.')
                 elif response['code'] == 201:
-                    eh.logger.warn(f'Products: {sku_list} not found.')
+                    if verbose:
+                        eh.logger.warn(f'Products: {sku_list} not found.')
                 else:
                     error = f'Error updating products {sku_list}. \n Query: {query}\nResponse: {response}'
                     eh.error_handler.add_error_v(error=error)
                     raise Exception(error)
 
-            def add_to_back_in_stock(sku_list: list, eh=ProcessOutErrorHandler):
+            def remove_from_new(sku_list: list, verbose=False, eh=ProcessOutErrorHandler):
+                """Takes in a list of new items and sets opposing items to 'N'"""
                 query = f"""
                 UPDATE IM_ITEM
-                SET IS_BACK_IN_STOCK = 'Y'
+                SET ECOMM_NEW = 'N', LST_MAINT_DT = GETDATE()
+                WHERE ITEM_NO not in ({','.join([f"'{x}'" for x in sku_list])}) AND
+                ECOMM_NEW = 'Y'
+                """
+                response = Database.query(query)
+
+                if response['code'] == 200:
+                    if verbose:
+                        eh.logger.success(f'Products: {sku_list} updated to NEW.')
+                elif response['code'] == 201:
+                    if verbose:
+                        eh.logger.warn(f'Products: {sku_list} not found.')
+                else:
+                    error = f'Error updating products {sku_list}. \n Query: {query}\nResponse: {response}'
+                    eh.error_handler.add_error_v(error=error)
+                    raise Exception(error)
+
+            def add_to_back_in_stock(sku_list: list, verbose=False, eh=ProcessOutErrorHandler):
+                query = f"""
+                UPDATE IM_ITEM
+                SET IS_BACK_IN_STOCK = 'Y', LST_MAINT_DT = GETDATE()
                 WHERE ITEM_NO in ({','.join([f"'{x}'" for x in sku_list])})
+                AND IS_BACK_IN_STOCK = 'N'
+
                 """
 
                 response = Database.query(query)
 
                 if response['code'] == 200:
-                    eh.logger.success(f'Products: {sku_list} updated to BACK IN STOCK.')
+                    if verbose:
+                        eh.logger.success(f'Products: {sku_list} updated to BACK IN STOCK.')
                 elif response['code'] == 201:
-                    eh.logger.warn(f'Products: {sku_list} not found.')
+                    if verbose:
+                        eh.logger.warn(f'Products: {sku_list} not found.')
+                else:
+                    error = f'Error updating products {sku_list}. \n Query: {query}\nResponse: {response}'
+                    eh.error_handler.add_error_v(error=error)
+                    raise Exception(error)
+
+            def remove_from_back_in_stock(sku_list: list, verbose=False, eh=ProcessOutErrorHandler):
+                query = f"""
+                UPDATE IM_ITEM
+                SET IS_BACK_IN_STOCK = 'N', LST_MAINT_DT = GETDATE()
+                WHERE ITEM_NO not in ({','.join([f"'{x}'" for x in sku_list])}) AND
+                IS_BACK_IN_STOCK = 'Y'
+                """
+
+                response = Database.query(query)
+
+                if response['code'] == 200:
+                    if verbose:
+                        eh.logger.success(f'Products: {sku_list} updated to BACK IN STOCK.')
+                elif response['code'] == 201:
+                    if verbose:
+                        eh.logger.warn(f'Products: {sku_list} not found.')
                 else:
                     error = f'Error updating products {sku_list}. \n Query: {query}\nResponse: {response}'
                     eh.error_handler.add_error_v(error=error)

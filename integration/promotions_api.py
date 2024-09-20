@@ -326,7 +326,7 @@ class Promotions:
                     elif fixed_price:
                         for item in delete_list:
                             Database.Shopify.Promotion.FixLine.delete(
-                                group_cod=self.grp_cod, rul_seq_no=rule.seq_no, item_no_list=item
+                                group_cod=self.grp_cod, rul_seq_no=rule.seq_no, item_no=item
                             )
                     Database.Counterpoint.Product.set_sale_status(items=delete_list, status=False)
 
@@ -579,7 +579,7 @@ class Promotions:
                         amount = self.get_discount_amount()
                         message = f'${amount} OFF'
 
-                    elif price_method == 'F' and len(self.items) == 1:
+                    elif price_method == 'F':
                         # Fixed Price
                         # If there is one item affected by this rule, then create a custom badge for that item.
                         # Usually this is the case for a fixed price promotion. If there are multiple items, then
@@ -630,4 +630,19 @@ class Promotions:
 if __name__ == '__main__':
     promo = Promotions(last_sync=datetime(2024, 9, 17, 17))
     for p in promo.promotions:
-        p.process()
+        if p.grp_cod == 'ENDMUMS':
+            for x in p.price_rules:
+                print(x.badge_text)
+                print(x.get_discount_amount())
+                print(x.get_badge_text())
+                print(x.is_bogo_twoofer())
+                print(x.get_shopify_items(x))
+                print(x.mw_bogo_items)
+                print(x.mw_fixed_price_items)
+                print(x.items)
+                print(x.shopify_id)
+                print(x.is_enabled_cp)
+                print(x.is_enabled_mw)
+                print(x)
+                print('\n\n\n')
+            p.process()

@@ -19,6 +19,7 @@ from traceback import format_exc as tb
 
 class Integrator:
     def __init__(self):
+        self.dates = date_presets.Dates()
         self.last_sync: datetime = get_last_sync(file_name='./integration/last_sync_integrator.txt')
         self.module = str(sys.modules[__name__]).split('\\')[-1].split('.')[0].title()
         self.eh = ProcessOutErrorHandler
@@ -31,7 +32,9 @@ class Integrator:
         self.verbose: bool = creds.Integrator.verbose_logging
         self.customers = Customers(last_sync=self.last_sync, verbose=self.verbose, enabled=self.customer_sync)
         self.promotions = Promotions(last_sync=self.last_sync, verbose=self.verbose, enabled=self.promotions_sync)
-        self.catalog = Catalog(last_sync=self.last_sync, verbose=self.verbose, enabled=self.catalog_sync)
+        self.catalog = Catalog(
+            dates=self.dates, last_sync=self.last_sync, verbose=self.verbose, enabled=self.catalog_sync
+        )
 
     def __str__(self):
         result = creds.Integrator.header + f'\nLast Sync: {self.last_sync}\n----------------\n'
@@ -221,13 +224,14 @@ if __name__ == '__main__':
                         try:
                             integrator = Integrator()  # Reinitialize the integrator each time
                             integrator.sync(eh=integrator.eh, operation=integrator.module)
-                            time.sleep(delay)
 
                         except Exception as e:
                             integrator.error_handler.add_error_v(
                                 error=f'Error: {e}', origin=integrator.module, traceback=tb()
                             )
                             time.sleep(60)
+                        else:
+                            time.sleep(delay)
 
                 except KeyboardInterrupt:
                     sys.exit(0)
@@ -243,3 +247,5 @@ if __name__ == '__main__':
             integrator.sync(eh=integrator.eh, operation=integrator.module)
         else:
             sys.exit(0)
+
+    # SortOrderEngine.sort(verbose=True, print_mode=True)

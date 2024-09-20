@@ -332,7 +332,11 @@ class SortOrderEngine:
         ###############################################################################################
 
         if print_mode:
-            print(collections)
+            for k, v in collections.items():
+                print(k)
+                for item in v:
+                    print(item['item_no'])
+                print('\n')
             return collections
 
         collections_list = [(collection_id, items) for collection_id, items in collections.items()]
@@ -368,7 +372,7 @@ class SortOrderEngine:
         #################### Move all out of stock items to bottom of collections. ####################
         ###############################################################################################
 
-        responses = Shopify.Collection.move_all_out_of_stock_to_bottom(eh=SortOrderEngine.eh)
+        responses = Shopify.Collection.move_all_out_of_stock_to_bottom(verbose=verbose, eh=SortOrderEngine.eh)
 
         duration = time.time() - start_time
 

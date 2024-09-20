@@ -630,7 +630,7 @@ def get_all_new_new_items(start_date) -> list[list[str | int]]:
     on mw.ITEM_NO = lin.ITEM_NO
     WHERE lin.RECVR_DAT > '{start_date}' and (inv.QTY_AVAIL - item.PROF_NO_1) > 0
     AND item.IS_ECOMM_ITEM = 'Y'
-    AND item.ITEM_NO in (
+    AND item.ITEM_NO not in (
         SELECT ITEM_NO FROM PO_RECVR_HIST_LIN WHERE RECVR_DAT < '{start_date}'
     )
     GROUP BY mw.PRODUCT_ID, mw.ITEM_NO
@@ -659,7 +659,7 @@ def get_all_back_in_stock_items(start_date) -> list[list[str | int]]:
     on mw.ITEM_NO = lin.ITEM_NO
     WHERE lin.RECVR_DAT > '{start_date}' and (inv.QTY_AVAIL - item.PROF_NO_1) > 0
     AND item.IS_ECOMM_ITEM = 'Y'
-    AND item.ITEM_NO not in (
+    AND item.ITEM_NO in (
         SELECT ITEM_NO FROM PO_RECVR_HIST_LIN WHERE RECVR_DAT < '{start_date}'
     )
     GROUP BY mw.PRODUCT_ID, mw.ITEM_NO
@@ -968,5 +968,4 @@ def get_binding_id_issues():
 
 
 if __name__ == '__main__':
-    test = Product('ANTGHF2')
-    print(test)
+    print(get_all_back_in_stock_items(date_presets.one_year_ago))

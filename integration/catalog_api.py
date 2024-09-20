@@ -2,7 +2,7 @@ import os
 import re
 import json
 from datetime import datetime
-
+from setup.date_presets import Dates
 import time
 import requests
 from integration.shopify_api import Shopify
@@ -15,7 +15,7 @@ from setup.creds import Table
 from database import Database as db
 from setup.utilities import get_product_images, convert_to_utc, parse_custom_url, get_filesize
 from concurrent.futures import ThreadPoolExecutor
-
+from product_tools.products import get_all_back_in_stock_items, get_all_new_new_items
 from setup.error_handler import ProcessOutErrorHandler
 
 from traceback import format_exc as tb
@@ -30,6 +30,7 @@ class Catalog:
 
     def __init__(
         self,
+        dates,
         last_sync=datetime(1970, 1, 1),
         inventory_only=False,
         verbose=False,
@@ -37,6 +38,7 @@ class Catalog:
         test_queue=None,
         enabled=True,
     ):
+        self.dates: Dates = dates
         self.last_sync = last_sync
         self.inventory_only = inventory_only
         self.verbose = verbose
@@ -47,6 +49,10 @@ class Catalog:
 
         self.cp_items = []
         self.mw_items = []
+        self.new_items = get_all_new_new_items(start_date=self.dates.one_month_ago)
+        self.back_in_stock_items = get_all_back_in_stock_items(start_date=self.dates.one_month_ago)
+        self.set_new_items()
+        self.set_back_in_stock_items()
         self.product_images = []
         self.mw_image_list = []
         self.product_videos = []
@@ -305,6 +311,20 @@ class Catalog:
 
         process_images()
         process_videos()
+
+    def set_new_items(self):
+        """Sets new items to the sync queue."""
+        if self.new_items:
+            new_items = [x[0] for x in self.new_items]
+            Database.Counterpoint.Product.add_to_new(new_items)
+            Database.Counterpoint.Product.remove_from_new(new_items)
+
+    def set_back_in_stock_items(self):
+        """Sets back in stock items to the sync queue."""
+        if self.back_in_stock_items:
+            back_in_stock_items = [x[0] for x in self.back_in_stock_items]
+            Database.Counterpoint.Product.add_to_back_in_stock(back_in_stock_items)
+            Database.Counterpoint.Product.remove_from_back_in_stock(back_in_stock_items)
 
     def sync(self, initial=False):
         """Syncs the catalog with Shopify. This will update products, categories, and media."""
@@ -669,7 +689,7 @@ class Catalog:
 
             if file_list:
                 uploaded_files = Shopify.Collection.Files.create(
-                    variables=stagedUploadsCreateVariables, file_list=file_list
+                    variables=stagedUploadsCreateVariables, file_list=file_list, verbose=self.verbose
                 )
                 for file in uploaded_files:
                     for category in queue:
