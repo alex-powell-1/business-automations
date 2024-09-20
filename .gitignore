@@ -1,4 +1,5 @@
 setup/creds.py
+config.json
 sandbox.py
 .vscode/
 .ruff_cache/
