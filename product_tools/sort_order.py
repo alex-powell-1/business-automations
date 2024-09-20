@@ -118,6 +118,8 @@ class SortOrderEngine:
 
         featured_items = []
 
+        # Test Comment
+
         try:
             query = """
             SELECT ITEM_NO 
