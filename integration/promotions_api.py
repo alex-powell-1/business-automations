@@ -470,7 +470,8 @@ class Promotions:
                 self.mw_fixed_price_items: list[str] = Database.Shopify.Promotion.FixLine.get(
                     group_cod=self.grp_cod, rul_seq_no=self.seq_no
                 )
-                self.badge_text = self.get_badge_text()
+                if self.items:
+                    self.badge_text = self.get_badge_text()
 
             def __str__(self) -> str:
                 result = f'\tRule Sequence Number: {self.seq_no}\n'
