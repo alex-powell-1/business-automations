@@ -317,6 +317,7 @@ class Database:
                 points=None,
                 message=None,
                 media=None,
+                eh=ProcessOutErrorHandler,
             ):
                 self.to_phone = to_phone
                 self.from_phone = from_phone or creds.Twilio.phone_number
@@ -335,6 +336,7 @@ class Database:
                 self.response_text: str = None  # Twilio message error text
                 self.count = None
                 self.test_mode = False
+                self.eh = eh
 
             def __str__(self):
                 return f'Customer {self.cust_no}: {self.name} - {self.phone}'
@@ -380,14 +382,14 @@ class Database:
                 if response['code'] == 200:
                     if verbose:
                         if direction == 'OUTBOUND':
-                            Database.logger.success(f'SMS sent to {to_phone} added to Database.')
+                            self.eh.logger.success(f'SMS sent to {to_phone} added to Database.')
                         else:
-                            Database.logger.success(f'SMS received from {from_phone} added to Database.')
+                            self.eh.tabase.logger.success(f'SMS received from {from_phone} added to Database.')
                 else:
                     error = (
                         f'Error adding SMS sent to {to_phone} to Middleware. \nQuery: {query}\nResponse: {response}'
                     )
-                    Database.error_handler.add_error_v(error=error, origin='insert_sms')
+                    self.eh.error_handler.add_error_v(error=error, origin='insert_sms')
 
         @staticmethod
         def get(cust_no=None):
@@ -417,6 +419,7 @@ class Database:
             error_message,
             campaign=None,
             username=None,
+            eh=ProcessOutErrorHandler,
         ):
             body = Database.sql_scrub(body)
             body = body[:1000]  # 1000 char limit
@@ -442,15 +445,15 @@ class Database:
             response = Database.query(query)
             if response['code'] == 200:
                 if direction == 'OUTBOUND':
-                    Database.logger.success(f'SMS sent to {to_phone} added to Database.')
+                    eh.logger.success(f'SMS sent to {to_phone} added to Database.')
                 else:
-                    Database.logger.success(f'SMS received from {from_phone} added to Database.')
+                    eh.logger.success(f'SMS received from {from_phone} added to Database.')
             else:
                 error = f'Error adding SMS sent to {to_phone} to Middleware. \nQuery: {query}\nResponse: {response}'
-                Database.error_handler.add_error_v(error=error, origin='insert_sms')
+                eh.error_handler.add_error_v(error=error, origin='insert_sms')
 
         @staticmethod
-        def move_phone_1_to_landline(origin, campaign, cust_no, name, category, phone):
+        def move_phone_1_to_landline(origin, campaign, cust_no, name, category, phone, eh=ProcessOutErrorHandler):
             cp_phone = PhoneNumber(phone).to_cp()
             move_landline_query = f"""
                 UPDATE AR_CUST
@@ -467,13 +470,13 @@ class Database:
 
                 response = Database.query(query)
                 if response['code'] != 200:
-                    Database.error_handler.add_error_v(f'Error moving {phone} to landline')
+                    eh.error_handler.add_error_v(f'Error moving {phone} to landline')
 
             else:
-                Database.error_handler.add_error_v(f'Error moving {phone} to landline')
+                eh.error_handler.add_error_v(f'Error moving {phone} to landline')
 
         @staticmethod
-        def subscribe(origin, campaign, cust_no, name, category, phone):
+        def subscribe(origin, campaign, cust_no, name, category, phone, eh=ProcessOutErrorHandler):
             phone = PhoneNumber(phone).to_cp()
 
             query = f"""
@@ -489,13 +492,13 @@ class Database:
                 'Subscribe', 'SET {creds.sms_subscribe_status} = Y')"""
                 response = Database.query(query)
                 if response['code'] != 200:
-                    Database.error_handler.add_error_v(f'Error subscribing {phone} to SMS')
+                    eh.error_handler.add_error_v(f'Error subscribing {phone} to SMS')
 
             else:
-                Database.error_handler.add_error_v(f'Error subscribing {phone} to SMS')
+                eh.error_handler.add_error_v(f'Error subscribing {phone} to SMS')
 
         @staticmethod
-        def unsubscribe(origin, campaign, cust_no, name, category, phone):
+        def unsubscribe(origin, campaign, cust_no, name, category, phone, eh=ProcessOutErrorHandler):
             phone = PhoneNumber(phone).to_cp()
             query = f"""
             UPDATE AR_CUST
@@ -510,10 +513,10 @@ class Database:
                 'Unsubscribe', 'SET {creds.sms_subscribe_status} = N')"""
                 response = Database.query(query)
                 if response['code'] != 200:
-                    Database.error_handler.add_error_v(f'Error unsubscribing {phone} from SMS')
+                    eh.error_handler.add_error_v(f'Error unsubscribing {phone} from SMS')
 
             else:
-                Database.error_handler.add_error_v(f'Error unsubscribing {phone} from SMS')
+                eh.error_handler.add_error_v(f'Error unsubscribing {phone} from SMS')
 
     class StockNotification:
         def has_info(item_no, email=None, phone=None):
@@ -591,7 +594,7 @@ class Database:
                     except:
                         return False
 
-        def insert(email, date=None):
+        def insert(email, date=None, eh=ProcessOutErrorHandler):
             """Inserts an email into the newsletter subscriber table."""
             if not date:
                 query = f"""
@@ -617,7 +620,7 @@ class Database:
             response = Database.query(query)
             if response['code'] == 200:
                 # Email was found in Counterpoint and updated to unsubscribed
-                Database.logger.success(f'Unsubscribed {email} from newsletter.')
+                eh.logger.success(f'Unsubscribed {email} from newsletter.')
             elif response['code'] == 201:
                 # Email not found in Counterpoint. Check if email is in newsletter table.
                 query = f"""
@@ -627,16 +630,16 @@ class Database:
                 """
                 response = Database.query(query)
                 if response['code'] == 200:
-                    Database.logger.success(f'Unsubscribed {email} from newsletter.')
+                    eh.logger.success(f'Unsubscribed {email} from newsletter.')
                 elif response['code'] == 201:
-                    Database.logger.warn(f'{email} not found in newsletter table.')
+                    eh.logger.warn(f'{email} not found in newsletter table.')
                 else:
                     error = f'Error unsubscribing {email} from newsletter. \n Query: {query}\nResponse: {response}'
-                    Database.error_handler.add_error_v(error=error)
+                    eh.error_handler.add_error_v(error=error)
                     raise Exception(error)
             else:
                 error = f'Error unsubscribing {email} from newsletter. \n Query: {query}\nResponse: {response}'
-                Database.error_handler.add_error_v(error=error)
+                eh.error_handler.add_error_v(error=error)
                 raise Exception(error)
 
             return response
@@ -657,22 +660,24 @@ class Database:
 
             if response['code'] == 200:
                 # Email was found in Counterpoint and updated to subscribed
-                Database.logger.success(f'Subscribed {email} to newsletter.')
+                eh.logger.success(f'Subscribed {email} to newsletter.')
 
             elif response['code'] == 201:
                 # Email not found in Counterpoint.
                 message = f'{email} not found in newsletter table.'
-                Database.logger.warn(message)
+                eh.logger.warn(message)
                 if cust_no:
                     # If cust_no is provided, add email to customer record.
                     response = Database.Counterpoint.Customer.add_email(email, cust_no)
                     if response['code'] == 200:
-                        Database.logger.success(f'Subscribed {email} to newsletter.')
+                        eh.logger.success(f'Subscribed {email} to newsletter.')
                 else:
-                    response = Database.Newsletter.insert(email)
+                    response = Database.Newsletter.insert(email, eh=eh)
+                    if response['code'] == 200:
+                        eh.logger.success(f'Subscribed {email} to newsletter.')
             else:
                 error = f'Error subscribing {email} to newsletter. \n Query: {query}\nResponse: {response}'
-                Database.error_handler.add_error_v(error=error)
+                eh.error_handler.add_error_v(error=error)
                 raise Exception(error)
 
             return response
