@@ -1,0 +1,7 @@
+version: "2"
+authtoken: ""
+tunnels:
+  httpbin:
+    proto: http
+    addr: ""
+    domain: ""
