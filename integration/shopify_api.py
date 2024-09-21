@@ -66,10 +66,11 @@ class Shopify:
 
     class Query:
         def __init__(self, document, variables=None, operation_name=None):
-            self.verbose = creds.Integrator.verbose_logging
+            self.verbose = True  # creds.Integrator.verbose_logging
             self.response = self.execute_query(document, variables, operation_name)
             self.data = self.response['data'] if 'data' in self.response else None
             self.errors: list = self.response['errors'] if 'errors' in self.response else []
+            print(f'Errors: {self.errors}')
             self.user_errors = []
             if self.data:
                 for i in self.data:
@@ -2486,6 +2487,7 @@ class Shopify:
                             variables=variables,
                             operation_name='discountCodeBasicCreate',
                         )
+                        print('hello')
                         id = response.data['discountCodeBasicCreate']['codeDiscountNode']['id']
                         discount_id = id.split('/')[-1]
 
@@ -2494,6 +2496,69 @@ class Shopify:
                     except:
                         eh.add_error_v(f'Error creating discount: {variables}', origin='shopify_api.py')
                         return None
+
+                @staticmethod
+                def create_order_discount(
+                    name,
+                    min_purchase,
+                    code,
+                    expiration=None,
+                    retail=True,
+                    wholesale=False,
+                    amount: int = None,
+                    percentage: float = None,  # 0.00 - 1.00
+                    once_per_customer=False,
+                    max_uses: int = None,
+                    combines_with_orders=False,
+                    combines_with_products=True,
+                    combines_with_shipping=False,
+                    enabled=True,
+                    eh=None,
+                ):
+                    if eh is None:
+                        eh = Shopify.error_handler
+
+                    variables = {
+                        'basicCodeDiscount': {
+                            'title': name,
+                            'code': code,
+                            'customerGets': {
+                                'items': {'all': True},
+                                'value': {'discountAmount': {'amount': amount, 'appliesOnEachItem': False}},
+                            },
+                            'minimumRequirement': {'subtotal': {'greaterThanOrEqualToSubtotal': min_purchase}},
+                            'startsAt': local_to_utc(datetime.now()).strftime('%Y-%m-%dT%H:%M:%SZ'),
+                            'endsAt': local_to_utc(expiration).strftime('%Y-%m-%dT%H:%M:%SZ'),
+                            'appliesOncePerCustomer': once_per_customer,
+                            'customerSelection': {'all': False, 'customerSegments': {'add': []}},
+                            'combinesWith': {
+                                'orderDiscounts': combines_with_orders,
+                                'productDiscounts': combines_with_products,
+                                'shippingDiscounts': combines_with_shipping,
+                            },
+                        }
+                    }
+                    if retail:
+                        variables['basicCodeDiscount']['customerSelection']['customerSegments']['add'].append(
+                            'gid://shopify/Segment/485521260711'
+                        )
+                    if wholesale:
+                        variables['basicCodeDiscount']['customerSelection']['customerSegments']['add'].append(
+                            'gid://shopify/Segment/485521227943'
+                        )
+                    if max_uses:
+                        variables['basicCodeDiscount']['usageLimit'] = max_uses
+
+                    response = Shopify.Query(
+                        document=Shopify.Discount.queries,
+                        variables=variables,
+                        operation_name='discountCodeBasicCreate',
+                    )
+                    id = response.data['discountCodeBasicCreate']['codeDiscountNode']['id']
+                    discount_id = id.split('/')[-1]
+
+                    eh.logger.success(f'Discount ID: {discount_id} created on Shopify')
+                    return discount_id
 
         class Automatic:
             # Discounts that are automatically applied
@@ -2554,6 +2619,20 @@ class Shopify:
                     Shopify.logger.success(f'Promotion ID: {promotion_id} updated on Shopify')
                     return response.data
 
+    class Segment:
+        queries = './integration/queries/segments.graphql'
+
+        def get(segment_id: int = None):
+            if segment_id:
+                response = Shopify.Query(
+                    document=Shopify.Segment.queries,
+                    variables={'id': f'gid://shopify/Segment/{segment_id}'},
+                    operation_name='segment',
+                )
+                return response.data
+            response = Shopify.Query(document=Shopify.Segment.queries, operation_name='segment')
+            return response.data
+
 
 def refresh_order(tkt_no):
     """Delete order from PS_DOC_HDR and associated tables and rebuild from Shopify Data"""
@@ -2568,5 +2647,17 @@ def refresh_order(tkt_no):
 
 
 if __name__ == '__main__':
-    Shopify.Collection.move_all_out_of_stock_to_bottom(verbose=True)
-    # print(Shopify.Collection.get(collection_id=321536983207))
+    # print(Shopify.Discount.get(1169486577831))
+    from datetime import datetime, timedelta
+
+    Shopify.Discount.Code.Basic.create_order_discount(
+        name='TESTING',
+        min_purchase=100,
+        code='TESTING',
+        expiration=datetime.now() + timedelta(days=1),
+        amount=10,
+        enabled=True,
+        retail=True,
+        wholesale=True,
+        once_per_customer=True,
+    )
