@@ -548,7 +548,11 @@ class Promotions:
                 if fixed_price:
                     retail_price = None
                     response = Database.query(f"SELECT PRC_1 FROM IM_ITEM WHERE ITEM_NO = '{self.items[0]}'")
-                    retail_price = response[0][0] if response else None
+                    try:
+                        retail_price = response[0][0]
+                    except:
+                        retail_price = None
+                    
                     if retail_price:
                         if self.price_breaks[-1].amt_or_pct:
                             fixed_price = self.price_breaks[-1].amt_or_pct
