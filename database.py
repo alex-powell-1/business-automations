@@ -620,7 +620,9 @@ class Database:
             response = Database.query(query)
             if response['code'] == 200:
                 # Email was found in Counterpoint and updated to unsubscribed
-                eh.logger.success(f'Unsubscribed {email} from newsletter.')
+                eh.logger.success(
+                    f'Unsubscribed {email} from newsletter.', origin='Database.Newsletter.unsubscribe'
+                )
             elif response['code'] == 201:
                 # Email not found in Counterpoint. Check if email is in newsletter table.
                 query = f"""
@@ -630,9 +632,13 @@ class Database:
                 """
                 response = Database.query(query)
                 if response['code'] == 200:
-                    eh.logger.success(f'Unsubscribed {email} from newsletter.')
+                    eh.logger.success(
+                        f'Unsubscribed {email} from newsletter.', origin='Database.Newsletter.unsubscribe'
+                    )
                 elif response['code'] == 201:
-                    eh.logger.warn(f'{email} not found in newsletter table.')
+                    eh.logger.warn(
+                        f'{email} not found in newsletter table.', origin='Database.Newsletter.unsubscribe'
+                    )
                 else:
                     error = f'Error unsubscribing {email} from newsletter. \n Query: {query}\nResponse: {response}'
                     eh.error_handler.add_error_v(error=error)
@@ -664,17 +670,19 @@ class Database:
 
             elif response['code'] == 201:
                 # Email not found in Counterpoint.
-                message = f'{email} not found in newsletter table.'
-                eh.logger.warn(message)
                 if cust_no:
                     # If cust_no is provided, add email to customer record.
                     response = Database.Counterpoint.Customer.add_email(email, cust_no)
                     if response['code'] == 200:
-                        eh.logger.success(f'Subscribed {email} to newsletter.')
+                        eh.logger.success(
+                            f'Subscribed {email} to newsletter.', origin='Database.Newsletter.subscribe'
+                        )
                 else:
                     response = Database.Newsletter.insert(email, eh=eh)
                     if response['code'] == 200:
-                        eh.logger.success(f'Subscribed {email} to newsletter.')
+                        eh.logger.success(
+                            f'Subscribed {email} to newsletter.', origin='Database.Newsletter.subscribe'
+                        )
             else:
                 error = f'Error subscribing {email} to newsletter. \n Query: {query}\nResponse: {response}'
                 eh.error_handler.add_error_v(error=error)
@@ -1590,7 +1598,7 @@ class Database:
                 return result
 
             @staticmethod
-            def add_email(cust_no, email, field='EMAIL_ADRS_1', subscribe=True):
+            def add_email(cust_no, email, field='EMAIL_ADRS_1', subscribe=True, eh=ProcessInErrorHandler):
                 query = f"""
                 UPDATE {Table.CP.Customers.table}
                 SET {field} = '{email}'
@@ -1598,13 +1606,13 @@ class Database:
                 """
                 response = Database.query(query)
                 if response['code'] == 200:
-                    Database.logger.success(f'Customer {cust_no} email updated to {email}.')
+                    eh.logger.success(f'Customer {cust_no} email updated to {email}.', origin='add_email')
                     if subscribe:
                         Database.Newsletter.subscribe(email)
                 elif response['code'] == 201:
-                    Database.logger.warn(f'No rows affected for {cust_no}.')
+                    eh.logger.warn(f'No rows affected for {cust_no}.', origin='add_email')
                 else:
-                    Database.error_handler.add_error_v(
+                    eh.error_handler.add_error_v(
                         error=f'Error updating customer {cust_no} email.\n\nQuery: {query}\n\nResponse: {response}',
                         origin='add_email',
                     )
