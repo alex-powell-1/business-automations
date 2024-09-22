@@ -9,6 +9,7 @@ from setup import utilities
 from datetime import datetime
 from reporting import product_reports
 from database import Database
+from setup.utilities import timer
 
 from setup.admin_report_html import boiler_plate, css, body_start, body_end
 

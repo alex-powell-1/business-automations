@@ -27,7 +27,6 @@ class ScheduledTasks:
         self.logger = self.eh.logger
         self.verbose = False
 
-    @timer
     def generate_reports(self):
         """Generate and send reports to staff"""
         # ADMINISTRATIVE REPORT - for administrative team and management
@@ -66,7 +65,6 @@ class ScheduledTasks:
                     except Exception as err:
                         self.error_handler.add_error_v(error=err, origin='Lead Notification Email')
 
-    @timer
     def twice_per_hour_tasks(self):
         if self.dates.minute == 0 or self.dates.minute == 30:
             # NETWORK CONNECTIVITY - Check server for internet connection. Restart if not connected.
@@ -95,7 +93,6 @@ class ScheduledTasks:
             except Exception as err:
                 self.error_handler.add_error_v(error=err, origin='Tiered Pricing')
 
-    @timer
     def every_other_hourly_tasks(self):
         # Between 6 AM and 8 PM - Performed on even hours
         if self.dates.minute == 0 and 20 >= self.dates.hour >= 6 and self.dates.hour % 2 == 0:
@@ -122,7 +119,6 @@ class ScheduledTasks:
             except Exception as err:
                 self.error_handler.add_error_v(error=err, origin='Stock Buffer')
 
-    @timer
     def once_per_day_tasks(self):
         if self.dates.hour == 5 and self.dates.minute == 0:  # 5 AM
             try:
@@ -132,7 +128,7 @@ class ScheduledTasks:
 
         if self.dates.hour == 10 and self.dates.minute == 0:  # 10 AM
             test_text = f"""From Server: This is a test message. Today is {self.dates.today}.
-            Yesterday was {self.dates.yesterday}. Tomorrow is {self.dates.tomorrow}."""
+            Yesterday was {self.dates.yesterday}. One week ago was {self.dates.one_week_ago}."""
             SMSEngine.send_text(
                 origin='SERVER',
                 campaign='Alex Test',
@@ -168,7 +164,6 @@ class ScheduledTasks:
             # Delete Old Log Files
             utilities.delete_old_files()
 
-    @timer
     def sms_automations(self):
         sms = creds.SMSAutomations
         origin = 'Automations'
@@ -332,11 +327,11 @@ class ScheduledTasks:
 
     @timer
     def run(self):
-        self.generate_reports(eh=self.eh, operation='Generate Reports')
-        self.twice_per_hour_tasks(eh=self.eh, operation='Twice Per Hour Tasks')
-        self.every_other_hourly_tasks(eh=self.eh, operation='Every Other Hourly Tasks')
-        self.once_per_day_tasks(eh=self.eh, operation='Once Per Day Tasks')
-        self.sms_automations(eh=self.eh, operation='SMS Automations')
+        self.generate_reports()
+        self.twice_per_hour_tasks()
+        self.every_other_hourly_tasks()
+        self.once_per_day_tasks()
+        self.sms_automations()
 
 
 if __name__ == '__main__':
