@@ -2505,8 +2505,8 @@ class Shopify:
                 @staticmethod
                 def create_order_discount(
                     name,
-                    min_purchase,
                     code,
+                    min_purchase,
                     expiration=None,
                     retail=True,
                     wholesale=False,
@@ -2529,12 +2529,11 @@ class Shopify:
                             'code': code,
                             'customerGets': {
                                 'items': {'all': True},
-                                'value': {'discountAmount': {'amount': amount, 'appliesOnEachItem': False}},
+                                'value': {'discountAmount': {'appliesOnEachItem': False}},
                             },
+                            'usageLimit': None,
                             'minimumRequirement': {'subtotal': {'greaterThanOrEqualToSubtotal': min_purchase}},
                             'startsAt': local_to_utc(datetime.now()).strftime('%Y-%m-%dT%H:%M:%SZ'),
-                            'endsAt': local_to_utc(expiration).strftime('%Y-%m-%dT%H:%M:%SZ'),
-                            'appliesOncePerCustomer': once_per_customer,
                             'customerSelection': {'all': False, 'customerSegments': {'add': []}},
                             'combinesWith': {
                                 'orderDiscounts': combines_with_orders,
@@ -2543,6 +2542,12 @@ class Shopify:
                             },
                         }
                     }
+                    if amount:
+                        variables['basicCodeDiscount']['customerGets']['value']['discountAmount']['amount'] = amount
+                    if percentage:
+                        variables['basicCodeDiscount']['customerGets']['value']['discountPercentage'] = percentage
+                    if once_per_customer:
+                        variables['basicCodeDiscount']['appliesOncePerCustomer'] = True
                     if retail:
                         variables['basicCodeDiscount']['customerSelection']['customerSegments']['add'].append(
                             'gid://shopify/Segment/485521260711'
@@ -2553,6 +2558,11 @@ class Shopify:
                         )
                     if max_uses:
                         variables['basicCodeDiscount']['usageLimit'] = max_uses
+
+                    if expiration:
+                        variables['basicCodeDiscount']['endsAt'] = local_to_utc(expiration).strftime(
+                            '%Y-%m-%dT%H:%M:%SZ'
+                        )
 
                     response = Shopify.Query(
                         document=Shopify.Discount.queries,
@@ -2653,16 +2663,6 @@ def refresh_order(tkt_no):
 
 if __name__ == '__main__':
     # print(Shopify.Discount.get(1169486577831))
-    from datetime import datetime, timedelta
+    from datetime import datetime
 
-    Shopify.Discount.Code.Basic.create_order_discount(
-        name='TESTING',
-        min_purchase=100,
-        code='TESTING',
-        expiration=datetime.now() + timedelta(days=1),
-        amount=10,
-        enabled=True,
-        retail=True,
-        wholesale=True,
-        once_per_customer=True,
-    )
+    Shopify.Discount.Code.Basic.create_order_discount(name='TESTING', code='test', min_purchase=100, amount=10)

@@ -151,4 +151,6 @@ def reassess_tiered_pricing(start_date, end_date, demote=False):
 
 
 if __name__ == '__main__':
-    print(get_government_customers())
+    cust_nos = get_government_customers()
+    for x in cust_nos:
+        print(x)

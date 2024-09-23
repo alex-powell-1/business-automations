@@ -352,6 +352,7 @@ class SortOrderEngine:
                 move = MoveInput(item_id=product_id, position=item_index)
                 if verbose:
                     print(f'{collection_id} - {product_id} - {item_index}')
+
                 mc.add(move)
 
             return Shopify.Collection.reorder_items(collection_id=collection_id, collection_of_moves=mc)

@@ -1011,8 +1011,8 @@ class Database:
                             f'Error adding product {x} to sale category. \n Query: {query}\nResponse: {response}'
                         )
                         eh.error_handler.add_error_v(error=error)
-
-                eh.logger.success(f'{success}/{len(sku_list)} products added to sale category.')
+                if success:
+                    eh.logger.success(f'{success} products added to sale category.')
                 if fail:
                     eh.logger.warn(f'{fail} products not added to sale category.')
 
@@ -2019,24 +2019,53 @@ class Database:
                     # Get promotion details from IM_PRC_GRP and IM_PRC_GRP_RUL
                     result = []
                     for promo in promotions:
+                        print(f'Getting promotion {promo}')
+                        # Get number of rules for the promotion
                         query = f"""
-                        SELECT TOP 1 GRP.GRP_TYP, GRP.GRP_COD, GRP.GRP_SEQ_NO, GRP.DESCR, GRP.CUST_FILT, GRP.NO_BEG_DAT, GRP.BEG_DAT, GRP.BEG_TIM_FLG, 
-                        GRP.NO_END_DAT, GRP.END_DAT, GRP.END_TIM_FLG, GRP.LST_MAINT_DT, GRP.ENABLED, GRP.MIX_MATCH_COD, MW.SHOP_ID
-                        FROM IM_PRC_GRP GRP FULL OUTER JOIN {Table.Middleware.promotions} MW ON GRP.GRP_COD = MW.GRP_COD
-                        WHERE GRP.GRP_COD = '{promo}' and GRP.GRP_TYP = 'P'
+                        SELECT COUNT(*) FROM IM_PRC_RUL WHERE GRP_COD = '{promo}'
                         """
-                        response = Database.query(query=query)
-                        try:
-                            promotion = [x for x in response[0]] if response else None
-                        except Exception as e:
-                            Database.error_handler.add_error_v(
-                                error=f'Error getting promotion details for {promo}.\n\nResponse: {response}\n\nError: {e}',
-                                origin='get_promotion',
-                                traceback=tb(),
-                            )
-                            promotion = None
-                        if promotion:
-                            result.append(promotion)
+                        response = Database.query(query)
+                        if response is not None:
+                            rule_count = response[0][0]
+                            print
+                        else:
+                            continue
+                        # Get promotion details
+                        for rule in range(rule_count):
+                            seq_no = rule + 1
+                            query = f"""
+                            SELECT GRP.GRP_TYP, GRP.GRP_COD, GRP.GRP_SEQ_NO, GRP.DESCR, GRP.CUST_FILT, GRP.NO_BEG_DAT, 
+                            GRP.BEG_DAT, GRP.BEG_TIM_FLG, GRP.NO_END_DAT, GRP.END_DAT, GRP.END_TIM_FLG, GRP.LST_MAINT_DT, 
+                            GRP.ENABLED, GRP.MIX_MATCH_COD, RUL.RUL_SEQ_NO                            
+                            FROM IM_PRC_GRP GRP 
+                            INNER JOIN IM_PRC_RUL RUL on RUL.GRP_COD = GRP.GRP_COD
+                            WHERE GRP.GRP_COD = '{promo}' and GRP.GRP_TYP = 'P' AND RUL.RUL_SEQ_NO = {seq_no}
+                            """
+                            response = Database.query(query=query, mapped=True)
+                            try:
+                                promotion = response['data'][0] if response else None
+                            except Exception as e:
+                                Database.error_handler.add_error_v(
+                                    error=f'Error getting promotion details for {promo}.\n\nResponse: {response}\n\nError: {e}',
+                                    origin='get_promotion',
+                                    traceback=tb(),
+                                )
+                                promotion = None
+                            else:
+                                # Get Shopify ID
+                                query = f"""
+                                SELECT SHOP_ID 
+                                FROM {Table.Middleware.promotions} 
+                                WHERE GRP_COD = '{promo}' AND RUL_SEQ_NO = {seq_no}
+                                """
+                                print(query)
+                                response = Database.query(query)
+                                if response:
+                                    promotion['SHOP_ID'] = response[0][0]
+                                else:
+                                    promotion['SHOP_ID'] = None
+                            if promotion:
+                                result.append(promotion)
                     return result
 
             class PriceRule:
@@ -2044,15 +2073,33 @@ class Database:
                     query = f"""
                     SELECT RUL.GRP_TYP, RUL.GRP_COD, RUL.RUL_SEQ_NO, RUL.DESCR, RUL.CUST_FILT, ITEM_FILT, 
                     SAL_FILT, IS_CUSTOM, USE_BOGO_TWOFER, REQ_FULL_GRP_FOR_BOGO_TWOFER,
-                    MW.SHOP_ID, GRP.ENABLED, MW.ENABLED, MW.ID
+                    GRP.ENABLED
                     FROM IM_PRC_RUL RUL
 					FULL OUTER JOIN IM_PRC_GRP GRP on GRP.GRP_COD = RUL.GRP_COD
-                    FULL OUTER JOIN SN_PROMO MW on RUL.RUL_SEQ_NO = MW.RUL_SEQ_NO
                     WHERE RUL.GRP_COD = '{group_code}'
                     """
-                    response = Database.query(query)
-                    result = [rule for rule in response] if response else []
-                    return result
+                    response = Database.query(query, mapped=True)
+                    if response['code'] == 200:
+                        result = [rule for rule in response['data']] if response else []
+                        if result:
+                            for x in result:
+                                x['ID'] = None
+                                x['SHOP_ID'] = None
+                                x['MW_ENABLED'] = None
+                                # Check Middleware for Shopify ID, etc.
+                                query = f"""
+                                SELECT ID, SHOP_ID, ENABLED
+                                FROM {Table.Middleware.promotions}
+                                WHERE GRP_COD = '{group_code}' and RUL_SEQ_NO = {x['RUL_SEQ_NO']}
+                                """
+                                response = Database.query(query)
+                                print(response)
+                                if response:
+                                    x['ID'] = response[0][0]
+                                    x['SHOP_ID'] = response[0][1]
+                                    x['MW_ENABLED'] = response[0][2]
+
+                        return result
 
         class Discount:
             """Discounts are stored in the PS_DISC_COD table in CounterPoint. These codes are

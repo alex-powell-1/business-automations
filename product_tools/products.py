@@ -104,8 +104,14 @@ class Product:
             self.descr = x[4]
             self.long_descr = x[5]
             self.brand = x[6]
-            self.price_1 = x[7]
-            self.price_2 = x[8]
+            try:
+                self.price_1 = float(x[7])
+            except:
+                self.price_1 = None
+            try:
+                self.price_2 = float(x[8])
+            except:
+                self.price_2 = None
             self.reg_price = x[9]
             self.quantity_available = int(x[10])
             self.buffer = int(x[11])
