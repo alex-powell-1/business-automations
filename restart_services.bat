@@ -5,9 +5,12 @@ sc stop SN-ngrok
 sc stop SN-Tasks
 sc stop SN-Integrator
 sc stop SN-Inventory
-TIMEOUT /t 3
+sc stop SN-Consumers
+
+TIMEOUT /t 6
 sc start SN-ngrok
 sc start SN-Server
+sc start SN-Consumers
 sc start SN-Tasks
 sc start SN-Integrator
 sc start SN-Inventory
