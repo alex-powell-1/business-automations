@@ -1,7 +1,7 @@
 from integration.catalog_api import Catalog
 from product_tools import inventory_upload
 
-
+from setup.date_presets import Dates
 from datetime import datetime
 from setup import creds
 from setup.error_handler import ProcessOutErrorHandler
@@ -18,7 +18,10 @@ class Inventory:
     def __init__(self):
         self.last_sync = get_last_sync(file_name='./integration/last_sync_inventory.txt')
         self.verbose = creds.Integrator.verbose_logging
-        self.catalog = Catalog(last_sync=self.last_sync, inventory_only=True, verbose=self.verbose)
+        self.dates = Dates()
+        self.catalog = Catalog(
+            dates=self.dates, last_sync=self.last_sync, inventory_only=True, verbose=self.verbose
+        )
 
     def __str__(self):
         return f'Integrator\n' f'Last Sync: {self.last_sync}\n'
