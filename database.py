@@ -2,7 +2,7 @@ import random
 from setup import creds
 from setup.creds import Table
 from setup.utilities import PhoneNumber
-from setup.error_handler import ProcessOutErrorHandler, ProcessInErrorHandler
+from setup.error_handler import ProcessOutErrorHandler, ProcessInErrorHandler, LeadFormErrorHandler
 from datetime import datetime, timedelta
 from traceback import format_exc as tb
 from time import sleep
@@ -272,6 +272,7 @@ class Database:
             state,
             zip_code,
             comments,
+            eh=LeadFormErrorHandler,
         ):
             sketch, scaled, digital, on_site, delivery, install = 0, 0, 0, 0, 0, 0
             if interested_in is not None:
@@ -289,6 +290,13 @@ class Database:
                     if x == 'Professional Installation':
                         install = 1
 
+            first_name = Database.sql_scrub(first_name)
+            last_name = Database.sql_scrub(last_name)
+            street = Database.sql_scrub(street)
+            city = Database.sql_scrub(city)
+            state = Database.sql_scrub(state)
+            comments = Database.sql_scrub(comments)
+
             query = f"""
                 INSERT INTO {Table.design_leads} (DATE, CUST_NO, FST_NAM, LST_NAM, EMAIL, PHONE, SKETCH, SCALED, DIGITAL, 
                 ON_SITE, DELIVERY, INSTALL, TIMELINE, STREET, CITY, STATE, ZIP, COMMENTS)
@@ -298,10 +306,10 @@ class Database:
                 """
             response = Database.query(query)
             if response['code'] == 200:
-                Database.logger.success(f'Design Lead {first_name} {last_name} added to Middleware.')
+                eh.logger.success(f'Design Lead {first_name} {last_name} added to Middleware.')
             else:
                 error = f'Error adding design lead {first_name} {last_name} to Middleware. \nQuery: {query}\nResponse: {response}'
-                Database.error_handler.add_error_v(error=error, origin='insert_design_lead')
+                eh.error_handler.add_error_v(error=error, origin='insert_design_lead')
 
     class SMS:
         class TextMessage:
