@@ -35,10 +35,11 @@ class Promotions:
 
         if promo_data:
             for promo in promo_data:
-                try:
-                    self.promotions.append(Promotion(promo=promo))
-                except Exception as e:
-                    Promotions.error_handler.add_error_v(error=e, origin='Promotion Sync', traceback=tb())
+                if promo['GRP_COD']:  # Check for empty group codes
+                    try:
+                        self.promotions.append(Promotion(promo=promo))
+                    except Exception as e:
+                        Promotions.error_handler.add_error_v(error=e, origin='Promotion Sync', traceback=tb())
 
     def process_deletes(self):
         """Deletes promotions that are no longer in Counterpoint."""
@@ -57,6 +58,9 @@ class Promotions:
 
     def get_sync_queue(self):
         for promotion in self.promotions:
+            print(
+                f'Promotion: {promotion.grp_cod} Last Sync: {self.last_sync} Promotion Date: {promotion.lst_maint_dt}'
+            )
             if promotion.lst_maint_dt > self.last_sync:
                 self.sync_queue.append(promotion)
 
@@ -159,7 +163,6 @@ class Promotion:
 
     def get_price_rules(self):
         rules = Database.Counterpoint.Promotion.PriceRule.get(self.grp_cod)
-        print(f'Price Rules: {rules}')
         if rules:
             for rule in rules:
                 self.price_rules.append(PriceRule(rule))
@@ -178,7 +181,7 @@ class Promotion:
 
         payload = {
             'automaticBxgyDiscount': {
-                'title': rule.shopify_title,  # 'Buy 1 Get 1 50% Off'
+                'title': rule.descr,  # 'Buy 1 Get 1 50% Off'
                 'combinesWith': {'orderDiscounts': True, 'productDiscounts': True, 'shippingDiscounts': True},
                 'customerBuys': {
                     'value': {'quantity': str(required_qty)},
@@ -290,22 +293,22 @@ class Promotion:
 
                 if rule.is_bogo_twoofer():
                     pass
-                    # ############################## RETAIL ###############################
-                    # ###################### BOGO Twoofer Promotions ######################
-                    # #####################################################################
-                    # # process BOGO Twoofers
-                    # variables = self.get_bxgy_payload(rule)
-                    # if rule.shopify_id:
-                    #     Promotions.logger.info(f'Updating BOGO Twoofer: {rule.shopify_id}')
-                    #     Shopify.Discount.Automatic.Bxgy.update(variables)
-                    # else:
-                    #     rule.shopify_id = Shopify.Discount.Automatic.Bxgy.create(variables)
+                    ############################## RETAIL ###############################
+                    ###################### BOGO Twoofer Promotions ######################
+                    #####################################################################
+                    # process BOGO Twoofers
+                    variables = self.get_bxgy_payload(rule)
+                    if rule.shopify_id:
+                        Promotions.logger.info(f'Updating BOGO Twoofer: {rule.shopify_id}')
+                        Shopify.Discount.Automatic.Bxgy.update(variables)
+                    else:
+                        rule.shopify_id = Shopify.Discount.Automatic.Bxgy.create(variables)
 
-                    # self.set_sale_status(rule)
+                    self.set_sale_status(rule)
 
-                    # # Sync BOGO Twoofer Promotions to Middleware.
-                    # # Fixed Price Promotions are processed outside this block.
-                    # Database.Shopify.Promotion.sync(rule)
+                    # Sync BOGO Twoofer Promotions to Middleware.
+                    # Fixed Price Promotions are processed outside this block.
+                    Database.Shopify.Promotion.sync(rule)
                 else:
                     ############################## RETAIL ################################
                     ######################################################################
@@ -356,7 +359,6 @@ class Promotion:
                     response = Database.query(query)
                     if response:
                         item_list = [x[0] for x in response]
-                        print(f'Delete Item List: {item_list}')
                         for item in item_list:
                             Database.Shopify.Promotion.FixLine.delete(
                                 group_cod=self.grp_cod, rul_seq_no=line, item_no=item
@@ -500,7 +502,6 @@ class PriceRule:
         self.grp_cod = rule['GRP_COD']
         self.seq_no = rule['RUL_SEQ_NO']
         self.descr: str = rule['DESCR']
-        self.shopify_title = self.get_shopify_title()
         self.cust_filt = rule['CUST_FILT']
         if self.cust_filt:
             self.is_retail = False if 'WHOLESALE' in self.cust_filt else True
@@ -543,9 +544,6 @@ class PriceRule:
         result += f'\tRequire Full Group for BOGO Twoofer: {self.req_full_group_for_bogo}\n'
         result += f'\tBadge Text: {self.badge_text}\n'
         return result
-
-    def get_shopify_title(self) -> str:
-        return str(self.descr).strip()
 
     def is_bogo_twoofer(self) -> bool:
         return self.use_bogo_twoofer == 'Y' and self.req_full_group_for_bogo == 'Y'
@@ -690,5 +688,5 @@ class FixedPriceItem:
 if __name__ == '__main__':
     promo = Promotions(last_sync=datetime(2024, 9, 17, 17))
     for p in promo.promotions:
-        if p.grp_cod == 'CALADIUM':
+        if p.grp_cod == 'MUM':
             p.process()

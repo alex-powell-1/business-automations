@@ -2010,7 +2010,7 @@ class Database:
                     promotions = [group_code]
                 else:
                     # Get list of promotions from IM_PRC_GRP
-                    response = Database.query('SELECT GRP_COD FROM IM_PRC_GRP')
+                    response = Database.query("SELECT GRP_COD FROM IM_PRC_GRP WHERE GRP_TYP = 'P'")
                     promotions = [x[0] for x in response] if response else []
                     if ids_only:
                         return promotions
@@ -2019,7 +2019,6 @@ class Database:
                     # Get promotion details from IM_PRC_GRP and IM_PRC_GRP_RUL
                     result = []
                     for promo in promotions:
-                        print(f'Getting promotion {promo}')
                         # Get number of rules for the promotion
                         query = f"""
                         SELECT COUNT(*) FROM IM_PRC_RUL WHERE GRP_COD = '{promo}'
@@ -2027,7 +2026,6 @@ class Database:
                         response = Database.query(query)
                         if response is not None:
                             rule_count = response[0][0]
-                            print
                         else:
                             continue
                         # Get promotion details
@@ -2058,7 +2056,6 @@ class Database:
                                 FROM {Table.Middleware.promotions} 
                                 WHERE GRP_COD = '{promo}' AND RUL_SEQ_NO = {seq_no}
                                 """
-                                print(query)
                                 response = Database.query(query)
                                 if response:
                                     promotion['SHOP_ID'] = response[0][0]
@@ -2093,7 +2090,6 @@ class Database:
                                 WHERE GRP_COD = '{group_code}' and RUL_SEQ_NO = {x['RUL_SEQ_NO']}
                                 """
                                 response = Database.query(query)
-                                print(response)
                                 if response:
                                     x['ID'] = response[0][0]
                                     x['SHOP_ID'] = response[0][1]
