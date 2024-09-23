@@ -64,14 +64,37 @@ def incoming_sms():
 
         except Exception as e:
             ProcessInErrorHandler.error_handler.add_error_v(
-                error=f'Error sending sync request  to RabbitMQ: {e}',
-                origin=API.Route.Shopify.order_create,
-                traceback=tb(),
+                error=f'Error sending sync request  to RabbitMQ: {e}', origin=API.Route.sms, traceback=tb()
             )
 
         # Return Response to Twilio
         resp = MessagingResponse()
         return str(resp)
+
+    elif body.lower().startswith(creds.Integrator.sms_sync_keyword):
+        if body.lower().strip().endswith('restart'):
+            try:
+                connection = pika.BlockingConnection(pika.ConnectionParameters('localhost'))
+                channel = connection.channel()
+
+                channel.queue_declare(queue=creds.Consumer.sync_on_demand, durable=True)
+
+                channel.basic_publish(
+                    exchange='',
+                    routing_key=creds.Consumer.restart_services,
+                    body=from_phone,
+                    properties=pika.BasicProperties(delivery_mode=pika.DeliveryMode.Persistent),
+                )
+                connection.close()
+
+            except Exception as e:
+                ProcessInErrorHandler.error_handler.add_error_v(
+                    error=f'Error sending sync request  to RabbitMQ: {e}', origin=API.Route.sms, traceback=tb()
+                )
+
+            # Return Response to Twilio
+            resp = MessagingResponse()
+            return str(resp)
 
     # Get Customer Name and Category from SQL
     customer_number, full_name, category = Database.Counterpoint.Customer.get_customer_by_phone(from_phone)

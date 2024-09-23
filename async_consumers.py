@@ -23,6 +23,7 @@ from docxtpl import DocxTemplate
 import os
 import json
 from integrator import Integrator
+import subprocess
 
 
 def sync_on_demand(phone_number):
@@ -45,6 +46,22 @@ def sync_on_demand(phone_number):
         phone_response = f'Sync completed successfully at {datetime.now():%m/%d/%Y %H:%M:%S}'
     finally:
         SMSEngine.send_text(origin='sync_on_demand', to_phone=phone_number, message=phone_response)
+
+
+def restart_services(eh=ProcessInErrorHandler):
+    try:
+        eh.logger.info('Restarting Services...')
+        file = 'restart_services.bat'
+        p = subprocess.Popen(args=file, cwd=str(os.getcwd()).replace('\\', '/'), shell=True)
+        stdout, stderr = p.communicate()
+        if stderr:
+            raise Exception(stderr)
+    except Exception as e:
+        ProcessInErrorHandler.error_handler.add_error_v(
+            error=f'Error restarting services: {e}', origin='restart_services', traceback=tb()
+        )
+    else:
+        eh.logger.success('Services restarted successfully')
 
 
 def process_design_lead(body, eh=LeadFormErrorHandler, test_mode=False):
@@ -269,6 +286,11 @@ if __name__ == '__main__':
                 'queue_name': creds.Consumer.design_lead_form,
                 'callback': process_design_lead,
                 'error_handler': LeadFormErrorHandler,
+            },
+            {
+                'queue_name': creds.Consumer.restart_services,
+                'callback': restart_services,
+                'error_handler': ProcessInErrorHandler,
             },
         ]
 
