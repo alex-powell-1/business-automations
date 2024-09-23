@@ -5,6 +5,7 @@ ngrok/ngrok.exe
 ngrok/ngrok.yml
 integration/last_sync_integrator.txt
 integration/last_sync_inventory.txt
+static/barcodes/*
 sandbox.py
 .vscode/
 .ruff_cache/
