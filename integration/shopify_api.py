@@ -66,7 +66,7 @@ class Shopify:
 
     class Query:
         def __init__(self, document, variables=None, operation_name=None):
-            self.verbose = True  # creds.Integrator.verbose_logging
+            self.verbose = creds.Integrator.verbose_logging
             self.response = self.execute_query(document, variables, operation_name)
             self.data = self.response['data'] if 'data' in self.response else None
             self.errors: list = self.response['errors'] if 'errors' in self.response else []
