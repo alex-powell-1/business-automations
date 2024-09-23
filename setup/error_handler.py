@@ -144,7 +144,7 @@ class ProcessInErrorHandler:
 
 
 class OutOfStockErrorHandler:
-    logger = Logger(f'{creds.log_main}/webhooks/out_of_stock')
+    logger = Logger(f'{creds.Integrator.logs}/webhooks/out_of_stock')
     error_handler = ErrorHandler(logger)
 
 
