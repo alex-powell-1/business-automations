@@ -136,11 +136,9 @@ class Printer:
         if gift_card_only:
             Printer.logger.info(f'Order {order_id} contains only gift cards. Skipping print.')
         else:
-            # Create Barcode
-            barcode_filename = 'barcode'
             Printer.logger.info('Creating barcode')
             try:
-                generate_barcode(data=order['id'], filename=barcode_filename)
+                barcode_file = generate_barcode(data=order['id'])
             except Exception as err:
                 error_type = 'barcode'
                 Printer.error_handler.add_error_v(error=f'Error ({error_type}): {err}', origin='Design - Barcode')
@@ -159,9 +157,7 @@ class Printer:
 
                 doc = DocxTemplate('./templates/order_print_template.docx')
 
-                barcode = InlineImage(
-                    doc, f'{creds.Company.barcodes}/{barcode_filename}.png', height=Mm(15)
-                )  # width in mm
+                barcode = InlineImage(doc, barcode_file, height=Mm(15))  # width in mm
 
                 context = {
                     # Company Details
@@ -231,7 +227,8 @@ class Printer:
                     else:
                         # convert file_path to raw string
                         file_path = utilities.convert_path_to_raw(file_path)
-                        os.startfile(file_path, 'print')
+                        os.startfile(file_path, 'print')  # print the file to default printer
+                        os.remove(barcode_file)  # remove barcode file after printing
                 except Exception as err:
                     error_type = 'Printing'
                     Printer.error_handler.add_error_v(f'Error ({error_type}): {err}', origin='Design - Printing')
