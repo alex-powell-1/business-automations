@@ -50,6 +50,7 @@ def sync_on_demand(phone_number):
 
 def restart_services(eh=ProcessInErrorHandler):
     try:
+        eh = ProcessInErrorHandler
         eh.logger.info('Restarting Services...')
         file = 'restart_services.bat'
         p = subprocess.Popen(args=file, cwd=str(os.getcwd()).replace('\\', '/'), shell=True)
@@ -57,7 +58,7 @@ def restart_services(eh=ProcessInErrorHandler):
         if stderr:
             raise Exception(stderr)
     except Exception as e:
-        ProcessInErrorHandler.error_handler.add_error_v(
+        eh.error_handler.add_error_v(
             error=f'Error restarting services: {e}', origin='restart_services', traceback=tb()
         )
     else:
