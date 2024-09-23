@@ -151,5 +151,4 @@ def reassess_tiered_pricing(start_date, end_date, demote=False):
 
 
 if __name__ == '__main__':
-    # reassess_tiered_pricing(datetime(2023, 7, 30), datetime(2024, 7, 30), demote=True)
     print(get_government_customers())

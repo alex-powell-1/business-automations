@@ -21,6 +21,8 @@ import threading
 
 
 class MoveInput:
+    """A Shopify Product ID and a position to move it to"""
+
     def __init__(self, item_id: int, position: int):
         self.item_id = f'gid://shopify/Product/{item_id}'
         self.position = position
@@ -30,6 +32,8 @@ class MoveInput:
 
 
 class Moves:
+    """Collection of MoveInput objects capped at 250 per API limits"""
+
     def __init__(self):
         self.moves: list[MoveInput] = []
 
@@ -44,6 +48,8 @@ class Moves:
 
 
 class MovesCollection:
+    """Collection of Moves objects--necessitated by the 250 item limit per API call"""
+
     def __init__(self):
         self.moves: list[Moves] = [Moves()]
 
@@ -66,11 +72,10 @@ class Shopify:
 
     class Query:
         def __init__(self, document, variables=None, operation_name=None):
-            self.verbose = creds.Integrator.verbose_logging
+            self.verbose = False
             self.response = self.execute_query(document, variables, operation_name)
             self.data = self.response['data'] if 'data' in self.response else None
             self.errors: list = self.response['errors'] if 'errors' in self.response else []
-            print(f'Errors: {self.errors}')
             self.user_errors = []
             if self.data:
                 for i in self.data:
