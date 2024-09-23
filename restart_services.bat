@@ -1,3 +1,5 @@
+git pull
+
 sc stop SN-Server
 sc stop SN-ngrok
 sc stop SN-Tasks
