@@ -806,7 +806,7 @@ class Catalog:
 
             def get_category_image_path(self, local=True):
                 image_name = str(self.handle)[1:-1].replace('/', '_').replace(' ', '-') + '.jpg'
-                local_path = f'{creds.Company.public_files_local_path}/{creds.Company.category_images}/{image_name}'
+                local_path = f'{creds.API.public_files_local_path}/{creds.Company.category_images}/{image_name}'
                 if os.path.exists(local_path):
                     return local_path
 

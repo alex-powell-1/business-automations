@@ -552,7 +552,7 @@ class Promotions:
                         retail_price = response[0][0]
                     except:
                         retail_price = None
-                    
+
                     if retail_price:
                         if self.price_breaks[-1].amt_or_pct:
                             fixed_price = self.price_breaks[-1].amt_or_pct
@@ -636,18 +636,4 @@ if __name__ == '__main__':
     promo = Promotions(last_sync=datetime(2024, 9, 17, 17))
     for p in promo.promotions:
         if p.grp_cod == 'ENDMUMS':
-            for x in p.price_rules:
-                print(x.badge_text)
-                print(x.get_discount_amount())
-                print(x.get_badge_text())
-                print(x.is_bogo_twoofer())
-                print(x.get_shopify_items(x))
-                print(x.mw_bogo_items)
-                print(x.mw_fixed_price_items)
-                print(x.items)
-                print(x.shopify_id)
-                print(x.is_enabled_cp)
-                print(x.is_enabled_mw)
-                print(x)
-                print('\n\n\n')
             p.process()

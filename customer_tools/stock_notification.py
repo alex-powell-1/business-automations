@@ -270,20 +270,20 @@ def send_stock_notifications():
                 combine_images(
                     item_photo,
                     f'{coupon_code}.png',
-                    combined_image_path=creds.Company.public_files_local_path + f'/{item_no}-BARCODE.jpg',
+                    combined_image_path=creds.API.public_files_local_path + f'/{item_no}-BARCODE.jpg',
                     barcode_text=coupon_code,
                     expires_text=f'Expires {expiration_date:%b %d, %Y}',
                 )
 
-            copy_file(item_photo, creds.Company.public_files_local_path)
+            copy_file(item_photo, creds.API.public_files_local_path)
 
-            local_photo = creds.Company.public_files_local_path + f'/{item_no}.jpg'
+            local_photo = creds.API.public_files_local_path + f'/{item_no}.jpg'
             product_photo = API.public_files + f'/{item_no}.jpg'
 
             photos_to_remove.append(local_photo)
 
             if included:
-                photos_to_remove.append(creds.Company.public_files_local_path + f'/{item_no}-BARCODE.jpg')
+                photos_to_remove.append(creds.API.public_files_local_path + f'/{item_no}-BARCODE.jpg')
                 product_photo = API.public_files + f'/{item_no}-BARCODE.jpg'
 
             ###############################################################

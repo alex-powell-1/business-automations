@@ -37,7 +37,9 @@ class Integrator:
         )
 
     def __str__(self):
-        result = creds.Integrator.header + f'\nLast Sync: {self.last_sync}\n----------------\n'
+        result = creds.Integrator.title + '\n'
+        result += f'Authors: {creds.Integrator.authors}\nVersion: {creds.Integrator.version}\n'
+        result += f'Last Sync: {self.last_sync}\n----------------\n'
         sync_tasks = ''
         sync_tasks += self.customers.__str__()
         sync_tasks += self.promotions.__str__()

@@ -67,7 +67,7 @@ def handle_exception(e):
 @limiter.limit(creds.API.default_rate)
 def serve_file(path):
     try:
-        return send_from_directory(creds.Company.public_files_local_path, path)
+        return send_from_directory(creds.API.public_files_local_path, path)
     except NotFound:
         return jsonify({'error': 'File not found'}), 404
     except BadRequest:
@@ -92,7 +92,7 @@ def robots():
 
 @app.route('/favicon.ico', methods=['GET'])
 def favicon():
-    return send_from_directory(creds.Company.public_files_local_path, 'favicon.ico')
+    return send_from_directory(creds.API.public_files_local_path, 'favicon.ico')
 
 
 @app.route('/', methods=['GET'])

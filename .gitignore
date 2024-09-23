@@ -9,7 +9,7 @@ sandbox.py
 .vscode/
 .ruff_cache/
 */__pycache__/
-
+password.txt
 .DS_Store
 
 */*.pyc
