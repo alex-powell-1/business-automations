@@ -220,7 +220,7 @@ if __name__ == '__main__':
                     while True:
                         now = datetime.now()
                         hour = now.hour
-                        if 18 > hour > 7:
+                        if 19 > hour > 6:  # Daytime - between 7am and 7pm
                             minutes_between_sync = creds.Integrator.int_day_run_interval
                         else:
                             minutes_between_sync = creds.Integrator.int_night_run_interval

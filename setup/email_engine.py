@@ -267,29 +267,14 @@ class Email:
 
         class LowStockReport:
             def send(recipients, dates):
-                error_handler.logger.info(f'Generating Admin Report Data - Starting at {datetime.now():%H:%M:%S}')
+                error_handler.logger.info(
+                    f'Generating Low Stock Report Data - Starting at {datetime.now():%H:%M:%S}'
+                )
 
                 subject = f'Low Stock Report - {dates.today:%x}'
 
                 report_data = product_reports.report_generator(
-                    title='Low Stock Report',
-                    dates=dates,
-                    revenue=False,
-                    cogs_report=False,
-                    last_week_report=False,
-                    mtd_month_report=False,
-                    last_year_mtd_report=False,
-                    forecasting_report=False,
-                    top_items_by_category=False,
-                    missing_images_report=False,
-                    negatives_report=False,
-                    ecomm_category_report=False,
-                    non_web_enabled_report=False,
-                    low_stock_items_report=True,
-                    sales_rep_report=False,
-                    wholesale_report=False,
-                    inactive_items_report=False,
-                    missing_descriptions_report=False,
+                    title='Low Stock Report', dates=dates, low_stock_items_report=True
                 )
                 html_contents = boiler_plate + css + body_start + report_data + body_end
 
@@ -416,4 +401,7 @@ class Email:
 
 
 if __name__ == '__main__':
-    Email.Staff.DesignLeadNotification.send(recipients=creds.Reports.MarketingLeads.recipients)
+    from setup.date_presets import Dates
+
+    dates = Dates()
+    Email.Staff.LowStockReport.send(recipients=creds.Reports.LowStock.recipients, dates=dates)
