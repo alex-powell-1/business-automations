@@ -214,15 +214,15 @@ def format_date(date: str):
 
 
 # This function should be called when a draft order is created.
-def on_draft_created(draft_id):
+def on_draft_created(draft_id, eh=ProcessInErrorHandler):
     """This function should be called when a draft order is created."""
 
     check_cp_closed_orders()
 
-    logger.info(f'Creating hold order for draft order {draft_id}...')
+    eh.logger.info(f'Creating hold order for draft order {draft_id}...')
 
     try:
-        logger.info('Getting information from draft order...')
+        eh.logger.info('Getting information from draft order...')
 
         def get_lines():
             global lines
@@ -271,8 +271,8 @@ def on_draft_created(draft_id):
 
         pl = doc.get()
 
-        logger.success('Info retrieved.')
-        logger.info('Posting hold order...')
+        eh.logger.success('Info retrieved.')
+        eh.logger.info('Posting hold order...')
 
         def get_discount():
             global discount
@@ -299,13 +299,13 @@ def on_draft_created(draft_id):
             or response['Documents'] is None
             or len(response['Documents']) == 0
         ):
-            error_handler.add_error_v(error='Could not post document', origin='draft_orders')
-            error_handler.add_error_v(error=str(response), origin='draft_orders')
+            eh.error_handler.add_error_v(error='Could not post document', origin='draft_orders')
+            eh.error_handler.add_error_v(error=str(response), origin='draft_orders')
             return
 
         doc_id = response['Documents'][0]['DOC_ID']
 
-        logger.success(f'Posted hold order with doc id: {doc_id}')
+        eh.logger.success(f'Posted hold order with doc id: {doc_id}')
 
         query = f"""
             INSERT INTO SN_DRAFT_ORDERS
@@ -316,17 +316,17 @@ def on_draft_created(draft_id):
 
         return Database.query(query)
     except Exception as e:
-        error_handler.add_error_v(
+        eh.error_handler.add_error_v(
             error=f'Error creating draft order {draft_id}: {e}', origin='draft_orders', traceback=tb()
         )
         return
 
 
 # This function should be called when a draft order is updated.
-def on_draft_updated(draft_id):
+def on_draft_updated(draft_id, eh=ProcessInErrorHandler):
     check_cp_closed_orders()
 
-    logger.info(f'Updating hold order for draft order {draft_id}...')
+    eh.logger.info(f'Updating hold order for draft order {draft_id}...', origin='draft_orders-->on_draft_updated')
 
     """This function should be called when a draft order is updated."""
     if get_paid_status(draft_id):
@@ -340,15 +340,28 @@ def on_draft_updated(draft_id):
         WHERE DOC_ID = '{doc_id}'
     """
 
-    Database.query(query)
+    response = Database.query(query)
+    if response['code'] == 200:
+        eh.logger.success(f'Deleted PS_DOC_HDR DOC_ID: {doc_id}', origin='draft_orders-->on_draft_updated')
+    elif response['code'] == 201:
+        eh.logger.warn(f'PS_DOC_HDR DOC_ID:{doc_id} not found', origin='draft_orders-->on_draft_updated')
+    else:
+        eh.error_handler.add_error(
+            error=f'Error deleting PS_DOC_HDR DOC_ID: {doc_id}: {response["message"]}', origin='draft_orders'
+        )
 
     query = f"""
         DELETE FROM SN_DRAFT_ORDERS
         WHERE DOC_ID = '{doc_id}'
     """
 
-    Database.query(query)
-
-    logger.success(f'Deleted hold order for draft order {draft_id}')
-
+    response = Database.query(query)
+    if response['code'] == 200:
+        eh.logger.success(
+            f'Deleted hold order for draft order {draft_id}', origin='draft_orders-->on_draft_updated'
+        )
+    elif response['code'] == 201:
+        eh.logger.warn(f'Hold order not found for draft order {draft_id}', origin='draft_orders-->on_draft_updated')
+    else:
+        eh.error_handler.add_error(f'Error deleting hold order for draft order {draft_id}: {response["message"]}')
     return on_draft_created(draft_id)

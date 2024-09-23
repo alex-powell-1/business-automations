@@ -11,8 +11,9 @@ import threading
 
 class RabbitMQConsumer:
     def __init__(self, queue_name, callback_func, host='localhost', eh=ProcessInErrorHandler):
-        self.logger = eh.logger
-        self.error_handler = eh.error_handler
+        self.eh = eh
+        self.logger = self.eh.logger
+        self.error_handler = self.eh.error_handler
         self.queue_name = queue_name
         self.host = host
         self.connection = None
@@ -30,7 +31,7 @@ class RabbitMQConsumer:
         body = body.decode()
         self.logger.info(f'{self.queue_name}: Received: {body}')
         try:
-            self.callback_func(body)
+            self.callback_func(body, eh=self.eh)
         except Exception as err:
             error_type = 'Exception:'
             self.error_handler.add_error_v(

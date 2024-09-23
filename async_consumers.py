@@ -26,8 +26,8 @@ from integrator import Integrator
 import subprocess
 
 
-def sync_on_demand(phone_number):
-    error_handler = ProcessOutErrorHandler.error_handler
+def sync_on_demand(phone_number, eh=ProcessOutErrorHandler):
+    error_handler = eh.error_handler
     phone_number = PhoneNumber(phone_number).to_twilio()
     SMSEngine.send_text(
         origin='SERVER', campaign='SYNC_ON_DEMAND', to_phone=phone_number, message='Syncing data. Please wait...'
@@ -133,6 +133,7 @@ def process_design_lead(body, eh=LeadFormErrorHandler, test_mode=False):
         state=state,
         zip_code=zip_code,
         comments=comments,
+        eh=eh,
     )
 
     # Send text notification To sales team manager
