@@ -158,7 +158,11 @@ class Printer:
                 time = f'{bc_date:%I:%M:%S %p}'  # ex. 02:34:24 PM
 
                 doc = DocxTemplate('./templates/order_print_template.docx')
-                barcode = InlineImage(doc, f'./{barcode_filename}.png', height=Mm(15))  # width in mm
+
+                barcode = InlineImage(
+                    doc, f'{creds.Company.barcodes}/{barcode_filename}.png', height=Mm(15)
+                )  # width in mm
+
                 context = {
                     # Company Details
                     'company_name': creds.Company.name,
@@ -236,4 +240,5 @@ class Printer:
 
 
 if __name__ == '__main__':
-    Printer.print_order(5681148625063)
+    Printer.print_order(5687251632295)
+    # generate_barcode(data='as', filename='barcode2')
