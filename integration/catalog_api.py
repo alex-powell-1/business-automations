@@ -1790,7 +1790,9 @@ class Catalog:
                         m.sort_order = count
                     count += 1
 
-                if not (len(self.images) == 1 and self.images[0].name == 'coming-soon.jpg'):
+                if not (
+                    len(self.images) == 1 and self.images[0].name == 'coming-soon.jpg' and not self.images[0].db_id
+                ):
                     if not self.has_new_media:
                         for m in self.media:
                             m.temp_sort_order = m.sort_order
@@ -1832,7 +1834,8 @@ class Catalog:
 
                 if len(self.images) == 1 and self.images[0].name == 'coming-soon.jpg':
                     target_image = self.images[0]
-                    uploaded_files = [{'file_path': target_image.file_path, 'url': target_image.image_url}]
+                    if not target_image.db_id:
+                        uploaded_files = [{'file_path': target_image.file_path, 'url': target_image.image_url}]
                 else:
                     for image in self.images:
                         image_size = get_filesize(image.file_path)

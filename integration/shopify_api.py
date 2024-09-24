@@ -1541,6 +1541,7 @@ class Shopify:
                         }
 
                     elif product_id:
+                        # Delete all images for product
                         id_list = Shopify.Product.Media.Image.get(product_id)
                         if id_list:
                             variables = {
