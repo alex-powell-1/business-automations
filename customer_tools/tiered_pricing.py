@@ -1,7 +1,5 @@
 from datetime import datetime
 
-import pandas
-
 from customer_tools.customers import is_current_customer, Customer
 from setup import creds
 from database import Database as db
@@ -36,20 +34,6 @@ def set_government_pricing_tier():
     NAM like '%schools%' or
     NAM like '%college')"""
     db.query(query)
-
-
-def create_customer_log(cust_no, business_name, total_sales, previous_tier, new_tier):
-    log_data = [[str(datetime.now())[:-7], cust_no, business_name, total_sales, previous_tier, new_tier]]
-    df = pandas.DataFrame(log_data, columns=['date', 'business', 'cust_no', 'sales', 'previous_tier', 'new_tier'])
-    log_location = creds.wholesale_pricing_tier_log
-
-    # Looks for file. If it has been deleted, it will recreate it.
-    try:
-        pandas.read_csv(log_location)
-    except FileNotFoundError:
-        df.to_csv(log_location, mode='a', header=True, index=False)
-    else:
-        df.to_csv(log_location, mode='a', header=False, index=False)
 
 
 def reassess_tiered_pricing(start_date, end_date, demote=False):
@@ -167,5 +151,6 @@ def reassess_tiered_pricing(start_date, end_date, demote=False):
 
 
 if __name__ == '__main__':
-    # reassess_tiered_pricing(datetime(2023, 7, 30), datetime(2024, 7, 30), demote=True)
-    print(get_government_customers())
+    cust_nos = get_government_customers()
+    for x in cust_nos:
+        print(x)

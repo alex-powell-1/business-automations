@@ -33,43 +33,6 @@ def get_modified_photos(reference_date):
 # print(webDAV_engine.upload_product_photo(file='../test.jpg', server_url=f'{creds.web_dav_product_photos}/'))
 
 
-def render_photos_to_csv():
-    list_of_files = os.listdir(creds.Company.product_images)
-
-    # PANDAS IS MUCH SLOWER FOR SOME REASON
-    # for item in list_of_files[1:]:
-    #     modified_date = get_modified_datetime(f"{creds.photo_path}/{item}")
-    #     log_data = [[modified_date, item]]
-    #     df = pandas.DataFrame(log_data, columns=["modified", "photo"])
-    #     # Looks for file. If it has been deleted, it will recreate.
-    #     create_log.write_log(df, creds.product_photo_log)
-
-    import csv
-
-    # id = 1
-    fields = ['modified', 'photo']
-
-    # name of csv file
-    filename = creds.product_photo_log
-
-    # writing to csv file
-    with open(filename, 'w') as csvfile:
-        # creating a csv dict writer object
-        writer = csv.DictWriter(csvfile, fieldnames=fields)
-
-        # writing headers (field names)
-        writer.writeheader()
-        for item in list_of_files[1:]:
-            modified_date = get_modified_datetime(f'{creds.Company.product_images}/{item}')
-            mydict = {'modified': modified_date, 'photo': item}
-            # writing data rows
-            writer.writerow(mydict)
-            # id += 1
-
-
-# render_photos_to_csv()
-
-
 diff = compare(load_csv(open('../one.csv')), load_csv(open('../two.csv')))
 # print(diff)
 print('Added Photos')

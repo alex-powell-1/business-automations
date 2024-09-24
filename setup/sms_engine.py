@@ -156,7 +156,7 @@ class SMSEngine:
         """Send text message to sales team mangers for customer followup"""
         name = f'{first_name} {last_name}'.title()
         message = (
-            f'{name} just requested a phone follow-up about {creds.service}.\n'
+            f'{name} just requested a phone follow-up about {creds.Marketing.DesignLeadForm.service}.\n'
             f'Interested in: {interested_in}\n'
             f'Timeline: {timeline}\n'
             f'Email: {email} \n'
@@ -165,9 +165,9 @@ class SMSEngine:
             f'Comments: {comments}'
         )
         if test_mode:
-            recipient = creds.test_recipient
+            recipient = creds.Marketing.DesignLeadForm.test_recipient
         else:
-            recipient = creds.lead_recipient
+            recipient = creds.Marketing.DesignLeadForm.lead_recipient
 
         for k, v in recipient.items():
             SMSEngine.send_text(origin='SERVER', campaign='DESIGN FORM', name=name, to_phone=v, message=message)

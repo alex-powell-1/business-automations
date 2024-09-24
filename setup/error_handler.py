@@ -108,13 +108,6 @@ class ErrorHandler:
             return f'{prefix} {self.message} {self.traceback if self.traceback else ""}'
 
 
-class GlobalErrorHandler:
-    """General Logging for the entire application"""
-
-    logger = Logger(creds.global_log)
-    error_handler = ErrorHandler(logger)
-
-
 class ScheduledTasksErrorHandler:
     """General Logging for the entire application"""
 
@@ -144,7 +137,7 @@ class ProcessInErrorHandler:
 
 
 class OutOfStockErrorHandler:
-    logger = Logger(f'{creds.log_main}/webhooks/out_of_stock')
+    logger = Logger(f'{creds.Integrator.logs}/webhooks/out_of_stock')
     error_handler = ErrorHandler(logger)
 
 

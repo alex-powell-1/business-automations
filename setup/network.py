@@ -29,21 +29,18 @@ def restart_server_if_disconnected():
 
 
 def health_check():
-    error_handler.logger.info(f'API Endpoint Health Check: Starting at {datetime.now():%H:%M:%S}')
     url = f'{creds.API.endpoint}'
     response = requests.get(url=url)
     if response.status_code != 200:
         error_handler.logger.warn(f'HTTP Server is not running. Restart the server: {creds.API.server_name}')
-        SMSEngine.send_text(
-            origin='SERVER',
-            campaign='Health Check',
-            to_phone=creds.Company.network_notification_phone,
-            message=f'{creds.API.endpoint} is not running. Restart the server.',
-        )
+        # SMSEngine.send_text(
+        #     origin='SERVER',
+        #     campaign='Health Check',
+        #     to_phone=creds.Company.network_notification_phone,
+        #     message=f'{creds.API.endpoint} is not running. Restart the server.',
+        # )
     else:
-        error_handler.logger.info(f'{creds.API.endpoint} is running.')
-
-    error_handler.logger.success(f'API Endpoint Health Check: Completed at {datetime.now():%H:%M:%S}')
+        error_handler.logger.info(f'HTTP Server is running: {creds.API.server_name}')
 
 
 if __name__ == '__main__':

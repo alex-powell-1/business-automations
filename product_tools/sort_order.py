@@ -352,6 +352,9 @@ class SortOrderEngine:
                 product_id = item['product_id']
 
                 move = MoveInput(item_id=product_id, position=item_index)
+                if verbose:
+                    print(f'{collection_id} - {product_id} - {item_index}')
+
                 mc.add(move)
 
             return Shopify.Collection.reorder_items(collection_id=collection_id, collection_of_moves=mc)
@@ -384,4 +387,5 @@ class SortOrderEngine:
 
 
 if __name__ == '__main__':
-    SortOrderEngine.sort()
+    SortOrderEngine.sort(verbose=True)
+    # print(products.get_current_preorder_items_for_sort_order())

@@ -2,7 +2,7 @@ import random
 from setup import creds
 from setup.creds import Table
 from setup.utilities import PhoneNumber
-from setup.error_handler import ProcessOutErrorHandler, ProcessInErrorHandler
+from setup.error_handler import ProcessOutErrorHandler, ProcessInErrorHandler, LeadFormErrorHandler
 from datetime import datetime, timedelta
 from traceback import format_exc as tb
 from time import sleep
@@ -272,6 +272,7 @@ class Database:
             state,
             zip_code,
             comments,
+            eh=LeadFormErrorHandler,
         ):
             sketch, scaled, digital, on_site, delivery, install = 0, 0, 0, 0, 0, 0
             if interested_in is not None:
@@ -289,6 +290,13 @@ class Database:
                     if x == 'Professional Installation':
                         install = 1
 
+            first_name = Database.sql_scrub(first_name)
+            last_name = Database.sql_scrub(last_name)
+            street = Database.sql_scrub(street)
+            city = Database.sql_scrub(city)
+            state = Database.sql_scrub(state)
+            comments = Database.sql_scrub(comments)
+
             query = f"""
                 INSERT INTO {Table.design_leads} (DATE, CUST_NO, FST_NAM, LST_NAM, EMAIL, PHONE, SKETCH, SCALED, DIGITAL, 
                 ON_SITE, DELIVERY, INSTALL, TIMELINE, STREET, CITY, STATE, ZIP, COMMENTS)
@@ -298,10 +306,10 @@ class Database:
                 """
             response = Database.query(query)
             if response['code'] == 200:
-                Database.logger.success(f'Design Lead {first_name} {last_name} added to Middleware.')
+                eh.logger.success(f'Design Lead {first_name} {last_name} added to Middleware.')
             else:
                 error = f'Error adding design lead {first_name} {last_name} to Middleware. \nQuery: {query}\nResponse: {response}'
-                Database.error_handler.add_error_v(error=error, origin='insert_design_lead')
+                eh.error_handler.add_error_v(error=error, origin='insert_design_lead')
 
     class SMS:
         class TextMessage:
@@ -317,6 +325,7 @@ class Database:
                 points=None,
                 message=None,
                 media=None,
+                eh=ProcessOutErrorHandler,
             ):
                 self.to_phone = to_phone
                 self.from_phone = from_phone or creds.Twilio.phone_number
@@ -335,6 +344,7 @@ class Database:
                 self.response_text: str = None  # Twilio message error text
                 self.count = None
                 self.test_mode = False
+                self.eh = eh
 
             def __str__(self):
                 return f'Customer {self.cust_no}: {self.name} - {self.phone}'
@@ -380,14 +390,14 @@ class Database:
                 if response['code'] == 200:
                     if verbose:
                         if direction == 'OUTBOUND':
-                            Database.logger.success(f'SMS sent to {to_phone} added to Database.')
+                            self.eh.logger.success(f'SMS sent to {to_phone} added to Database.')
                         else:
-                            Database.logger.success(f'SMS received from {from_phone} added to Database.')
+                            self.eh.tabase.logger.success(f'SMS received from {from_phone} added to Database.')
                 else:
                     error = (
                         f'Error adding SMS sent to {to_phone} to Middleware. \nQuery: {query}\nResponse: {response}'
                     )
-                    Database.error_handler.add_error_v(error=error, origin='insert_sms')
+                    self.eh.error_handler.add_error_v(error=error, origin='insert_sms')
 
         @staticmethod
         def get(cust_no=None):
@@ -417,6 +427,7 @@ class Database:
             error_message,
             campaign=None,
             username=None,
+            eh=ProcessOutErrorHandler,
         ):
             body = Database.sql_scrub(body)
             body = body[:1000]  # 1000 char limit
@@ -442,15 +453,15 @@ class Database:
             response = Database.query(query)
             if response['code'] == 200:
                 if direction == 'OUTBOUND':
-                    Database.logger.success(f'SMS sent to {to_phone} added to Database.')
+                    eh.logger.success(f'SMS sent to {to_phone} added to Database.')
                 else:
-                    Database.logger.success(f'SMS received from {from_phone} added to Database.')
+                    eh.logger.success(f'SMS received from {from_phone} added to Database.')
             else:
                 error = f'Error adding SMS sent to {to_phone} to Middleware. \nQuery: {query}\nResponse: {response}'
-                Database.error_handler.add_error_v(error=error, origin='insert_sms')
+                eh.error_handler.add_error_v(error=error, origin='insert_sms')
 
         @staticmethod
-        def move_phone_1_to_landline(origin, campaign, cust_no, name, category, phone):
+        def move_phone_1_to_landline(origin, campaign, cust_no, name, category, phone, eh=ProcessOutErrorHandler):
             cp_phone = PhoneNumber(phone).to_cp()
             move_landline_query = f"""
                 UPDATE AR_CUST
@@ -467,18 +478,18 @@ class Database:
 
                 response = Database.query(query)
                 if response['code'] != 200:
-                    Database.error_handler.add_error_v(f'Error moving {phone} to landline')
+                    eh.error_handler.add_error_v(f'Error moving {phone} to landline')
 
             else:
-                Database.error_handler.add_error_v(f'Error moving {phone} to landline')
+                eh.error_handler.add_error_v(f'Error moving {phone} to landline')
 
         @staticmethod
-        def subscribe(origin, campaign, cust_no, name, category, phone):
+        def subscribe(origin, campaign, cust_no, name, category, phone, eh=ProcessOutErrorHandler):
             phone = PhoneNumber(phone).to_cp()
 
             query = f"""
             UPDATE AR_CUST
-            SET {creds.sms_subscribe_status} = 'Y'
+            SET {Table.CP.Customers.Column.sms_1_is_subscribed} = 'Y'
             WHERE PHONE_1 = '{phone}' OR PHONE_2 = '{phone}'
             """
             response = Database.query(query=query)
@@ -486,20 +497,20 @@ class Database:
                 query = f"""
                 INSERT INTO {Table.sms_event} (ORIGIN, CAMPAIGN, PHONE, CUST_NO, NAME, CATEGORY, EVENT_TYPE, MESSAGE)
                 VALUES ('{origin}', '{campaign}', '{phone}', '{cust_no}', '{name}', '{category}',
-                'Subscribe', 'SET {creds.sms_subscribe_status} = Y')"""
+                'Subscribe', 'SET {Table.CP.Customers.Column.sms_1_is_subscribed} = Y')"""
                 response = Database.query(query)
                 if response['code'] != 200:
-                    Database.error_handler.add_error_v(f'Error subscribing {phone} to SMS')
+                    eh.error_handler.add_error_v(f'Error subscribing {phone} to SMS')
 
             else:
-                Database.error_handler.add_error_v(f'Error subscribing {phone} to SMS')
+                eh.error_handler.add_error_v(f'Error subscribing {phone} to SMS')
 
         @staticmethod
-        def unsubscribe(origin, campaign, cust_no, name, category, phone):
+        def unsubscribe(origin, campaign, cust_no, name, category, phone, eh=ProcessOutErrorHandler):
             phone = PhoneNumber(phone).to_cp()
             query = f"""
             UPDATE AR_CUST
-            SET {creds.sms_subscribe_status} = 'N'
+            SET {Table.CP.Customers.Column.sms_1_is_subscribed} = 'N'
             WHERE PHONE_1 = '{phone}' OR PHONE_2 = '{phone}'
             """
             response = Database.query(query=query)
@@ -507,13 +518,13 @@ class Database:
                 query = f"""
                 INSERT INTO {Table.sms_event} (ORIGIN, CAMPAIGN, PHONE, CUST_NO, NAME, CATEGORY, EVENT_TYPE, MESSAGE)
                 VALUES ('{origin}', '{campaign}', '{phone}', '{cust_no}', '{name}', '{category}',
-                'Unsubscribe', 'SET {creds.sms_subscribe_status} = N')"""
+                'Unsubscribe', 'SET {Table.CP.Customers.Column.sms_1_is_subscribed} = N')"""
                 response = Database.query(query)
                 if response['code'] != 200:
-                    Database.error_handler.add_error_v(f'Error unsubscribing {phone} from SMS')
+                    eh.error_handler.add_error_v(f'Error unsubscribing {phone} from SMS')
 
             else:
-                Database.error_handler.add_error_v(f'Error unsubscribing {phone} from SMS')
+                eh.error_handler.add_error_v(f'Error unsubscribing {phone} from SMS')
 
     class StockNotification:
         def has_info(item_no, email=None, phone=None):
@@ -591,7 +602,7 @@ class Database:
                     except:
                         return False
 
-        def insert(email, date=None):
+        def insert(email, date=None, eh=ProcessOutErrorHandler):
             """Inserts an email into the newsletter subscriber table."""
             if not date:
                 query = f"""
@@ -617,7 +628,9 @@ class Database:
             response = Database.query(query)
             if response['code'] == 200:
                 # Email was found in Counterpoint and updated to unsubscribed
-                Database.logger.success(f'Unsubscribed {email} from newsletter.')
+                eh.logger.success(
+                    f'Unsubscribed {email} from newsletter.', origin='Database.Newsletter.unsubscribe'
+                )
             elif response['code'] == 201:
                 # Email not found in Counterpoint. Check if email is in newsletter table.
                 query = f"""
@@ -627,16 +640,20 @@ class Database:
                 """
                 response = Database.query(query)
                 if response['code'] == 200:
-                    Database.logger.success(f'Unsubscribed {email} from newsletter.')
+                    eh.logger.success(
+                        f'Unsubscribed {email} from newsletter.', origin='Database.Newsletter.unsubscribe'
+                    )
                 elif response['code'] == 201:
-                    Database.logger.warn(f'{email} not found in newsletter table.')
+                    eh.logger.warn(
+                        f'{email} not found in newsletter table.', origin='Database.Newsletter.unsubscribe'
+                    )
                 else:
                     error = f'Error unsubscribing {email} from newsletter. \n Query: {query}\nResponse: {response}'
-                    Database.error_handler.add_error_v(error=error)
+                    eh.error_handler.add_error_v(error=error)
                     raise Exception(error)
             else:
                 error = f'Error unsubscribing {email} from newsletter. \n Query: {query}\nResponse: {response}'
-                Database.error_handler.add_error_v(error=error)
+                eh.error_handler.add_error_v(error=error)
                 raise Exception(error)
 
             return response
@@ -657,22 +674,26 @@ class Database:
 
             if response['code'] == 200:
                 # Email was found in Counterpoint and updated to subscribed
-                Database.logger.success(f'Subscribed {email} to newsletter.')
+                eh.logger.success(f'Subscribed {email} to newsletter.')
 
             elif response['code'] == 201:
                 # Email not found in Counterpoint.
-                message = f'{email} not found in newsletter table.'
-                Database.logger.warn(message)
                 if cust_no:
                     # If cust_no is provided, add email to customer record.
                     response = Database.Counterpoint.Customer.add_email(email, cust_no)
                     if response['code'] == 200:
-                        Database.logger.success(f'Subscribed {email} to newsletter.')
+                        eh.logger.success(
+                            f'Subscribed {email} to newsletter.', origin='Database.Newsletter.subscribe'
+                        )
                 else:
-                    response = Database.Newsletter.insert(email)
+                    response = Database.Newsletter.insert(email, eh=eh)
+                    if response['code'] == 200:
+                        eh.logger.success(
+                            f'Subscribed {email} to newsletter.', origin='Database.Newsletter.subscribe'
+                        )
             else:
                 error = f'Error subscribing {email} to newsletter. \n Query: {query}\nResponse: {response}'
-                Database.error_handler.add_error_v(error=error)
+                eh.error_handler.add_error_v(error=error)
                 raise Exception(error)
 
             return response
@@ -990,8 +1011,8 @@ class Database:
                             f'Error adding product {x} to sale category. \n Query: {query}\nResponse: {response}'
                         )
                         eh.error_handler.add_error_v(error=error)
-
-                eh.logger.success(f'{success}/{len(sku_list)} products added to sale category.')
+                if success:
+                    eh.logger.success(f'{success} products added to sale category.')
                 if fail:
                     eh.logger.warn(f'{fail} products not added to sale category.')
 
@@ -1585,7 +1606,7 @@ class Database:
                 return result
 
             @staticmethod
-            def add_email(cust_no, email, field='EMAIL_ADRS_1', subscribe=True):
+            def add_email(cust_no, email, field='EMAIL_ADRS_1', subscribe=True, eh=ProcessInErrorHandler):
                 query = f"""
                 UPDATE {Table.CP.Customers.table}
                 SET {field} = '{email}'
@@ -1593,13 +1614,13 @@ class Database:
                 """
                 response = Database.query(query)
                 if response['code'] == 200:
-                    Database.logger.success(f'Customer {cust_no} email updated to {email}.')
+                    eh.logger.success(f'Customer {cust_no} email updated to {email}.', origin='add_email')
                     if subscribe:
                         Database.Newsletter.subscribe(email)
                 elif response['code'] == 201:
-                    Database.logger.warn(f'No rows affected for {cust_no}.')
+                    eh.logger.warn(f'No rows affected for {cust_no}.', origin='add_email')
                 else:
-                    Database.error_handler.add_error_v(
+                    eh.error_handler.add_error_v(
                         error=f'Error updating customer {cust_no} email.\n\nQuery: {query}\n\nResponse: {response}',
                         origin='add_email',
                     )
@@ -1989,7 +2010,7 @@ class Database:
                     promotions = [group_code]
                 else:
                     # Get list of promotions from IM_PRC_GRP
-                    response = Database.query('SELECT GRP_COD FROM IM_PRC_GRP')
+                    response = Database.query("SELECT GRP_COD FROM IM_PRC_GRP WHERE GRP_TYP = 'P'")
                     promotions = [x[0] for x in response] if response else []
                     if ids_only:
                         return promotions
@@ -1998,24 +2019,50 @@ class Database:
                     # Get promotion details from IM_PRC_GRP and IM_PRC_GRP_RUL
                     result = []
                     for promo in promotions:
+                        # Get number of rules for the promotion
                         query = f"""
-                        SELECT TOP 1 GRP.GRP_TYP, GRP.GRP_COD, GRP.GRP_SEQ_NO, GRP.DESCR, GRP.CUST_FILT, GRP.NO_BEG_DAT, GRP.BEG_DAT, GRP.BEG_TIM_FLG, 
-                        GRP.NO_END_DAT, GRP.END_DAT, GRP.END_TIM_FLG, GRP.LST_MAINT_DT, GRP.ENABLED, GRP.MIX_MATCH_COD, MW.SHOP_ID
-                        FROM IM_PRC_GRP GRP FULL OUTER JOIN {Table.Middleware.promotions} MW ON GRP.GRP_COD = MW.GRP_COD
-                        WHERE GRP.GRP_COD = '{promo}' and GRP.GRP_TYP = 'P'
+                        SELECT COUNT(*) FROM IM_PRC_RUL WHERE GRP_COD = '{promo}'
                         """
-                        response = Database.query(query=query)
-                        try:
-                            promotion = [x for x in response[0]] if response else None
-                        except Exception as e:
-                            Database.error_handler.add_error_v(
-                                error=f'Error getting promotion details for {promo}.\n\nResponse: {response}\n\nError: {e}',
-                                origin='get_promotion',
-                                traceback=tb(),
-                            )
-                            promotion = None
-                        if promotion:
-                            result.append(promotion)
+                        response = Database.query(query)
+                        if response is not None:
+                            rule_count = response[0][0]
+                        else:
+                            continue
+                        # Get promotion details
+                        for rule in range(rule_count):
+                            seq_no = rule + 1
+                            query = f"""
+                            SELECT GRP.GRP_TYP, GRP.GRP_COD, GRP.GRP_SEQ_NO, GRP.DESCR, GRP.CUST_FILT, GRP.NO_BEG_DAT, 
+                            GRP.BEG_DAT, GRP.BEG_TIM_FLG, GRP.NO_END_DAT, GRP.END_DAT, GRP.END_TIM_FLG, GRP.LST_MAINT_DT, 
+                            GRP.ENABLED, GRP.MIX_MATCH_COD, RUL.RUL_SEQ_NO                            
+                            FROM IM_PRC_GRP GRP 
+                            INNER JOIN IM_PRC_RUL RUL on RUL.GRP_COD = GRP.GRP_COD
+                            WHERE GRP.GRP_COD = '{promo}' and GRP.GRP_TYP = 'P' AND RUL.RUL_SEQ_NO = {seq_no}
+                            """
+                            response = Database.query(query=query, mapped=True)
+                            try:
+                                promotion = response['data'][0] if response else None
+                            except Exception as e:
+                                Database.error_handler.add_error_v(
+                                    error=f'Error getting promotion details for {promo}.\n\nResponse: {response}\n\nError: {e}',
+                                    origin='get_promotion',
+                                    traceback=tb(),
+                                )
+                                promotion = None
+                            else:
+                                # Get Shopify ID
+                                query = f"""
+                                SELECT SHOP_ID 
+                                FROM {Table.Middleware.promotions} 
+                                WHERE GRP_COD = '{promo}' AND RUL_SEQ_NO = {seq_no}
+                                """
+                                response = Database.query(query)
+                                if response:
+                                    promotion['SHOP_ID'] = response[0][0]
+                                else:
+                                    promotion['SHOP_ID'] = None
+                            if promotion:
+                                result.append(promotion)
                     return result
 
             class PriceRule:
@@ -2023,15 +2070,32 @@ class Database:
                     query = f"""
                     SELECT RUL.GRP_TYP, RUL.GRP_COD, RUL.RUL_SEQ_NO, RUL.DESCR, RUL.CUST_FILT, ITEM_FILT, 
                     SAL_FILT, IS_CUSTOM, USE_BOGO_TWOFER, REQ_FULL_GRP_FOR_BOGO_TWOFER,
-                    MW.SHOP_ID, GRP.ENABLED, MW.ENABLED, MW.ID
+                    GRP.ENABLED
                     FROM IM_PRC_RUL RUL
 					FULL OUTER JOIN IM_PRC_GRP GRP on GRP.GRP_COD = RUL.GRP_COD
-                    FULL OUTER JOIN SN_PROMO MW on RUL.RUL_SEQ_NO = MW.RUL_SEQ_NO
                     WHERE RUL.GRP_COD = '{group_code}'
                     """
-                    response = Database.query(query)
-                    result = [rule for rule in response] if response else []
-                    return result
+                    response = Database.query(query, mapped=True)
+                    if response['code'] == 200:
+                        result = [rule for rule in response['data']] if response else []
+                        if result:
+                            for x in result:
+                                x['ID'] = None
+                                x['SHOP_ID'] = None
+                                x['MW_ENABLED'] = None
+                                # Check Middleware for Shopify ID, etc.
+                                query = f"""
+                                SELECT ID, SHOP_ID, ENABLED
+                                FROM {Table.Middleware.promotions}
+                                WHERE GRP_COD = '{group_code}' and RUL_SEQ_NO = {x['RUL_SEQ_NO']}
+                                """
+                                response = Database.query(query)
+                                if response:
+                                    x['ID'] = response[0][0]
+                                    x['SHOP_ID'] = response[0][1]
+                                    x['MW_ENABLED'] = response[0][2]
+
+                        return result
 
         class Discount:
             """Discounts are stored in the PS_DISC_COD table in CounterPoint. These codes are
@@ -2309,12 +2373,15 @@ class Database:
                                             SHOP_ID bigint PRIMARY KEY,
                                             ENABLED bit DEFAULT(0),
                                             LST_MAINT_DT datetime NOT NULL DEFAULT(current_timestamp)
+                                            RULE_GUID uniqueidentifier
                                             );""",
                     'promo_line_bogo': f"""
                                             CREATE TABLE {Table.Middleware.promotion_lines_bogo}(
                                             SHOP_ID bigint FOREIGN KEY REFERENCES {Table.Middleware.promotions}(SHOP_ID),
                                             ITEM_NO nvarchar(50),
+                                            RULE_GUID uniqueidentifier,
                                             LST_MAINT_DT datetime NOT NULL DEFAULT(current_timestamp)
+
                                             );""",
                     'promo_line_fixed': f"""
                                             CREATE TABLE {Table.Middleware.promotion_lines_fixed}(
@@ -3122,7 +3189,7 @@ class Database:
                         PRODUCT_ID, IMAGE_ID, THUMBNAIL, IMAGE_NUMBER, SORT_ORDER,
                         IS_BINDING_IMAGE, BINDING_ID, IS_VARIANT_IMAGE, DESCR, SIZE)
                         VALUES (
-                        '{image.name}', {f"'{image.sku}'" if image.sku != '' else 'NULL'},
+                        '{image.name}', {f"'{image.sku}'" if image.sku else 'NULL'},
                         '{image.file_path}', {image.product_id}, {image.shopify_id}, '{1 if image.is_thumbnail else 0}', 
                         '{image.number}', '{image.sort_order}', '{image.is_binding_image}',
                         {f"'{image.binding_id}'" if image.binding_id else 'NULL'}, '{image.is_variant_image}',
@@ -3613,6 +3680,9 @@ class Database:
                 return [x[0] for x in response] if response else None
 
             def sync(rule):
+                if not rule.shopify_id:
+                    Database.logger.warn('No Shopify ID provided for promotion sync.')
+                    return
                 if rule.db_id:
                     Database.Shopify.Promotion.update(rule)
                 else:
@@ -3660,7 +3730,17 @@ class Database:
                 if not shopify_id:
                     Database.logger.warn('No Shopify ID provided for deletion.')
                     return
-                query = f'DELETE FROM {Table.Middleware.promotions} WHERE SHOP_ID = {shopify_id}'
+                query = f"""
+                DELETE FROM {Table.Middleware.promotions} 
+                WHERE SHOP_ID = {shopify_id}
+
+                DELETE FROM {Table.Middleware.promotion_lines_fixed}
+                WHERE GRP_COD = (SELECT GRP_COD FROM {Table.Middleware.promotions} 
+                                WHERE SHOP_ID = {shopify_id})
+                                
+                DELETE FROM {Table.Middleware.promotion_lines_bogo}
+                WHERE SHOP_ID = {shopify_id}
+                """
                 response = Database.query(query)
 
                 if response['code'] == 200:

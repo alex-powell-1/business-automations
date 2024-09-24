@@ -43,7 +43,7 @@ class Customer:
         SELECT FST_NAM, LST_NAM, NAM, PHONE_1, MBL_PHONE_1,
         PHONE_2, MBL_PHONE_2, EMAIL_ADRS_1, EMAIL_ADRS_2, ADRS_1,
         CITY, STATE, ZIP_COD, CUST_TYP, CATEG_COD, PROF_COD_1, ISNULL(LOY_PTS_BAL, 0), LOY_PGM_COD,
-        PROF_COD_2, PROF_COD_3, {creds.sms_subscribe_status}, PROF_ALPHA_1
+        PROF_COD_2, PROF_COD_3, {creds.Table.CP.Customers.Column.sms_1_is_subscribed}, PROF_ALPHA_1
         FROM AR_CUST
         WHERE CUST_NO = '{self.number}'
         """

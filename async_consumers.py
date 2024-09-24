@@ -23,10 +23,11 @@ from docxtpl import DocxTemplate
 import os
 import json
 from integrator import Integrator
+import subprocess
 
 
-def sync_on_demand(phone_number):
-    error_handler = ProcessOutErrorHandler.error_handler
+def sync_on_demand(phone_number, eh=ProcessOutErrorHandler):
+    error_handler = eh.error_handler
     phone_number = PhoneNumber(phone_number).to_twilio()
     SMSEngine.send_text(
         origin='SERVER', campaign='SYNC_ON_DEMAND', to_phone=phone_number, message='Syncing data. Please wait...'
@@ -45,6 +46,23 @@ def sync_on_demand(phone_number):
         phone_response = f'Sync completed successfully at {datetime.now():%m/%d/%Y %H:%M:%S}'
     finally:
         SMSEngine.send_text(origin='sync_on_demand', to_phone=phone_number, message=phone_response)
+
+
+def restart_services(eh=ProcessInErrorHandler):
+    try:
+        eh = ProcessInErrorHandler
+        eh.logger.info('Restarting Services...')
+        file = 'restart_services.bat'
+        p = subprocess.Popen(args=file, cwd=str(os.getcwd()).replace('\\', '/'), shell=True)
+        stdout, stderr = p.communicate()
+        if stderr:
+            raise Exception(stderr)
+    except Exception as e:
+        eh.error_handler.add_error_v(
+            error=f'Error restarting services: {e}', origin='restart_services', traceback=tb()
+        )
+    else:
+        eh.logger.success('Services restarted successfully')
 
 
 def process_design_lead(body, eh=LeadFormErrorHandler, test_mode=False):
@@ -115,6 +133,7 @@ def process_design_lead(body, eh=LeadFormErrorHandler, test_mode=False):
         state=state,
         zip_code=zip_code,
         comments=comments,
+        eh=eh,
     )
 
     # Send text notification To sales team manager
@@ -269,6 +288,11 @@ if __name__ == '__main__':
                 'queue_name': creds.Consumer.design_lead_form,
                 'callback': process_design_lead,
                 'error_handler': LeadFormErrorHandler,
+            },
+            {
+                'queue_name': creds.Consumer.restart_services,
+                'callback': restart_services,
+                'error_handler': ProcessInErrorHandler,
             },
         ]
 

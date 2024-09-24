@@ -1,12 +1,17 @@
-setup/creds.py
 config.json
+ngrok.exe
+ngrok/ngrok.exe
+ngrok/ngrok.yml
+integration/last_sync_integrator.txt
+integration/last_sync_inventory.txt
+static/barcodes/*
 sandbox.py
 .vscode/
 .ruff_cache/
 */__pycache__/
-
+password.txt
 .DS_Store
-
+config_file.py
 */*.pyc
 
 # Byte-compiled / optimized / DLL files

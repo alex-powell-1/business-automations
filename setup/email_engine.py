@@ -74,11 +74,13 @@ class Email:
                 msg.attach(msg_barcode)
 
         if attachment:
-            with open(creds.design_pdf_attachment, 'rb') as file:
+            with open(creds.Marketing.DesignLeadForm.pdf_attachment, 'rb') as file:
                 pdf = file.read()
                 attached_file = MIMEApplication(_data=pdf, _subtype='pdf')
                 attached_file.add_header(
-                    _name='content-disposition', _value='attachment', filename=f'{creds.design_pdf_name}'
+                    _name='content-disposition',
+                    _value='attachment',
+                    filename=f'{creds.Marketing.DesignLeadForm.pdf_name}',
                 )
                 msg.attach(attached_file)
 
@@ -200,14 +202,16 @@ class Email:
 
                 jinja_template = Template(template_str)
 
+                data = creds.Marketing.DesignLeadForm
+
                 email_data = {
-                    'title': creds.email_subject,
+                    'title': data.email_subject,
                     'greeting': f'Hi {first_name},',
-                    'service': creds.service,
+                    'service': data.service,
                     'company': creds.Company.name,
-                    'list_items': creds.list_items,
-                    'signature_name': creds.signature_name,
-                    'signature_title': creds.signature_title,
+                    'list_items': data.list_items,
+                    'signature_name': data.signature_name,
+                    'signature_title': data.signature_title,
                     'company_phone': creds.Company.phone,
                     'company_url': creds.Company.url,
                     'company_reviews': creds.Company.reviews,
@@ -217,11 +221,11 @@ class Email:
 
                 Email.send(
                     recipients_list=recipient,
-                    subject=creds.email_subject,
+                    subject=data.email_subject,
                     content=email_content,
                     mode='mixed',
                     logo=False,
-                    attachment=creds.design_pdf_attachment,
+                    attachment=data.pdf_attachment,
                 )
 
     class Staff:
@@ -266,29 +270,14 @@ class Email:
 
         class LowStockReport:
             def send(recipients, dates):
-                error_handler.logger.info(f'Generating Admin Report Data - Starting at {datetime.now():%H:%M:%S}')
+                error_handler.logger.info(
+                    f'Generating Low Stock Report Data - Starting at {datetime.now():%H:%M:%S}'
+                )
 
                 subject = f'Low Stock Report - {dates.today:%x}'
 
                 report_data = product_reports.report_generator(
-                    title='Low Stock Report',
-                    dates=dates,
-                    revenue=False,
-                    cogs_report=False,
-                    last_week_report=False,
-                    mtd_month_report=False,
-                    last_year_mtd_report=False,
-                    forecasting_report=False,
-                    top_items_by_category=False,
-                    missing_images_report=False,
-                    negatives_report=False,
-                    ecomm_category_report=False,
-                    non_web_enabled_report=False,
-                    low_stock_items_report=True,
-                    sales_rep_report=False,
-                    wholesale_report=False,
-                    inactive_items_report=False,
-                    missing_descriptions_report=False,
+                    title='Low Stock Report', dates=dates, low_stock_items_report=True
                 )
                 html_contents = boiler_plate + css + body_start + report_data + body_end
 
@@ -415,4 +404,7 @@ class Email:
 
 
 if __name__ == '__main__':
-    Email.Staff.DesignLeadNotification.send(recipients=creds.Reports.MarketingLeads.recipients)
+    from setup.date_presets import Dates
+
+    dates = Dates()
+    Email.Staff.LowStockReport.send(recipients=creds.Reports.LowStock.recipients, dates=dates)

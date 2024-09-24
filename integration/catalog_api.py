@@ -247,8 +247,39 @@ class Catalog:
             if delete_targets:
                 Catalog.logger.info(message=f'Delete Targets: {delete_targets}')
                 for x in delete_targets:
+                    if x[0] == 'coming-soon.jpg':
+                        query = """
+                        SELECT ITEM_NO, IMAGE_ID FROM SN_SHOP_IMAGES
+                        WHERE IMAGE_NAME = 'coming-soon.jpg'
+                        """
+                        response = db.query(query)
+                        if response is not None:
+                            images = [{'sku': x[0], 'image_id': x[1]} for x in response]
+                            for i in images:
+                                sku = i['sku']
+                                image_id = i['image_id']
+
+                                # Check if sku has a image in the file explorer.
+                                query = f"""
+                                SELECT USR_PROF_ALPHA_16
+                                FROM IM_ITEM WHERE ITEM_NO = '{sku}'
+                                """
+                                response = db.query(query)
+                                if response is not None:
+                                    try:
+                                        binding_id = response[0][0]
+                                    except:
+                                        binding_id = None
+
+                                # check itemImages for item's image using sku
+                                sku_images = Catalog.get_local_product_images(sku)
+                                binding_images = Catalog.get_local_product_images(binding_id)
+                                images = sku_images + binding_images
+                                if len(images) > 0:
+                                    Catalog.Product.Image.delete(image_id=image_id)
+
                     Catalog.logger.info(f'Deleting Image {x[0]}.\n')
-                    Catalog.Product.Image.delete(x[0])
+                    Catalog.Product.Image.delete(image_name=x[0])
             else:
                 if self.verbose:
                     Catalog.logger.info('No image deletions found.')
@@ -406,6 +437,18 @@ class Catalog:
     @staticmethod
     def get_deletion_target(primary_source, secondary_source):
         return [element for element in secondary_source if element not in primary_source]
+
+    @staticmethod
+    def get_local_product_images(sku):
+        """Get local image information for product"""
+        product_images = []
+        photo_path = creds.Company.product_images
+        list_of_files = os.listdir(photo_path)
+        if list_of_files is not None:
+            for x in list_of_files:
+                if x.split('.')[0].split('^')[0].lower() == sku.lower():
+                    product_images.append(x)
+        return product_images
 
     def delete(products=True, collections=True):
         """Deletes all products, categories from Shopify and Middleware."""
@@ -612,15 +655,6 @@ class Catalog:
 
                 return menu_item
 
-            # # # Temporary Static Auto-Collection for Sales
-            # main_menu['items'].append(
-            #     {
-            #         'title': 'Sale',
-            #         'type': 'COLLECTION',
-            #         'resourceId': 'gid://shopify/Collection/319281397927',
-            #         'items': [],
-            #     }
-            # )
             # Recursively call this function for each child category
             for category in self.heads:
                 main_menu['items'].append(menu_helper(category))
@@ -806,7 +840,7 @@ class Catalog:
 
             def get_category_image_path(self, local=True):
                 image_name = str(self.handle)[1:-1].replace('/', '_').replace(' ', '-') + '.jpg'
-                local_path = f'{creds.Company.public_files_local_path}/{creds.Company.category_images}/{image_name}'
+                local_path = f'{creds.API.public_files_local_path}/{creds.Company.category_images}/{image_name}'
                 if os.path.exists(local_path):
                     return local_path
 
@@ -1341,10 +1375,22 @@ class Catalog:
             if check_missing_images:
                 # Test for missing product images
                 if len(self.images) == 0:
-                    message = f'Product {self.binding_id} is missing images. Will turn visibility to off.'
-                    if self.verbose:
-                        Catalog.logger.warn(message)
-                    self.visible = False
+                    if creds.Integrator.missing_image_active:
+                        message = f'Product {self.binding_id} is missing images. Will use default image.'
+                        if self.verbose:
+                            Catalog.logger.warn(message)
+                        default_image = Catalog.Product.Image(
+                            image_name='coming-soon.jpg',
+                            product_id=self.product_id,
+                            sku=self.sku,
+                            image_url=creds.Integrator.default_image_url,
+                            verbose=self.verbose,
+                        )
+                        self.images.append(default_image)
+                        self.media.append(default_image)
+                    else:
+                        message = f'Product {self.binding_id} is missing images. Will set visibility to draft.'
+                        self.visible = False
 
             # BOUND PRODUCTS
             if self.is_bound:
@@ -1730,11 +1776,12 @@ class Catalog:
                         m.sort_order = count
                     count += 1
 
-                if not self.has_new_media:
-                    for m in self.media:
-                        m.temp_sort_order = m.sort_order
+                if not (len(self.images) == 1 and self.images[0].name == 'coming-soon.jpg'):
+                    if not self.has_new_media:
+                        for m in self.media:
+                            m.temp_sort_order = m.sort_order
 
-                    return None
+                        return None
 
                 result = []
                 images = get_image_payload()
@@ -1769,30 +1816,34 @@ class Catalog:
                 file_list = []
                 stagedUploadsCreateVariables = {'input': []}
 
-                for image in self.images:
-                    image_size = get_filesize(image.file_path)
-                    if image_size != image.size:
-                        if image.db_id:  # If image is in the database, delete the image from Shopify
-                            Shopify.Product.Media.Image.delete(image=image)
-                            Database.Shopify.Product.Media.Image.delete(image_id=image.shopify_id)
-                            image.shopify_id = None
-                            image.image_url = None
-                            image.db_id = None
-                        image.size = get_filesize(image.file_path)
-                        file_list.append(image.file_path)
-                        stagedUploadsCreateVariables['input'].append(
-                            {
-                                'filename': image.name,
-                                'mimeType': 'image/jpg',
-                                'httpMethod': 'POST',
-                                'resource': 'IMAGE',
-                            }
-                        )
+                if len(self.images) == 1 and self.images[0].name == 'coming-soon.jpg':
+                    target_image = self.images[0]
+                    uploaded_files = [{'file_path': target_image.file_path, 'url': target_image.image_url}]
+                else:
+                    for image in self.images:
+                        image_size = get_filesize(image.file_path)
+                        if image_size != image.size:
+                            if image.db_id:  # If image is in the database, delete the image from Shopify
+                                Shopify.Product.Media.Image.delete(image=image)
+                                Database.Shopify.Product.Media.Image.delete(image_id=image.shopify_id)
+                                image.shopify_id = None
+                                image.image_url = None
+                                image.db_id = None
+                            image.size = get_filesize(image.file_path)
+                            file_list.append(image.file_path)
+                            stagedUploadsCreateVariables['input'].append(
+                                {
+                                    'filename': image.name,
+                                    'mimeType': 'image/jpg',
+                                    'httpMethod': 'POST',
+                                    'resource': 'IMAGE',
+                                }
+                            )
 
-                # Upload new images
-                uploaded_files = Shopify.Product.Files.create(
-                    variables=stagedUploadsCreateVariables, file_list=file_list, eh=Catalog.eh
-                )
+                    # Upload new images
+                    uploaded_files = Shopify.Product.Files.create(
+                        variables=stagedUploadsCreateVariables, file_list=file_list, eh=Catalog.eh
+                    )
 
                 for file in uploaded_files:
                     for image in self.images:
@@ -1804,7 +1855,7 @@ class Catalog:
                                 'mediaContentType': image.type,
                             }
                             result.append(image_payload)
-
+                print(f'Image Payload: {result}')
                 return result
 
             def get_video_payload():
@@ -2880,7 +2931,13 @@ class Catalog:
 
                 # Initialize Images
                 if not self.inventory_only:
-                    self.get_local_product_images()
+                    images = Catalog.get_local_product_images(self.sku)
+                    total_images = len(images)
+                    if total_images > 0:
+                        for image in images:
+                            img = Catalog.Product.Image(image_name=image, product_id=self.product_id)
+                            if img.validate():
+                                self.images.append(img)
 
                 # Initialize Variant Image URL
                 if len(self.images) > 0:
@@ -3233,23 +3290,6 @@ class Catalog:
                     else:
                         return [max]
 
-            def get_local_product_images(self):
-                """Get local image information for product"""
-                product_images = []
-                photo_path = creds.Company.product_images
-                list_of_files = os.listdir(photo_path)
-                if list_of_files is not None:
-                    for x in list_of_files:
-                        if x.split('.')[0].split('^')[0].lower() == self.sku.lower():
-                            product_images.append(x)
-
-                total_images = len(product_images)
-                if total_images > 0:
-                    for image in product_images:
-                        img = Catalog.Product.Image(image_name=image, product_id=self.product_id)
-                        if img.validate():
-                            self.images.append(img)
-
             @staticmethod
             def get_lst_maint_dt(file_path):
                 return (
@@ -3259,14 +3299,14 @@ class Catalog:
                 )
 
         class Image:
-            def __init__(self, image_name: str, product_id: int = None, verbose=False):
+            def __init__(self, image_name: str, product_id: int = None, verbose=False, image_url=None, sku=None):
                 self.verbose = verbose
                 self.type = 'IMAGE'
                 self.db_id = None
                 self.name = image_name  # This is the file name
-                self.sku = None
+                self.sku = sku
                 self.file_path = f'{creds.Company.product_images}/{self.name}'
-                self.image_url = ''
+                self.image_url = image_url
                 self.product_id = product_id
                 self.variant_id = None
                 self.shopify_id = None
@@ -3290,26 +3330,40 @@ class Catalog:
 
             def get_image_details(self):
                 """Get image details from SQL"""
-                query = f"SELECT * FROM {Table.Middleware.images} WHERE IMAGE_NAME = '{self.name}'"
+                if self.name == 'coming-soon.jpg':
+                    query = f"""SELECT * 
+                            FROM {Table.Middleware.images} 
+                            WHERE IMAGE_NAME = '{self.name}' AND ITEM_NO = '{self.sku}'
+                            """
+                else:
+                    query = f"""SELECT * 
+                            FROM {Table.Middleware.images} 
+                            WHERE IMAGE_NAME = '{self.name}'
+                            """
                 response = db.query(query)
+                print(response)
                 if response is not None:
-                    self.db_id = response[0][0]
-                    self.name = response[0][1]
-                    self.sku = response[0][2]
-                    self.file_path = response[0][3]
-                    self.product_id = response[0][4]
-                    self.shopify_id = response[0][5]
-                    self.number = response[0][7]
-                    self.sort_order = response[0][8]
-                    self.is_binding_image = True if response[0][9] == 1 else False
-                    self.binding_id = response[0][10]
-                    self.is_variant_image = True if response[0][11] == 1 else False
-                    self.description = self.get_image_description()  # This will pull fresh data each sync.
-                    self.size = response[0][13]
-                    self.last_maintained_dt = response[0][14]
+                    if len(response) == 1:
+                        self.db_id = response[0][0]
+                        self.name = response[0][1]
+                        self.sku = response[0][2]
+                        self.file_path = response[0][3]
+                        self.product_id = response[0][4]
+                        self.shopify_id = response[0][5]
+                        self.number = response[0][7]
+                        self.sort_order = response[0][8]
+                        self.is_binding_image = True if response[0][9] == 1 else False
+                        self.binding_id = response[0][10]
+                        self.is_variant_image = True if response[0][11] == 1 else False
+                        self.description = self.get_image_description()  # This will pull fresh data each sync.
+                        self.size = response[0][13]
+                        self.last_maintained_dt = response[0][14]
 
                 else:
-                    self.set_image_details()
+                    if self.name != 'coming-soon.jpg':
+                        self.set_image_details()
+                    else:
+                        print(self)
 
             def validate(self):
                 """Images will be validated for size and format before being uploaded and written to middleware.
@@ -3486,21 +3540,34 @@ class Catalog:
                     Catalog.logger.log(f'Resized {self.name}')
 
             @staticmethod
-            def delete(image_name):
+            def delete(image_name=None, image_id=None):
                 """Takes in an image name and looks for matching image file in middleware. If found, delete."""
                 Catalog.logger.info(f'Deleting {image_name}')
+                if not image_name and not image_id:
+                    Catalog.error_handler.add_error_v(
+                        f'No image name or ID provided for deletion.', origin='Image Deletion'
+                    )
+                    return
 
                 product_id = None
                 variant_id = None
-                image_id = None
+                image_id = image_id
                 is_variant = False
 
-                image_query = f"""
-                SELECT IMG.PRODUCT_ID, PROD.VARIANT_ID, IMAGE_ID, IS_VARIANT_IMAGE 
-                FROM {Table.Middleware.images} IMG
-                FULL OUTER JOIN {Table.Middleware.products} PROD on IMG.ITEM_NO = PROD.ITEM_NO
-                WHERE IMAGE_NAME = '{image_name}'
-                """
+                if not image_id:
+                    image_query = f"""
+                    SELECT IMG.PRODUCT_ID, PROD.VARIANT_ID, IMAGE_ID, IS_VARIANT_IMAGE 
+                    FROM {Table.Middleware.images} IMG
+                    FULL OUTER JOIN {Table.Middleware.products} PROD on IMG.ITEM_NO = PROD.ITEM_NO
+                    WHERE IMAGE_NAME = '{image_name}'
+                    """
+                else:
+                    image_query = f"""
+                    SELECT IMG.PRODUCT_ID, PROD.VARIANT_ID, IMAGE_ID, IS_VARIANT_IMAGE 
+                    FROM {Table.Middleware.images} IMG
+                    FULL OUTER JOIN {Table.Middleware.products} PROD on IMG.ITEM_NO = PROD.ITEM_NO
+                    WHERE IMAGE_ID = '{image_id}'
+                    """
 
                 res = db.query(image_query)
                 if res is not None:
@@ -3623,26 +3690,4 @@ class Catalog:
 
 
 if __name__ == '__main__':
-    from datetime import datetime
-
-    # query = """
-    #     SELECT MW.ITEM_NO, BINDING_ID
-    #     FROM SN_SHOP_PROD MW
-    #     INNER JOIN IM_ITEM CP ON MW.ITEM_NO = CP.ITEM_NO
-    #     WHERE BINDING_ID IS NOT NULL AND MW.CF_VAR_SIZE IS NULL and CP.USR_SIZE IS NOT NULL"""
-    # response = Database.query(query)
-    # for x in response:
-    #     cat = Catalog(
-    #         last_sync=datetime(2024, 9, 10, 11, 0, 0),
-    #         test_mode=True,
-    #         test_queue=[{'sku': x[0], 'binding_id': x[1]}],
-    #     )
-    #     cat.sync()
-
-    # # Catalog.Product.delete('201852', update_timestamp=True)
-    cat = Catalog(
-        last_sync=datetime(2024, 9, 10, 12, 57, 0),
-        test_mode=True,
-        test_queue=[{'sku': '10344', 'binding_id': 'B0001'}],
-    )
-    cat.sync()
+    print(Catalog.get_local_product_images('B0001'))

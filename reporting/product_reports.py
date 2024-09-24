@@ -1088,7 +1088,7 @@ def report_generator(
         )
         report += section_header
         try:
-            report += get_low_stock_items(number_of_low_stock_items)
+            report += get_low_stock_items(dates=dates, number_of_items=number_of_low_stock_items)
 
         except Exception as err:
             report += f'<p>Error! Message: {err}</p>'

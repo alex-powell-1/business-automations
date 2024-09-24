@@ -5,7 +5,6 @@ import json
 from datetime import datetime
 
 import time
-import aiohttp
 
 from integration.BigCommerce.requests_handler import BCRequests
 import requests
@@ -21,6 +20,17 @@ from setup.utilities import convert_to_utc
 from setup.utilities import VirtualRateLimiter
 
 from setup.error_handler import ProcessOutErrorHandler
+
+
+# BigCommerce Integration SQL TABLES
+bc_category_table = None
+bc_brands_table = None
+bc_product_table = None
+bc_image_table = None
+bc_customer_table = None
+bc_order_table = None
+bc_gift_cert_table = None
+bc_promo_table = None
 
 
 class Catalog:
@@ -2592,30 +2602,30 @@ class Catalog:
                 if not id_list:
                     return
 
-            async def bc_delete_custom_fields_async():
-                async with aiohttp.ClientSession() as session:
-                    for field_id in id_list:
-                        async_url = f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/products/{self.product_id}/custom-fields/{field_id}'
-                        rate_limited = True
-                        while rate_limited:
-                            rate_limited = False
-                            async with session.delete(url=async_url, headers=creds.bc_api_headers) as resp:
-                                text_response = await resp.text()
-                                status_code = resp.status
-                                if status_code == 204:
-                                    Catalog.logger.success(f'Custom Field {field_id} Deleted from BigCommerce.')
-                                elif status_code == 429:
-                                    rate_limited = True
-                                    ms_to_wait = int(resp.headers['X-Rate-Limit-Time-Reset-Ms'])
-                                    seconds_to_wait = (ms_to_wait / 1000) + 1
-                                    VirtualRateLimiter.pause_requests(seconds_to_wait)
-                                    time.sleep(seconds_to_wait)
-                                else:
-                                    Catalog.error_handler.add_error_v(
-                                        f'Error deleting custom field {field_id} from BigCommerce. Response: {status_code}\n{text_response}'
-                                    )
+            # async def bc_delete_custom_fields_async():
+            #     async with aiohttp.ClientSession() as session:
+            #         for field_id in id_list:
+            #             async_url = f'https://api.bigcommerce.com/stores/{creds.big_store_hash}/v3/catalog/products/{self.product_id}/custom-fields/{field_id}'
+            #             rate_limited = True
+            #             while rate_limited:
+            #                 rate_limited = False
+            #                 async with session.delete(url=async_url, headers=creds.bc_api_headers) as resp:
+            #                     text_response = await resp.text()
+            #                     status_code = resp.status
+            #                     if status_code == 204:
+            #                         Catalog.logger.success(f'Custom Field {field_id} Deleted from BigCommerce.')
+            #                     elif status_code == 429:
+            #                         rate_limited = True
+            #                         ms_to_wait = int(resp.headers['X-Rate-Limit-Time-Reset-Ms'])
+            #                         seconds_to_wait = (ms_to_wait / 1000) + 1
+            #                         VirtualRateLimiter.pause_requests(seconds_to_wait)
+            #                         time.sleep(seconds_to_wait)
+            #                     else:
+            #                         Catalog.error_handler.add_error_v(
+            #                             f'Error deleting custom field {field_id} from BigCommerce. Response: {status_code}\n{text_response}'
+            #                         )
 
-            asyncio.run(bc_delete_custom_fields_async())
+            # asyncio.run(bc_delete_custom_fields_async())
 
             update_cf1_query = f"""
                 UPDATE {creds.bc_product_table} 

@@ -31,16 +31,18 @@ class Integrator:
         self.sort_collections: bool = creds.Integrator.collection_sorting
         self.verbose: bool = creds.Integrator.verbose_logging
         self.customers = Customers(last_sync=self.last_sync, verbose=self.verbose, enabled=self.customer_sync)
-        self.promotions = Promotions(last_sync=self.last_sync, verbose=self.verbose, enabled=self.promotions_sync)
+        # self.promotions = Promotions(last_sync=self.last_sync, verbose=self.verbose, enabled=self.promotions_sync)
         self.catalog = Catalog(
             dates=self.dates, last_sync=self.last_sync, verbose=self.verbose, enabled=self.catalog_sync
         )
 
     def __str__(self):
-        result = creds.Integrator.header + f'\nLast Sync: {self.last_sync}\n----------------\n'
+        result = creds.Integrator.title + '\n'
+        result += f'Authors: {creds.Integrator.authors}\nVersion: {creds.Integrator.version}\n'
+        result += f'Last Sync: {self.last_sync}\n----------------\n'
         sync_tasks = ''
         sync_tasks += self.customers.__str__()
-        sync_tasks += self.promotions.__str__()
+        # sync_tasks += self.promotions.__str__()
         sync_tasks += self.catalog.__str__()
         if sync_tasks:
             result += sync_tasks
@@ -70,8 +72,8 @@ class Integrator:
 
         if self.customer_sync:
             self.customers.sync()
-        if self.promotions_sync:
-            self.promotions.sync()
+        # if self.promotions_sync:
+        #     self.promotions.sync()
         if self.catalog_sync:
             self.catalog.sync(initial=initial)
         if self.sort_collections:
@@ -218,7 +220,7 @@ if __name__ == '__main__':
                     while True:
                         now = datetime.now()
                         hour = now.hour
-                        if 18 > hour > 7:
+                        if 19 > hour > 4:  # Daytime - between 7am and 7pm
                             minutes_between_sync = creds.Integrator.int_day_run_interval
                         else:
                             minutes_between_sync = creds.Integrator.int_night_run_interval

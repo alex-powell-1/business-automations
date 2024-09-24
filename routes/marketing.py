@@ -202,6 +202,7 @@ def stock_notification():
 @limiter.limit('20 per minute')
 def newsletter_signup():
     """Route for website pop-up. Offers user a coupon and adds their information to a csv."""
+    eh = ProcessInErrorHandler
     token = request.headers.get('Authorization').split(' ')[1]
 
     url = 'https://www.google.com/recaptcha/api/siteverify'
@@ -217,13 +218,12 @@ def newsletter_signup():
     sanitized_data = {k: bleach.clean(v) for k, v in data.items()}
     # Validate the input data
     try:
-        validate(instance=sanitized_data, schema=creds.newsletter_schema)
+        validate(instance=sanitized_data, schema=creds.Marketing.Newsletter.schema)
     except ValidationError as e:
         abort(400, description=e.message)
     else:
         email = data.get('email')
         if Database.Newsletter.is_subscribed(email):
-            print(f'{email} is already on file')
             return 'This email address is already on file.', 400
 
         # Send welcome email
@@ -236,12 +236,8 @@ def newsletter_signup():
         email_data = {
             'title': f'Welcome to {creds.Company.name}',
             'greeting': 'Hi!',
-            'service': creds.service,
             'coupon': 'NEW10',
             'company': creds.Company.name,
-            'list_items': creds.list_items,
-            'signature_name': creds.signature_name,
-            'signature_title': creds.signature_title,
             'company_phone': creds.Company.phone,
             'company_url': creds.Company.url,
             'company_reviews': creds.Company.reviews,
@@ -258,14 +254,12 @@ def newsletter_signup():
                 logo=True,
             )
         except Exception as e:
-            ProcessInErrorHandler.error_handler.add_error_v(
-                error=f'Error sending welcome email: {e}', origin='newsletter'
-            )
+            eh.error_handler.add_error_v(error=f'Error sending welcome email: {e}', origin='newsletter')
             return 'Error sending welcome email.', 500
         else:
-            res = Database.Newsletter.subscribe(email)
+            res = Database.Newsletter.subscribe(email, eh=eh)
             if res['code'] != 200:
-                ProcessInErrorHandler.error_handler.add_error_v(
+                eh.error_handler.add_error_v(
                     error=f'Error adding {email} to newsletter: {res["message"]}', origin=API.Route.newsletter
                 )
                 return 'Error adding email to newsletter.', 500
@@ -275,11 +269,12 @@ def newsletter_signup():
 @marketing_routes.route(API.Route.unsubscribe, methods=['GET'])
 @limiter.limit('20 per minute')
 def unsubscribe():
+    eh = ProcessInErrorHandler
     email = request.args.get('email')
     if not email:
         return jsonify({'error': 'No email provided'}), 400
 
-    response = Database.Newsletter.unsubscribe(email, eh=ProcessInErrorHandler)
+    response = Database.Newsletter.unsubscribe(email, eh=eh)
     code = response['code']
 
     if code == 200:
@@ -311,11 +306,12 @@ def unsubscribe():
 @marketing_routes.route(API.Route.subscribe, methods=['GET'])
 @limiter.limit('20 per minute')
 def resubscribe():
+    eh = ProcessInErrorHandler
     email = request.args.get('email')
     if not email:
         return jsonify({'error': 'No email provided'}), 400
 
-    response = Database.Newsletter.subscribe(email, eh=ProcessInErrorHandler)
+    response = Database.Newsletter.subscribe(email, eh=eh)
     code = response['code']
 
     if code == 200:
