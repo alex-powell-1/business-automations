@@ -482,6 +482,7 @@ def variant_out_of_stock():
     product_id = int(webhook_data['product_id'])
 
     if product_id in get_preorder_product_ids():
+        OutOfStockErrorHandler.logger.info(f'Skipping preorder product: {product_id}')
         return jsonify({'success': True}), 200
 
     try:
