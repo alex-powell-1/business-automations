@@ -218,7 +218,7 @@ def newsletter_signup():
     sanitized_data = {k: bleach.clean(v) for k, v in data.items()}
     # Validate the input data
     try:
-        validate(instance=sanitized_data, schema=creds.newsletter_schema)
+        validate(instance=sanitized_data, schema=creds.Marketing.Newsletter.schema)
     except ValidationError as e:
         abort(400, description=e.message)
     else:
@@ -236,12 +236,8 @@ def newsletter_signup():
         email_data = {
             'title': f'Welcome to {creds.Company.name}',
             'greeting': 'Hi!',
-            'service': creds.service,
             'coupon': 'NEW10',
             'company': creds.Company.name,
-            'list_items': creds.list_items,
-            'signature_name': creds.signature_name,
-            'signature_title': creds.signature_title,
             'company_phone': creds.Company.phone,
             'company_url': creds.Company.url,
             'company_reviews': creds.Company.reviews,

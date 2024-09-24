@@ -1,4 +1,3 @@
-setup/creds.py
 config.json
 ngrok.exe
 ngrok/ngrok.exe
@@ -12,7 +11,7 @@ sandbox.py
 */__pycache__/
 password.txt
 .DS_Store
-
+config_file.py
 */*.pyc
 
 # Byte-compiled / optimized / DLL files

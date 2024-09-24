@@ -489,7 +489,7 @@ class Database:
 
             query = f"""
             UPDATE AR_CUST
-            SET {creds.sms_subscribe_status} = 'Y'
+            SET {Table.CP.Customers.Column.sms_1_is_subscribed} = 'Y'
             WHERE PHONE_1 = '{phone}' OR PHONE_2 = '{phone}'
             """
             response = Database.query(query=query)
@@ -497,7 +497,7 @@ class Database:
                 query = f"""
                 INSERT INTO {Table.sms_event} (ORIGIN, CAMPAIGN, PHONE, CUST_NO, NAME, CATEGORY, EVENT_TYPE, MESSAGE)
                 VALUES ('{origin}', '{campaign}', '{phone}', '{cust_no}', '{name}', '{category}',
-                'Subscribe', 'SET {creds.sms_subscribe_status} = Y')"""
+                'Subscribe', 'SET {Table.CP.Customers.Column.sms_1_is_subscribed} = Y')"""
                 response = Database.query(query)
                 if response['code'] != 200:
                     eh.error_handler.add_error_v(f'Error subscribing {phone} to SMS')
@@ -510,7 +510,7 @@ class Database:
             phone = PhoneNumber(phone).to_cp()
             query = f"""
             UPDATE AR_CUST
-            SET {creds.sms_subscribe_status} = 'N'
+            SET {Table.CP.Customers.Column.sms_1_is_subscribed} = 'N'
             WHERE PHONE_1 = '{phone}' OR PHONE_2 = '{phone}'
             """
             response = Database.query(query=query)
@@ -518,7 +518,7 @@ class Database:
                 query = f"""
                 INSERT INTO {Table.sms_event} (ORIGIN, CAMPAIGN, PHONE, CUST_NO, NAME, CATEGORY, EVENT_TYPE, MESSAGE)
                 VALUES ('{origin}', '{campaign}', '{phone}', '{cust_no}', '{name}', '{category}',
-                'Unsubscribe', 'SET {creds.sms_subscribe_status} = N')"""
+                'Unsubscribe', 'SET {Table.CP.Customers.Column.sms_1_is_subscribed} = N')"""
                 response = Database.query(query)
                 if response['code'] != 200:
                     eh.error_handler.add_error_v(f'Error unsubscribing {phone} from SMS')

@@ -22,6 +22,17 @@ from setup.utilities import VirtualRateLimiter
 from setup.error_handler import ProcessOutErrorHandler
 
 
+# BigCommerce Integration SQL TABLES
+bc_category_table = None
+bc_brands_table = None
+bc_product_table = None
+bc_image_table = None
+bc_customer_table = None
+bc_order_table = None
+bc_gift_cert_table = None
+bc_promo_table = None
+
+
 class Catalog:
     error_handler = ProcessOutErrorHandler.error_handler
     logger = error_handler.logger

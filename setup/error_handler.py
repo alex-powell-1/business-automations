@@ -108,13 +108,6 @@ class ErrorHandler:
             return f'{prefix} {self.message} {self.traceback if self.traceback else ""}'
 
 
-class GlobalErrorHandler:
-    """General Logging for the entire application"""
-
-    logger = Logger(creds.global_log)
-    error_handler = ErrorHandler(logger)
-
-
 class ScheduledTasksErrorHandler:
     """General Logging for the entire application"""
 

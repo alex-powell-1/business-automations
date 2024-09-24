@@ -74,11 +74,13 @@ class Email:
                 msg.attach(msg_barcode)
 
         if attachment:
-            with open(creds.design_pdf_attachment, 'rb') as file:
+            with open(creds.Marketing.DesignLeadForm.pdf_attachment, 'rb') as file:
                 pdf = file.read()
                 attached_file = MIMEApplication(_data=pdf, _subtype='pdf')
                 attached_file.add_header(
-                    _name='content-disposition', _value='attachment', filename=f'{creds.design_pdf_name}'
+                    _name='content-disposition',
+                    _value='attachment',
+                    filename=f'{creds.Marketing.DesignLeadForm.pdf_name}',
                 )
                 msg.attach(attached_file)
 
@@ -200,14 +202,16 @@ class Email:
 
                 jinja_template = Template(template_str)
 
+                data = creds.Marketing.DesignLeadForm
+
                 email_data = {
-                    'title': creds.email_subject,
+                    'title': data.email_subject,
                     'greeting': f'Hi {first_name},',
-                    'service': creds.service,
+                    'service': data.service,
                     'company': creds.Company.name,
-                    'list_items': creds.list_items,
-                    'signature_name': creds.signature_name,
-                    'signature_title': creds.signature_title,
+                    'list_items': data.list_items,
+                    'signature_name': data.signature_name,
+                    'signature_title': data.signature_title,
                     'company_phone': creds.Company.phone,
                     'company_url': creds.Company.url,
                     'company_reviews': creds.Company.reviews,
@@ -217,11 +221,11 @@ class Email:
 
                 Email.send(
                     recipients_list=recipient,
-                    subject=creds.email_subject,
+                    subject=data.email_subject,
                     content=email_content,
                     mode='mixed',
                     logo=False,
-                    attachment=creds.design_pdf_attachment,
+                    attachment=data.pdf_attachment,
                 )
 
     class Staff:
