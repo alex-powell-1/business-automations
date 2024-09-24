@@ -395,7 +395,7 @@ def get_ecomm_items(mode=1, in_stock_only=False):
             response = db.query(query)
             try:
                 return response[0][0]
-            except KeyError:
+            except:
                 return 0
         else:
             query = """
