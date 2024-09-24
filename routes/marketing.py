@@ -41,7 +41,7 @@ def marketing_lead_design():
     data = request.json
     # Validate the input data
     try:
-        validate(instance=data, schema=creds.design_schema)
+        validate(instance=data, schema=creds.Marketing.DesignLeadForm.schema)
     except ValidationError as e:
         LeadFormErrorHandler.error_handler.add_error_v(error=f'Invalid input data: {e}', origin='design_info')
         abort(400, description='Invalid input data')
