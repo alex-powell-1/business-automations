@@ -271,7 +271,7 @@ class Catalog:
                                     binding_id = response[0][0]
                                 except:
                                     binding_id = None
-
+                            print(f'Binding ID: {binding_id}')
                             # check itemImages for item's image using sku
                             local_images = Catalog.get_local_product_images(sku)
                             if binding_id:
@@ -280,6 +280,7 @@ class Catalog:
 
                             if len(local_images) > 0:
                                 Catalog.Product.Image.delete(image_id=image_id)
+                        # raise Exception()
                         break
 
                     else:
@@ -364,7 +365,6 @@ class Catalog:
 
     def sync(self, initial=False):
         """Syncs the catalog with Shopify. This will update products, categories, and media."""
-        # Sync Categories (Collections)
         if not self.inventory_only:
             if not self.test_mode:
                 self.category_tree.sync()
@@ -372,7 +372,8 @@ class Catalog:
         if not self.inventory_only and not initial:
             self.process_product_deletes()
             if not self.test_mode:
-                self.process_media()
+                pass
+            self.process_media()
 
         if not self.sync_queue:
             if not self.inventory_only:  # don't log this for inventory sync.
@@ -888,6 +889,7 @@ class Catalog:
 
             # A list of image objects
             self.images: list[Catalog.Product.Image] = []
+            self.default_image: bool = False
             self.expected_media_order = []
             self.videos: list = []
             self.media: list = []  # list of all media objects (Images and Videos)
@@ -1119,6 +1121,7 @@ class Catalog:
                 # Get last maintained date of all the variants and set product last maintained date to the latest
                 # Add Variant Images to image list and establish which image is the variant thumbnail
                 lst_maint_dt_list = []
+
                 for variant in self.variants:
                     variant_image_count = 0
                     # While we are here, let's get all the last maintenance dates for the variants
@@ -1133,6 +1136,7 @@ class Catalog:
                 # If the product has been updated since the last sync, it will go through full validation. Otherwise, it will be skipped.
 
                 self.lst_maint_dt = max(lst_maint_dt_list) if lst_maint_dt_list else datetime(1970, 1, 1)
+                self.default_image = len(self.images) == 1 and self.images[0].name == 'coming-soon.jpg'
 
             def get_single_product_details():
                 self.variants.append(
@@ -1391,6 +1395,7 @@ class Catalog:
                         message = f'Product {self.binding_id} is missing images. Will use default image.'
                         if self.verbose:
                             Catalog.logger.warn(message)
+
                         default_image = Catalog.Product.Image(
                             image_name='coming-soon.jpg',
                             product_id=self.product_id,
@@ -1400,6 +1405,7 @@ class Catalog:
                         )
                         self.images.append(default_image)
                         self.media.append(default_image)
+                        self.default_image = True
                     else:
                         message = f'Product {self.binding_id} is missing images. Will set visibility to draft.'
                         if self.verbose:
@@ -1790,14 +1796,11 @@ class Catalog:
                         m.sort_order = count
                     count += 1
 
-                if not (
-                    len(self.images) == 1 and self.images[0].name == 'coming-soon.jpg' and not self.images[0].db_id
-                ):
-                    if not self.has_new_media:
-                        for m in self.media:
-                            m.temp_sort_order = m.sort_order
+                if not self.has_new_media or (self.default_image and self.images[0].db_id):
+                    for m in self.media:
+                        m.temp_sort_order = m.sort_order
 
-                        return None
+                    return None
 
                 result = []
                 images = get_image_payload()
@@ -2292,6 +2295,7 @@ class Catalog:
                 get_metafield_ids(response)
 
             def get_media_ids(response):
+                print(f'Media IDs: {response["media_ids"]}')
                 for x in self.media:
                     x.product_id = self.product_id
                     x.shopify_id = response['media_ids'][x.temp_sort_order]
@@ -3706,4 +3710,55 @@ class Catalog:
 
 
 if __name__ == '__main__':
-    print(Catalog.get_local_product_images('B0001'))
+    from setup.date_presets import Dates
+
+    cat = Catalog(
+        last_sync='2021-09-01',
+        dates=Dates(),
+        verbose=True,
+        test_mode=True,
+        test_queue=[
+            {'sku': '202944', 'binding_id': 'B9999'},
+            {'sku': 'ANNUAL1', 'binding_id': 'B0998'},
+            {'sku': '202354', 'binding_id': 'B0155'},
+            {'sku': 'BOSTON', 'binding_id': 'B0152'},
+            {'sku': '202869', 'binding_id': 'B0150'},
+            {'sku': '202866', 'binding_id': 'B0148'},
+            {'sku': '202865', 'binding_id': 'B0147'},
+            {'sku': '202863', 'binding_id': 'B0146'},
+            {'sku': '202875', 'binding_id': 'B0143'},
+            {'sku': '202874', 'binding_id': 'B0142'},
+            {'sku': '202873', 'binding_id': 'B0141'},
+            {'sku': '10104', 'binding_id': 'B0140'},
+            {'sku': '202843', 'binding_id': 'B0133'},
+            {'sku': '202897', 'binding_id': 'B0130'},
+            {'sku': '202575', 'binding_id': 'B0095'},
+            {'sku': '202278', 'binding_id': 'B0081'},
+            {'sku': '10212', 'binding_id': 'B0064'},
+            {'sku': 'HT4', 'binding_id': 'B0048'},
+            {'sku': '10002', 'binding_id': 'B0025'},
+            {'sku': '10224', 'binding_id': 'B0012'},
+            {'sku': '200934', 'binding_id': 'B0011'},
+            {'sku': '200070'},
+            {'sku': '200091'},
+            {'sku': '10079'},
+            {'sku': '200587'},
+            {'sku': '201762'},
+            {'sku': '202136'},
+            {'sku': '202602'},
+            {'sku': '202907'},
+            {'sku': '202758'},
+            {'sku': 'QSCARBLOCK'},
+            {'sku': 'QSHCMED'},
+            {'sku': 'QSMBBLOCK'},
+            {'sku': '202967'},
+            {'sku': '202968'},
+            {'sku': '202969'},
+            {'sku': '202970'},
+            {'sku': '202971'},
+            {'sku': '202973'},
+            {'sku': '8K'},
+            {'sku': '8PEP'},
+        ],
+    )
+    cat.sync()
