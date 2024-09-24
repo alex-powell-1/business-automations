@@ -390,12 +390,12 @@ def get_ecomm_items(mode=1, in_stock_only=False):
             query = """
             SELECT COUNT(ITEM_NO)
             FROM VI_IM_ITEM_WITH_INV
-            WHERE IS_ECOMM_ITEM = 'Y' AND QTY_AVAIL > 0
+            WHERE IS_ECOMM_ITEM = 'Y' AND QTY_AVAIL-PROF_NO_1 > 0
             """
             response = db.query(query)
-            if response is not None:
+            try:
                 return response[0][0]
-            else:
+            except KeyError:
                 return 0
         else:
             query = """
@@ -404,10 +404,11 @@ def get_ecomm_items(mode=1, in_stock_only=False):
             WHERE IS_ECOMM_ITEM = 'Y'
             """
             response = db.query(query)
-            if response is not None:
-                return response[0][0]
-            else:
+            try:
+                response[0][0]
+            except:
                 return 0
+
     # Mode 2 returns a list of skus of all e-comm items
     if mode == 2:
         query = """
@@ -430,7 +431,10 @@ def get_ecomm_items(mode=1, in_stock_only=False):
             FROM {creds.Table.Middleware.products}
             """
         response = db.query(query)
-        return [[x[0], x[1]] for x in response] if response is not None else []
+        try:
+            return [[x[0], x[1]] for x in response]
+        except:
+            return []
 
 
 def get_zero_stock_ecomm_products():
