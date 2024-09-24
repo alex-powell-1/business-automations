@@ -46,12 +46,11 @@ def cost_of_goods_sold(start_date, stop_date, store):
 
 
 def get_invisible_items():
-    """Creates a list of items that have negative stock values"""
     query = """
     SELECT IM_ITEM.ITEM_NO, IM_ITEM.ADDL_DESCR_1, IM_ITEM.USR_PROF_ALPHA_17, IM_INV.QTY_AVAIL
     FROM IM_ITEM
     INNER JOIN IM_INV ON IM_ITEM.ITEM_NO = IM_INV.ITEM_NO
-    WHERE IM_INV.QTY_AVAIL > 0 AND IS_ECOMM_ITEM = 'Y'AND USR_CPC_IS_ENABLED = 'N'
+    WHERE (IM_INV.QTY_AVAIL-IM_ITEM.PROF_NO_1) > 0 AND IS_ECOMM_ITEM = 'Y'AND USR_CPC_IS_ENABLED = 'N'
     AND CATEG_COD != 'WORKSHOP'
     ORDER BY IM_INV.QTY_AVAIL DESC
     """

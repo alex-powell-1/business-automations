@@ -1,9 +1,4 @@
-import json
-from config_file import config
-
-
-with open(config) as f:
-    config_data = json.load(f)
+from config_file import config_data
 
 
 class Config:
@@ -41,7 +36,7 @@ class Integrator:
     sms_sync_keyword: str = Config.integrator['sms_sync_keyword']
     verbose_logging: bool = Config.integrator['verbose_logging']
     default_image_url: str = Config.integrator['default_image_url']
-    missing_image_active: bool = Config.integrator['missing_image_active']
+    set_missing_image_active: bool = Config.integrator['missing_image_active']
 
 
 class SQL:
