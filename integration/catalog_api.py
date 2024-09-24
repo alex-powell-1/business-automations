@@ -235,7 +235,6 @@ class Catalog:
         def process_images():
             if self.verbose:
                 Catalog.logger.info('Processing Image Updates.')
-            start_time = time.time()
             self.product_images = get_product_images(eh=self.eh, verbose=self.verbose)
             mw_images = Database.Shopify.Product.Media.Image.get(column='IMAGE_NAME, SIZE')
             self.mw_image_list = [[x[0], x[1]] for x in mw_images] if mw_images else []
@@ -253,33 +252,39 @@ class Catalog:
                         WHERE IMAGE_NAME = 'coming-soon.jpg'
                         """
                         response = db.query(query)
-                        if response is not None:
-                            images = [{'sku': x[0], 'image_id': x[1]} for x in response]
-                            for i in images:
-                                sku = i['sku']
-                                image_id = i['image_id']
+                        if response is None:
+                            continue
 
-                                # Check if sku has a image in the file explorer.
-                                query = f"""
-                                SELECT USR_PROF_ALPHA_16
-                                FROM IM_ITEM WHERE ITEM_NO = '{sku}'
-                                """
-                                response = db.query(query)
-                                if response is not None:
-                                    try:
-                                        binding_id = response[0][0]
-                                    except:
-                                        binding_id = None
+                        images = [{'sku': x[0], 'image_id': x[1]} for x in response]
+                        for i in images:
+                            sku = i['sku']
+                            image_id = i['image_id']
 
-                                # check itemImages for item's image using sku
-                                sku_images = Catalog.get_local_product_images(sku)
-                                binding_images = Catalog.get_local_product_images(binding_id)
-                                images = sku_images + binding_images
-                                if len(images) > 0:
-                                    Catalog.Product.Image.delete(image_id=image_id)
+                            # Check if sku has a image in the file explorer.
+                            query = f"""
+                            SELECT USR_PROF_ALPHA_16
+                            FROM IM_ITEM WHERE ITEM_NO = '{sku}'
+                            """
+                            response = db.query(query)
+                            if response is not None:
+                                try:
+                                    binding_id = response[0][0]
+                                except:
+                                    binding_id = None
 
-                    Catalog.logger.info(f'Deleting Image {x[0]}.\n')
-                    Catalog.Product.Image.delete(image_name=x[0])
+                            # check itemImages for item's image using sku
+                            local_images = Catalog.get_local_product_images(sku)
+                            if binding_id:
+                                local_binding_images = Catalog.get_local_product_images(binding_id)
+                                local_images += local_binding_images
+
+                            if len(local_images) > 0:
+                                Catalog.Product.Image.delete(image_id=image_id)
+                        break
+
+                    else:
+                        Catalog.logger.info(f'Deleting Image {x[0]}.\n')
+                        Catalog.Product.Image.delete(image_name=x[0])
             else:
                 if self.verbose:
                     Catalog.logger.info('No image deletions found.')
@@ -882,7 +887,7 @@ class Catalog:
             self.parent: list = []
 
             # A list of image objects
-            self.images: list = []
+            self.images: list[Catalog.Product.Image] = []
             self.expected_media_order = []
             self.videos: list = []
             self.media: list = []  # list of all media objects (Images and Videos)
@@ -1373,9 +1378,16 @@ class Catalog:
                     return False
 
             if check_missing_images:
-                # Test for missing product images
+                missing = False
                 if len(self.images) == 0:
-                    if creds.Integrator.missing_image_active:
+                    missing = True
+
+                elif len(self.images) == 1:
+                    if self.images[0].name == 'coming-soon.jpg':
+                        missing = True
+
+                if missing:
+                    if creds.Integrator.set_missing_image_active:
                         message = f'Product {self.binding_id} is missing images. Will use default image.'
                         if self.verbose:
                             Catalog.logger.warn(message)
@@ -1390,6 +1402,8 @@ class Catalog:
                         self.media.append(default_image)
                     else:
                         message = f'Product {self.binding_id} is missing images. Will set visibility to draft.'
+                        if self.verbose:
+                            Catalog.logger.warn(message)
                         self.visible = False
 
             # BOUND PRODUCTS
@@ -3341,7 +3355,6 @@ class Catalog:
                             WHERE IMAGE_NAME = '{self.name}'
                             """
                 response = db.query(query)
-                print(response)
                 if response is not None:
                     if len(response) == 1:
                         self.db_id = response[0][0]
