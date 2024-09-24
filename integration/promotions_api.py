@@ -1,4 +1,3 @@
-from datetime import datetime
 from database import Database
 from setup.error_handler import ProcessOutErrorHandler
 from setup.utilities import convert_to_utc
@@ -58,9 +57,6 @@ class Promotions:
 
     def get_sync_queue(self):
         for promotion in self.promotions:
-            print(
-                f'Promotion: {promotion.grp_cod} Last Sync: {self.last_sync} Promotion Date: {promotion.lst_maint_dt}'
-            )
             if promotion.lst_maint_dt > self.last_sync:
                 self.sync_queue.append(promotion)
 
@@ -272,6 +268,7 @@ class Promotion:
         self.process_line_deletes()
 
         for rule in self.price_rules:
+            print(f'RUle items {rule.items}')
             if not rule.is_retail:
                 ############################################################################
                 ########################### Wholesale Promotions ###########################
@@ -292,19 +289,19 @@ class Promotion:
                 Promotions.logger.info(f'Processing Retail Rule: {rule.seq_no}\n\n{rule}')
 
                 if rule.is_bogo_twoofer():
-                    pass
                     ############################## RETAIL ###############################
                     ###################### BOGO Twoofer Promotions ######################
                     #####################################################################
                     # process BOGO Twoofers
-                    variables = self.get_bxgy_payload(rule)
-                    if rule.shopify_id:
-                        Promotions.logger.info(f'Updating BOGO Twoofer: {rule.shopify_id}')
-                        Shopify.Discount.Automatic.Bxgy.update(variables)
-                    else:
-                        rule.shopify_id = Shopify.Discount.Automatic.Bxgy.create(variables)
+                    if self.is_enabled:
+                        variables = self.get_bxgy_payload(rule)
+                        if rule.shopify_id:
+                            Promotions.logger.info(f'Updating BOGO Twoofer: {rule.shopify_id}')
+                            Shopify.Discount.Automatic.Bxgy.update(variables)
+                        else:
+                            rule.shopify_id = Shopify.Discount.Automatic.Bxgy.create(variables)
 
-                    self.set_sale_status(rule)
+                    self.set_sale_status(rule)  # will handle activating/deactivating the promotion in Shopify
 
                     # Sync BOGO Twoofer Promotions to Middleware.
                     # Fixed Price Promotions are processed outside this block.
@@ -390,9 +387,10 @@ class Promotion:
                     Database.Counterpoint.Product.set_sale_status(items=delete_list, status=False)
 
     def set_sale_status(self, rule: 'PriceRule'):
-        Database.Counterpoint.Product.set_sale_status(
-            items=rule.items, status=rule.is_enabled_cp, description=rule.badge_text
-        )
+        if rule.items:
+            Database.Counterpoint.Product.set_sale_status(
+                items=rule.items, status=rule.is_enabled_cp, description=rule.badge_text
+            )
 
         if rule.is_enabled_cp and not rule.is_enabled_mw:
             Shopify.Discount.Automatic.activate(rule.shopify_id)
@@ -500,6 +498,7 @@ class PriceRule:
     def __init__(self, rule):
         self.grp_typ = rule['GRP_TYP']
         self.grp_cod = rule['GRP_COD']
+        self.rule_guid: str = rule['RULE_GUID']
         self.seq_no = rule['RUL_SEQ_NO']
         self.descr: str = rule['DESCR']
         self.cust_filt = rule['CUST_FILT']
@@ -526,8 +525,8 @@ class PriceRule:
         self.mw_fixed_price_items: list[str] = Database.Shopify.Promotion.FixLine.get(
             group_cod=self.grp_cod, rul_seq_no=self.seq_no
         )
-        if self.items:
-            self.badge_text = self.get_badge_text()
+
+        self.badge_text = self.get_badge_text()
 
     def __str__(self) -> str:
         result = f'\tRule Sequence Number: {self.seq_no}\n'
@@ -622,6 +621,9 @@ class PriceRule:
 
     def get_badge_text(self) -> str:
         """Creates a custom badge for the promotion."""
+        if not self.items:
+            return ''
+
         if self.is_bogo_twoofer():
             message = self.descr.split('-')[-1].strip()
         else:
@@ -686,7 +688,4 @@ class FixedPriceItem:
 
 
 if __name__ == '__main__':
-    promo = Promotions(last_sync=datetime(2024, 9, 17, 17))
-    for p in promo.promotions:
-        if p.grp_cod == 'MUM':
-            p.process()
+    Promotion.delete('APTEST')

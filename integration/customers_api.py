@@ -25,6 +25,8 @@ class Customers:
         self.update_customer_timestamps()
         if enabled:
             self.customers: list[Customers.Customer] = self.get_updated_customers()
+        else:
+            self.customers = []
 
     def __str__(self):
         result = ''

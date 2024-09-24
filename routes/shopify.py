@@ -10,6 +10,7 @@ from setup import creds
 import json
 from shop.models.webhooks import CustomerWebhook
 from routes.limiter import limiter
+from product_tools.products import get_preorder_product_ids
 
 
 class EventID:
@@ -478,10 +479,10 @@ def variant_out_of_stock():
         return jsonify({'error': 'Unauthorized'}), 401
 
     OutOfStockErrorHandler.logger.info(f'Variant Out of Stock: {webhook_data}')
-
+    product_id = int(webhook_data['product_id'])
+    if product_id in get_preorder_product_ids():
+        return jsonify({'success': True}), 200
     try:
-        product_id = int(webhook_data['product_id'])
-
         shopify_product = Shopify.Product.get(product_id=product_id)['product']
         if shopify_product['totalInventory'] < 1:
             collections = Shopify.Product.get_collection_ids(product_id=product_id)
@@ -491,7 +492,6 @@ def variant_out_of_stock():
                 )
     except Exception as e:
         OutOfStockErrorHandler.error_handler.add_error_v(
-            error=f'Error processing variant out of stock: {e}', origin='Variant Out of Stock', traceback=tb()
+            error=f'Error processing out of stock: {e}', traceback=tb()
         )
-
     return jsonify({'success': True}), 200

@@ -2373,12 +2373,15 @@ class Database:
                                             SHOP_ID bigint PRIMARY KEY,
                                             ENABLED bit DEFAULT(0),
                                             LST_MAINT_DT datetime NOT NULL DEFAULT(current_timestamp)
+                                            RULE_GUID uniqueidentifier
                                             );""",
                     'promo_line_bogo': f"""
                                             CREATE TABLE {Table.Middleware.promotion_lines_bogo}(
                                             SHOP_ID bigint FOREIGN KEY REFERENCES {Table.Middleware.promotions}(SHOP_ID),
                                             ITEM_NO nvarchar(50),
+                                            RULE_GUID uniqueidentifier,
                                             LST_MAINT_DT datetime NOT NULL DEFAULT(current_timestamp)
+
                                             );""",
                     'promo_line_fixed': f"""
                                             CREATE TABLE {Table.Middleware.promotion_lines_fixed}(
@@ -3186,7 +3189,7 @@ class Database:
                         PRODUCT_ID, IMAGE_ID, THUMBNAIL, IMAGE_NUMBER, SORT_ORDER,
                         IS_BINDING_IMAGE, BINDING_ID, IS_VARIANT_IMAGE, DESCR, SIZE)
                         VALUES (
-                        '{image.name}', {f"'{image.sku}'" if image.sku != '' else 'NULL'},
+                        '{image.name}', {f"'{image.sku}'" if image.sku else 'NULL'},
                         '{image.file_path}', {image.product_id}, {image.shopify_id}, '{1 if image.is_thumbnail else 0}', 
                         '{image.number}', '{image.sort_order}', '{image.is_binding_image}',
                         {f"'{image.binding_id}'" if image.binding_id else 'NULL'}, '{image.is_variant_image}',
@@ -3677,6 +3680,9 @@ class Database:
                 return [x[0] for x in response] if response else None
 
             def sync(rule):
+                if not rule.shopify_id:
+                    Database.logger.warn('No Shopify ID provided for promotion sync.')
+                    return
                 if rule.db_id:
                     Database.Shopify.Promotion.update(rule)
                 else:
@@ -3724,7 +3730,17 @@ class Database:
                 if not shopify_id:
                     Database.logger.warn('No Shopify ID provided for deletion.')
                     return
-                query = f'DELETE FROM {Table.Middleware.promotions} WHERE SHOP_ID = {shopify_id}'
+                query = f"""
+                DELETE FROM {Table.Middleware.promotions} 
+                WHERE SHOP_ID = {shopify_id}
+
+                DELETE FROM {Table.Middleware.promotion_lines_fixed}
+                WHERE GRP_COD = (SELECT GRP_COD FROM {Table.Middleware.promotions} 
+                                WHERE SHOP_ID = {shopify_id})
+                                
+                DELETE FROM {Table.Middleware.promotion_lines_bogo}
+                WHERE SHOP_ID = {shopify_id}
+                """
                 response = Database.query(query)
 
                 if response['code'] == 200:
