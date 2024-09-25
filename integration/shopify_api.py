@@ -1855,7 +1855,7 @@ class Shopify:
 
                         id = edge['node']['id'].split('/')[-1]
 
-                        if id in preorder_product_ids:
+                        if int(id) in preorder_product_ids:
                             continue
 
                         data.append(id)
