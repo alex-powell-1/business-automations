@@ -212,7 +212,7 @@ class Table:
                 last_name = __col['last_name']
                 email_1 = __col['email_1']
                 email_2 = __col['email_2']
-                mobile_phone_1 = __col['mobile_phone_1']
+                mobile_phone_1: str = __col['mobile_phone_1']
                 phone_1 = __col['phone_1']
                 mobile_phone_2 = __col['mobile_phone_2']
                 phone_2 = __col['phone_2']

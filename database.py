@@ -73,7 +73,7 @@ class Database:
                 if sql_data:
                     code = 200
                     message = 'success'
-                    mapped_response = []  # list of dictionaries
+                    mapped_response: list[dict] = []  # list of dictionaries
                     row_count = len(sql_data)
                     for row in sql_data:
                         row_dict = {}
@@ -525,6 +525,33 @@ class Database:
 
             else:
                 eh.error_handler.add_error_v(f'Error unsubscribing {phone} from SMS')
+
+        def is_subscribed(phone_number: str, eh=ProcessInErrorHandler) -> bool:
+            """Returns True if phone number is subscribed to SMS notifications."""
+            # Find the columns that contain the phone number
+            phone_locations = Database.Counterpoint.Customer.find_phone(phone_number)
+            if not phone_locations:
+                return False
+            for location in phone_locations:
+                if location == {Table.CP.Customers.Column.mobile_phone_1}:
+                    phone_column = Table.CP.Customers.Column.sms_1_is_subscribed
+                    # THIS DOES NOT WORK.
+                elif location == {Table.CP.Customers.Column.mobile_phone_2}:
+                    phone_column = Table.CP.Customers.Column.sms_2_is_subscribed
+                else:
+                    print('here 2')
+                    continue
+                query = f"""
+                SELECT {phone_column}
+                FROM {Table.CP.Customers.table}
+                WHERE {location} = '{phone_number}'
+                """
+                response = Database.query(query)
+                print(response)
+                try:
+                    return response[0][0] == 'Y'
+                except:
+                    return False
 
     class StockNotification:
         def has_info(item_no, email=None, phone=None):
@@ -1707,6 +1734,44 @@ class Database:
                     return response['data']
                 else:
                     return []
+
+            def find_phone(phone_number: str, eh=ProcessInErrorHandler) -> list[str]:
+                """Takes a phone number and returns a list of columns that contain the phone number"""
+                query = f"""
+                    SELECT {Table.CP.Customers.Column.mobile_phone_1}, {Table.CP.Customers.Column.mobile_phone_2}
+                    FROM {Table.CP.Customers.table}
+                    WHERE {Table.CP.Customers.Column.mobile_phone_1} = '{phone_number}' 
+                    OR {Table.CP.Customers.Column.mobile_phone_2} = '{phone_number}'
+                """
+                response = Database.query(query=query, mapped=True)
+                if response['code'] == 200:
+                    result = []
+                    data = response['data']
+                    for row in data:
+                        for column in row:
+                            if row[column]:
+                                result.append(column)
+                    return result
+                else:
+                    eh.logger.info(f'Phone number {phone_number} not found in Counterpoint.')
+
+            def find_email(email_address: str) -> list:
+                """Takes an email address and returns a list of columns that contain the email address"""
+                query = f"""
+                    SELECT {Table.CP.Customers.Column.email_1}, {Table.CP.Customers.Column.email_2}
+                    FROM {Table.CP.Customers.table}
+                    WHERE {Table.CP.Customers.Column.email_1} = '{email_address}' 
+                    OR {Table.CP.Customers.Column.email_2} = '{email_address}'
+                """
+                response = Database.query(query=query, mapped=True)
+                if response['code'] == 200:
+                    result = []
+                    data = response['data']
+                    for row in data:
+                        for column in row:
+                            if row[column]:
+                                result.append(column)
+                    return result
 
             @staticmethod
             def get_all(last_sync=datetime(1970, 1, 1), customer_no=None, customer_list=None):
@@ -3941,4 +4006,4 @@ class Database:
 
 
 if __name__ == '__main__':
-    print(Database.Counterpoint.Customer.get_by_email('alexpow@asdfasdf.com'))
+    print(Database.SMS.is_subscribed('828-390-8030'))
