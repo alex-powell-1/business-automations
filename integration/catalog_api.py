@@ -1781,6 +1781,7 @@ class Catalog:
                 return result
 
             def get_media_payload():
+                print(f'Media: {[x.name for x in self.media]}')
                 count = 0
                 for m in self.media:
                     if count == 0:
@@ -3557,10 +3558,10 @@ class Catalog:
             @staticmethod
             def delete(image_name=None, image_id=None):
                 """Takes in an image name and looks for matching image file in middleware. If found, delete."""
-                Catalog.logger.info(f'Deleting {image_name}')
+                Catalog.logger.info(f'Deleting {image_name or image_id} from Shopify and Middleware.')
                 if not image_name and not image_id:
                     Catalog.error_handler.add_error_v(
-                        f'No image name or ID provided for deletion.', origin='Image Deletion'
+                        'No image name or ID provided for deletion.', origin='Image Deletion'
                     )
                     return
 
@@ -3713,47 +3714,8 @@ if __name__ == '__main__':
         verbose=True,
         test_mode=True,
         test_queue=[
-            {'sku': '202944', 'binding_id': 'B9999'},
-            {'sku': 'ANNUAL1', 'binding_id': 'B0998'},
-            {'sku': '202354', 'binding_id': 'B0155'},
-            {'sku': 'BOSTON', 'binding_id': 'B0152'},
-            {'sku': '202869', 'binding_id': 'B0150'},
-            {'sku': '202866', 'binding_id': 'B0148'},
-            {'sku': '202865', 'binding_id': 'B0147'},
-            {'sku': '202863', 'binding_id': 'B0146'},
-            {'sku': '202875', 'binding_id': 'B0143'},
-            {'sku': '202874', 'binding_id': 'B0142'},
-            {'sku': '202873', 'binding_id': 'B0141'},
-            {'sku': '10104', 'binding_id': 'B0140'},
-            {'sku': '202843', 'binding_id': 'B0133'},
-            {'sku': '202897', 'binding_id': 'B0130'},
-            {'sku': '202575', 'binding_id': 'B0095'},
-            {'sku': '202278', 'binding_id': 'B0081'},
-            {'sku': '10212', 'binding_id': 'B0064'},
-            {'sku': 'HT4', 'binding_id': 'B0048'},
-            {'sku': '10002', 'binding_id': 'B0025'},
-            {'sku': '10224', 'binding_id': 'B0012'},
-            {'sku': '200934', 'binding_id': 'B0011'},
-            {'sku': '200070'},
-            {'sku': '200091'},
-            {'sku': '10079'},
-            {'sku': '200587'},
-            {'sku': '201762'},
-            {'sku': '202136'},
-            {'sku': '202602'},
-            {'sku': '202907'},
-            {'sku': '202758'},
-            {'sku': 'QSCARBLOCK'},
-            {'sku': 'QSHCMED'},
-            {'sku': 'QSMBBLOCK'},
-            {'sku': '202967'},
-            {'sku': '202968'},
-            {'sku': '202969'},
-            {'sku': '202970'},
-            {'sku': '202971'},
-            {'sku': '202973'},
-            {'sku': '8K'},
-            {'sku': '8PEP'},
+            # {'sku': '202944', 'binding_id': 'B9999'},
+            {'sku': '8K'}
         ],
     )
     cat.sync()
