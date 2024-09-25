@@ -256,7 +256,8 @@ class SortOrderEngine:
 
     def sort(print_mode=False, out_of_stock_mode=True, verbose=False):
         """Sets sort order based on revenue data from prior year during the forecasted time period"""
-        SortOrderEngine.logger.info('COLLECTIONS SORT: Starting')
+        if verbose:
+            SortOrderEngine.logger.info('COLLECTIONS SORT: Starting')
         start_time = time.time()
 
         ###############################################################################################

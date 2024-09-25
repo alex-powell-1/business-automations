@@ -422,7 +422,7 @@ def product_update():
                 position = m['position']
                 update_payload[f'alt_text_{position}'] = m['alt_text']
         try:
-            Database.Counterpoint.Product.update(update_payload)
+            Database.Counterpoint.Product.update(update_payload, eh=ProcessInErrorHandler)
         except Exception as e:
             ProcessInErrorHandler.error_handler.add_error_v(
                 error=f'Error updating product {item_no}: {e}',
