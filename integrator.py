@@ -23,6 +23,7 @@ class Integrator:
         self.dates = date_presets.Dates()
         self.last_sync: datetime = get_last_sync(file_name='./integration/last_sync_integrator.txt')
         self.start_sync_time: datetime = None
+        self.completion_time: datetime = None
         self.module = str(sys.modules[__name__]).split('\\')[-1].split('.')[0].title()
         self.eh = ProcessOutErrorHandler
         self.error_handler = self.eh.error_handler
@@ -33,8 +34,7 @@ class Integrator:
         self.sort_collections: bool = creds.Integrator.collection_sorting
         self.verbose: bool = creds.Integrator.verbose_logging
         self.customers = Customers(last_sync=self.last_sync, verbose=self.verbose, enabled=self.customer_sync)
-        # self.promotions = Promotions(last_sync=self.last_sync, verbose=self.verbose, enabled=self.promotions_sync)
-        self.promotions = None
+        self.promotions = Promotions(last_sync=self.last_sync, verbose=self.verbose, enabled=self.promotions_sync)
         self.catalog = Catalog(
             dates=self.dates, last_sync=self.last_sync, verbose=self.verbose, enabled=self.catalog_sync
         )
@@ -63,24 +63,30 @@ class Integrator:
         if rebuild:
             Database.Shopify.rebuild_tables()  # Will drop and rebuild all Shopify tables
 
-        self.catalog = Catalog(last_sync=date_presets.business_start_date)
-        self.sync(initial=True)
+        self.catalog = Catalog(dates=self.dates, initial_sync=True)
+        self.sync()
         # self.customers = Customers(last_sync=business_start)
         Integrator.logger.info(message=f'Initialization Complete. ' f'Total time: {time.time() - start_time}')
 
     @timer
-    def sync(self, initial=False):
+    def sync(self):
         """Sync the catalog, customers, and promotions."""
         self.start_sync_time = datetime.now()
-
+        self.logger.header(
+            f'Starting sync at {self.start_sync_time:%Y-%m-%d %H:%M:%S}. Last sync: {integrator.last_sync}'
+        )
+        # Sync the catalog, customers, and promotions
         if self.customer_sync:
             self.customers.sync()
         if self.promotions_sync:
             self.promotions.sync()
         if self.catalog_sync:
-            self.catalog.sync(initial=initial)
+            self.catalog.sync()
         if self.sort_collections:
             SortOrderEngine.sort(verbose=self.verbose)
+        # Finished
+        self.completion_time = datetime.now()
+        integrator.logger.info(f'Sync complete at {self.completion_time:%Y-%m-%d %H:%M:%S}')
 
         set_last_sync(file_name='./integration/last_sync_integrator.txt', start_time=self.start_sync_time)
 
@@ -232,9 +238,6 @@ if __name__ == '__main__':
 
                         try:
                             integrator = Integrator()  # Reinitialize the integrator each time
-                            integrator.logger.header(
-                                f'Starting sync at {now:%Y-%m-%d %H:%M:%S}. Last sync: {integrator.last_sync}'
-                            )
                             integrator.sync(eh=integrator.eh, operation=integrator.module)
 
                         except Exception as e:
@@ -243,11 +246,7 @@ if __name__ == '__main__':
                             )
                             time.sleep(60)
                         else:
-                            completion_time = datetime.now()
-                            next_sync = completion_time + timedelta(minutes=minutes_between_sync)
-                            integrator.logger.info(
-                                f'Sync complete at {completion_time:%Y-%m-%d %H:%M:%S}. Next Sync at: {next_sync:%Y-%m-%d %H:%M:%S}'
-                            )
+                            next_sync = integrator.completion_time + timedelta(minutes=minutes_between_sync)
                             time.sleep(delay)
 
                 except KeyboardInterrupt:
@@ -257,7 +256,6 @@ if __name__ == '__main__':
                     integrator.error_handler.add_error_v(error=e, origin=integrator.module, traceback=tb())
 
     else:
-        integrator = Integrator()
         print(integrator)
         input = input('Continue? (y/n): ')
         if input.lower() == 'y':

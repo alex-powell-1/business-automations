@@ -37,8 +37,10 @@ class Catalog:
         test_mode=False,
         test_queue=None,
         enabled=True,
+        initial_sync=False,
     ):
         self.dates: Dates = dates
+        self.initial_sync = initial_sync
         self.last_sync = last_sync
         self.inventory_only = inventory_only
         self.verbose = verbose
@@ -59,6 +61,8 @@ class Catalog:
         self.sync_queue = []
         self.queue_binding_ids = set()
         self.get_products()
+        if not self.inventory_only and not self.initial_sync:
+            self.process_media()
         if self.test_mode:
             self.sync_queue = self.test_queue
         elif enabled:
@@ -241,8 +245,9 @@ class Catalog:
             )
 
             if delete_targets:
-                delete_targets_set = set(x[0] for x in delete_targets)
-                Catalog.logger.info(message=f'Delete Targets: {delete_targets_set}')
+                delete_targets_set = list(set(x[0] for x in delete_targets))
+                if self.verbose:
+                    Catalog.logger.info(message=f'Delete Targets: {delete_targets_set}')
                 for img_name in delete_targets_set:
                     if img_name == 'coming-soon.jpg':
                         query = """
@@ -286,44 +291,45 @@ class Catalog:
                 if self.verbose:
                     Catalog.logger.info('No image deletions found.')
 
-            # # Update Item LST_MAINT_DT if new images have been deleted/added/changed.
-            # update_list = delete_targets
+            # Update Item LST_MAINT_DT if new images have been deleted/added/changed.
+            update_list = delete_targets
 
-            # addition_targets = Catalog.get_deletion_target(
-            #     primary_source=self.mw_image_list, secondary_source=self.product_images
-            # )
+            addition_targets = Catalog.get_deletion_target(
+                primary_source=self.mw_image_list, secondary_source=self.product_images
+            )
 
-            # if addition_targets:
-            #     for x in addition_targets:
-            #         update_list.append(x)
+            if addition_targets:
+                for x in addition_targets:
+                    update_list.append(x)
 
-            # if update_list:
-            #     sku_list = [x[0].split('.')[0].split('^')[0] for x in update_list]
-            #     binding_list = [x for x in sku_list if x in Catalog.all_binding_ids]
+            if update_list:
+                sku_list = [x[0].split('.')[0].split('^')[0] for x in update_list]
+                binding_list = [x for x in sku_list if x in Catalog.all_binding_ids]
 
-            #     sku_list = tuple(sku_list)
-            #     if binding_list:
-            #         if len(binding_list) > 1:
-            #             binding_list = tuple(binding_list)
-            #             where_filter = f' or {Table.CP.Item.Column.binding_id} in {binding_list}'
-            #         else:
-            #             where_filter = f" or {Table.CP.Item.Column.binding_id} = '{binding_list[0]}'"
-            #     else:
-            #         where_filter = ''
-            #     query = f"""
-            #         UPDATE {Table.CP.Item.table}
-            #         SET LST_MAINT_DT = GETDATE()
-            #         WHERE (ITEM_NO in {sku_list} {where_filter}) AND
-            #         {Table.CP.Item.Column.web_enabled} = 'Y'"""
-
-            #     db.query(query)
-
-            # Catalog.logger.info(f'Image Add/Delete Processing Complete. Time: {time.time() - start_time}')
+                sku_list = tuple(sku_list)
+                if binding_list:
+                    if len(binding_list) > 1:
+                        binding_list = tuple(binding_list)
+                        where_filter = f' or {Table.CP.Item.Column.binding_id} in {binding_list}'
+                    else:
+                        where_filter = f" or {Table.CP.Item.Column.binding_id} = '{binding_list[0]}'"
+                else:
+                    where_filter = ''
+                query = f"""
+                    UPDATE {Table.CP.Item.table}
+                    SET LST_MAINT_DT = GETDATE()
+                    WHERE (ITEM_NO in {sku_list} {where_filter}) AND
+                    {Table.CP.Item.Column.web_enabled} = 'Y'"""
+                response = db.query(query, mapped=True)
+                if response['code'] == 200:
+                    if self.verbose:
+                        Catalog.logger.info(
+                            f'Process Media: Updated LST_MAINT_DT for {response['affected rows']} items.'
+                        )
 
         def process_videos():
             if self.verbose:
                 Catalog.logger.info('Processing Video Updates.')
-            start_time = time.time()
             self.product_videos = Database.Counterpoint.Product.Media.Video.get()
             mw_video_data = Database.Shopify.Product.Media.Video.get(column='ITEM_NO, URL')
             mw_video_list = [[x[0], x[1]] for x in mw_video_data] if mw_video_data else []
@@ -339,8 +345,6 @@ class Catalog:
             else:
                 if self.verbose:
                     Catalog.logger.info('No video deletions found.')
-            if self.verbose:
-                Catalog.logger.info(f'Video Add/Delete Processing Complete. Time: {time.time() - start_time}')
 
         process_images()
         process_videos()
@@ -367,9 +371,6 @@ class Catalog:
 
         if not self.inventory_only and not initial:
             self.process_product_deletes()
-            if not self.test_mode:
-                pass
-            self.process_media()
 
         if not self.sync_queue:
             if not self.inventory_only:  # don't log this for inventory sync.
@@ -1781,7 +1782,6 @@ class Catalog:
                 return result
 
             def get_media_payload():
-                print(f'Media: {[x.name for x in self.media]}')
                 count = 0
                 for m in self.media:
                     if count == 0:
@@ -3709,13 +3709,13 @@ if __name__ == '__main__':
     from setup.date_presets import Dates
 
     cat = Catalog(
-        last_sync='2021-09-01',
+        last_sync=datetime(2024, 9, 25, 11, 25),
         dates=Dates(),
         verbose=True,
-        test_mode=True,
-        test_queue=[
-            # {'sku': '202944', 'binding_id': 'B9999'},
-            {'sku': '8K'}
-        ],
+        # test_mode=True,
+        # test_queue=[
+        #     # {'sku': '202944', 'binding_id': 'B9999'},
+        #     {'sku': '8K'}
+        # ],
     )
     cat.sync()
