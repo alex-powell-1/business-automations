@@ -2925,7 +2925,7 @@ class Database:
                     current_collection_ids.remove(collection_id)
                     query = f"""
                     UPDATE {Table.Middleware.products}
-                    SET CATEG_ID = '{','.join(current_collection_ids)}'
+                    SET CATEG_ID = '{','.join([str(x) for x in current_collection_ids])}'
                     WHERE ITEM_NO = '{item_no}'
                     """
                     response = Database.query(query)

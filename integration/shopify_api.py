@@ -1855,7 +1855,7 @@ class Shopify:
                         if not edge['node']['inCollection']:
                             continue
 
-                        id = edge['node']['id'].split('/')[-1]
+                        id = int(edge['node']['id'].split('/')[-1])
 
                         if id in preorder_product_ids:
                             continue
@@ -1930,9 +1930,7 @@ class Shopify:
                 # Our task will continue to run at the same time.
                 thread.start()
 
-                items = [
-                    int(x) for x in Shopify.Collection.get_out_of_stock_items(collection_id=collection_id, eh=eh)
-                ]
+                items = [x for x in Shopify.Collection.get_out_of_stock_items(collection_id=collection_id, eh=eh)]
 
                 if len(items) == 0:
                     return
