@@ -50,7 +50,7 @@ class Customers:
         else:
             response = Database.Counterpoint.Customer.get_all(last_sync=self.last_sync)
 
-        return [self.Customer(x) for x in response] if response is not None else []
+        return [self.Customer(x, verbose=self.verbose) for x in response] if response is not None else []
 
     def get_cp_customers(self):
         """Get all customers from Counterpoint that are e-commerce customers."""
@@ -138,45 +138,51 @@ class Customers:
             Customers.logger.warn(f'No customers to sync. Last Sync: {self.last_sync}')
 
     class Customer:
-        def __init__(self, cust_result):
-            self.cp_cust_no = cust_result[0]
-            self.fst_nam = str(cust_result[1]).title()
-            self.lst_nam = str(cust_result[2]).title()
-            self.email = cust_result[3]
-            self.phone = cust_result[4]
-            self.loyalty_points = float(cust_result[5])
-            self.loyalty_point_id = cust_result[6]
-            self.address_line_1: str = cust_result[7]
-            self.address_line_2: str = cust_result[8]
-            self.city = cust_result[9]
-            self.state = cust_result[10]
-            self.zip = cust_result[11]
-            self.country = cust_result[12]
-            self.shopify_cust_no = cust_result[13]
-            self.meta_cust_no_id = cust_result[14]
-            self.category = cust_result[15]
-            self.meta_category_id = cust_result[16]
+        def __init__(self, cust_result, verbose=False):
+            self.verbose = verbose
+            self.cp_cust_no = cust_result['CUST_NO']
+            self.fst_nam = str(cust_result['FST_NAM']).title()
+            self.lst_nam = str(cust_result['LST_NAM']).title()
+            self.email = cust_result['EMAIL_ADRS_1']
+            self.phone = cust_result['PHONE_1']
+            self.loyalty_points = float(cust_result['LOY_PTS_BAL'])
+            self.store_credit_id = cust_result['LOY_ACCOUNT']
+            self.address_line_1: str = cust_result['ADRS_1']
+            self.address_line_2: str = cust_result['ADRS_2']
+            self.city = cust_result['CITY']
+            self.state = cust_result['STATE']
+            self.zip = cust_result['ZIP_COD']
+            self.country = cust_result['CNTRY']
+            self.shopify_cust_no = cust_result['SHOP_CUST_ID']
+            self.meta_cust_no_id = cust_result['META_CUST_NO']
+            self.meta_loyalty_point_id = cust_result['META_LOY_PTS_BAL']
+            self.category = cust_result['CATEG_COD']
+            self.meta_category_id = cust_result['META_CATEG']
 
             try:
-                self.meta_birth_month = int(cust_result[17])
+                self.meta_birth_month = int(cust_result['PROF_COD_2'])
             except:
                 self.meta_birth_month = None
-            self.meta_birth_month_id = cust_result[18]
+            self.meta_birth_month_id = cust_result['META_BIR_MTH']
 
             try:
-                self.meta_spouse_birth_month = int(cust_result[19])
+                self.meta_spouse_birth_month = int(cust_result['PROF_COD_3'])
             except:
                 self.meta_spouse_birth_month = None
 
-            self.meta_spouse_birth_month_id = cust_result[20]
+            self.meta_spouse_birth_month_id = cust_result['META_SPS_BIR_MTH']
 
-            self.meta_wholesale_price_tier = self.validate_price_tier(cust_result[21])
+            self.meta_wholesale_price_tier = self.validate_price_tier(cust_result['PROF_ALPHA_1'])
 
-            self.meta_wholesale_price_tier_id = cust_result[22]
+            self.meta_wholesale_price_tier_id = cust_result['WH_PRC_TIER']
 
-            self.sms_subscribe = True if cust_result[23] == 'Y' else False
-            self.email_subscribe = True if cust_result[24] == 'Y' else False
-            self.mw_id = cust_result[25]
+            self.sms_subscribe = (
+                True if cust_result[Table.CP.Customers.Column.sms_1_is_subscribed] == 'Y' else False
+            )
+            self.email_subscribe = (
+                True if cust_result[Table.CP.Customers.Column.email_1_is_subscribed] == 'Y' else False
+            )
+            self.mw_id = cust_result['ID']
 
             self.addresses = []
             self.get_addresses()
@@ -192,7 +198,7 @@ class Customers:
             result += f'Email: {self.email}\n'
             result += f'Phone: {self.phone}\n'
             result += f'Loyalty Points: {self.loyalty_points}\n'
-            result += f'Loyalty Point ID: {self.loyalty_point_id}\n'
+            result += f'Loyalty Point ID: {self.store_credit_id}\n'
             result += f'Address Line 1: {self.address_line_1}\n'
             result += f'Address Line 2: {self.address_line_2}\n'
             result += f'City: {self.city}\n'
@@ -313,6 +319,26 @@ class Customers:
             else:
                 variables['input']['metafields'].append(
                     {'id': f'gid://shopify/Metafield/{self.meta_cust_no_id}', 'value': self.cp_cust_no}
+                )
+
+            # Loyalty Points
+
+            if not self.meta_loyalty_point_id:
+                variables['input']['metafields'].append(
+                    {
+                        'namespace': namespace,
+                        'key': 'loyalty_points',
+                        'type': 'number_integer',
+                        'value': json.dumps(int(self.loyalty_points)),
+                    }
+                )
+
+            else:
+                variables['input']['metafields'].append(
+                    {
+                        'id': f'gid://shopify/Metafield/{self.meta_loyalty_point_id}',
+                        'value': json.dumps(self.loyalty_points),
+                    }
                 )
 
             # Add Category
@@ -489,7 +515,10 @@ class Customers:
                         address['country'] = 'United States'
 
                     variables['input']['addresses'].append(address)
-
+            if self.verbose:
+                Customers.logger.info(
+                    f'Customer {self.cp_cust_no} payload: {variables}', origin='Customer.write_customer_payload'
+                )
             return variables
 
         def check_for_existing_customer(self):
@@ -520,6 +549,7 @@ class Customers:
 
                 if self.shopify_cust_no:
                     response = update()
+                    print(response)
                     if self.phone:
                         Shopify.Customer.update_sms_marketing_consent(self.shopify_cust_no, self.sms_subscribe)
                     if self.email:
@@ -550,6 +580,10 @@ class Customers:
                 response['metafields']['cust_no_id'] if 'cust_no_id' in response['metafields'] else None
             )
 
+            self.meta_loyalty_point_id = (
+                response['metafields']['loyalty_point_id'] if 'loyalty_point_id' in response['metafields'] else None
+            )
+
             self.meta_category_id = (
                 response['metafields']['category_id'] if 'category_id' in response['metafields'] else None
             )
@@ -571,16 +605,16 @@ class Customers:
             )
 
         def update_loyalty_points(self):
-            if self.loyalty_point_id is None:
+            if self.store_credit_id is None:
                 if self.loyalty_points > 0:
-                    self.loyalty_point_id = Shopify.Customer.StoreCredit.add_store_credit(
+                    self.store_credit_id = Shopify.Customer.StoreCredit.add_store_credit(
                         self.shopify_cust_no, self.loyalty_points
                     )
                     return
                 else:
                     return
 
-            shopify_loy_bal = Shopify.Customer.StoreCredit.get(self.loyalty_point_id)
+            shopify_loy_bal = Shopify.Customer.StoreCredit.get(self.store_credit_id)
             if shopify_loy_bal != self.loyalty_points:
                 if shopify_loy_bal < self.loyalty_points:
                     Shopify.Customer.StoreCredit.add_store_credit(
@@ -626,8 +660,9 @@ class Subscriber:
         self.shopify_cust_no = None
         self.cp_cust_no = None
         self.mw_id = None
-        self.loyalty_point_id = None
+        self.store_credit_id = None
         self.meta_cust_no_id = None
+        self.loyalty_point_id = None
         self.meta_category_id = None
         self.meta_birth_month_id = None
         self.meta_spouse_birth_month_id = None
@@ -649,7 +684,7 @@ class Subscriber:
             Database.Shopify.Customer.update(
                 cp_cust_no=self.cp_cust_no,
                 shopify_cust_no=self.shopify_cust_no,
-                loyalty_point_id=self.loyalty_point_id,
+                store_credit_id=self.store_credit_id,
                 meta_cust_no_id=self.meta_cust_no_id,
                 meta_category_id=self.meta_category_id,
                 meta_birth_month_id=self.meta_birth_month_id,
@@ -660,7 +695,7 @@ class Subscriber:
             Database.Shopify.Customer.insert(
                 cp_cust_no=self.cp_cust_no,
                 shopify_cust_no=self.shopify_cust_no,
-                loyalty_point_id=self.loyalty_point_id,
+                store_credit_id=self.store_credit_id,
                 meta_cust_no_id=self.meta_cust_no_id,
                 meta_category_id=self.meta_category_id,
                 meta_birth_month_id=self.meta_birth_month_id,
@@ -736,5 +771,21 @@ class NewsletterSubscribers:
 
 
 if __name__ == '__main__':
-    subs = NewsletterSubscribers()
-    subs.sync()
+    # subs = NewsletterSubscribers()
+    # subs.sync()
+    cust = Customers(last_sync=datetime(2024, 9, 25, 12, 49), verbose=False)
+    cust.sync()
+    retry_list = [
+        '101870',
+        '103009',
+        '107366',
+        '115423',
+        '115555',
+        '115609',
+        '115855',
+        '115860',
+        '115862',
+        '115891',
+        '115892',
+        '116117',
+    ]

@@ -705,5 +705,6 @@ if __name__ == '__main__':
 
     promos = Promotions(last_sync=datetime.datetime(2024, 9, 1), verbose=True, enabled=True)
     for promo in promos.promotions:
-        if promo.grp_cod in ['MUM', 'CALADIUM', 'SEPT-RETAI']:
-            promo.process()
+        print(promo)
+        # if promo.grp_cod in ['MUM', 'CALADIUM', 'SEPT-RETAI']:
+        #     promo.process()

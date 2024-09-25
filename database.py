@@ -1719,13 +1719,17 @@ class Database:
 
                 query = f"""
                 SELECT CP.CUST_NO, FST_NAM, LST_NAM, EMAIL_ADRS_1, PHONE_1, LOY_PTS_BAL, MW.LOY_ACCOUNT, ADRS_1, ADRS_2, CITY, STATE, ZIP_COD, CNTRY,
-                MW.SHOP_CUST_ID, MW.META_CUST_NO, CATEG_COD, MW.META_CATEG, PROF_COD_2, MW.META_BIR_MTH, PROF_COD_3, MW.META_SPS_BIR_MTH, 
+                MW.SHOP_CUST_ID, MW.META_CUST_NO, MW.META_LOY_PTS_BAL, CATEG_COD, MW.META_CATEG, PROF_COD_2, MW.META_BIR_MTH, PROF_COD_3, MW.META_SPS_BIR_MTH, 
                 PROF_ALPHA_1, MW.WH_PRC_TIER, {Table.CP.Customers.Column.sms_1_is_subscribed}, {Table.CP.Customers.Column.email_1_is_subscribed}, MW.ID 
                 FROM {Table.CP.Customers.table} CP
                 FULL OUTER JOIN {Table.Middleware.customers} MW on CP.CUST_NO = MW.cust_no
                 WHERE IS_ECOMM_CUST = 'Y' AND CP.LST_MAINT_DT > '{last_sync}' and CUST_NAM_TYP = 'P' {customer_filter}
                 """
-                return Database.query(query)
+                response = Database.query(query, mapped=True)
+                if response['code'] == 200:
+                    return response['data']
+                else:
+                    return []
 
             def update(self):
                 query = f"""
@@ -2444,8 +2448,9 @@ class Database:
             def insert(
                 shopify_cust_no,
                 cp_cust_no=None,
-                loyalty_point_id=None,
+                store_credit_id=None,
                 meta_cust_no_id=None,
+                meta_loyalty_point_id=None,
                 meta_category_id=None,
                 meta_birth_month_id=None,
                 meta_spouse_birth_month_id=None,
@@ -2454,10 +2459,13 @@ class Database:
             ):
                 query = f"""
                         INSERT INTO {Table.Middleware.customers} (CUST_NO, SHOP_CUST_ID, 
-                        LOY_ACCOUNT, META_CUST_NO, META_CATEG, META_BIR_MTH, META_SPS_BIR_MTH, WH_PRC_TIER)
+                        LOY_ACCOUNT, META_CUST_NO, META_LOY_PTS_BAL, META_CATEG, META_BIR_MTH, 
+                        META_SPS_BIR_MTH, WH_PRC_TIER)
+                        
                         VALUES ({f"'{cp_cust_no}'" if cp_cust_no else 'NULL'}, '{shopify_cust_no}', 
-                        {loyalty_point_id if loyalty_point_id else "NULL"}, 
+                        {store_credit_id if store_credit_id else "NULL"}, 
                         {meta_cust_no_id if meta_cust_no_id else "NULL"}, 
+                        {meta_loyalty_point_id if meta_loyalty_point_id else "NULL"},
                         {meta_category_id if meta_category_id else "NULL"}, 
                         {meta_birth_month_id if meta_birth_month_id else "NULL"}, 
                         {meta_spouse_birth_month_id if meta_spouse_birth_month_id else "NULL"}, 
@@ -2476,8 +2484,9 @@ class Database:
             def update(
                 shopify_cust_no,
                 cp_cust_no=None,
-                loyalty_point_id=None,
+                store_credit_id=None,
                 meta_cust_no_id=None,
+                meta_loyalty_point_id=None,
                 meta_category_id=None,
                 meta_birth_month_id=None,
                 meta_spouse_birth_month_id=None,
@@ -2496,8 +2505,9 @@ class Database:
                         UPDATE {Table.Middleware.customers}
                         SET SHOP_CUST_ID = {shopify_cust_no},
                         {cust_value}
-                        LOY_ACCOUNT = {loyalty_point_id if loyalty_point_id else "NULL"},
+                        LOY_ACCOUNT = {store_credit_id if store_credit_id else "NULL"},
                         META_CUST_NO = {meta_cust_no_id if meta_cust_no_id else "NULL"},
+                        META_LOY_PTS_BAL = {meta_loyalty_point_id if meta_loyalty_point_id else "NULL"},
                         META_CATEG = {meta_category_id if meta_category_id else "NULL"},
                         META_BIR_MTH = {meta_birth_month_id if meta_birth_month_id else "NULL"},
                         META_SPS_BIR_MTH = {meta_spouse_birth_month_id if meta_spouse_birth_month_id else "NULL"},
@@ -2524,8 +2534,9 @@ class Database:
                         Database.Shopify.Customer.update(
                             cp_cust_no=customer.cp_cust_no,
                             shopify_cust_no=customer.shopify_cust_no,
-                            loyalty_point_id=customer.loyalty_point_id,
+                            store_credit_id=customer.store_credit_id,
                             meta_cust_no_id=customer.meta_cust_no_id,
+                            meta_loyalty_point_id=customer.meta_loyalty_point_id,
                             meta_category_id=customer.meta_category_id,
                             meta_birth_month_id=customer.meta_birth_month_id,
                             meta_spouse_birth_month_id=customer.meta_spouse_birth_month_id,
@@ -2535,8 +2546,9 @@ class Database:
                         Database.Shopify.Customer.insert(
                             cp_cust_no=customer.cp_cust_no,
                             shopify_cust_no=customer.shopify_cust_no,
-                            loyalty_point_id=customer.loyalty_point_id,
+                            store_credit_id=customer.store_credit_id,
                             meta_cust_no_id=customer.meta_cust_no_id,
+                            meta_loyalty_point_id=customer.meta_loyalty_point_id,
                             meta_category_id=customer.meta_category_id,
                             meta_birth_month_id=customer.meta_birth_month_id,
                             meta_spouse_birth_month_id=customer.meta_spouse_birth_month_id,

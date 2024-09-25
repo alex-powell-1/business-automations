@@ -72,7 +72,7 @@ class Shopify:
 
     class Query:
         def __init__(self, document, variables=None, operation_name=None):
-            self.verbose = False
+            self.verbose = True
             self.response = self.execute_query(document, variables, operation_name)
             self.data = self.response['data'] if 'data' in self.response else None
             self.errors: list = self.response['errors'] if 'errors' in self.response else []
@@ -761,6 +761,8 @@ class Shopify:
                         result['birth_month_id'] = x['node']['id'].split('/')[-1]
                     elif x['node']['key'] == 'birth_month_spouse':
                         result['birth_month_spouse_id'] = x['node']['id'].split('/')[-1]
+                    elif x['node']['key'] == 'loyalty_points':
+                        result['loyalty_point_id'] = x['node']['id'].split('/')[-1]
 
             return result
 
@@ -866,7 +868,7 @@ class Shopify:
                             meta_wholesale_tier = meta['node']['id'].split('/')[-1]
                             print(f'Meta Wholesale Tier: {meta_wholesale_tier}')
 
-                    loyalty_id = Shopify.Customer.StoreCredit.add_store_credit(shop_cust_id, 1)
+                    store_credit_id = Shopify.Customer.StoreCredit.add_store_credit(shop_cust_id, 1)
                     Shopify.Customer.StoreCredit.remove_store_credit(shop_cust_id, 1)
 
                     cust_number = lookup_customer(email, phone)
@@ -875,7 +877,7 @@ class Shopify:
                             Database.Shopify.Customer.insert(
                                 cp_cust_no=cust_number,
                                 shopify_cust_no=shop_cust_id,
-                                loyalty_point_id=loyalty_id,
+                                store_credit_id=store_credit_id,
                                 meta_cust_no_id=meta_cust_id,
                                 meta_category_id=meta_category,
                                 meta_birth_month_id=meta_birth_month,
@@ -886,7 +888,7 @@ class Shopify:
                             Database.Shopify.Customer.update(
                                 cp_cust_no=cust_number,
                                 shopify_cust_no=shop_cust_id,
-                                loyalty_point_id=loyalty_id,
+                                store_credit_id=store_credit_id,
                                 meta_cust_no_id=meta_cust_id,
                                 meta_category_id=meta_category,
                                 meta_birth_month_id=meta_birth_month,
@@ -2669,7 +2671,4 @@ def refresh_order(tkt_no):
 
 
 if __name__ == '__main__':
-    # print(Shopify.Discount.get(1169486577831))
-    from datetime import datetime
-
-    Shopify.Discount.Code.Basic.create_order_discount(name='TESTING', code='test', min_purchase=100, amount=10)
+    Shopify.MetafieldDefinition.sync()
