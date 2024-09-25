@@ -3018,8 +3018,8 @@ class Database:
                         {product.meta_in_store_only['id'] if product.meta_in_store_only['id'] else "NULL"},
                         {product.meta_is_on_sale['id'] if product.meta_is_on_sale['id'] else "NULL"},
                         {product.meta_sale_description['id'] if product.meta_sale_description['id'] else "NULL"},
-                        {variant.meta_variant_size['id'] if variant.meta_variant_size['id'] else "NULL"}
-                        {product.meta_is_new['id'] if product.meta_is_new['id'] else "NULL"}
+                        {variant.meta_variant_size['id'] if variant.meta_variant_size['id'] else "NULL"},
+                        {product.meta_is_new['id'] if product.meta_is_new['id'] else "NULL"},
                         {product.meta_is_back_in_stock['id'] if product.meta_is_back_in_stock['id'] else "NULL"}
                         )
                         """
