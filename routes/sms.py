@@ -17,6 +17,7 @@ sms_routes = Blueprint('sms_routes', __name__, template_folder='routes')
 def incoming_sms():
     """Webhook route for incoming SMS/MMS messages to be used with client messenger application.
     Saves all incoming SMS/MMS messages to share drive csv file."""
+    eh = ProcessInErrorHandler
     raw_data = request.get_data()
     # Decode
     string_code = raw_data.decode('utf-8')
@@ -63,7 +64,7 @@ def incoming_sms():
             connection.close()
 
         except Exception as e:
-            ProcessInErrorHandler.error_handler.add_error_v(
+            eh.error_handler.add_error_v(
                 error=f'Error sending sync request  to RabbitMQ: {e}', origin=API.Route.sms, traceback=tb()
             )
 
@@ -88,7 +89,7 @@ def incoming_sms():
                 connection.close()
 
             except Exception as e:
-                ProcessInErrorHandler.error_handler.add_error_v(
+                eh.error_handler.add_error_v(
                     error=f'Error sending sync request  to RabbitMQ: {e}', origin=API.Route.sms, traceback=tb()
                 )
 
@@ -111,6 +112,7 @@ def incoming_sms():
         sid=sid,
         error_code=None,
         error_message=None,
+        eh=eh,
     )
 
     # Unsubscribe user from SMS marketing
@@ -130,6 +132,7 @@ def incoming_sms():
             name=full_name,
             category=category,
             phone=from_phone,
+            eh=eh,
         )
 
     # Subscribe user to SMS marketing
@@ -141,6 +144,7 @@ def incoming_sms():
             name=full_name,
             category=category,
             phone=from_phone,
+            eh=eh,
         )
 
     # Return Response to Twilio

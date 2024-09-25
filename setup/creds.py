@@ -164,7 +164,7 @@ class Table:
             class Column:
                 """Counterpoint Item Columns"""
 
-                __col = config_data['counterpoint']['tables']['items']['columns']
+                __col = Config.counterpoint['tables']['items']['columns']
                 item_no = __col['item_no']
                 binding_id = __col['binding_id']
                 is_parent = __col['is_parent']
@@ -193,8 +193,8 @@ class Table:
                 plant_type = __col['plant_type']
                 buffer = __col['buffer']
                 promotion_date_exp = __col['promotion_dt_exp']
-                new = __col['new']
-                back_in_stock = __col['back_in_stock']
+                is_new = __col['new']
+                is_back_in_stock = __col['back_in_stock']
 
             class HTMLDescription:
                 table = config_data['counterpoint']['tables']['html_description']
