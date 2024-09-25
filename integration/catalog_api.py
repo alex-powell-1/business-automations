@@ -1089,6 +1089,8 @@ class Catalog:
                         self.meta_in_store_only = bound.meta_in_store_only
                         self.meta_is_on_sale = bound.meta_is_on_sale
                         self.meta_sale_description = bound.meta_sale_description
+                        self.meta_is_new = bound.meta_is_new
+                        self.meta_is_back_in_stock = bound.meta_is_back_in_stock
 
                         # Shipping
                         self.weight = bound.weight
@@ -1201,6 +1203,8 @@ class Catalog:
                 self.meta_in_store_only = single.meta_in_store_only
                 self.meta_is_on_sale = single.meta_is_on_sale
                 self.meta_sale_description = single.meta_sale_description
+                self.meta_is_new = single.meta_is_new
+                self.meta_is_back_in_stock = single.meta_is_back_in_stock
                 # Shipping
                 self.weight = single.weight
                 # Last Maintenance Date
@@ -1903,7 +1907,6 @@ class Catalog:
                                 'mediaContentType': image.type,
                             }
                             result.append(image_payload)
-                print(f'Image Payload: {result}')
                 return result
 
             def get_video_payload():
@@ -2978,6 +2981,16 @@ class Catalog:
                     'value': self.sale_description,
                 }
 
+                self.meta_is_new = {
+                    'id': product_data['custom_is_new_id'],
+                    'value': 'true' if self.is_new else 'false',
+                }
+
+                self.meta_is_back_in_stock = {
+                    'id': product_data['custom_is_back_in_stock_id'],
+                    'value': 'true' if self.is_back_in_stock else 'false',
+                }
+
                 # Product Images
                 self.images = []
                 self.has_variant_image = False
@@ -3029,15 +3042,15 @@ class Catalog:
 
 
                                 
-                ITEM.USR_CPC_IS_ENABLED as 'Web Visible(7)', 
-                ITEM.ECOMM_NEW as 'IS_FEATURED(8)', 
-                ITEM.USR_IN_STORE_ONLY as 'IN_STORE_ONLY(9)',
-                ITEM.USR_IS_PREORDER as 'is_preorder(10)', 
-                ITEM.USR_PREORDER_REL_DT as 'preorder_release_date(11)', 
-                ITEM.USR_PROF_ALPHA_19 as 'PREORDER_MESSAGE(12)', 
+                ITEM.{Table.CP.Item.Column.web_visible} as 'Web Visible(7)', 
+                ITEM.{Table.CP.Item.Column.featured} as 'IS_FEATURED(8)', 
+                ITEM.{Table.CP.Item.Column.in_store_only} as 'IN_STORE_ONLY(9)',
+                ITEM.{Table.CP.Item.Column.is_preorder_item} as 'is_preorder(10)', 
+                ITEM.{Table.CP.Item.Column.preorder_release_date} as 'preorder_release_date(11)', 
+                ITEM.{Table.CP.Item.Column.preorder_message} as 'PREORDER_MESSAGE(12)', 
 
                                 
-                ITEM.USR_PROF_ALPHA_27 as 'SORT ORDER(13)', 
+                ITEM.{Table.CP.Item.Column.sort_order} as 'SORT ORDER(13)', 
                                 
                 ITEM.{Table.CP.Item.Column.web_title} as 'WEB_TITLE(14)', 
                 ITEM.ADDL_DESCR_2 as 'META_TITLE(15)', 
@@ -3154,8 +3167,10 @@ class Catalog:
                 {Table.CP.Item.Column.sale_description} as 'SALE_DESCRIPTION(111)',
                 MW.CF_SALE_DESCR as 'CUSTOM_ON_SALE_DESCRIPTION_ID(112)',
                 MW.CF_VAR_SIZE as 'CUSTOM_VARIANT_SIZE_ID(113)',
-                {Table.CP.Item.Column.is_new} as 'IS_NEW(114)',
-                {Table.CP.Item.Column.is_back_in_stock} as 'IS_BACK_IN_STOCK(115)'
+                ITEM.{Table.CP.Item.Column.is_new} as 'IS_NEW(114)',
+                MW.CF_IS_NEW as 'CUSTOM_IS_NEW_ID(115)',
+                ITEM.{Table.CP.Item.Column.is_back_in_stock} as 'IS_BACK_IN_STOCK(116)',
+                MW.CF_IS_BACK_IN_STOCK as 'CUSTOM_IS_BACK_IN_STOCK_ID(117)'
 
                 FROM {Table.CP.Item.table} ITEM
                 LEFT OUTER JOIN IM_PRC PRC ON ITEM.ITEM_NO=PRC.ITEM_NO
@@ -3300,7 +3315,9 @@ class Catalog:
                             'custom_sale_description_id': item[0][112],
                             'custom__variant_size_id': item[0][113],
                             'is_new': True if item[0][114] == 'Y' else False,
-                            'is_back_in_stock': True if item[0][115] == 'Y' else False,
+                            'custom_is_new_id': item[0][115],
+                            'is_back_in_stock': True if item[0][116] == 'Y' else False,
+                            'custom_is_back_in_stock_id': item[0][117],
                         }
                     except KeyError:
                         Catalog.error_handler.add_error_v(
@@ -3421,8 +3438,6 @@ class Catalog:
                 else:
                     if self.name != 'coming-soon.jpg':
                         self.set_image_details()
-                    else:
-                        print(self)
 
             def validate(self):
                 """Images will be validated for size and format before being uploaded and written to middleware.
@@ -3646,17 +3661,17 @@ class Catalog:
 
         class Video:
             def __init__(self, url, sku, binding_id, verbose=False):
+                self.sku = sku
+                self.url = url
+                self.binding_id = binding_id
                 self.verbose = verbose
                 self.db_id = None
-                self.sku = sku
                 self.shopify_id = None
-                self.binding_id = binding_id
                 self.name = None
                 self.sort_order = None
                 self.temp_sort_order = None
                 self.file_path = None
                 self.size = None
-                self.url = url
                 self.has_valid_url = True
                 self.description = None
 
@@ -3752,13 +3767,13 @@ if __name__ == '__main__':
     from setup.date_presets import Dates
 
     cat = Catalog(
-        last_sync=datetime(2024, 9, 25, 11, 25),
+        last_sync=datetime(2024, 9, 25, 16),
         dates=Dates(),
-        verbose=True,
-        test_mode=True,
-        test_queue=[
-            # {'sku': '202944', 'binding_id': 'B9999'},
-            {'sku': '202962'}
-        ],
+        # verbose=True,
+        # test_mode=True,
+        # test_queue=[
+        #     # {'sku': '202944', 'binding_id': 'B9999'},
+        #     {'sku': '202962'}
+        # ],
     )
     cat.sync()

@@ -173,6 +173,7 @@ class Table:
                 variant_name = __col['variant_name']
                 tags = __col['tags']
                 weight = __col['weight']
+                sort_order = __col['sort_order']
                 brand = __col['brand']
                 web_title = __col['web_title']
                 meta_title = __col['meta_title']

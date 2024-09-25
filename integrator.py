@@ -8,7 +8,6 @@ from integration import interface
 from setup import creds
 
 from setup import date_presets
-from datetime import datetime
 from product_tools.sort_order import SortOrderEngine
 from setup.error_handler import ProcessOutErrorHandler
 from setup.utilities import get_last_sync, set_last_sync, timer
