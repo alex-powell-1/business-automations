@@ -714,7 +714,7 @@ def get_preorder_product_ids():
 
     try:
         response = db.query(query)
-        return [int(x[0]) for x in response] if response else []
+        return [x[0] for x in response] if response else []
     except:
         return []
 
