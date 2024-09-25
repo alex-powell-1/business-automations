@@ -2988,7 +2988,7 @@ class Database:
                         CF_BOTAN_NAM, CF_PLANT_TYP, CF_HEIGHT, CF_WIDTH, CF_CLIM_ZON, CF_CLIM_ZON_LST,
                         CF_COLOR, CF_SIZE, CF_BLOOM_SEAS, CF_BLOOM_COLOR, CF_LIGHT_REQ, CF_FEATURES, CF_IS_PREORDER, 
                         CF_PREORDER_DT, CF_PREORDER_MSG, CF_IS_FEATURED, CF_IN_STORE_ONLY, CF_IS_ON_SALE, CF_SALE_DESCR,
-                        CF_VAR_SIZE
+                        CF_VAR_SIZE, CF_IS_NEW, CF_IS_BACK_IN_STOCK
                         )
                          
                         VALUES ('{variant.sku}', {f"'{product.binding_id}'" if product.binding_id else 'NULL'}, 
@@ -3019,6 +3019,8 @@ class Database:
                         {product.meta_is_on_sale['id'] if product.meta_is_on_sale['id'] else "NULL"},
                         {product.meta_sale_description['id'] if product.meta_sale_description['id'] else "NULL"},
                         {variant.meta_variant_size['id'] if variant.meta_variant_size['id'] else "NULL"}
+                        {product.meta_is_new['id'] if product.meta_is_new['id'] else "NULL"}
+                        {product.meta_is_back_in_stock['id'] if product.meta_is_back_in_stock['id'] else "NULL"}
                         )
                         """
                     response = Database.query(insert_query)
@@ -3072,6 +3074,8 @@ class Database:
                         CF_IS_ON_SALE = {product.meta_is_on_sale['id'] if product.meta_is_on_sale['id'] else "NULL"},
                         CF_SALE_DESCR = {product.meta_sale_description['id'] if product.meta_sale_description['id'] else "NULL"},
                         CF_VAR_SIZE = {variant.meta_variant_size['id'] if variant.meta_variant_size['id'] else "NULL"},
+                        CF_IS_NEW = {product.meta_is_new['id'] if product.meta_is_new['id'] else "NULL"},
+                        CF_IS_BACK_IN_STOCK = {product.meta_is_back_in_stock['id'] if product.meta_is_back_in_stock['id'] else "NULL"},
                         LST_MAINT_DT = GETDATE() 
                         WHERE ID = {variant.mw_db_id}
                         """
