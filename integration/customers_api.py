@@ -74,7 +74,7 @@ class Customers:
     def process_deletes(self):
         origin = 'Customers.process_deletes'
         if self.verbose:
-            Customers.logger.header('Processing Deletes', origin=origin)
+            Customers.logger.info('Processing Deletes', origin=origin)
         cp_customers = self.get_cp_customers()
         mw_customers = self.get_mw_customers()
         # Find Customers in MW that are not in CP
@@ -135,7 +135,7 @@ class Customers:
                 Customers.logger.success(f'Customers synced: {success_count}')
 
         else:
-            Customers.logger.warn(message='No customers to sync.', origin=origin)
+            Customers.logger.warn(f'No customers to sync. Last Sync: {self.last_sync}')
 
     class Customer:
         def __init__(self, cust_result):

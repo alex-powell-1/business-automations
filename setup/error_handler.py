@@ -19,10 +19,16 @@ class Logger:
         self.update_log_file()
         timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         template = f'[{timestamp}] {origin} {message}'
-        self.log('------------------')
+        line = '------------------'
+        self.log('')
+        self.log(line)
         self.log(template)
-        self.log('------------------')
+        self.log(line)
+        self.log('')
+
+        print('\n' + line)
         print(template)
+        print(line)
 
     def log(self, message: str):
         self.update_log_file()

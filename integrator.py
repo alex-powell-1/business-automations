@@ -1,6 +1,7 @@
 from integration.catalog_api import Catalog
 from integration.customers_api import Customers
 from integration.promotions_api import Promotions
+from datetime import datetime, timedelta
 
 from database import Database
 from integration import interface
@@ -21,6 +22,7 @@ class Integrator:
     def __init__(self):
         self.dates = date_presets.Dates()
         self.last_sync: datetime = get_last_sync(file_name='./integration/last_sync_integrator.txt')
+        self.start_sync_time: datetime = None
         self.module = str(sys.modules[__name__]).split('\\')[-1].split('.')[0].title()
         self.eh = ProcessOutErrorHandler
         self.error_handler = self.eh.error_handler
@@ -32,6 +34,7 @@ class Integrator:
         self.verbose: bool = creds.Integrator.verbose_logging
         self.customers = Customers(last_sync=self.last_sync, verbose=self.verbose, enabled=self.customer_sync)
         # self.promotions = Promotions(last_sync=self.last_sync, verbose=self.verbose, enabled=self.promotions_sync)
+        self.promotions = None
         self.catalog = Catalog(
             dates=self.dates, last_sync=self.last_sync, verbose=self.verbose, enabled=self.catalog_sync
         )
@@ -68,18 +71,18 @@ class Integrator:
     @timer
     def sync(self, initial=False):
         """Sync the catalog, customers, and promotions."""
-        start_sync_time = datetime.now()
+        self.start_sync_time = datetime.now()
 
         if self.customer_sync:
             self.customers.sync()
-        # if self.promotions_sync:
-        #     self.promotions.sync()
+        if self.promotions_sync:
+            self.promotions.sync()
         if self.catalog_sync:
             self.catalog.sync(initial=initial)
         if self.sort_collections:
             SortOrderEngine.sort(verbose=self.verbose)
 
-        set_last_sync(file_name='./integration/last_sync_integrator.txt', start_time=start_sync_time)
+        set_last_sync(file_name='./integration/last_sync_integrator.txt', start_time=self.start_sync_time)
 
         if self.error_handler.errors:
             self.error_handler.print_errors()
@@ -229,6 +232,9 @@ if __name__ == '__main__':
 
                         try:
                             integrator = Integrator()  # Reinitialize the integrator each time
+                            integrator.logger.header(
+                                f'Starting sync at {now:%Y-%m-%d %H:%M:%S}. Last sync: {integrator.last_sync}'
+                            )
                             integrator.sync(eh=integrator.eh, operation=integrator.module)
 
                         except Exception as e:
@@ -237,6 +243,11 @@ if __name__ == '__main__':
                             )
                             time.sleep(60)
                         else:
+                            completion_time = datetime.now()
+                            next_sync = completion_time + timedelta(minutes=minutes_between_sync)
+                            integrator.logger.info(
+                                f'Sync complete at {completion_time:%Y-%m-%d %H:%M:%S}. Next Sync at: {next_sync:%Y-%m-%d %H:%M:%S}'
+                            )
                             time.sleep(delay)
 
                 except KeyboardInterrupt:

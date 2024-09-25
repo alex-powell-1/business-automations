@@ -156,9 +156,6 @@ class Catalog:
             if self.sync_queue:
                 self.queue_binding_ids = set(x['binding_id'] for x in self.sync_queue if 'binding_id' in x)
 
-            if self.verbose:
-                Catalog.logger.info(f'Sync Queue: {self.sync_queue}')
-
     def process_product_deletes(self):
         # This compares the CP and MW product lists and deletes any products that are not in both lists.
         if self.verbose:
@@ -244,9 +241,10 @@ class Catalog:
             )
 
             if delete_targets:
-                Catalog.logger.info(message=f'Delete Targets: {delete_targets}')
-                for x in delete_targets:
-                    if x[0] == 'coming-soon.jpg':
+                delete_targets_set = set(x[0] for x in delete_targets)
+                Catalog.logger.info(message=f'Delete Targets: {delete_targets_set}')
+                for img_name in delete_targets_set:
+                    if img_name == 'coming-soon.jpg':
                         query = """
                         SELECT ITEM_NO, IMAGE_ID FROM SN_SHOP_IMAGES
                         WHERE IMAGE_NAME = 'coming-soon.jpg'
@@ -271,7 +269,6 @@ class Catalog:
                                     binding_id = response[0][0]
                                 except:
                                     binding_id = None
-                            print(f'Binding ID: {binding_id}')
                             # check itemImages for item's image using sku
                             local_images = Catalog.get_local_product_images(sku)
                             if binding_id:
@@ -280,12 +277,11 @@ class Catalog:
 
                             if len(local_images) > 0:
                                 Catalog.Product.Image.delete(image_id=image_id)
-                        # raise Exception()
                         break
 
                     else:
-                        Catalog.logger.info(f'Deleting Image {x[0]}.\n')
-                        Catalog.Product.Image.delete(image_name=x[0])
+                        Catalog.logger.info(f'Deleting Image {img_name}.\n')
+                        Catalog.Product.Image.delete(image_name=img_name)
             else:
                 if self.verbose:
                     Catalog.logger.info('No image deletions found.')
@@ -377,7 +373,7 @@ class Catalog:
 
         if not self.sync_queue:
             if not self.inventory_only:  # don't log this for inventory sync.
-                Catalog.logger.success('No products to sync.', origin='CATALOG SYNC: ')
+                Catalog.logger.info(f'No products to sync. Last Sync: {self.last_sync}')
         else:
             queue_length = len(self.sync_queue)
             success_count = 0
@@ -2295,7 +2291,6 @@ class Catalog:
                 get_metafield_ids(response)
 
             def get_media_ids(response):
-                print(f'Media IDs: {response["media_ids"]}')
                 for x in self.media:
                     x.product_id = self.product_id
                     x.shopify_id = response['media_ids'][x.temp_sort_order]

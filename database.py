@@ -938,7 +938,9 @@ class Database:
                         error=f'Error: {response["code"]}\n {response["message"]}, origin="Sale Price Removal")'
                     )
 
-            def set_sale_status(items: list, status, description=None, verbose=False, eh=ProcessOutErrorHandler):
+            def set_sale_status(
+                items: list, status: bool, description=None, verbose=False, eh=ProcessOutErrorHandler
+            ):
                 if not items:
                     raise Exception('No items provided to set sale status.')
 
@@ -2019,56 +2021,28 @@ class Database:
                     # Get promotion details from IM_PRC_GRP and IM_PRC_GRP_RUL
                     result = []
                     for promo in promotions:
-                        # Get number of rules for the promotion
-                        query = f"""
-                        SELECT COUNT(*) FROM IM_PRC_RUL WHERE GRP_COD = '{promo}'
-                        """
-                        response = Database.query(query)
-                        if response is not None:
-                            rule_count = response[0][0]
-                        else:
-                            continue
                         # Get promotion details
-                        for rule in range(rule_count):
-                            seq_no = rule + 1
-                            query = f"""
-                            SELECT GRP.GRP_TYP, GRP.GRP_COD, GRP.GRP_SEQ_NO, GRP.DESCR, GRP.CUST_FILT, GRP.NO_BEG_DAT, 
-                            GRP.BEG_DAT, GRP.BEG_TIM_FLG, GRP.NO_END_DAT, GRP.END_DAT, GRP.END_TIM_FLG, GRP.LST_MAINT_DT, 
-                            GRP.ENABLED, GRP.MIX_MATCH_COD, RUL.RUL_SEQ_NO                            
-                            FROM IM_PRC_GRP GRP 
-                            INNER JOIN IM_PRC_RUL RUL on RUL.GRP_COD = GRP.GRP_COD
-                            WHERE GRP.GRP_COD = '{promo}' and GRP.GRP_TYP = 'P' AND RUL.RUL_SEQ_NO = {seq_no}
-                            """
-                            response = Database.query(query=query, mapped=True)
-                            try:
-                                promotion = response['data'][0] if response else None
-                            except Exception as e:
-                                Database.error_handler.add_error_v(
-                                    error=f'Error getting promotion details for {promo}.\n\nResponse: {response}\n\nError: {e}',
-                                    origin='get_promotion',
-                                    traceback=tb(),
-                                )
-                                promotion = None
-                            else:
-                                # Get Shopify ID
-                                query = f"""
-                                SELECT SHOP_ID 
-                                FROM {Table.Middleware.promotions} 
-                                WHERE GRP_COD = '{promo}' AND RUL_SEQ_NO = {seq_no}
-                                """
-                                response = Database.query(query)
-                                if response:
-                                    promotion['SHOP_ID'] = response[0][0]
-                                else:
-                                    promotion['SHOP_ID'] = None
-                            if promotion:
-                                result.append(promotion)
+                        query = f"""
+                        SELECT GRP.GRP_TYP, GRP.GRP_COD, GRP.GRP_SEQ_NO, GRP.DESCR, GRP.CUST_FILT, GRP.NO_BEG_DAT, 
+                        GRP.BEG_DAT, GRP.BEG_TIM_FLG, GRP.NO_END_DAT, GRP.END_DAT, GRP.END_TIM_FLG, GRP.LST_MAINT_DT, 
+                        GRP.ENABLED, GRP.MIX_MATCH_COD                          
+                        FROM IM_PRC_GRP GRP
+                        WHERE GRP.GRP_COD = '{promo}' and GRP.GRP_TYP = 'P'
+                        """
+                        response = Database.query(query=query, mapped=True)
+                        if response['code'] == 200:
+                            promotion = response['data'][0] if response else None
+                        else:
+                            promotion = None
+
+                        if promotion:
+                            result.append(promotion)
                     return result
 
             class PriceRule:
                 def get(group_code):
                     query = f"""
-                    SELECT RUL.GRP_TYP, RUL.GRP_COD, RUL.RUL_SEQ_NO, RUL.DESCR, RUL.CUST_FILT, ITEM_FILT, 
+                    SELECT RUL.GRP_TYP, RUL.GRP_COD, RUL.RULE_GUID, RUL.DESCR, RUL.CUST_FILT, ITEM_FILT, 
                     SAL_FILT, IS_CUSTOM, USE_BOGO_TWOFER, REQ_FULL_GRP_FOR_BOGO_TWOFER,
                     GRP.ENABLED
                     FROM IM_PRC_RUL RUL
@@ -2087,7 +2061,7 @@ class Database:
                                 query = f"""
                                 SELECT ID, SHOP_ID, ENABLED
                                 FROM {Table.Middleware.promotions}
-                                WHERE GRP_COD = '{group_code}' and RUL_SEQ_NO = {x['RUL_SEQ_NO']}
+                                WHERE GRP_COD = '{group_code}' and RULE_GUID = '{x['RULE_GUID']}'
                                 """
                                 response = Database.query(query)
                                 if response:
@@ -3681,7 +3655,10 @@ class Database:
 
             def sync(rule):
                 if not rule.shopify_id:
-                    Database.logger.warn('No Shopify ID provided for promotion sync.')
+                    Database.logger.warn(
+                        message='No Shopify ID provided for promotion sync.',
+                        origin='Database.Shopify.Promotion.sync',
+                    )
                     return
                 if rule.db_id:
                     Database.Shopify.Promotion.update(rule)
@@ -3693,8 +3670,8 @@ class Database:
             def insert(rule):
                 """Insert a new discount rule into the Middleware."""
                 query = f"""
-                INSERT INTO {Table.Middleware.promotions}(GRP_COD, RUL_SEQ_NO, SHOP_ID, ENABLED)
-                VALUES('{rule.grp_cod}', {rule.seq_no},{rule.shopify_id}, {1 if rule.is_enabled_cp else 0})
+                INSERT INTO {Table.Middleware.promotions}(GRP_COD, RULE_GUID, SHOP_ID, ENABLED)
+                VALUES('{rule.grp_cod}', '{rule.guid}', {rule.seq_no},{rule.shopify_id}, {1 if rule.is_enabled_cp else 0})
                 """
                 response = Database.query(query)
                 if response['code'] == 200:
@@ -3711,7 +3688,7 @@ class Database:
                 SET SHOP_ID = {rule.shopify_id}, 
                 ENABLED = {1 if rule.is_enabled_cp else 0}, 
                 LST_MAINT_DT = GETDATE()
-                WHERE GRP_COD = '{rule.grp_cod}' and RUL_SEQ_NO = {rule.seq_no}
+                WHERE GRP_COD = '{rule.grp_cod}' and RULE_GUID = '{rule.guid}'
                 """
                 response = Database.query(query)
                 if response['code'] == 200:
@@ -3795,14 +3772,15 @@ class Database:
                             else:
                                 Database.Shopify.Promotion.BxgyLine.delete(item_no_list=[item])
 
-                def insert(item, shopify_promo_id):
+                def insert(item, shopify_promo_id, rule_guid):
                     """Insert Items affected by BOGO promos into middleware."""
                     if not item:
                         Database.logger.warn('No item provided for insertion.')
                         return
                     query = f"""
-                    INSERT INTO {Table.Middleware.promotion_lines_bogo} (SHOP_ID, ITEM_NO)
-                    VALUES ({shopify_promo_id}, '{item}')"""
+                    INSERT INTO {Table.Middleware.promotion_lines_bogo} (SHOP_ID, ITEM_NO, RULE_GUID)
+                    VALUES ({shopify_promo_id}, '{item}', '{rule_guid}')
+                    """
                     response = Database.query(query)
                     if response['code'] == 200:
                         Database.logger.success(
@@ -3814,13 +3792,13 @@ class Database:
                             origin='Middleware Promotion Line Item Insertion',
                         )
 
-                def update(line, shopify_id):
+                def update(line, shopify_id, rule_guid):
                     if not line.item_no:
                         Database.logger.warn('No item number provided for update.')
                         return
                     query = f"""
                     UPDATE {Table.Middleware.promotion_lines_bogo}
-                    SET SHOP_ID = {shopify_id}
+                    SET SHOP_ID = {shopify_id}, RULE_GUID = '{rule_guid}'
                     WHERE ITEM_NO = '{line.item_no}'
                     """
                     response = Database.query(query)
@@ -3881,23 +3859,23 @@ class Database:
             class FixLine:
                 """Fixed Price Discount Line Items"""
 
-                def get(group_cod, rul_seq_no) -> list[str]:
+                def get(group_cod, rule_guid) -> list[str]:
                     query = f"""
                     SELECT ITEM_NO FROM {Table.Middleware.promotion_lines_fixed}
-                    WHERE GRP_COD = '{group_cod}' AND RUL_SEQ_NO = {rul_seq_no}
+                    WHERE GRP_COD = '{group_cod}' AND RULE_GUID = '{rule_guid}'
                     """
                     response = Database.query(query)
                     return [x[0] for x in response] if response else None
 
-                def insert(group_cod, rul_seq_no, item_no):
+                def insert(group_cod, rule_guid, item_no):
                     query = f"""
-                    INSERT INTO {Table.Middleware.promotion_lines_fixed} (GRP_COD, RUL_SEQ_NO, ITEM_NO)
-                    VALUES ('{group_cod}', {rul_seq_no}, '{item_no}')
+                    INSERT INTO {Table.Middleware.promotion_lines_fixed} (GRP_COD, RULE_GUID, ITEM_NO)
+                    VALUES ('{group_cod}', {rule_guid}, '{item_no}')
                     """
                     response = Database.query(query)
                     if response['code'] == 200:
                         Database.logger.success(
-                            f'Promotion {group_cod}-Rule: {rul_seq_no} Item: {item_no} inserted successfully into Middleware.'
+                            f'Promotion {group_cod}-Rule: {rule_guid} Item: {item_no} inserted successfully into Middleware.'
                         )
                     else:
                         Database.error_handler.add_error_v(
@@ -3905,20 +3883,20 @@ class Database:
                             origin='Middleware Promotion Line Item Insertion',
                         )
 
-                def delete(group_cod, rul_seq_no, item_no):
+                def delete(group_cod, rule_guid, item_no):
                     query = f"""
                     DELETE FROM {Table.Middleware.promotion_lines_fixed}
-                    WHERE GRP_COD = '{group_cod}' AND RUL_SEQ_NO = '{rul_seq_no}' AND ITEM_NO = '{item_no}'
+                    WHERE GRP_COD = '{group_cod}' AND RUL_SEQ_NO = '{rule_guid}' AND ITEM_NO = '{item_no}'
                     """
                     response = Database.query(query)
 
                     if response['code'] == 200:
                         Database.logger.success(
-                            f'Promotion {group_cod}-Rule: {rul_seq_no} Item: {item_no} deleted successfully from Middleware.'
+                            f'Promotion {group_cod}-Rule: {rule_guid} Item: {item_no} deleted successfully from Middleware.'
                         )
                     elif response['code'] == 201:
                         Database.logger.warn(
-                            f'Promotion {group_cod}-Rule: {rul_seq_no} Item: {item_no} not found for deletion in Middleware.'
+                            f'Promotion {group_cod}-Rule: {rule_guid} Item: {item_no} not found for deletion in Middleware.'
                         )
                     else:
                         Database.error_handler.add_error_v(
@@ -3943,6 +3921,8 @@ class Database:
                     return {'db_id': db_id, 'shop_id': shop_id, 'cp_id': cp_id, 'lst_maint_dt': lst_maint_dt}
 
         class Gift_Certificate:
+            """Requires Shopify Plus Gift Card API Access"""
+
             pass
 
 
