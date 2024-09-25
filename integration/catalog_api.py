@@ -397,6 +397,8 @@ class Catalog:
                 for x in results:
                     success, item = x
                     if success:
+                        if self.inventory_only:
+                            Catalog.logger.info(f'Inventory Sync Complete: {item["sku"]}')
                         success_count += 1
                     else:
                         fail_count['number'] += 1
@@ -2254,6 +2256,7 @@ class Catalog:
                 # Update Inventory
                 if not self.is_preorder:
                     Shopify.Inventory.update(self.get_inventory_payload())
+
             except Exception as e:
                 title = self.web_title + ' - ' + (self.binding_id if self.binding_id else self.sku)
                 Catalog.error_handler.add_error_v(
