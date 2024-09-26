@@ -260,11 +260,11 @@ def customer_update():
     customer = CustomerWebhook(webhook_data)
     if customer.sms_consent_updated_at:
         sms_update_dt = datetime.strptime(customer.sms_consent_updated_at, '%Y-%m-%dT%H:%M:%S%z')
-        
+
         sms_update_dt = convert_utc_to_local(sms_update_dt)
-        
+
         ten_mins_ago = datetime.now() + relativedelta(minutes=-10)
-        
+
         if sms_update_dt > ten_mins_ago:
             if customer.sms_consent:
                 Database.SMS.subscribe(customer.phone)
@@ -376,7 +376,7 @@ def product_update():
             preorder_message = i['value']
 
         if i['key'] == 'preorder_release_date':
-            preorder_release_date = datetime.strptime(i['value'], '%Y-%m-%dT%H:%M:%SZ')
+            preorder_release_date = datetime.strptime(i['value'], '%Y-%m-%dT%H:%M:%S%z')
             preorder_release_date = convert_utc_to_local(preorder_release_date)
 
     # Get media data
