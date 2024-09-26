@@ -2121,7 +2121,7 @@ class HoldOrder(DocumentAPI):
         def __init__(self, cust_no: str | int):
             self.storeId = 1
             self.stationId = 'POS'
-            self.drawerId = 1
+            self.drawerId = 'POS'
             self.ticketType = 'T'
             self.docType = 'H'
             self.userId = 'POS'
