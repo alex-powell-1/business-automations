@@ -125,27 +125,11 @@ def incoming_sms():
         'opt out',
         'remove me',
     ]:
-        Database.SMS.unsubscribe(
-            origin='WEBHOOK',
-            campaign=API.Route.sms,
-            cust_no=customer_number,
-            name=full_name,
-            category=category,
-            phone=from_phone,
-            eh=eh,
-        )
+        Database.SMS.unsubscribe(origin='WEBHOOK', campaign=API.Route.sms, phone=from_phone, eh=eh)
 
     # Subscribe user to SMS marketing
     elif body.lower().strip() in ['start', 'subscribe', 'start please', 'please start', 'opt in', 'add me']:
-        Database.SMS.subscribe(
-            origin='WEBHOOK',
-            campaign=API.Route.sms,
-            cust_no=customer_number,
-            name=full_name,
-            category=category,
-            phone=from_phone,
-            eh=eh,
-        )
+        Database.SMS.subscribe(origin='WEBHOOK', campaign=API.Route.sms, phone=from_phone, eh=eh)
 
     # Return Response to Twilio
     resp = MessagingResponse()
