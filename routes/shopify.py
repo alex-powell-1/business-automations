@@ -463,8 +463,6 @@ def collection_update():
     if not verified:
         return jsonify({'error': 'Unauthorized'}), 401
 
-    ProcessInErrorHandler.logger.info(f'Collection Update: {webhook_data['title']}')
-
     return jsonify({'success': True}), 200
 
 
