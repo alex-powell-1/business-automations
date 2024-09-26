@@ -11,6 +11,8 @@ import json
 from shop.models.webhooks import CustomerWebhook
 from routes.limiter import limiter
 from product_tools.products import get_preorder_product_ids
+from datetime import datetime
+from dateutil.relativedelta import relativedelta
 
 
 class EventID:
@@ -256,6 +258,14 @@ def customer_update():
         return jsonify({'error': 'Unauthorized'}), 401
 
     customer = CustomerWebhook(webhook_data)
+    if customer.sms_consent_updated_at:
+        sms_consent_updated_at = convert_utc_to_local(customer.sms_consent_updated_at)
+        if sms_consent_updated_at > datetime.now() + relativedelta(minutes=-10):
+            if customer.sms_consent:
+                Database.SMS.subscribe(customer.phone)
+            else:
+                Database.SMS.unsubscribe(customer.phone)
+
     Logger(creds.Logs.webhooks_customer_update).log(f'Webhook: Customer Update, ID: {customer.id}')
 
     return jsonify({'success': True}), 200
