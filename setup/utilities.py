@@ -81,6 +81,45 @@ class PhoneNumber:
         return f'+1{self.area_code}{self.exchange}{self.subscriber_number}'
 
 
+class Date:
+    formats = ['%Y-%m-%d', '%Y-%m-%d %H:%M:%S', '%Y-%m-%d %H:%M:%S.%f', '%Y-%m-%dT%H:%M:%SZ', '%Y-%m-%dT%H:%M:%S%z']
+
+    def __init__(self, date_string: str, format: str = None):
+        self.date_string = date_string
+
+        self.dt: datetime = None
+        self.format: str = format
+
+        if format is None:
+            for format in Date.formats:
+                try:
+                    self.dt = datetime.strptime(date_string, format)
+                    self.format = format
+                    break
+                except ValueError:
+                    continue
+        else:
+            try:
+                self.dt = datetime.strptime(date_string, format)
+            except ValueError:
+                raise ValueError(f'Invalid date format: {format}')
+
+    def __str__(self):
+        return self.date_string
+
+    @property
+    def tz(self):
+        return self.dt.tzinfo
+
+    @property
+    def local_dt(self):
+        return self.dt.astimezone(tz=None)
+
+    @property
+    def utc_dt(self):
+        return self.dt.astimezone(tz=timezone.utc)
+
+
 class EmailAddress:
     @staticmethod
     def is_valid(email: str) -> bool:

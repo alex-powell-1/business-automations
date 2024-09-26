@@ -2070,14 +2070,6 @@ class JsonTools:
                     if value.endswith('shipping_addresses'):
                         obj[key] = []
                     pass
-            elif key == 'gift_certificate_id' and value is not None:
-                try:
-                    myjson = JsonTools.get_json(
-                        f'https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v2/gift_certificates/{value}'
-                    )
-                    obj[key] = myjson
-                except:
-                    pass
 
         return obj
 
