@@ -1297,9 +1297,11 @@ class Database:
                 #     preorder_message = payload['preorder_message'].replace("'", "''")[:160]
                 #     query += f"{Database.Counterpoint.Product.columns['preorder_message']} = '{preorder_message}', "
 
-                # if 'preorder_release_date' in payload:
-                #     query += f"{Database.Counterpoint.Product.columns['preorder_release_date']} = '{payload['preorder_release_date']}', "
-
+                if payload['preorder_release_date']['id']:
+                    query += f"{Table.CP.Item.Column.preorder_release_date} = '{payload['preorder_release_date']['value']}', "
+                else:
+                    query += f"{Table.CP.Item.Column.preorder_release_date} = NULL, "
+                    
                 # # Product Specification Metafields
                 # if 'botanical_name' in payload:
                 #     query += f"CF_BOTAN_NAM = '{payload['botanical_name']}', "
@@ -1332,11 +1334,24 @@ class Database:
 
                 response = Database.query(query)
                 if response['code'] == 200:
-                    eh.logger.success(f'Product {payload["item_no"]} updated in Middleware.')
+                    eh.logger.success(f'Product {payload["item_no"]} updated in Counterpoint.')
+            
+                    query = f"""
+                    UPDATE SN_SHOP_PROD
+                    SET CF_PREORDER_DT = {payload['preorder_release_date']['id'] if payload['preorder_release_date']['id'] else 'NULL'}
+                    WHERE ITEM_NO = '{payload['item_no']}'
+                    """
+                    print(query)
+                    response = Database.query(query)
+                    if response['code'] == 200:
+                        eh.logger.success(f'Product {payload["item_no"]} updated in Middleware.')
+                    else:
+                        eh.error_handler.add_error_v(f'Product {payload["item_no"]} failed update in Middleware.')
+
                 elif response['code'] == 201:
-                    eh.logger.warn(f'Product {payload["item_no"]} not found in Middleware.')
+                    eh.logger.warn(f'Product {payload["item_no"]} not found in Counterpoint.')
                 else:
-                    error = f'Error updating product {payload["item_no"]} in Middleware. \n Query: {query}\nResponse: {response}'
+                    error = f'Error updating product {payload["item_no"]} in Counterpoint. \n Query: {query}\nResponse: {response}'
                     eh.error_handler.add_error_v(error=error)
                     raise Exception(error)
 

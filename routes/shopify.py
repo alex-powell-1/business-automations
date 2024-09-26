@@ -336,6 +336,8 @@ def product_update():
     is_preorder_item = None
     preorder_message = None
     preorder_release_date = None
+    is_new = None
+    is_back_in_stock = None
 
     for i in metafields['product_specifications']:
         if i['key'] == 'botanical_name':
@@ -361,23 +363,36 @@ def product_update():
 
         if i['key'] == 'color':
             color = i['value']
+    
+    # Product Status Metafields
+
+    # Optional Product Status Metafields
+    preorder_release_date = {'id': None, 'value': None}
+    preorder_message = {'id': None, 'value': None}
 
     for i in metafields['product_status']:
-        if i['key'] == 'featured':
-            is_featured = True if i['value'] == 'true' else False
+        if i['key'] == 'featured': # never null boolean
+            is_featured = {'id': i['id'], 'value': True if i['value'] == 'true' else False}
 
-        if i['key'] == 'in_store_only':
-            in_store_only = True if i['value'] == 'true' else False
+        if i['key'] == 'in_store_only': # never null boolean
+            in_store_only = {'id': i['id'], 'value': True if i['value'] == 'true' else False}
 
-        if i['key'] == 'preorder_item':
-            is_preorder_item = True if i['value'] == 'true' else False
+        if i['key'] == 'new':
+            is_new = {'id': i['id'], 'value': True if i['value'] == 'true' else False}
+
+        if i['key'] == 'back_in_stock':
+            is_back_in_stock = {'id': i['id'], 'value': True if i['value'] == 'true' else False}
+        
+        if i['key'] == 'preorder_item': # never null boolean
+            is_preorder_item = {'id': i['id'], 'value': True if i['value'] == 'true' else False}
 
         if i['key'] == 'preorder_message':
-            preorder_message = i['value']
+            preorder_message = {'id': i['id'], 'value': i['value']}
 
         if i['key'] == 'preorder_release_date':
-            preorder_release_date = datetime.strptime(i['value'], '%Y-%m-%dT%H:%M:%S%z')
-            preorder_release_date = convert_utc_to_local(preorder_release_date)
+            preorder_release_dt = convert_utc_to_local(datetime.strptime(i['value'], '%Y-%m-%dT%H:%M:%S%z'))
+            preorder_release_date = {'id': i['id'], 'value': preorder_release_dt}
+
 
     # Get media data
     media_payload = []
@@ -422,16 +437,25 @@ def product_update():
             update_payload['bloom_color'] = bloom_color
         if color:
             update_payload['color'] = color
-        if is_featured:
+        # Product Status
+        if is_featured['id']:
             update_payload['is_featured'] = is_featured
-        if in_store_only:
+        
+        if in_store_only['id']:
             update_payload['in_store_only'] = in_store_only
-        if is_preorder_item:
+        
+        if is_preorder_item['id']:
             update_payload['is_preorder_item'] = is_preorder_item
-        if preorder_message:
-            update_payload['preorder_message'] = preorder_message
-        if preorder_release_date:
-            update_payload['preorder_release_date'] = preorder_release_date
+        
+
+        update_payload['preorder_message'] = preorder_message
+        update_payload['preorder_release_date'] = preorder_release_date
+        
+        if is_new['id']:
+            update_payload['is_new'] = is_new
+        
+        if is_back_in_stock['id']:
+            update_payload['is_back_in_stock'] = is_back_in_stock
 
         if media_payload:
             for m in media_payload:
