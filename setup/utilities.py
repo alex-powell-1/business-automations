@@ -82,6 +82,8 @@ class PhoneNumber:
 
 
 class Date:
+    """Used to parse and convert date strings."""
+
     formats = ['%Y-%m-%d', '%Y-%m-%d %H:%M:%S', '%Y-%m-%d %H:%M:%S.%f', '%Y-%m-%dT%H:%M:%SZ', '%Y-%m-%dT%H:%M:%S%z']
 
     def __init__(self, date_string: str, format: str = None):
