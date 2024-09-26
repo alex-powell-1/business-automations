@@ -107,14 +107,17 @@ class Date:
     def __str__(self):
         return self.date_string
 
+    # self.tz = self.dt.tzinfo
     @property
     def tz(self):
         return self.dt.tzinfo
 
+    # self.local_dt = self.dt.astimezone(tz=None)
     @property
     def local_dt(self):
         return self.dt.astimezone(tz=None)
 
+    # self.utc_dt = self.dt.astimezone(tz=timezone.utc)
     @property
     def utc_dt(self):
         return self.dt.astimezone(tz=timezone.utc)
@@ -203,7 +206,7 @@ def convert_utc_to_local(utc_dt: datetime):
     try:
         # Define the UTC timezone
         # utc = pytz.utc
-        
+
         # utc_dt = utc.localize(utc_dt)
 
         # Define the local timezone
@@ -220,7 +223,6 @@ def convert_utc_to_local(utc_dt: datetime):
     except Exception as e:
         print(e)
         return None
-    
 
 
 def make_datetime(date_string):
