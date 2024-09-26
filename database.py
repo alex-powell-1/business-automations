@@ -73,7 +73,7 @@ class Database:
                 if sql_data:
                     code = 200
                     message = 'success'
-                    mapped_response = []  # list of dictionaries
+                    mapped_response: list[dict] = []  # list of dictionaries
                     row_count = len(sql_data)
                     for row in sql_data:
                         row_dict = {}
@@ -484,47 +484,147 @@ class Database:
                 eh.error_handler.add_error_v(f'Error moving {phone} to landline')
 
         @staticmethod
-        def subscribe(origin, campaign, cust_no, name, category, phone, eh=ProcessOutErrorHandler):
+        def subscribe(phone, origin='SERVER', campaign='MISC', eh=ProcessOutErrorHandler):
             phone = PhoneNumber(phone).to_cp()
+            subscriptions = Database.SMS.get_sms_subscriptions(phone)
+            changes = False
+            for x in subscriptions:
+                if subscriptions[x]:
+                    eh.logger.warn(f'{phone} already subscribed to {x}.')
+                else:
+                    if x == Table.CP.Customers.Column.sms_1_is_subscribed:
+                        phone_column = Table.CP.Customers.Column.mobile_phone_1
 
-            query = f"""
-            UPDATE AR_CUST
-            SET {Table.CP.Customers.Column.sms_1_is_subscribed} = 'Y'
-            WHERE PHONE_1 = '{phone}' OR PHONE_2 = '{phone}'
-            """
-            response = Database.query(query=query)
-            if response['code'] == 200:
-                query = f"""
-                INSERT INTO {Table.sms_event} (ORIGIN, CAMPAIGN, PHONE, CUST_NO, NAME, CATEGORY, EVENT_TYPE, MESSAGE)
-                VALUES ('{origin}', '{campaign}', '{phone}', '{cust_no}', '{name}', '{category}',
-                'Subscribe', 'SET {Table.CP.Customers.Column.sms_1_is_subscribed} = Y')"""
-                response = Database.query(query)
-                if response['code'] != 200:
-                    eh.error_handler.add_error_v(f'Error subscribing {phone} to SMS')
+                    elif x == Table.CP.Customers.Column.sms_2_is_subscribed:
+                        phone_column = Table.CP.Customers.Column.mobile_phone_2
+                    else:
+                        continue
 
-            else:
-                eh.error_handler.add_error_v(f'Error subscribing {phone} to SMS')
+                    query = f"""
+                    UPDATE AR_CUST
+                    SET {x} = 'Y'
+                    WHERE {phone_column} = '{phone}' and {x} = 'N'
+                    """
+                    response = Database.query(query)
+                    if response['code'] == 200:
+                        changes = True
+                        query = f"""
+                        SELECT CUST_NO, NAM, CATEG_COD
+                        FROM AR_CUST
+                        WHERE {phone_column} = '{phone}'
+                        """
+                        response = Database.query(query, mapped=True)
+                        if response['code'] == 200:
+                            cust_no = response['data'][0]['CUST_NO']
+                            name = response['data'][0]['NAM']
+                            category = response['data'][0]['CATEG_COD']
+
+                            query = f"""
+                            INSERT INTO {Table.sms_event} (ORIGIN, CAMPAIGN, PHONE, CUST_NO, NAME,
+                            CATEGORY, EVENT_TYPE, MESSAGE)
+
+                            VALUES ('{origin}', '{campaign}', '{phone}', '{cust_no}', '{name}', '{category}',
+                            'Subscribe', 'SET {x} = Y')"""
+                            response = Database.query(query)
+                            if response['code'] == 200:
+                                eh.logger.success(f'Subscribed {phone_column}:{phone} to {x}')
+                            else:
+                                eh.error_handler.add_error_v(f'Error subscribing {phone} to SMS')
+
+                    elif response['code'] == 201:
+                        pass
+
+                    else:
+                        eh.error_handler.add_error_v(f'Error subscribing {phone} to SMS')
 
         @staticmethod
-        def unsubscribe(origin, campaign, cust_no, name, category, phone, eh=ProcessOutErrorHandler):
+        def unsubscribe(phone, origin='SERVER', campaign='MISC', eh=ProcessInErrorHandler):
             phone = PhoneNumber(phone).to_cp()
-            query = f"""
-            UPDATE AR_CUST
-            SET {Table.CP.Customers.Column.sms_1_is_subscribed} = 'N'
-            WHERE PHONE_1 = '{phone}' OR PHONE_2 = '{phone}'
-            """
-            response = Database.query(query=query)
-            if response['code'] == 200:
-                query = f"""
-                INSERT INTO {Table.sms_event} (ORIGIN, CAMPAIGN, PHONE, CUST_NO, NAME, CATEGORY, EVENT_TYPE, MESSAGE)
-                VALUES ('{origin}', '{campaign}', '{phone}', '{cust_no}', '{name}', '{category}',
-                'Unsubscribe', 'SET {Table.CP.Customers.Column.sms_1_is_subscribed} = N')"""
-                response = Database.query(query)
-                if response['code'] != 200:
-                    eh.error_handler.add_error_v(f'Error unsubscribing {phone} from SMS')
+            subscriptions = Database.SMS.get_sms_subscriptions(phone)
+            changes = False
+            if subscriptions:
+                for x in subscriptions:
+                    if subscriptions[x]:
+                        if x == Table.CP.Customers.Column.sms_1_is_subscribed:
+                            phone_column = Table.CP.Customers.Column.mobile_phone_1
+                        elif x == Table.CP.Customers.Column.sms_2_is_subscribed:
+                            phone_column = Table.CP.Customers.Column.mobile_phone_2
+                        else:
+                            continue
+                        where = f"{phone_column} = '{phone}'"
 
-            else:
-                eh.error_handler.add_error_v(f'Error unsubscribing {phone} from SMS')
+                        query = f"""
+                        UPDATE AR_CUST
+                        SET {x} = 'N'
+                        WHERE {where} and {x} = 'Y'
+                        """
+                        response = Database.query(query)
+                        if response['code'] == 200:
+                            changes = True
+                            query = f"""
+                            SELECT CUST_NO, NAM, CATEG_COD
+                            FROM AR_CUST
+                            WHERE {where}
+                            """
+                            response = Database.query(query, mapped=True)
+                            if response['code'] == 200:
+                                cust_no = response['data'][0]['CUST_NO']
+                                name = response['data'][0]['NAM']
+                                category = response['data'][0]['CATEG_COD']
+
+                                query = f"""
+                                INSERT INTO {Table.sms_event} (ORIGIN, CAMPAIGN, PHONE, CUST_NO, NAME,
+                                CATEGORY, EVENT_TYPE, MESSAGE)
+
+                                VALUES ('{origin}', '{campaign}', '{phone}', '{cust_no}', '{name}', '{category}',
+                                'Unsubscribe', 'SET {x} = N')"""
+                                response = Database.query(query)
+                                if response['code'] == 200:
+                                    eh.logger.success(f'Unsubscribed {phone_column}:{phone} from {x}')
+                                else:
+                                    eh.error_handler.add_error_v(f'Error unsubscribing {phone} from SMS')
+
+                        else:
+                            eh.error_handler.add_error_v(f'Error unsubscribing {phone} from SMS')
+
+            if not changes:
+                eh.logger.warn(f'{phone} not found in SMS subscriptions.')
+
+        def get_sms_subscriptions(phone_number: str, eh=ProcessInErrorHandler) -> bool:
+            """Returns True if phone number is subscribed to SMS notifications."""
+            # Find the columns that contain the phone number
+            result = {
+                Table.CP.Customers.Column.sms_1_is_subscribed: False,
+                Table.CP.Customers.Column.sms_2_is_subscribed: False,
+            }
+            phone_locations = Database.Counterpoint.Customer.find_phone(phone_number)
+
+            if not phone_locations:
+                return result
+
+            for location in phone_locations:
+                if location == Table.CP.Customers.Column.mobile_phone_1:
+                    phone_column = Table.CP.Customers.Column.sms_1_is_subscribed
+
+                elif location == Table.CP.Customers.Column.mobile_phone_2:
+                    phone_column = Table.CP.Customers.Column.sms_2_is_subscribed
+
+                else:
+                    continue
+
+                query = f"""
+                SELECT {phone_column}
+                FROM {Table.CP.Customers.table}
+                WHERE {location} = '{phone_number}'
+                """
+                response = Database.query(query)
+
+                try:
+                    result[phone_column] = response[0][0] == 'Y'
+                except:
+                    pass
+
+            return result
 
     class StockNotification:
         def has_info(item_no, email=None, phone=None):
@@ -1707,6 +1807,44 @@ class Database:
                     return response['data']
                 else:
                     return []
+
+            def find_phone(phone_number: str, eh=ProcessInErrorHandler) -> list[str]:
+                """Takes a phone number and returns a list of columns that contain the phone number"""
+                query = f"""
+                    SELECT {Table.CP.Customers.Column.mobile_phone_1}, {Table.CP.Customers.Column.mobile_phone_2}
+                    FROM {Table.CP.Customers.table}
+                    WHERE {Table.CP.Customers.Column.mobile_phone_1} = '{phone_number}' 
+                    OR {Table.CP.Customers.Column.mobile_phone_2} = '{phone_number}'
+                """
+                response = Database.query(query=query, mapped=True)
+                if response['code'] == 200:
+                    result = []
+                    data = response['data']
+                    for row in data:
+                        for column in row:
+                            if row[column]:
+                                result.append(column)
+                    return result
+                else:
+                    eh.logger.info(f'Phone number {phone_number} not found in Counterpoint.')
+
+            def find_email(email_address: str) -> list:
+                """Takes an email address and returns a list of columns that contain the email address"""
+                query = f"""
+                    SELECT {Table.CP.Customers.Column.email_1}, {Table.CP.Customers.Column.email_2}
+                    FROM {Table.CP.Customers.table}
+                    WHERE {Table.CP.Customers.Column.email_1} = '{email_address}' 
+                    OR {Table.CP.Customers.Column.email_2} = '{email_address}'
+                """
+                response = Database.query(query=query, mapped=True)
+                if response['code'] == 200:
+                    result = []
+                    data = response['data']
+                    for row in data:
+                        for column in row:
+                            if row[column]:
+                                result.append(column)
+                    return result
 
             @staticmethod
             def get_all(last_sync=datetime(1970, 1, 1), customer_no=None, customer_list=None):
@@ -2988,7 +3126,7 @@ class Database:
                         CF_BOTAN_NAM, CF_PLANT_TYP, CF_HEIGHT, CF_WIDTH, CF_CLIM_ZON, CF_CLIM_ZON_LST,
                         CF_COLOR, CF_SIZE, CF_BLOOM_SEAS, CF_BLOOM_COLOR, CF_LIGHT_REQ, CF_FEATURES, CF_IS_PREORDER, 
                         CF_PREORDER_DT, CF_PREORDER_MSG, CF_IS_FEATURED, CF_IN_STORE_ONLY, CF_IS_ON_SALE, CF_SALE_DESCR,
-                        CF_VAR_SIZE
+                        CF_VAR_SIZE, CF_IS_NEW, CF_IS_BACK_IN_STOCK
                         )
                          
                         VALUES ('{variant.sku}', {f"'{product.binding_id}'" if product.binding_id else 'NULL'}, 
@@ -3018,7 +3156,9 @@ class Database:
                         {product.meta_in_store_only['id'] if product.meta_in_store_only['id'] else "NULL"},
                         {product.meta_is_on_sale['id'] if product.meta_is_on_sale['id'] else "NULL"},
                         {product.meta_sale_description['id'] if product.meta_sale_description['id'] else "NULL"},
-                        {variant.meta_variant_size['id'] if variant.meta_variant_size['id'] else "NULL"}
+                        {variant.meta_variant_size['id'] if variant.meta_variant_size['id'] else "NULL"},
+                        {product.meta_is_new['id'] if product.meta_is_new['id'] else "NULL"},
+                        {product.meta_is_back_in_stock['id'] if product.meta_is_back_in_stock['id'] else "NULL"}
                         )
                         """
                     response = Database.query(insert_query)
@@ -3072,6 +3212,8 @@ class Database:
                         CF_IS_ON_SALE = {product.meta_is_on_sale['id'] if product.meta_is_on_sale['id'] else "NULL"},
                         CF_SALE_DESCR = {product.meta_sale_description['id'] if product.meta_sale_description['id'] else "NULL"},
                         CF_VAR_SIZE = {variant.meta_variant_size['id'] if variant.meta_variant_size['id'] else "NULL"},
+                        CF_IS_NEW = {product.meta_is_new['id'] if product.meta_is_new['id'] else "NULL"},
+                        CF_IS_BACK_IN_STOCK = {product.meta_is_back_in_stock['id'] if product.meta_is_back_in_stock['id'] else "NULL"},
                         LST_MAINT_DT = GETDATE() 
                         WHERE ID = {variant.mw_db_id}
                         """
@@ -3937,4 +4079,4 @@ class Database:
 
 
 if __name__ == '__main__':
-    print(Database.Counterpoint.Customer.get_by_email('alexpow@asdfasdf.com'))
+    print(Database.SMS.subscribe('828-390-8030'))

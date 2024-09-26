@@ -397,6 +397,8 @@ class Catalog:
                 for x in results:
                     success, item = x
                     if success:
+                        if self.inventory_only:
+                            Catalog.logger.info(f'Inventory Sync Complete: {item["sku"]}')
                         success_count += 1
                     else:
                         fail_count['number'] += 1
@@ -880,15 +882,15 @@ class Catalog:
             # Determine if Bound
             self.is_bound = True if self.binding_id else False
             # self.variants will be list of variant objects
-            self.variants: list = []
+            self.variants: list[Catalog.Product.Variant] = []
             # self.parent will be a list of parent products. If length of list > 1, product validation will fail
-            self.parent: list = []
+            self.parent: list[Catalog.Product.Variant] = []
 
             # A list of image objects
             self.images: list[Catalog.Product.Image] = []
             self.default_image: bool = False
             self.expected_media_order = []
-            self.videos: list = []
+            self.videos: list[Catalog.Product.Video] = []
             self.media: list = []  # list of all media objects (Images and Videos)
             self.reorder_media_queue = []
             self.has_new_media = False
@@ -903,6 +905,7 @@ class Catalog:
             self.default_price = None
             self.cost = None
             self.sale_price = None
+            self.taxable = None
             self.weight = None
             self.buffered_quantity = 0
             self.brand = None
@@ -912,6 +915,8 @@ class Catalog:
             self.meta_description = None
             self.visible: bool = False
             self.featured: bool = False
+            self.is_new: bool = False
+            self.is_back_in_stock: bool = False
             self.sort_order = None
             self.in_store_only: bool = False
             self.is_preorder = False
@@ -942,6 +947,8 @@ class Catalog:
             self.meta_preorder_message = {'id': None, 'value': None}
             self.meta_preorder_release_date = {'id': None, 'value': None}
             self.meta_is_featured = {'id': None, 'value': None}
+            self.meta_is_new = {'id': None, 'value': None}
+            self.meta_is_back_in_stock = {'id': None, 'value': None}
             self.meta_in_store_only = {'id': None, 'value': None}
             self.meta_is_on_sale = {'id': None, 'value': None}
             self.meta_sale_description = {'id': None, 'value': None}
@@ -1016,7 +1023,6 @@ class Catalog:
                         self.default_price = bound.price_1
                         self.cost = bound.cost
                         self.sale_price = bound.price_2
-                        self.in_store_only = bound.in_store_only
                         self.brand = bound.brand
                         self.sort_order = bound.sort_order
                         self.html_description = bound.html_description
@@ -1024,7 +1030,10 @@ class Catalog:
                         self.meta_title = bound.meta_title
                         self.meta_description = bound.meta_description
                         self.visible = bound.visible
+                        self.in_store_only = bound.in_store_only
                         self.featured = bound.featured
+                        self.is_new = bound.is_new
+                        self.is_back_in_stock = bound.is_back_in_stock
                         self.cp_ecommerce_categories = bound.cp_ecommerce_categories
                         self.long_descr = bound.long_descr
                         self.is_preorder = bound.is_preorder
@@ -1082,6 +1091,8 @@ class Catalog:
                         self.meta_in_store_only = bound.meta_in_store_only
                         self.meta_is_on_sale = bound.meta_is_on_sale
                         self.meta_sale_description = bound.meta_sale_description
+                        self.meta_is_new = bound.meta_is_new
+                        self.meta_is_back_in_stock = bound.meta_is_back_in_stock
 
                         # Shipping
                         self.weight = bound.weight
@@ -1169,6 +1180,8 @@ class Catalog:
                 self.in_store_only = single.in_store_only
                 self.visible = single.visible
                 self.featured = single.featured
+                self.is_new = single.is_new
+                self.is_back_in_stock = single.is_back_in_stock
                 self.is_preorder = single.is_preorder
                 self.preorder_release_date = single.preorder_release_date
                 self.preorder_message = single.preorder_message
@@ -1192,6 +1205,8 @@ class Catalog:
                 self.meta_in_store_only = single.meta_in_store_only
                 self.meta_is_on_sale = single.meta_is_on_sale
                 self.meta_sale_description = single.meta_sale_description
+                self.meta_is_new = single.meta_is_new
+                self.meta_is_back_in_stock = single.meta_is_back_in_stock
                 # Shipping
                 self.weight = single.weight
                 # Last Maintenance Date
@@ -1469,7 +1484,7 @@ class Catalog:
             """Build the payload for creating a product in Shopify.
             This will include all variants, images, and custom fields."""
 
-            def get_custom_fields():
+            def get_metafields():
                 result = []
 
                 # Botanical Name
@@ -1779,6 +1794,28 @@ class Catalog:
 
                 result.append(in_store_only_data)
 
+                # New Product Status - All products are either new or not
+                new_data = {'value': 'true' if self.is_new else 'false'}
+                if self.meta_is_new['id']:
+                    new_data['id'] = f'{Shopify.Metafield.prefix}{self.meta_is_new["id"]}'
+                else:
+                    new_data['namespace'] = Catalog.metafields['New']['NAME_SPACE']
+                    new_data['key'] = Catalog.metafields['New']['META_KEY']
+                    new_data['type'] = Catalog.metafields['New']['TYPE']
+
+                result.append(new_data)
+
+                # Back In Stock status - All products are either back in stock or not
+                back_in_stock_data = {'value': 'true' if self.is_back_in_stock else 'false'}
+                if self.meta_is_back_in_stock['id']:
+                    back_in_stock_data['id'] = f'{Shopify.Metafield.prefix}{self.meta_is_back_in_stock["id"]}'
+                else:
+                    back_in_stock_data['namespace'] = Catalog.metafields['Back In Stock']['NAME_SPACE']
+                    back_in_stock_data['key'] = Catalog.metafields['Back In Stock']['META_KEY']
+                    back_in_stock_data['type'] = Catalog.metafields['Back In Stock']['TYPE']
+
+                result.append(back_in_stock_data)
+
                 return result
 
             def get_media_payload():
@@ -1872,7 +1909,6 @@ class Catalog:
                                 'mediaContentType': image.type,
                             }
                             result.append(image_payload)
-                print(f'Image Payload: {result}')
                 return result
 
             def get_video_payload():
@@ -1908,7 +1944,7 @@ class Catalog:
                     'title': self.web_title,
                     'status': 'ACTIVE' if self.visible else 'DRAFT',
                     'seo': {},
-                    'metafields': get_custom_fields(),
+                    'metafields': get_metafields(),
                 }
             }
 
@@ -2132,7 +2168,7 @@ class Catalog:
                 """Create new product in Shopify and Middleware."""
                 # Create Base Product
                 response = Shopify.Product.create(self.get_payload())
-                self.get_shopify_product_ids(response)
+                self.get_product_meta_ids(response)
 
                 # Assign Default Variant Properties
                 self.variants[0].variant_id = response['variant_ids'][0]
@@ -2184,7 +2220,7 @@ class Catalog:
 
                 product_payload = self.get_payload()
                 response = Shopify.Product.update(product_payload)
-                self.get_shopify_product_ids(response)
+                self.get_product_meta_ids(response)
                 Shopify.Product.Media.reorder(self)  # Reorder media if necessary
 
                 if self.is_bound:
@@ -2220,6 +2256,7 @@ class Catalog:
                 # Update Inventory
                 if not self.is_preorder:
                     Shopify.Inventory.update(self.get_inventory_payload())
+
             except Exception as e:
                 title = self.web_title + ' - ' + (self.binding_id if self.binding_id else self.sku)
                 Catalog.error_handler.add_error_v(
@@ -2238,7 +2275,8 @@ class Catalog:
             image.shopify_id = Shopify.Product.Media.Image.create(image)
             Database.Shopify.Product.Media.Image.insert(image)
 
-        def get_shopify_product_ids(self, response):
+        def get_product_meta_ids(self, response):
+            """Used to get metafield IDs for products from response."""
             if 'product_id' in response:
                 self.product_id = response['product_id']
             if 'option_ids' in response:
@@ -2287,6 +2325,10 @@ class Catalog:
                             self.meta_is_on_sale['id'] = meta_id['id']
                         elif meta_id['key'] == Catalog.metafields['On Sale Description']['META_KEY']:
                             self.meta_sale_description['id'] = meta_id['id']
+                        elif meta_id['key'] == Catalog.metafields['New']['META_KEY']:
+                            self.meta_is_new['id'] = meta_id['id']
+                        elif meta_id['key'] == Catalog.metafields['Back In Stock']['META_KEY']:
+                            self.meta_is_back_in_stock['id'] = meta_id['id']
 
             if 'meta_ids' in response:
                 get_metafield_ids(response)
@@ -2310,6 +2352,7 @@ class Catalog:
                 get_media_ids(response)
 
         def get_variant_meta_ids(self, response):
+            """Used to get metafield IDs for variants."""
             for item in response:
                 for variant in self.variants:
                     if variant.sku == item:
@@ -2662,10 +2705,12 @@ class Catalog:
                 # Status
                 self.visible: bool = product_data['web_visible']
                 self.featured: bool = product_data['is_featured']
-                self.is_preorder = product_data['is_preorder']
+                self.is_preorder: bool = product_data['is_preorder']
+                self.is_new: bool = product_data['is_new']
+                self.is_back_in_stock: bool = product_data['is_back_in_stock']
                 self.preorder_release_date = product_data['preorder_release_date']
                 self.preorder_message = product_data['preorder_message']
-                self.is_on_sale = product_data['custom_is_on_sale']
+                self.is_on_sale: bool = product_data['custom_is_on_sale']
                 self.sale_description = product_data['custom_sale_description']
 
                 # Product Details
@@ -2939,6 +2984,16 @@ class Catalog:
                     'value': self.sale_description,
                 }
 
+                self.meta_is_new = {
+                    'id': product_data['custom_is_new_id'],
+                    'value': 'true' if self.is_new else 'false',
+                }
+
+                self.meta_is_back_in_stock = {
+                    'id': product_data['custom_is_back_in_stock_id'],
+                    'value': 'true' if self.is_back_in_stock else 'false',
+                }
+
                 # Product Images
                 self.images = []
                 self.has_variant_image = False
@@ -2990,15 +3045,15 @@ class Catalog:
 
 
                                 
-                ITEM.USR_CPC_IS_ENABLED as 'Web Visible(7)', 
-                ITEM.ECOMM_NEW as 'IS_FEATURED(8)', 
-                ITEM.USR_IN_STORE_ONLY as 'IN_STORE_ONLY(9)',
-                ITEM.USR_IS_PREORDER as 'is_preorder(10)', 
-                ITEM.USR_PREORDER_REL_DT as 'preorder_release_date(11)', 
-                ITEM.USR_PROF_ALPHA_19 as 'PREORDER_MESSAGE(12)', 
+                ITEM.{Table.CP.Item.Column.web_visible} as 'Web Visible(7)', 
+                ITEM.{Table.CP.Item.Column.featured} as 'IS_FEATURED(8)', 
+                ITEM.{Table.CP.Item.Column.in_store_only} as 'IN_STORE_ONLY(9)',
+                ITEM.{Table.CP.Item.Column.is_preorder_item} as 'is_preorder(10)', 
+                ITEM.{Table.CP.Item.Column.preorder_release_date} as 'preorder_release_date(11)', 
+                ITEM.{Table.CP.Item.Column.preorder_message} as 'PREORDER_MESSAGE(12)', 
 
                                 
-                ITEM.USR_PROF_ALPHA_27 as 'SORT ORDER(13)', 
+                ITEM.{Table.CP.Item.Column.sort_order} as 'SORT ORDER(13)', 
                                 
                 ITEM.{Table.CP.Item.Column.web_title} as 'WEB_TITLE(14)', 
                 ITEM.ADDL_DESCR_2 as 'META_TITLE(15)', 
@@ -3114,7 +3169,11 @@ class Catalog:
                 MW.CF_IS_ON_SALE as 'CUSTOM_IS_ON_SALE_ID(110)',
                 {Table.CP.Item.Column.sale_description} as 'SALE_DESCRIPTION(111)',
                 MW.CF_SALE_DESCR as 'CUSTOM_ON_SALE_DESCRIPTION_ID(112)',
-                MW.CF_VAR_SIZE as 'CUSTOM_VARIANT_SIZE_ID(113)'
+                MW.CF_VAR_SIZE as 'CUSTOM_VARIANT_SIZE_ID(113)',
+                ITEM.{Table.CP.Item.Column.is_new} as 'IS_NEW(114)',
+                MW.CF_IS_NEW as 'CUSTOM_IS_NEW_ID(115)',
+                ITEM.{Table.CP.Item.Column.is_back_in_stock} as 'IS_BACK_IN_STOCK(116)',
+                MW.CF_IS_BACK_IN_STOCK as 'CUSTOM_IS_BACK_IN_STOCK_ID(117)'
 
                 FROM {Table.CP.Item.table} ITEM
                 LEFT OUTER JOIN IM_PRC PRC ON ITEM.ITEM_NO=PRC.ITEM_NO
@@ -3258,6 +3317,10 @@ class Catalog:
                             'custom_sale_description': item[0][111],
                             'custom_sale_description_id': item[0][112],
                             'custom__variant_size_id': item[0][113],
+                            'is_new': True if item[0][114] == 'Y' else False,
+                            'custom_is_new_id': item[0][115],
+                            'is_back_in_stock': True if item[0][116] == 'Y' else False,
+                            'custom_is_back_in_stock_id': item[0][117],
                         }
                     except KeyError:
                         Catalog.error_handler.add_error_v(
@@ -3378,8 +3441,6 @@ class Catalog:
                 else:
                     if self.name != 'coming-soon.jpg':
                         self.set_image_details()
-                    else:
-                        print(self)
 
             def validate(self):
                 """Images will be validated for size and format before being uploaded and written to middleware.
@@ -3603,17 +3664,17 @@ class Catalog:
 
         class Video:
             def __init__(self, url, sku, binding_id, verbose=False):
+                self.sku = sku
+                self.url = url
+                self.binding_id = binding_id
                 self.verbose = verbose
                 self.db_id = None
-                self.sku = sku
                 self.shopify_id = None
-                self.binding_id = binding_id
                 self.name = None
                 self.sort_order = None
                 self.temp_sort_order = None
                 self.file_path = None
                 self.size = None
-                self.url = url
                 self.has_valid_url = True
                 self.description = None
 
@@ -3709,13 +3770,13 @@ if __name__ == '__main__':
     from setup.date_presets import Dates
 
     cat = Catalog(
-        last_sync=datetime(2024, 9, 25, 11, 25),
+        last_sync=datetime(2024, 9, 25, 16),
         dates=Dates(),
-        verbose=True,
+        # verbose=True,
         # test_mode=True,
         # test_queue=[
         #     # {'sku': '202944', 'binding_id': 'B9999'},
-        #     {'sku': '8K'}
+        #     {'sku': '202962'}
         # ],
     )
     cat.sync()

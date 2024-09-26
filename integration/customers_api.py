@@ -549,7 +549,6 @@ class Customers:
 
                 if self.shopify_cust_no:
                     response = update()
-                    print(response)
                     if self.phone:
                         Shopify.Customer.update_sms_marketing_consent(self.shopify_cust_no, self.sms_subscribe)
                     if self.email:

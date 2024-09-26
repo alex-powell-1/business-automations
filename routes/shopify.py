@@ -11,6 +11,8 @@ import json
 from shop.models.webhooks import CustomerWebhook
 from routes.limiter import limiter
 from product_tools.products import get_preorder_product_ids
+from datetime import datetime
+from dateutil.relativedelta import relativedelta
 
 
 class EventID:
@@ -256,6 +258,19 @@ def customer_update():
         return jsonify({'error': 'Unauthorized'}), 401
 
     customer = CustomerWebhook(webhook_data)
+    if customer.sms_consent_updated_at:
+        sms_update_dt = datetime.strptime(customer.sms_consent_updated_at, '%Y-%m-%dT%H:%M:%S%z')
+
+        sms_update_dt = convert_utc_to_local(sms_update_dt)
+
+        ten_mins_ago = datetime.now() + relativedelta(minutes=-10)
+
+        if sms_update_dt > ten_mins_ago:
+            if customer.sms_consent:
+                Database.SMS.subscribe(customer.phone)
+            else:
+                Database.SMS.unsubscribe(customer.phone)
+
     Logger(creds.Logs.webhooks_customer_update).log(f'Webhook: Customer Update, ID: {customer.id}')
 
     return jsonify({'success': True}), 200
@@ -361,7 +376,8 @@ def product_update():
             preorder_message = i['value']
 
         if i['key'] == 'preorder_release_date':
-            preorder_release_date = convert_utc_to_local(i['value'])
+            preorder_release_date = datetime.strptime(i['value'], '%Y-%m-%dT%H:%M:%S%z')
+            preorder_release_date = convert_utc_to_local(preorder_release_date)
 
     # Get media data
     media_payload = []
@@ -452,8 +468,6 @@ def collection_update():
     verified = verify_webhook(data, hmac_header)
     if not verified:
         return jsonify({'error': 'Unauthorized'}), 401
-
-    ProcessInErrorHandler.logger.info(f'Collection Update: {webhook_data['title']}')
 
     return jsonify({'success': True}), 200
 

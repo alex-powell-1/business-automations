@@ -164,7 +164,7 @@ class Table:
             class Column:
                 """Counterpoint Item Columns"""
 
-                __col = config_data['counterpoint']['tables']['items']['columns']
+                __col = Config.counterpoint['tables']['items']['columns']
                 item_no = __col['item_no']
                 binding_id = __col['binding_id']
                 is_parent = __col['is_parent']
@@ -173,6 +173,7 @@ class Table:
                 variant_name = __col['variant_name']
                 tags = __col['tags']
                 weight = __col['weight']
+                sort_order = __col['sort_order']
                 brand = __col['brand']
                 web_title = __col['web_title']
                 meta_title = __col['meta_title']
@@ -193,8 +194,8 @@ class Table:
                 plant_type = __col['plant_type']
                 buffer = __col['buffer']
                 promotion_date_exp = __col['promotion_dt_exp']
-                new = __col['new']
-                back_in_stock = __col['back_in_stock']
+                is_new = __col['new']
+                is_back_in_stock = __col['back_in_stock']
 
             class HTMLDescription:
                 table = config_data['counterpoint']['tables']['html_description']
@@ -211,7 +212,7 @@ class Table:
                 last_name = __col['last_name']
                 email_1 = __col['email_1']
                 email_2 = __col['email_2']
-                mobile_phone_1 = __col['mobile_phone_1']
+                mobile_phone_1: str = __col['mobile_phone_1']
                 phone_1 = __col['phone_1']
                 mobile_phone_2 = __col['mobile_phone_2']
                 phone_2 = __col['phone_2']

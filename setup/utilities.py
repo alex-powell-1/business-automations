@@ -191,7 +191,8 @@ def utc_to_local(utc_dt: datetime):
     return utc_dt.replace(tzinfo=timezone.utc).astimezone(tz=None)
 
 
-def convert_utc_to_local(utc_dt):
+def convert_utc_to_local(utc_dt: datetime):
+    """Used in preorder"""
     """
     Convert a UTC datetime to local time.
 
@@ -201,11 +202,9 @@ def convert_utc_to_local(utc_dt):
     """
     try:
         # Define the UTC timezone
-        utc = pytz.utc
-
-        # Convert the datetime to UTC
-        utc_dt = datetime.strptime(utc_dt, '%Y-%m-%dT%H:%M:%SZ')
-        utc_dt = utc.localize(utc_dt)
+        # utc = pytz.utc
+        
+        # utc_dt = utc.localize(utc_dt)
 
         # Define the local timezone
         local_timezone = pytz.timezone('America/New_York')
@@ -218,8 +217,10 @@ def convert_utc_to_local(utc_dt):
 
         return local_naive_dt
 
-    except:
+    except Exception as e:
+        print(e)
         return None
+    
 
 
 def make_datetime(date_string):
