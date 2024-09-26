@@ -1284,53 +1284,61 @@ class Database:
                 # If not, insert the metafield ID into the Middleware and then update the CP product table.
 
                 # Product Status Metafields
-                # if {payload['item_no']} == '200373':
-                #     if payload['is_preorder_item']['id']:
-                #         query += f"{Table.CP.Item.Column.is_preorder_item} = 'Y', "
-                #     else:
-                #         query += f"{Table.CP.Item.Column.is_preorder_item} = 'N', "
+                if {payload['item_no']} == '200373':
+                    if payload['is_preorder_item']['id']:
+                        query += f"{Table.CP.Item.Column.is_preorder_item} = 'Y', "
+                    else:
+                        query += f"{Table.CP.Item.Column.is_preorder_item} = 'N', "
 
-                #     if payload['preorder_message']['id']:
-                #         preorder_message = payload['preorder_message']['value'].replace("'", "''")[:160]
-                #         query += f"{Table.CP.Item.Column.preorder_message} = '{preorder_message}', "
-                #     else:
-                #         query += f'{Table.CP.Item.Column.preorder_message} = NULL, '
+                    if payload['preorder_message']['id']:
+                        preorder_message = payload['preorder_message']['value'].replace("'", "''")[:160]
+                        query += f"{Table.CP.Item.Column.preorder_message} = '{preorder_message}', "
+                    else:
+                        query += f'{Table.CP.Item.Column.preorder_message} = NULL, '
+                        payload['preorder_message']['id'] = 'NULL'
 
-                #     if payload['preorder_release_date']['id']:
-                #         query += f"{Table.CP.Item.Column.preorder_release_date} = '{payload['preorder_release_date']['value']}', "
-                #     else:
-                #         query += f'{Table.CP.Item.Column.preorder_release_date} = NULL, '
+                    if payload['preorder_release_date']['id']:
+                        query += f"{Table.CP.Item.Column.preorder_release_date} = '{payload['preorder_release_date']['value']}', "
+                    else:
+                        query += f'{Table.CP.Item.Column.preorder_release_date} = NULL, '
+                        payload['preorder_release_date']['id'] = 'NULL'
 
-                #     if payload['is_new']['id']:
-                #         query += f"{Table.CP.Item.Column.is_new} = 'Y', "
-                #     else:
-                #         query += f"{Table.CP.Item.Column.is_new} = 'N', "
+                    if payload['is_new']['id']:
+                        query += f"{Table.CP.Item.Column.is_new} = 'Y', "
+                    else:
+                        query += f"{Table.CP.Item.Column.is_new} = 'N', "
+                        payload['is_new']['id'] = 'NULL'
 
-                #     if payload['is_back_in_stock']['id']:
-                #         query += f"{Table.CP.Item.Column.is_back_in_stock} = 'Y', "
-                #     else:
-                #         query += f"{Table.CP.Item.Column.is_back_in_stock} = 'N', "
+                    if payload['is_back_in_stock']['id']:
+                        query += f"{Table.CP.Item.Column.is_back_in_stock} = 'Y', "
+                    else:
+                        query += f"{Table.CP.Item.Column.is_back_in_stock} = 'N', "
+                        payload['is_back_in_stock']['id'] = 'NULL'
 
-                #     if payload['is_in_store_only']['id']:
-                #         query += f"{Table.CP.Item.Column.in_store_only} = 'Y', "
-                #     else:
-                #         query += f"{Table.CP.Item.Column.in_store_only} = 'N', "
+                    if payload['is_in_store_only']['id']:
+                        query += f"{Table.CP.Item.Column.in_store_only} = 'Y', "
+                    else:
+                        query += f"{Table.CP.Item.Column.in_store_only} = 'N', "
+                        payload['is_in_store_only']['id'] = 'NULL'
 
-                #     if payload['is_featured']['id']:
-                #         query += f"{Table.CP.Item.Column.featured} = 'Y', "
-                #     else:
-                #         query += f"{Table.CP.Item.Column.featured} = 'N', "
+                    if payload['is_featured']['id']:
+                        query += f"{Table.CP.Item.Column.featured} = 'Y', "
+                    else:
+                        query += f"{Table.CP.Item.Column.featured} = 'N', "
+                        payload['is_featured']['id'] = 'NULL'
 
-                #     if payload['is_on_sale']['id']:
-                #         query += f"{Table.CP.Item.Column.is_on_sale} = 'Y', "
-                #     else:
-                #         query += f"{Table.CP.Item.Column.is_on_sale} = 'N', "
+                    if payload['is_on_sale']['id']:
+                        query += f"{Table.CP.Item.Column.is_on_sale} = 'Y', "
+                    else:
+                        query += f"{Table.CP.Item.Column.is_on_sale} = 'N', "
+                        payload['is_on_sale']['id'] = 'NULL'
 
-                #     if payload['sale_description']['id']:
-                #         sale_description = payload['sale_description']['value'].replace("'", "''")[:160]
-                #         query += f"{Table.CP.Item.Column.sale_description} = '{sale_description}', "
-                #     else:
-                #         query += f'{Table.CP.Item.Column.sale_description} = NULL, '
+                    if payload['sale_description']['id']:
+                        sale_description = payload['sale_description']['value'].replace("'", "''")[:160]
+                        query += f"{Table.CP.Item.Column.sale_description} = '{sale_description}', "
+                    else:
+                        query += f'{Table.CP.Item.Column.sale_description} = NULL, '
+                        payload['sale_description']['id'] = 'NULL'
 
                 # # Product Specification Metafields
                 # if 'botanical_name' in payload:
@@ -1365,22 +1373,22 @@ class Database:
                 response = Database.query(query)
                 if response['code'] == 200:
                     eh.logger.success(f'Product {payload["item_no"]} updated in Counterpoint.')
-                    # if {payload['item_no']} == '200373':
-                    #     Database.Shopify.Product.Variant.update_metafields(
-                    #         sku=payload['item_no'],
-                    #         meta_is_preorder=payload['is_preorder_item']['id'],
-                    #         meta_preorder_release_date=payload['preorder_release_date']['id'],
-                    #         meta_preorder_message=payload['preorder_message']['id'],
-                    #         meta_is_new=payload['is_new']['id'],
-                    #         meta_is_back_in_stock=payload['is_back_in_stock']['id'],
-                    #         meta_in_store_only=payload['is_in_store_only']['id'],
-                    #         meta_is_featured=payload['is_featured']['id'],
-                    #         meta_is_on_sale=payload['is_on_sale']['id'],
-                    #         meta_sale_description=payload['sale_description']['id'],
-                    #         verbose=True,
-                    #         update_timestamp=False,
-                    #         eh=eh
-                    #     )
+                    if {payload['item_no']} == '200373':
+                        Database.Shopify.Product.Variant.update_metafields(
+                            sku=payload['item_no'],
+                            meta_is_preorder=payload['is_preorder_item']['id'],
+                            meta_preorder_release_date=payload['preorder_release_date']['id'],
+                            meta_preorder_message=payload['preorder_message']['id'],
+                            meta_is_new=payload['is_new']['id'],
+                            meta_is_back_in_stock=payload['is_back_in_stock']['id'],
+                            meta_in_store_only=payload['is_in_store_only']['id'],
+                            meta_is_featured=payload['is_featured']['id'],
+                            meta_is_on_sale=payload['is_on_sale']['id'],
+                            meta_sale_description=payload['sale_description']['id'],
+                            verbose=True,
+                            update_timestamp=False,
+                            eh=eh,
+                        )
 
                 elif response['code'] == 201:
                     eh.logger.warn(f'Product {payload["item_no"]} not found in Counterpoint.')
@@ -3311,35 +3319,58 @@ class Database:
                     verbose=False,
                     eh=ProcessInErrorHandler,
                 ):
-
                     # Build the query
                     if update_timestamp:
                         timestamp = 'LST_MAINT_DT = GETDATE() '
 
                     fields = ''
-                    
-                    # CF_BOTAN_NAM = {meta_botanical_name if meta_botanical_name else "NULL"},
-                    # CF_PLANT_TYP = {meta_plant_type if meta_plant_type else "NULL"},
-                    # CF_HEIGHT = {meta_height if meta_height else "NULL"},
-                    # CF_WIDTH = {meta_width if meta_width else "NULL"},
-                    # CF_CLIM_ZON = {meta_climate_zone if meta_climate_zone else "NULL"},
-                    # CF_CLIM_ZON_LST = {meta_climate_zone_list if meta_climate_zone_list else "NULL"},
-                    # CF_COLOR = {meta_colors if meta_colors else "NULL"},
-                    # CF_SIZE = {meta_size if meta_size else "NULL"},
-                    # CF_BLOOM_SEAS = {meta_bloom_season if meta_bloom_season else "NULL"},
-                    # CF_BLOOM_COLOR = {meta_bloom_color if meta_bloom_color else "NULL"},
-                    # CF_LIGHT_REQ = {meta_light_requirements if meta_light_requirements else "NULL"},
-                    # CF_FEATURES = {meta_features if meta_features else "NULL"},
-                    # CF_IS_PREORDER = {meta_is_preorder if meta_is_preorder else "NULL"},
-                    # CF_PREORDER_DT = {meta_preorder_release_date if meta_preorder_release_date else "NULL"},
-                    # CF_PREORDER_MSG = {meta_preorder_message if meta_preorder_message else "NULL"},
-                    # CF_IS_FEATURED = {meta_is_featured if meta_is_featured else "NULL"},
-                    # CF_IN_STORE_ONLY = {meta_in_store_only if meta_in_store_only else "NULL"},
-                    # CF_IS_ON_SALE = {meta_is_on_sale if meta_is_on_sale else "NULL"},
-                    # CF_SALE_DESCR = {meta_sale_description if meta_sale_description else "NULL"},
-                    # CF_VAR_SIZE = {meta_variant_size if meta_variant_size else "NULL"},
-                    # CF_IS_NEW = {meta_is_new if meta_is_new else "NULL"},
-                    # CF_IS_BACK_IN_STOCK = {meta_is_back_in_stock if meta_is_back_in_stock else "NULL"},
+                    if meta_botanical_name:
+                        fields += f'CF_BOTAN_NAM = {meta_botanical_name}, '
+                    if meta_plant_type:
+                        fields += f'CF_PLANT_TYP = {meta_plant_type}, '
+                    if meta_height:
+                        fields += f'CF_HEIGHT = {meta_height}, '
+                    if meta_width:
+                        fields += f'CF_WIDTH = {meta_width}, '
+                    if meta_climate_zone:
+                        fields += f'CF_CLIM_ZON = {meta_climate_zone}, '
+                    if meta_climate_zone_list:
+                        fields += f'CF_CLIM_ZON_LST = {meta_climate_zone_list}, '
+                    if meta_colors:
+                        fields += f'CF_COLOR = {meta_colors}, '
+                    if meta_size:
+                        fields += f'CF_SIZE = {meta_size}, '
+                    if meta_bloom_season:
+                        fields += f'CF_BLOOM_SEAS = {meta_bloom_season}, '
+                    if meta_bloom_color:
+                        fields += f'CF_BLOOM_COLOR = {meta_bloom_color}, '
+                    if meta_light_requirements:
+                        fields += f'CF_LIGHT_REQ = {meta_light_requirements}, '
+                    if meta_features:
+                        fields += f'CF_FEATURES = {meta_features}, '
+                    if meta_is_preorder:
+                        fields += f'CF_IS_PREORDER = {meta_is_preorder}, '
+                    if meta_preorder_release_date:
+                        fields += f'CF_PREORDER_DT = {meta_preorder_release_date}, '
+                    if meta_preorder_message:
+                        fields += f'CF_PREORDER_MSG = {meta_preorder_message}, '
+                    if meta_is_featured:
+                        fields += f'CF_IS_FEATURED = {meta_is_featured}, '
+                    if meta_in_store_only:
+                        fields += f'CF_IN_STORE_ONLY = {meta_in_store_only}, '
+                    if meta_is_on_sale:
+                        fields += f'CF_IS_ON_SALE = {meta_is_on_sale}, '
+                    if meta_sale_description:
+                        fields += f'CF_SALE_DESCR = {meta_sale_description}, '
+                    if meta_variant_size:
+                        fields += f'CF_VAR_SIZE = {meta_variant_size}, '
+                    if meta_is_new:
+                        fields += f'CF_IS_NEW = {meta_is_new}, '
+                    if meta_is_back_in_stock:
+                        fields += f'CF_IS_BACK_IN_STOCK = {meta_is_back_in_stock}, '
+
+                    if fields[-2:] == ', ':
+                        fields = fields[:-2]
 
                     update_query = f"""
                         UPDATE {Table.Middleware.products} 
@@ -3352,17 +3383,17 @@ class Database:
                     if response['code'] == 200:
                         if verbose:
                             eh.logger.success(f'SKU: {sku} - Metafields updated in middleware')
-                    
+
                     elif response['code'] == 201:
                         eh.logger.warn(f'SKU: {sku},  - UPDATE Metafields: No Rows Affected')
-                    
+
                     else:
                         error = f'Query: {update_query}\n\nResponse: {response}'
-                        
+
                         eh.error_handler.add_error_v(
                             error=error, origin=f'Database.Shopify.Product.Variant.update(SKU: {sku})'
                         )
-                        
+
                         raise Exception(error)
 
                 def delete(variant_id, eh=ProcessOutErrorHandler, verbose=False):
