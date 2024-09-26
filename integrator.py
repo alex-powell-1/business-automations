@@ -81,8 +81,6 @@ class Integrator:
             self.promotions.sync()
         if self.catalog_sync:
             self.catalog.sync()
-        if self.sort_collections:
-            SortOrderEngine.sort(verbose=self.verbose)
         # Finished
         self.completion_time = datetime.now()
         integrator.logger.info(f'Sync complete at {self.completion_time:%Y-%m-%d %H:%M:%S}')
@@ -234,19 +232,30 @@ if __name__ == '__main__':
                             minutes_between_sync = creds.Integrator.int_night_run_interval
 
                         delay = minutes_between_sync * 60
+                        step = 12 # interations between collection sorts
 
-                        try:
-                            integrator = Integrator()  # Reinitialize the integrator each time
-                            integrator.sync(eh=integrator.eh, operation=integrator.module)
+                       
+                        for i in range(step):
+                            try:
+                                integrator = Integrator()  # Reinitialize the integrator each time
+                                integrator.sync(eh=integrator.eh, operation=integrator.module)
 
-                        except Exception as e:
-                            integrator.error_handler.add_error_v(
-                                error=f'Error: {e}', origin=integrator.module, traceback=tb()
-                            )
-                            time.sleep(60)
-                        else:
-                            next_sync = integrator.completion_time + timedelta(minutes=minutes_between_sync)
-                            time.sleep(delay)
+                            except Exception as e:
+                                integrator.error_handler.add_error_v(
+                                    error=f'Sync Error: {e}', origin=integrator.module, traceback=tb()
+                                )
+                                
+                            else:
+                                time.sleep(delay)
+                        
+                        
+                        if integrator.sort_collections:
+                            try:
+                                SortOrderEngine.sort(verbose=integrator.verbose)
+                            except Exception as e:
+                                integrator.error_handler.add_error_v(
+                                    error=f'Collection Sort Error: {e}', origin=integrator.module, traceback=tb()
+                                )
 
                 except KeyboardInterrupt:
                     sys.exit(0)
