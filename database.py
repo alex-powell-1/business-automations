@@ -484,74 +484,147 @@ class Database:
                 eh.error_handler.add_error_v(f'Error moving {phone} to landline')
 
         @staticmethod
-        def subscribe(origin, campaign, cust_no, name, category, phone, eh=ProcessOutErrorHandler):
+        def subscribe(phone, origin='SERVER', campaign='MISC', eh=ProcessOutErrorHandler):
             phone = PhoneNumber(phone).to_cp()
+            subscriptions = Database.SMS.get_sms_subscriptions(phone)
+            changes = False
+            for x in subscriptions:
+                if subscriptions[x]:
+                    eh.logger.warn(f'{phone} already subscribed to {x}.')
+                else:
+                    if x == Table.CP.Customers.Column.sms_1_is_subscribed:
+                        phone_column = Table.CP.Customers.Column.mobile_phone_1
 
-            query = f"""
-            UPDATE AR_CUST
-            SET {Table.CP.Customers.Column.sms_1_is_subscribed} = 'Y'
-            WHERE PHONE_1 = '{phone}' OR PHONE_2 = '{phone}'
-            """
-            response = Database.query(query=query)
-            if response['code'] == 200:
-                query = f"""
-                INSERT INTO {Table.sms_event} (ORIGIN, CAMPAIGN, PHONE, CUST_NO, NAME, CATEGORY, EVENT_TYPE, MESSAGE)
-                VALUES ('{origin}', '{campaign}', '{phone}', '{cust_no}', '{name}', '{category}',
-                'Subscribe', 'SET {Table.CP.Customers.Column.sms_1_is_subscribed} = Y')"""
-                response = Database.query(query)
-                if response['code'] != 200:
-                    eh.error_handler.add_error_v(f'Error subscribing {phone} to SMS')
+                    elif x == Table.CP.Customers.Column.sms_2_is_subscribed:
+                        phone_column = Table.CP.Customers.Column.mobile_phone_2
+                    else:
+                        continue
 
-            else:
-                eh.error_handler.add_error_v(f'Error subscribing {phone} to SMS')
+                    query = f"""
+                    UPDATE AR_CUST
+                    SET {x} = 'Y'
+                    WHERE {phone_column} = '{phone}' and {x} = 'N'
+                    """
+                    response = Database.query(query)
+                    if response['code'] == 200:
+                        changes = True
+                        query = f"""
+                        SELECT CUST_NO, NAM, CATEG_COD
+                        FROM AR_CUST
+                        WHERE {phone_column} = '{phone}'
+                        """
+                        response = Database.query(query, mapped=True)
+                        if response['code'] == 200:
+                            cust_no = response['data'][0]['CUST_NO']
+                            name = response['data'][0]['NAM']
+                            category = response['data'][0]['CATEG_COD']
+
+                            query = f"""
+                            INSERT INTO {Table.sms_event} (ORIGIN, CAMPAIGN, PHONE, CUST_NO, NAME,
+                            CATEGORY, EVENT_TYPE, MESSAGE)
+
+                            VALUES ('{origin}', '{campaign}', '{phone}', '{cust_no}', '{name}', '{category}',
+                            'Subscribe', 'SET {x} = Y')"""
+                            response = Database.query(query)
+                            if response['code'] == 200:
+                                eh.logger.success(f'Subscribed {phone_column}:{phone} to {x}')
+                            else:
+                                eh.error_handler.add_error_v(f'Error subscribing {phone} to SMS')
+
+                    elif response['code'] == 201:
+                        pass
+
+                    else:
+                        eh.error_handler.add_error_v(f'Error subscribing {phone} to SMS')
 
         @staticmethod
-        def unsubscribe(origin, campaign, cust_no, name, category, phone, eh=ProcessOutErrorHandler):
+        def unsubscribe(phone, origin='SERVER', campaign='MISC', eh=ProcessInErrorHandler):
             phone = PhoneNumber(phone).to_cp()
-            query = f"""
-            UPDATE AR_CUST
-            SET {Table.CP.Customers.Column.sms_1_is_subscribed} = 'N'
-            WHERE PHONE_1 = '{phone}' OR PHONE_2 = '{phone}'
-            """
-            response = Database.query(query=query)
-            if response['code'] == 200:
-                query = f"""
-                INSERT INTO {Table.sms_event} (ORIGIN, CAMPAIGN, PHONE, CUST_NO, NAME, CATEGORY, EVENT_TYPE, MESSAGE)
-                VALUES ('{origin}', '{campaign}', '{phone}', '{cust_no}', '{name}', '{category}',
-                'Unsubscribe', 'SET {Table.CP.Customers.Column.sms_1_is_subscribed} = N')"""
-                response = Database.query(query)
-                if response['code'] != 200:
-                    eh.error_handler.add_error_v(f'Error unsubscribing {phone} from SMS')
+            subscriptions = Database.SMS.get_sms_subscriptions(phone)
+            changes = False
+            if subscriptions:
+                for x in subscriptions:
+                    if subscriptions[x]:
+                        if x == Table.CP.Customers.Column.sms_1_is_subscribed:
+                            phone_column = Table.CP.Customers.Column.mobile_phone_1
+                        elif x == Table.CP.Customers.Column.sms_2_is_subscribed:
+                            phone_column = Table.CP.Customers.Column.mobile_phone_2
+                        else:
+                            continue
+                        where = f"{phone_column} = '{phone}'"
 
-            else:
-                eh.error_handler.add_error_v(f'Error unsubscribing {phone} from SMS')
+                        query = f"""
+                        UPDATE AR_CUST
+                        SET {x} = 'N'
+                        WHERE {where} and {x} = 'Y'
+                        """
+                        response = Database.query(query)
+                        if response['code'] == 200:
+                            changes = True
+                            query = f"""
+                            SELECT CUST_NO, NAM, CATEG_COD
+                            FROM AR_CUST
+                            WHERE {where}
+                            """
+                            response = Database.query(query, mapped=True)
+                            if response['code'] == 200:
+                                cust_no = response['data'][0]['CUST_NO']
+                                name = response['data'][0]['NAM']
+                                category = response['data'][0]['CATEG_COD']
 
-        def is_subscribed(phone_number: str, eh=ProcessInErrorHandler) -> bool:
+                                query = f"""
+                                INSERT INTO {Table.sms_event} (ORIGIN, CAMPAIGN, PHONE, CUST_NO, NAME,
+                                CATEGORY, EVENT_TYPE, MESSAGE)
+
+                                VALUES ('{origin}', '{campaign}', '{phone}', '{cust_no}', '{name}', '{category}',
+                                'Unsubscribe', 'SET {x} = N')"""
+                                response = Database.query(query)
+                                if response['code'] == 200:
+                                    eh.logger.success(f'Unsubscribed {phone_column}:{phone} from {x}')
+                                else:
+                                    eh.error_handler.add_error_v(f'Error unsubscribing {phone} from SMS')
+
+                        else:
+                            eh.error_handler.add_error_v(f'Error unsubscribing {phone} from SMS')
+
+            if not changes:
+                eh.logger.warn(f'{phone} not found in SMS subscriptions.')
+
+        def get_sms_subscriptions(phone_number: str, eh=ProcessInErrorHandler) -> bool:
             """Returns True if phone number is subscribed to SMS notifications."""
             # Find the columns that contain the phone number
+            result = {
+                Table.CP.Customers.Column.sms_1_is_subscribed: False,
+                Table.CP.Customers.Column.sms_2_is_subscribed: False,
+            }
             phone_locations = Database.Counterpoint.Customer.find_phone(phone_number)
+
             if not phone_locations:
-                return False
+                return result
+
             for location in phone_locations:
-                if location == {Table.CP.Customers.Column.mobile_phone_1}:
+                if location == Table.CP.Customers.Column.mobile_phone_1:
                     phone_column = Table.CP.Customers.Column.sms_1_is_subscribed
-                    # THIS DOES NOT WORK.
-                elif location == {Table.CP.Customers.Column.mobile_phone_2}:
+
+                elif location == Table.CP.Customers.Column.mobile_phone_2:
                     phone_column = Table.CP.Customers.Column.sms_2_is_subscribed
+
                 else:
-                    print('here 2')
                     continue
+
                 query = f"""
                 SELECT {phone_column}
                 FROM {Table.CP.Customers.table}
                 WHERE {location} = '{phone_number}'
                 """
                 response = Database.query(query)
-                print(response)
+
                 try:
-                    return response[0][0] == 'Y'
+                    result[phone_column] = response[0][0] == 'Y'
                 except:
-                    return False
+                    pass
+
+            return result
 
     class StockNotification:
         def has_info(item_no, email=None, phone=None):
@@ -4006,4 +4079,4 @@ class Database:
 
 
 if __name__ == '__main__':
-    print(Database.SMS.is_subscribed('828-390-8030'))
+    print(Database.SMS.subscribe('828-390-8030'))
