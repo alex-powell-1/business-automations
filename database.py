@@ -1374,7 +1374,7 @@ class Database:
                 response = Database.query(query)
                 if response['code'] == 200:
                     eh.logger.success(f'Product {payload["item_no"]} updated in Counterpoint.')
-                    if payload['item_no'] == '200373':
+                    # if payload['item_no'] == '200373':
                         # Work in progress
                         # Database.Shopify.Product.Variant.update_metafields(
                         #     sku=payload['item_no'],
