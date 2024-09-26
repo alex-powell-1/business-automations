@@ -259,8 +259,12 @@ def customer_update():
 
     customer = CustomerWebhook(webhook_data)
     if customer.sms_consent_updated_at:
+        print(f'Customer SMS Consent Updated At: {customer.sms_consent_updated_at}')
         sms_consent_updated_at = convert_utc_to_local(customer.sms_consent_updated_at)
-        if sms_consent_updated_at > datetime.now() + relativedelta(minutes=-10):
+        print(f'Local SMS Consent Updated At: {sms_consent_updated_at}')
+        ten_mins_ago = datetime.now() + relativedelta(minutes=-10)
+        print(f'Ten Mins Ago: {ten_mins_ago}')
+        if sms_consent_updated_at > ten_mins_ago:
             if customer.sms_consent:
                 Database.SMS.subscribe(customer.phone)
             else:
