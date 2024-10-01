@@ -3,27 +3,32 @@
 #### Author: Alex Powell
 #### Contributor: Luke Barrier
 
-Business Automations is a data integration solution and collection of scheduled tasks built to enhance productivity, increase revenue, and reduce manual data manipulation at a retail store location using BigCommerce and Counterpoint Point of Sale
+Business Automations is a data integration solution created to enhance productivity, increase revenue, and reduce manual data manipulation at a retail store location using Shopify and NCR Counterpoint Point of Sale. Written in python, the following files should be run as services: server.py, integrator.py, scheduled_tasks.py, async_consumers.py, inventory_sync.py
 
 ## Server
 
-The server (`server.py`) handles incoming requests, and sends incoming orders to a RabbitMQ async queue consumer (`consumer_orders.py`) for order processing. Incoming marketing leaders are sent to another RabbitMQ consumer (`consumer_leads.py`) for logging, auto printing, and email/sms marketing related tasks.
+The server (`server.py`), built in flask and served with waitress, handles incoming requests, and sends incoming orders, marketing leads, draft orders to multi-threaded RabbitMQ async queue consumers (`async_consumers.py`).
 
 
-## Scheduled Task Functionality
+## Scheduled Tasks
 
-The main script (`scheduled_tasks.py`) runs tasks based on the current time. 
+Scheduled tasks (`scheduled_tasks.py`) runs as a windows service (installed with nssm.exe). This script creates a ScheduledTask object that fulfills hourly tasks, daily tasks, sms automations, health checks, backups, and other tasks as required. This script can be run as a scheduled task or as a windows service with the -l argument to run in a loop.
 
-- Every half hour: Creates new customers from marketing leads, sets contact information, and fixes missing product thumbnails.
-- Every hour: Checks server for internet connection, uploads current inventory stock levels, resizes and reformats product photos.
-- Every other hour (between 6 AM and 8 PM): Updates product status and brands, sets stock buffers, and exports customers to CSV.
-- Once per day: Updates total sold and related items for products, sets always online status for top performing items, updates sort order and featured items, generates various reports, sends lead notification email, sends automated text messages to customers, removes refunds from SMS funnel, deletes expired coupons, scrapes competitor prices, removes wholesale customers from loyalty program, sets negative loyalty points to zero, and performs off-site backups.
+## Integration
+
+The integration folder contains modules related to product, category tree (collection), order, customer, newsletter subscriber, promotion, and discount code integration with Shopify using GraphQL queries and mutations. The BigCommerce folder exists from a prior integration and contains much of the logic of the Shopify integration and uses the REST API. This script can be run as a scheduled task or as a windows service with the -l argument to run in a loop.
+
+### Product Integration Notes
+In lieu of having a NCR Counterpoint Advanced Pricing license, this product integration relies on using a binding ID field to bind products together into a Shopify product with multiple variants. One product that shares the binding ID must be marked as the parent. 
+
+### Inventory Sync Notes
+inventory_sync.py is a specialized version of the integrator.py script. It can run very frequently and it will query the database for chnages to the inventory since the last inventory_sync timestamp. If there is a change, it will run the single updateInventory mutation. Every x cycles, this file also generates a csv of inventory for use on a website datatables.net widget.
 
 ## Error Handling
 
 Logging and Error handling are handled by the error_handler classes in `setup/error_handler.py`.
 
-# Automations Detailed:
+# Scheduled Tasks Detailed:
 
 ## Twice Per Hour Tasks
 
