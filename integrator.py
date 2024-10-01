@@ -1,5 +1,5 @@
-from integration.catalog_api import Catalog, Product
-from integration.customers_api import Customers
+from integration.catalog_api import Catalog, Product, Collections
+from integration.customers_api import Customers, Subscribers
 from integration.promotions_api import Promotions
 from datetime import datetime
 
@@ -18,54 +18,62 @@ from traceback import format_exc as tb
 
 
 class Integrator:
+    """Driver for integration between NCR Counterpoint and Shopify e-commerce platform"""
+
+    eh = ProcessOutErrorHandler  # error handler
+    module = str(sys.modules[__name__]).split('\\')[-1].split('.')[0].title()
+
     def __init__(self):
         self.dates = date_presets.Dates()
+        self.verbose: bool = creds.Integrator.verbose_logging
+        # Dates
         self.last_sync: datetime = get_last_sync(file_name='./integration/last_sync_integrator.txt')
         self.start_sync_time: datetime = None
         self.completion_time: datetime = None
-        self.module = str(sys.modules[__name__]).split('\\')[-1].split('.')[0].title()
-        self.eh = ProcessOutErrorHandler
-        self.error_handler = self.eh.error_handler
-        self.logger = self.eh.logger
+
+        self.error_handler = Integrator.eh.error_handler
+        self.logger = Integrator.eh.logger
+
+        # Sync component booleans for enabling/disabling
         self.customer_sync: bool = creds.Integrator.customer_sync
+        self.subscriber_sync: bool = creds.Integrator.newsletter_sync
         self.promotions_sync: bool = creds.Integrator.promotion_sync
         self.catalog_sync: bool = creds.Integrator.catalog_sync
         self.sort_collections: bool = creds.Integrator.collection_sorting
-        self.verbose: bool = creds.Integrator.verbose_logging
-        self.customers = Customers(last_sync=self.last_sync, verbose=self.verbose, enabled=self.customer_sync)
-        self.promotions = Promotions(last_sync=self.last_sync, verbose=self.verbose, enabled=self.promotions_sync)
-        self.catalog = Catalog(
-            dates=self.dates, last_sync=self.last_sync, verbose=self.verbose, enabled=self.catalog_sync
-        )
+
+        # Sync components
+        if self.customer_sync:
+            self.customers: Customers = Customers(last_sync=self.last_sync, verbose=self.verbose)
+        if self.subscriber_sync:
+            self.subscribers: Subscribers = Subscribers(last_sync=self.last_sync, verbose=self.verbose)
+        if self.promotions_sync:
+            self.promotions: Promotions = Promotions(last_sync=self.last_sync, verbose=self.verbose)
+        if self.catalog_sync:
+            self.catalog: Catalog = Catalog(dates=self.dates, last_sync=self.last_sync, verbose=self.verbose)
 
     def __str__(self):
         result = creds.Integrator.title + '\n'
         result += f'Authors: {creds.Integrator.authors}\nVersion: {creds.Integrator.version}\n'
         result += f'Last Sync: {self.last_sync}\n----------------\n'
+
         sync_tasks = ''
-        sync_tasks += self.customers.__str__()
-        # sync_tasks += self.promotions.__str__()
-        sync_tasks += self.catalog.__str__()
+
+        if self.customer_sync:
+            sync_tasks += self.customers.__str__()
+        if self.subscriber_sync:
+            sync_tasks += self.subscribers.__str__()
+        if self.promotions_sync:
+            sync_tasks += self.promotions.__str__()
+        if self.catalog_sync:
+            sync_tasks += self.catalog.__str__()
+
         if sync_tasks:
             result += sync_tasks
         else:
-            result += 'No customers, promotions, collections, or products to sync.\n'
+            result += 'No customers, subscribers, promotions, collections, or products to sync.\n'
             if self.sort_collections:
                 result += 'Collection Sorting: Enabled\n'
         return result
-
-    def initialize(self, rebuild=False):
-        """Initialize the integrator by deleting the catalog, rebuilding the tables, and syncing the catalog."""
-        start_time = datetime.now()
-        self.catalog.delete()  # Will delete all products, and collections  NEED TO TEST ON DEV STORE
-        # self.customers.()
-        if rebuild:
-            Database.Shopify.rebuild_tables()  # Will drop and rebuild all Shopify tables
-
-        self.catalog = Catalog(dates=self.dates, initial_sync=True)
-        self.sync()
-        # self.customers = Customers(last_sync=business_start)
-        Integrator.logger.info(message=f'Initialization Complete. ' f'Total time: {time.time() - start_time}')
 
     @timer
     def sync(self):
@@ -74,13 +82,16 @@ class Integrator:
         self.logger.header(
             f'Starting sync at {self.start_sync_time:%Y-%m-%d %H:%M:%S}. Last sync: {integrator.last_sync}'
         )
-        # Sync the catalog, customers, and promotions
+
         if self.customer_sync:
             self.customers.sync()
+        if self.subscriber_sync:
+            self.subscribers.sync()
         if self.promotions_sync:
             self.promotions.sync()
         if self.catalog_sync:
             self.catalog.sync()
+
         # Finished
         self.completion_time = datetime.now()
         integrator.logger.info(f'Sync complete at {self.completion_time:%Y-%m-%d %H:%M:%S}')
@@ -111,7 +122,9 @@ def main_menu():
     else:
         # Initialize the integrator by deleting the catalog, rebuilding the tables, and syncing the catalog.
         if input_command == 'initialize':
-            integrator.initialize()
+            # integrator.initialize()
+            print('Initialization disabled.')
+
         # Get information about a product, brand, category, or customer
         elif input_command == 'get':
             command = input('\nEnter command: \n' '- product\n' '- collections\n' '- customer\n\n')
@@ -123,12 +136,12 @@ def main_menu():
                 print(product)
 
             elif command == 'collections':
-                tree = Catalog.CategoryTree(last_sync=integrator.last_sync)
-                print(tree)
+                collections = Collections(last_sync=integrator.last_sync)
+                print(collections)
 
-            # elif command == 'customer':
-            #     customer_id = input('Enter customer id: ')
-            #     integrator.customers.get_customer(customer_id=customer_id)
+            elif command == 'customer':
+                customer_id = input('Enter customer id: ')
+                integrator.customers.get_customer(customer_id=customer_id)
 
             user_menu_choices()
 
@@ -167,7 +180,12 @@ def main_menu():
                 )
                 choice = input('Enter choice: ')
                 if choice.lower() == 'y':
-                    integrator.catalog.delete()
+                    pw = input('Enter password: ')
+                    if pw == creds.Integrator.sms_sync_keyword:
+                        integrator.catalog.delete()
+                    else:
+                        print('Incorrect password!')
+                        time.sleep(1)
                     main_menu()
                 else:
                     print('Aborted.')
@@ -178,7 +196,12 @@ def main_menu():
                 print('Are you sure you want to delete all categories? (y/n)')
                 choice = input('Enter choice: ')
                 if choice.lower() == 'y':
-                    integrator.catalog.delete(categories=True)
+                    pw = input('Enter password: ')
+                    if pw == creds.Integrator.sms_sync_keyword:
+                        integrator.catalog.delete(categories=True)
+                    else:
+                        print('Incorrect password!')
+                        time.sleep(1)
                     main_menu()
                 else:
                     print('Aborted.')
@@ -189,8 +212,14 @@ def main_menu():
                 print('Are you sure you want to delete all products? (y/n)')
                 choice = input('Enter choice: ')
                 if choice.lower() == 'y':
-                    integrator.catalog.delete(products=True)
+                    pw = input('Enter password: ')
+                    if pw == creds.Integrator.sms_sync_keyword:
+                        integrator.catalog.delete(products=True)
+                    else:
+                        print('Incorrect password!')
+                        time.sleep(1)
                     main_menu()
+
                 else:
                     print('Aborted.')
                     time.sleep(2)
@@ -219,7 +248,7 @@ if __name__ == '__main__':
         else:
             if '-y' in sys.argv:  # Run the integrator without user input
                 print(integrator)
-                integrator.sync(eh=integrator.eh, operation=integrator.module)
+                integrator.sync(eh=Integrator.eh, operation=Integrator.module)
 
             if '-v' in sys.argv:  # Set verbose logging
                 integrator.verbose = True
@@ -240,7 +269,7 @@ if __name__ == '__main__':
                         for i in range(step):
                             try:
                                 integrator = Integrator()  # Reinitialize the integrator each time
-                                integrator.sync(eh=integrator.eh, operation=integrator.module)
+                                integrator.sync(eh=Integrator.eh, operation=Integrator.module)
 
                             except Exception as e:
                                 integrator.error_handler.add_error_v(
@@ -268,6 +297,6 @@ if __name__ == '__main__':
         print(integrator)
         input = input('Continue? (y/n): ')
         if input.lower() == 'y':
-            integrator.sync(eh=integrator.eh, operation=integrator.module)
+            integrator.sync(eh=Integrator.eh, operation=Integrator.module)
         else:
             sys.exit(0)

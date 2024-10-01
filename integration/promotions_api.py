@@ -11,7 +11,7 @@ class Promotions:
     logger = ProcessOutErrorHandler.logger
     error_handler = ProcessOutErrorHandler.error_handler
 
-    def __init__(self, last_sync=None, verbose=False, enabled=True):
+    def __init__(self, last_sync=None, verbose=False):
         self.last_sync = last_sync
         self.verbose = verbose
         self.promotions: list[Promotion] = []
@@ -20,8 +20,7 @@ class Promotions:
         self.sale_badges = {}
         self.sale_badge_items = []
         self.get_promotions()
-        if enabled:
-            self.get_sync_queue()
+        self.get_sync_queue()
 
     def __str__(self) -> str:
         result = ''

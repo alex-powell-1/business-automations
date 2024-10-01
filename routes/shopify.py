@@ -1,6 +1,6 @@
 from database import Database
 from integration.shopify_api import Shopify
-from integration.customers_api import Customers
+from integration.customers_api import Customer
 from flask import request, jsonify, Blueprint
 from setup.creds import API
 import pika
@@ -201,7 +201,7 @@ def customer_create():
 
     logger.info(f'Processing Customer Create: {id}')
 
-    if Customers.Customer.has_metafield(cust_id=id, key='number'):
+    if Customer.has_metafield(cust_id=id, key='number'):
         logger.info(f'Customer {id} has customer number metafield. Skipping.')
     else:
         try:
@@ -363,7 +363,6 @@ def product_update():
 
         if i['key'] == 'color':
             color = i['value']
-    
 
     # Product Status Metafields
     is_featured = {'id': None, 'value': None}
@@ -377,10 +376,10 @@ def product_update():
     sale_description = {'id': None, 'value': None}
 
     for i in metafields['product_status']:
-        if i['key'] == 'featured': # never null boolean
+        if i['key'] == 'featured':  # never null boolean
             is_featured = {'id': i['id'], 'value': True if i['value'] == 'true' else False}
 
-        if i['key'] == 'in_store_only': # never null boolean
+        if i['key'] == 'in_store_only':  # never null boolean
             is_in_store_only = {'id': i['id'], 'value': True if i['value'] == 'true' else False}
 
         if i['key'] == 'new':
@@ -388,8 +387,8 @@ def product_update():
 
         if i['key'] == 'back_in_stock':
             is_back_in_stock = {'id': i['id'], 'value': True if i['value'] == 'true' else False}
-        
-        if i['key'] == 'preorder_item': # never null boolean
+
+        if i['key'] == 'preorder_item':  # never null boolean
             is_preorder_item = {'id': i['id'], 'value': True if i['value'] == 'true' else False}
 
         if i['key'] == 'preorder_message':
@@ -398,14 +397,13 @@ def product_update():
         if i['key'] == 'preorder_release_date':
             preorder_release_dt = convert_utc_to_local(datetime.strptime(i['value'], '%Y-%m-%dT%H:%M:%S%z'))
             preorder_release_date = {'id': i['id'], 'value': preorder_release_dt}
-        
-        if i['key'] == 'on_sale': # never null boolean
+
+        if i['key'] == 'on_sale':  # never null boolean
             is_on_sale = {'id': i['id'], 'value': True if i['value'] == 'true' else False}
-        
+
         if i['key'] == 'on_sale_description':
             if i['key'] == 'preorder_message':
                 sale_description = {'id': i['id'], 'value': i['value']}
-
 
     # Get media data
     media_payload = []
@@ -460,7 +458,6 @@ def product_update():
         update_payload['is_back_in_stock'] = is_back_in_stock
         update_payload['is_on_sale'] = is_on_sale
         update_payload['sale_description'] = sale_description
-
 
         if media_payload:
             for m in media_payload:

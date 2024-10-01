@@ -32,6 +32,7 @@ class Integrator:
     inv_night_run_interval: int = Config.integrator['inventory_night_run_interval']  # Seconds
     promotion_sync: bool = Config.integrator['promotion_sync']
     customer_sync: bool = Config.integrator['customer_sync']
+    subscriber_sync: bool = Config.integrator['subscriber_sync']
     catalog_sync: bool = Config.integrator['catalog_sync']
     collection_sorting: bool = Config.integrator['collection_sorting']
     inventory_sync: bool = Config.integrator['inventory_sync']
