@@ -6,9 +6,8 @@ from setup.date_presets import Dates
 import time
 import requests
 from integration.shopify_api import Shopify
-from PIL import Image, ImageOps
-
-from database import Database
+from PIL import ImageOps
+from PIL import Image as PILImage
 
 from setup import creds
 from setup.creds import Table
@@ -22,8 +21,8 @@ from traceback import format_exc as tb
 
 
 class Catalog:
-    all_binding_ids = Database.Counterpoint.Product.get_all_binding_ids()
-    metafields = Database.Shopify.Metafield_Definition.get()
+    all_binding_ids = db.Counterpoint.Product.get_all_binding_ids()
+    metafields = db.Shopify.Metafield_Definition.get()
     eh = ProcessOutErrorHandler
     logger = eh.logger
     error_handler = eh.error_handler
@@ -47,7 +46,7 @@ class Catalog:
         self.test_mode = test_mode
         self.test_queue = test_queue
         if not self.inventory_only and not self.test_mode:
-            self.category_tree = self.CategoryTree(last_sync=last_sync)
+            self.category_tree = Collections(last_sync=last_sync)
 
         self.cp_items = []
         self.mw_items = []
@@ -55,10 +54,10 @@ class Catalog:
         self.back_in_stock_items = get_all_back_in_stock_items(start_date=self.dates.one_month_ago)
         self.set_new_items()
         self.set_back_in_stock_items()
-        self.product_images = []
-        self.mw_image_list = []
-        self.product_videos = []
-        self.sync_queue = []
+        self.product_images: dict = []
+        self.mw_image_list: dict = []
+        self.product_videos: dict = []
+        self.sync_queue: dict = []
         self.queue_binding_ids = set()
         self.get_products()
         if not self.inventory_only and not self.initial_sync:
@@ -75,7 +74,7 @@ class Catalog:
         return result
 
     def get_products(self):
-        """Get data for self.cp_items and self.mw_items"""
+        """Get data for self.cp_items and self.mw_items. This is used for comparing CP to MW for deletions."""
         counterpoint_items = db.query(f"SELECT ITEM_NO FROM {Table.CP.Item.table} WHERE IS_ECOMM_ITEM = 'Y'")
         self.cp_items = [x[0] for x in counterpoint_items] if counterpoint_items else []
 
@@ -134,7 +133,7 @@ class Catalog:
                             if len(parent_list) > 1:
                                 Catalog.logger.warn(f'Multiple parents found for {binding_id}.')
                                 # Set Parent Status for new parent.
-                                parent_sku = Catalog.Product.set_parent(binding_id=binding_id, remove_current=True)
+                                parent_sku = Product.set_parent(binding_id=binding_id, remove_current=True)
 
                             else:
                                 # Single Parent Found.
@@ -143,7 +142,7 @@ class Catalog:
                             # Missing Parent!
                             # Will choose the lowest price web enabled variant as the parent.
                             Catalog.logger.warn(f'Parent SKU not found for {binding_id}.')
-                            parent_sku = Catalog.Product.set_parent(binding_id=binding_id)
+                            parent_sku = Product.set_parent(binding_id=binding_id)
 
                         queue_payload = {'sku': parent_sku, 'binding_id': binding_id}
                 else:
@@ -172,15 +171,13 @@ class Catalog:
         for item in self.sync_queue:
             if 'binding_id' not in item:
                 # Check if the target product has a binding ID in the middleware database.
-                mw_binding_id = Catalog.Product.get_binding_id(item['sku'], middleware=True)
+                mw_binding_id = Product.get_binding_id(item['sku'], middleware=True)
                 if mw_binding_id:
                     # This is a former bound product. Delete it.
                     delete_targets.append(item['sku'])
             else:
                 # These products have a binding ID. Get all family members of the binding ID.
-                family_members = Catalog.Product.get_family_members(
-                    binding_id=item['binding_id'], counterpoint=True
-                )
+                family_members = Product.get_family_members(binding_id=item['binding_id'], counterpoint=True)
 
                 for member in family_members:
                     query = f"""
@@ -206,7 +203,7 @@ class Catalog:
         if delete_targets:
             Catalog.logger.info(f'Product Delete Targets: {delete_targets}')
             for x in delete_targets:
-                Catalog.Product.delete(sku=x)
+                Product.delete(sku=x)
         else:
             if self.verbose:
                 Catalog.logger.info('No products to delete.')
@@ -219,10 +216,10 @@ class Catalog:
                 variant_sku = x['variant']
 
                 # Get Product ID associated with item.
-                product_id = Catalog.Product.get_product_id(parent_sku)
+                product_id = Product.get_product_id(parent_sku)
 
                 if product_id is not None:
-                    variant = Catalog.Product.Variant(sku=variant_sku)
+                    variant = Variant(sku=variant_sku)
                     pass
                     # Shopify.Product.Variant.create(variant)
         else:
@@ -237,7 +234,7 @@ class Catalog:
             if self.verbose:
                 Catalog.logger.info('Processing Image Updates.')
             self.product_images = get_product_images(eh=self.eh, verbose=self.verbose)
-            mw_images = Database.Shopify.Product.Media.Image.get(column='IMAGE_NAME, SIZE')
+            mw_images = db.Shopify.Product.Media.Image.get(column='IMAGE_NAME, SIZE')
             self.mw_image_list = [[x[0], x[1]] for x in mw_images] if mw_images else []
 
             delete_targets = Catalog.get_deletion_target(
@@ -250,6 +247,7 @@ class Catalog:
                     Catalog.logger.info(message=f'Delete Targets: {delete_targets_set}')
                 for img_name in delete_targets_set:
                     if img_name == 'coming-soon.jpg':
+                        # This block will run if you are dealing with a default image in the case of missing photos.
                         query = """
                         SELECT ITEM_NO, IMAGE_ID FROM SN_SHOP_IMAGES
                         WHERE IMAGE_NAME = 'coming-soon.jpg'
@@ -281,12 +279,12 @@ class Catalog:
                                 local_images += local_binding_images
 
                             if len(local_images) > 0:
-                                Catalog.Product.Image.delete(image_id=image_id)
+                                Image.delete(image_id=image_id)
                         break
 
                     else:
                         Catalog.logger.info(f'Deleting Image {img_name}.\n')
-                        Catalog.Product.Image.delete(image_name=img_name)
+                        Image.delete(image_name=img_name)
             else:
                 if self.verbose:
                     Catalog.logger.info('No image deletions found.')
@@ -330,8 +328,8 @@ class Catalog:
         def process_videos():
             if self.verbose:
                 Catalog.logger.info('Processing Video Updates.')
-            self.product_videos = Database.Counterpoint.Product.Media.Video.get()
-            mw_video_data = Database.Shopify.Product.Media.Video.get(column='ITEM_NO, URL')
+            self.product_videos = db.Counterpoint.Product.Media.Video.get()
+            mw_video_data = db.Shopify.Product.Media.Video.get(column='ITEM_NO, URL')
             mw_video_list = [[x[0], x[1]] for x in mw_video_data] if mw_video_data else []
             delete_targets = Catalog.get_deletion_target(
                 primary_source=self.product_videos, secondary_source=mw_video_list
@@ -341,7 +339,7 @@ class Catalog:
                 Catalog.logger.info(f'Delete Targets: {delete_targets}')
                 for x in delete_targets:
                     Catalog.logger.info(f'Deleting Video for:\nITEM: {x[0]}\nURL: {x[1]}\n')
-                    Catalog.Product.Video.delete(sku=x[0], url=x[1])
+                    Video.delete(sku=x[0], url=x[1])
             else:
                 if self.verbose:
                     Catalog.logger.info('No video deletions found.')
@@ -353,15 +351,15 @@ class Catalog:
         """Sets new items to the sync queue."""
         if self.new_items:
             new_items = [x[0] for x in self.new_items]
-            Database.Counterpoint.Product.add_to_new(new_items)
-            Database.Counterpoint.Product.remove_from_new(new_items)
+            db.Counterpoint.Product.add_to_new(new_items)
+            db.Counterpoint.Product.remove_from_new(new_items)
 
     def set_back_in_stock_items(self):
         """Sets back in stock items to the sync queue."""
         if self.back_in_stock_items:
             back_in_stock_items = [x[0] for x in self.back_in_stock_items]
-            Database.Counterpoint.Product.add_to_back_in_stock(back_in_stock_items)
-            Database.Counterpoint.Product.remove_from_back_in_stock(back_in_stock_items)
+            db.Counterpoint.Product.add_to_back_in_stock(back_in_stock_items)
+            db.Counterpoint.Product.remove_from_back_in_stock(back_in_stock_items)
 
     def sync(self, initial=False):
         """Syncs the catalog with Shopify. This will update products, categories, and media."""
@@ -384,7 +382,7 @@ class Catalog:
                 Catalog.logger.info(f'Syncing {queue_length} products.', origin='CATALOG SYNC: ')
 
             def task(target):
-                prod = self.Product(target, last_sync=self.last_sync, inventory_only=self.inventory_only)
+                prod = Product(target, last_sync=self.last_sync, inventory_only=self.inventory_only)
                 prod.get(last_sync=self.last_sync)
                 if prod.validate():
                     return prod.process()
@@ -417,7 +415,7 @@ class Catalog:
             if fail_count['items']:
 
                 def retry(target):
-                    Catalog.Product.delete(sku=target['sku'])
+                    Product.delete(sku=target['sku'])
                     return task(target)
 
                 with ThreadPoolExecutor(max_workers=creds.Integrator.max_workers) as executor:
@@ -472,7 +470,7 @@ class Catalog:
                     Catalog.error_handler.add_error_v(
                         error=f'Error deleting product {target}. {e}', origin='delete_products()'
                     )
-                Database.Shopify.Product.delete(product_id=target)
+                db.Shopify.Product.delete(product_id=target)
 
             # Check for any remaining products in Shopify
             response = Shopify.Product.get_all()
@@ -488,7 +486,7 @@ class Catalog:
             while parent_category_list:
                 target = parent_category_list.pop()
                 Shopify.Collection.delete(collection_id=target)
-                Database.Shopify.Collection.delete(collection_id=target)
+                db.Shopify.Collection.delete(collection_id=target)
 
             # Check for any remaining categories in Shopify
             response = Shopify.Collection.get()
@@ -503,20 +501,20 @@ class Catalog:
 
     def reupload_all_media():
         # Get all e-commerce products
-        product_ids = Database.Shopify.Product.get_id(all=True)
+        product_ids = db.Shopify.Product.get_id(all=True)
         errors = []
         for product_id in product_ids:
             try:
                 Catalog.logger.info('Processing', product_id)
                 # Get SKU from product Id
-                sku = Database.Shopify.Product.get_sku(product_id=product_id)
+                sku = db.Shopify.Product.get_sku(product_id=product_id)
                 item = {'sku': sku}
-                binding_id = Database.Shopify.Product.get_binding_id(product_id=product_id)
+                binding_id = db.Shopify.Product.get_binding_id(product_id=product_id)
                 if binding_id:
                     item['binding_id'] = binding_id
                 # Delete all media for product
                 Shopify.Product.Media.delete(product_id=product_id, media_type='all')
-                Database.Shopify.Product.Media.delete(product_id=product_id)
+                db.Shopify.Product.Media.delete(product_id=product_id)
                 Shopify.logger.info('Deleted media for', sku)
                 Shopify.logger.info('Syncing', sku)
                 # Process Product
@@ -529,2511 +527,2464 @@ class Catalog:
 
         Catalog.logger.info(errors)
 
-    class CategoryTree:
-        def __init__(self, last_sync=datetime(1970, 1, 1), verbose=False):
-            self.last_sync = last_sync
-            self.verbose = verbose
-            self.categories = set()
-            self.heads = []
-            self.get_tree()
 
-        def __str__(self):
-            def print_category_tree(category, level=0):
-                res = (
-                    f"{'    ' * level}Category Name: {category.category_name}\n"
-                    f"{'    ' * level}---------------------------------------\n"
-                    f"{'    ' * level}Counterpoint Category ID: {category.cp_categ_id}\n"
-                    f"{'    ' * level}Counterpoint Parent ID: {category.cp_parent_id}\n"
-                    f"{'    ' * level}Shopify Collection ID: {category.collection_id}\n"
-                    f"{'    ' * level}Shopify Parent ID: {category.shopify_parent_id}\n"
-                    f"{'    ' * level}Sort Order: {category.sort_order}\n"
-                    f"{'    ' * level}Last Maintenance Date: {category.lst_maint_dt}\n\n"
+class Collections:
+    logger = ProcessOutErrorHandler.logger
+    error_handler = ProcessOutErrorHandler.error_handler
+
+    def __init__(self, last_sync=datetime(1970, 1, 1), verbose=False):
+        self.last_sync: datetime = last_sync
+        self.verbose: bool = verbose
+        self.categories: set[Collection] = set()
+        self.heads: list[Collection] = []  # top level collections
+        self.get_tree()
+
+    def __str__(self):
+        def print_collections(category, level=0):
+            res = (
+                f"{'    ' * level}Collection Name: {category.category_name}\n"
+                f"{'    ' * level}---------------------------------------\n"
+                f"{'    ' * level}Counterpoint Category ID: {category.cp_categ_id}\n"
+                f"{'    ' * level}Counterpoint Parent ID: {category.cp_parent_id}\n"
+                f"{'    ' * level}Shopify Collection ID: {category.collection_id}\n"
+                f"{'    ' * level}Shopify Parent ID: {category.shopify_parent_id}\n"
+                f"{'    ' * level}Sort Order: {category.sort_order}\n"
+                f"{'    ' * level}Last Maintenance Date: {category.lst_maint_dt}\n\n"
+            )
+            for child in category.children:
+                res += print_collections(child, level + 1)
+            return res
+
+        result = ''
+        for root in self.heads:
+            result += print_collections(root)
+
+        return result
+
+    def get_tree(self):
+        """Updates middleware category tables with Counterpoint category information."""
+        query = f"""
+        SELECT cp.CATEG_ID, ISNULL(cp.PARENT_ID, 0), mw.COLLECTION_ID, mw.MENU_ID, cp.DESCR, cp.DISP_SEQ_NO, cp.HTML_DESCR, 
+        cp.LST_MAINT_DT, mw.CP_CATEG_ID, mw.is_visible, mw.IMG_SIZE
+        FROM EC_CATEG cp
+        FULL OUTER JOIN {Table.Middleware.collections} mw on cp.CATEG_ID=mw.CP_CATEG_ID
+        """
+        response = db.query(query)
+        if response:
+            for x in response:
+                cp_categ_id = x[0]
+                cp_parent_id = x[1]
+                mw_cp_categ_id = x[8]  # Middleware Counterpoint Category ID
+
+                if cp_categ_id is None:  # These are categories that exist in the middleware but not CP
+                    Collections.delete_collection(mw_cp_categ_id)
+                    continue  # Skip deleted categories
+
+                if cp_parent_id == '0' and cp_categ_id == '0':
+                    continue  # Skip the root category
+
+                # Create Category Object
+                cat = Collection(
+                    cp_categ_id=cp_categ_id,
+                    cp_parent_id=cp_parent_id,
+                    collection_id=x[2],
+                    menu_id=x[3],
+                    name=x[4],
+                    sort_order=x[5],
+                    description=x[6].replace("'", "''"),
+                    lst_maint_dt=x[7],
+                    is_visible=True if x[9] == 1 else False,
+                    image_size=x[10] if x[10] else None,
                 )
-                for child in category.children:
-                    res += print_category_tree(child, level + 1)
-                return res
 
-            result = ''
-            for root in self.heads:
-                result += print_category_tree(root)
+                if mw_cp_categ_id is None:
+                    db.Shopify.Collection.insert(cat)
 
-            return result
+                else:
+                    if cat.lst_maint_dt > self.last_sync:
+                        db.Shopify.Collection.update(cat)
 
-        def get_tree(self):
-            """Updates middleware category tables with Counterpoint category information."""
-            query = f"""
-            SELECT cp.CATEG_ID, ISNULL(cp.PARENT_ID, 0), mw.COLLECTION_ID, mw.MENU_ID, cp.DESCR, cp.DISP_SEQ_NO, cp.HTML_DESCR, 
-            cp.LST_MAINT_DT, mw.CP_CATEG_ID, mw.is_visible, mw.IMG_SIZE
-            FROM EC_CATEG cp
-            FULL OUTER JOIN {Table.Middleware.collections} mw on cp.CATEG_ID=mw.CP_CATEG_ID
-            """
-            response = db.query(query)
-            if response:
-                for x in response:
-                    cp_categ_id = x[0]
-                    cp_parent_id = x[1]
-                    mw_cp_categ_id = x[8]  # Middleware Counterpoint Category ID
+                self.categories.add(cat)
 
-                    if cp_categ_id is None:  # These are categories that exist in the middleware but not CP
-                        self.delete_collection(mw_cp_categ_id)
-                        continue  # Skip deleted categories
+            for x in self.categories:
+                for y in self.categories:
+                    if y.cp_parent_id == x.cp_categ_id:
+                        x.add_child(y)
 
-                    if cp_parent_id == '0' and cp_categ_id == '0':
-                        continue  # Skip the root category
+            self.heads = [x for x in self.categories if x.cp_parent_id == '0']
 
-                    # Create Category Object
-                    cat = self.Category(
-                        cp_categ_id=cp_categ_id,
-                        cp_parent_id=cp_parent_id,
-                        collection_id=x[2],
-                        menu_id=x[3],
-                        name=x[4],
-                        sort_order=x[5],
-                        description=x[6].replace("'", "''"),
-                        lst_maint_dt=x[7],
-                        is_visible=True if x[9] == 1 else False,
-                        image_size=x[10] if x[10] else None,
+            # Sort Heads by x.sort_order
+            self.heads.sort(key=lambda x: x.sort_order)
+
+    def sync(self):
+        self.process_collections()
+        self.process_menus()
+        self.update_middleware()
+
+    def process_collections(self):
+        queue: list[Collection] = []
+
+        def collections_h(category: Collection):
+            # Get Shopify Collection ID and Parent ID
+            if category.lst_maint_dt > self.last_sync:
+                queue.append(category)
+                if category.collection_id is None:
+                    category.collection_id = Shopify.Collection.create(category.get_category_payload())
+
+            for child in category.children:
+                collections_h(child)
+
+        for head in self.heads:
+            collections_h(head)
+
+        self.process_images(queue)
+
+        for category in queue:
+            Shopify.Collection.update(category.get_category_payload())
+
+    def process_menus(self):
+        """Recursively updates menus in Shopify."""
+        main_menu = {'id': creds.Shopify.Menu.main, 'title': 'Menu menu', 'handle': 'main-menu', 'items': []}
+
+        def menu_helper(category: Collection):
+            # Sort category children by sort order
+            category.children.sort(key=lambda x: x.sort_order)
+
+            menu_item = {
+                'title': category.name,
+                'type': 'COLLECTION',
+                'resourceId': f'gid://shopify/Collection/{category.collection_id}',
+                'items': [menu_helper(child) for child in category.children],
+            }
+
+            if category.menu_id:
+                menu_item['id'] = f'gid://shopify/MenuItem/{category.menu_id}'
+
+            return menu_item
+
+        # Recursively call this function for each child category
+        for category in self.heads:
+            main_menu['items'].append(menu_helper(category))
+
+        # # Add the Landing Page to the Main Menu
+        main_menu['items'].append(
+            {
+                'title': 'Landscape Design',
+                'type': 'PAGE',
+                'resourceId': 'gid://shopify/Page/98894217383',
+                'items': [],
+            }
+        )
+
+        response = Shopify.Menu.update(main_menu)
+
+        def get_menu_ids(response):
+            categories = []
+
+            for item in response['menuUpdate']['menu']['items']:
+                menu_item_id = item['id']
+                title = item['title']
+                children = item['items']
+                categories.append({'id': menu_item_id, 'title': title})
+                for child in children:
+                    child_id = child['id']
+                    child_title = child['title']
+                    categories.append({'id': child_id, 'title': child_title})
+
+            for cat in categories:
+                for category in self.categories:
+                    if cat['title'] == category.name:
+                        category.menu_id = cat['id'].split('/')[-1]
+
+        get_menu_ids(response)
+
+    def update_middleware(self):
+        # Update Entire Category Tree in Middleware
+        def update_helper(collection: Collection):
+            if collection.lst_maint_dt > self.last_sync:
+                db.Shopify.Collection.update(collection)
+            for child in collection.children:
+                update_helper(child)
+
+        for collection in self.heads:
+            update_helper(collection)
+
+    def process_images(self, queue: list['Collection']):
+        file_list = []
+        stagedUploadsCreateVariables = {'input': []}
+
+        for category in queue:
+            if category.image_path:
+                image_size = get_filesize(category.image_path)
+                if image_size != category.image_size:
+                    category.image_size = image_size
+                    file_list.append(category.image_path)
+                    stagedUploadsCreateVariables['input'].append(
+                        {
+                            'filename': category.image_name,
+                            'mimeType': 'image/jpg',
+                            'httpMethod': 'POST',
+                            'resource': 'COLLECTION_IMAGE',
+                        }
                     )
 
-                    if mw_cp_categ_id is None:
-                        Database.Shopify.Collection.insert(cat)
-
-                    else:
-                        if cat.lst_maint_dt > self.last_sync:
-                            Database.Shopify.Collection.update(cat)
-
-                    self.categories.add(cat)
-
-                for x in self.categories:
-                    for y in self.categories:
-                        if y.cp_parent_id == x.cp_categ_id:
-                            x.add_child(y)
-
-                self.heads = [x for x in self.categories if x.cp_parent_id == '0']
-
-                # Sort Heads by x.sort_order
-                self.heads.sort(key=lambda x: x.sort_order)
-
-        def sync(self):
-            self.process_collections()
-            self.process_menus()
-            self.update_tree_in_middleware()
-
-        def process_collections(self):
-            queue = []
-
-            def collections_h(category):
-                # Get Shopify Collection ID and Parent ID
-                if category.lst_maint_dt > self.last_sync:
-                    queue.append(category)
-                    if category.collection_id is None:
-                        category.collection_id = Shopify.Collection.create(category.get_category_payload())
-
-                for child in category.children:
-                    collections_h(child)
-
-            for head in self.heads:
-                collections_h(head)
-
-            self.upload_category_images(queue)
-
-            for category in queue:
-                Shopify.Collection.update(category.get_category_payload())
-
-        def process_menus(self):
-            """Recursively updates menus in Shopify."""
-            main_menu = {'id': creds.Shopify.Menu.main, 'title': 'Menu menu', 'handle': 'main-menu', 'items': []}
-
-            def menu_helper(category):
-                # Sort category children by sort order
-                category.children.sort(key=lambda x: x.sort_order)
-
-                menu_item = {
-                    'title': category.name,
-                    'type': 'COLLECTION',
-                    'resourceId': f'gid://shopify/Collection/{category.collection_id}',
-                    'items': [menu_helper(child) for child in category.children],
-                }
-
-                if category.menu_id:
-                    menu_item['id'] = f'gid://shopify/MenuItem/{category.menu_id}'
-
-                return menu_item
-
-            # Recursively call this function for each child category
-            for category in self.heads:
-                main_menu['items'].append(menu_helper(category))
-
-            # # Add the Landing Page to the Main Menu
-            main_menu['items'].append(
-                {
-                    'title': 'Landscape Design',
-                    'type': 'PAGE',
-                    'resourceId': 'gid://shopify/Page/98894217383',
-                    'items': [],
-                }
+        if file_list:
+            uploaded_files = Shopify.Collection.Files.create(
+                variables=stagedUploadsCreateVariables, file_list=file_list, verbose=self.verbose
             )
+            for file in uploaded_files:
+                for category in queue:
+                    if file['file_path'] == category.image_path:
+                        category_image_url = file['url']
+                        category.image_url = category_image_url
 
-            response = Shopify.Menu.update(main_menu)
+    @staticmethod
+    def delete_collection(cp_categ_id):
+        Collections.logger.info(f'Deleting Category: {cp_categ_id}')
+        query = f"""
+        SELECT COLLECTION_ID
+        FROM {Table.Middleware.collections}
+        WHERE CP_CATEG_ID = {cp_categ_id}
+        """
+        response = db.query(query)
+        try:
+            collection_id = response[0][0]
+        except:
+            collection_id = None
 
-            def get_menu_ids(response):
-                categories = []
+        if collection_id:
+            Shopify.Collection.delete(collection_id)
 
-                for item in response['menuUpdate']['menu']['items']:
-                    menu_item_id = item['id']
-                    title = item['title']
-                    children = item['items']
-                    categories.append({'id': menu_item_id, 'title': title})
-                    for child in children:
-                        child_id = child['id']
-                        child_title = child['title']
-                        categories.append({'id': child_id, 'title': child_title})
+        db.Shopify.Collection.delete(cp_categ_id=cp_categ_id)
 
-                for cat in categories:
-                    for category in self.categories:
-                        if cat['title'] == category.name:
-                            category.menu_id = cat['id'].split('/')[-1]
 
-            get_menu_ids(response)
+class Collection:
+    def __init__(
+        self,
+        cp_categ_id,
+        cp_parent_id,
+        name,
+        collection_id=None,
+        menu_id=None,
+        shopify_parent_id=None,
+        sort_order=0,
+        description='',
+        is_visible=True,
+        image_url=None,
+        image_size=None,
+        image_alt_text=None,
+        lst_maint_dt=datetime(1970, 1, 1),
+    ):
+        # Category Properties
+        self.cp_categ_id = cp_categ_id
+        self.cp_parent_id = cp_parent_id
+        self.name = name
+        self.handle = self.get_full_custom_url_path()
+        self.collection_id = collection_id
+        self.menu_id = menu_id
+        self.shopify_parent_id = shopify_parent_id
+        self.sort_order = sort_order
+        self.description = description
+        self.image_size = image_size
+        self.image_name = str(self.handle)[1:-1].replace('/', '_').replace(' ', '-') + '.jpg'
+        self.image_path = self.get_category_image_path()
+        self.image_url = image_url
+        self.image_alt_text = image_alt_text
+        self.is_visible = is_visible
+        self.rule_set = None  # for future use
+        self.lst_maint_dt = lst_maint_dt
+        self.children: list[Collection] = []
 
-        def update_tree_in_middleware(self):
-            # Update Entire Category Tree in Middleware
-            def update_helper(category):
-                if category.lst_maint_dt > self.last_sync:
-                    Database.Shopify.Collection.update(category)
-                for child in category.children:
-                    update_helper(child)
+    def __str__(self):
+        return (
+            f'Category Name: {self.name}\n'
+            f'---------------------------------------\n'
+            f'Counterpoint Category ID: {self.cp_categ_id}\n'
+            f'Counterpoint Parent ID: {self.cp_parent_id}\n'
+            f'Shopify Category ID: {self.collection_id}\n'
+            f'Shopify Parent ID: {self.shopify_parent_id}\n'
+            f'Sort Order: {self.sort_order}\n'
+            f'Last Maintenance Date: {self.lst_maint_dt}\n\n'
+        )
 
-            for category in self.heads:
-                update_helper(category)
+    def add_child(self, child):
+        self.children.append(child)
 
-        def upload_category_images(self, queue):
-            file_list = []
-            stagedUploadsCreateVariables = {'input': []}
+    def get_shopify_id(self):
+        query = f"""
+        SELECT COLLECTION_ID
+        FROM {Table.Middleware.collections}
+        WHERE CP_CATEG_ID = {self.cp_categ_id}
+        """
+        response = db.query(query)
+        if response is not None:
+            shopify_category_id = response[0][0] if response[0][0] is not None else None
+            if shopify_category_id is not None:
+                self.collection_id = response[0][0]
+            else:
+                self.shopify_parent_id = self.get_shopify_parent_id()
+                category_payload = self.get_category_payload()
+                self.collection_id = Shopify.Collection.create(category_payload)
 
-            for category in queue:
-                if category.image_path:
-                    image_size = get_filesize(category.image_path)
-                    if image_size != category.image_size:
-                        category.image_size = image_size
-                        file_list.append(category.image_path)
-                        stagedUploadsCreateVariables['input'].append(
-                            {
-                                'filename': category.image_name,
-                                'mimeType': 'image/jpg',
-                                'httpMethod': 'POST',
-                                'resource': 'COLLECTION_IMAGE',
-                            }
-                        )
+    def get_shopify_parent_id(self):
+        query = f"""
+        SELECT COLLECTION_ID
+        FROM {Table.Middleware.collections}
+        WHERE CP_CATEG_ID = (SELECT CP_PARENT_ID 
+                            FROM {Table.Middleware.collections} 
+                            WHERE CP_CATEG_ID = {self.cp_categ_id})
+        """
+        response = db.query(query)
+        return response[0][0] if response and response[0][0] is not None else 0
 
-            if file_list:
-                uploaded_files = Shopify.Collection.Files.create(
-                    variables=stagedUploadsCreateVariables, file_list=file_list, verbose=self.verbose
-                )
-                for file in uploaded_files:
-                    for category in queue:
-                        if file['file_path'] == category.image_path:
-                            category_image_url = file['url']
-                            category.image_url = category_image_url
-
-        def delete_collection(self, cp_categ_id):
-            Catalog.logger.info(f'Deleting Category: {cp_categ_id}')
-            query = f"""
-            SELECT COLLECTION_ID
-            FROM {Table.Middleware.collections}
-            WHERE CP_CATEG_ID = {cp_categ_id}
-            """
+    def get_full_custom_url_path(self):
+        parent_id = self.cp_parent_id
+        url_path = []
+        url_path.append(parse_custom_url(self.name))
+        while parent_id != 0:
+            query = f'SELECT CATEG_NAME, CP_PARENT_ID FROM {Table.Middleware.collections} WHERE CP_CATEG_ID = {parent_id}'
             response = db.query(query)
             if response:
-                collection_id = response[0][0] if response and response[0][0] is not None else None
-                if collection_id:
-                    Shopify.Collection.delete(collection_id)
-                Database.Shopify.Collection.delete(cp_categ_id=cp_categ_id)
+                url_path.append(parse_custom_url(response[0][0] or ''))
+                parent_id = response[0][1]
+            else:
+                break
+        return f"/{"/".join(url_path[::-1])}/"
 
-        class Category:
-            def __init__(
-                self,
-                cp_categ_id,
-                cp_parent_id,
-                name,
-                collection_id=None,
-                menu_id=None,
-                shopify_parent_id=None,
-                sort_order=0,
-                description='',
-                is_visible=True,
-                image_url=None,
-                image_size=None,
-                image_alt_text=None,
-                lst_maint_dt=datetime(1970, 1, 1),
-            ):
-                # Category Properties
-                self.cp_categ_id = cp_categ_id
-                self.cp_parent_id = cp_parent_id
-                self.name = name
-                self.handle = self.get_full_custom_url_path()
-                self.collection_id = collection_id
-                self.menu_id = menu_id
-                self.shopify_parent_id = shopify_parent_id
-                self.sort_order = sort_order
-                self.description = description
-                self.image_size = image_size
-                self.image_name = str(self.handle)[1:-1].replace('/', '_').replace(' ', '-') + '.jpg'
-                self.image_path = self.get_category_image_path()
-                self.image_url = image_url
-                self.image_alt_text = image_alt_text
-                self.is_visible = is_visible
-                self.rule_set = None  # for future use
-                self.lst_maint_dt = lst_maint_dt
-                self.children = []
+    def get_category_image_path(self, local=True):
+        image_name = str(self.handle)[1:-1].replace('/', '_').replace(' ', '-') + '.jpg'
+        local_path = f'{creds.API.public_files_local_path}/{creds.Company.category_images}/{image_name}'
+        if os.path.exists(local_path):
+            return local_path
 
-            def __str__(self):
-                return (
-                    f'Category Name: {self.name}\n'
-                    f'---------------------------------------\n'
-                    f'Counterpoint Category ID: {self.cp_categ_id}\n'
-                    f'Counterpoint Parent ID: {self.cp_parent_id}\n'
-                    f'Shopify Category ID: {self.collection_id}\n'
-                    f'Shopify Parent ID: {self.shopify_parent_id}\n'
-                    f'Sort Order: {self.sort_order}\n'
-                    f'Last Maintenance Date: {self.lst_maint_dt}\n\n'
-                )
+    def get_category_payload(self):
+        payload = {'input': {'title': self.name, 'handle': self.handle, 'sortOrder': 'BEST_SELLING'}}
+        # New items - Add store channel
+        if not self.collection_id:
+            payload['input']['publications'] = {'publicationId': creds.Shopify.SalesChannel.online_store}
+        # Updates - Add Collection ID
+        if self.collection_id:
+            payload['input']['id'] = f'gid://shopify/Collection/{self.collection_id}'
+        if self.description:
+            payload['input']['descriptionHtml'] = self.description
+        if self.image_url:
+            payload['input']['image'] = {'src': self.image_url}
+            # if self.image_alt_text:
+            #     payload['input']['image']['altText'] = self.image_alt_text
+        # for future use
+        if self.rule_set:
+            payload['input']['ruleSet'] = {
+                'appliedDisjunctively': False,
+                'rules': [{{'column': 'TAG', 'relation': 'EQUALS', 'condition': 'summer'}}],
+            }
+        return payload
 
-            def add_child(self, child):
-                self.children.append(child)
 
-            def get_shopify_cat_id(self):
-                query = f"""
-                SELECT COLLECTION_ID
-                FROM {Table.Middleware.collections}
-                WHERE CP_CATEG_ID = {self.cp_categ_id}
-                """
-                response = db.query(query)
-                if response is not None:
-                    shopify_category_id = response[0][0] if response[0][0] is not None else None
-                    if shopify_category_id is not None:
-                        self.collection_id = response[0][0]
-                    else:
-                        self.shopify_parent_id = self.get_shopify_parent_id()
-                        category_payload = self.get_category_payload()
-                        self.collection_id = Shopify.Collection.create(category_payload)
+class Product:
+    logger = ProcessOutErrorHandler.logger
+    error_handler = ProcessOutErrorHandler.error_handler
+    """Product objects represent single products or bound products. Bound products are products that have
+    multiple variants associated with them through a shared binding ID."""
 
-            def get_shopify_parent_id(self):
-                query = f"""
-                SELECT COLLECTION_ID
-                FROM {Table.Middleware.collections}
-                WHERE CP_CATEG_ID = (SELECT CP_PARENT_ID 
-                                    FROM {Table.Middleware.collections} 
-                                    WHERE CP_CATEG_ID = {self.cp_categ_id})
-                """
-                response = db.query(query)
-                return response[0][0] if response and response[0][0] is not None else 0
+    def __init__(self, product_data, last_sync=datetime(1970, 1, 1), verbose=False, inventory_only=False):
+        self.last_sync = last_sync
+        self.verbose = verbose
+        self.inventory_only = inventory_only
+        self.product_data = product_data
+        self.sku = product_data['sku']
+        self.binding_id = product_data['binding_id'] if 'binding_id' in product_data else None
+        # Determine if Bound
+        self.is_bound = True if self.binding_id else False
+        # self.variants will be list of variant objects
+        self.variants: list[Variant] = []
+        # self.parent will be a list of parent products. If length of list > 1, product validation will fail
+        self.parent: list[Variant] = []
 
-            def get_full_custom_url_path(self):
-                parent_id = self.cp_parent_id
-                url_path = []
-                url_path.append(parse_custom_url(self.name))
-                while parent_id != 0:
-                    query = f'SELECT CATEG_NAME, CP_PARENT_ID FROM {Table.Middleware.collections} WHERE CP_CATEG_ID = {parent_id}'
-                    response = db.query(query)
-                    if response:
-                        url_path.append(parse_custom_url(response[0][0] or ''))
-                        parent_id = response[0][1]
-                    else:
-                        break
-                return f"/{"/".join(url_path[::-1])}/"
+        # A list of image objects
+        self.images: list[Image] = []
+        self.default_image: bool = False
+        self.expected_media_order = []
+        self.videos: list[Video] = []
+        self.media: list[Video | Image] = []  # list of all media objects (Images and Videos)
+        self.reorder_media_queue = []
+        self.has_new_media: bool = False
+        self.has_variant_image: bool = False  # used during image processing
 
-            def get_category_image_path(self, local=True):
-                image_name = str(self.handle)[1:-1].replace('/', '_').replace(' ', '-') + '.jpg'
-                local_path = f'{creds.API.public_files_local_path}/{creds.Company.category_images}/{image_name}'
-                if os.path.exists(local_path):
-                    return local_path
+        # Product Information
+        self.product_id = None
+        self.option_id = None
+        self.web_title = None
+        self.type = None
+        self.long_descr = None
+        self.default_price = None
+        self.cost = None
+        self.sale_price = None
+        self.taxable = None
+        self.weight = None
+        self.buffered_quantity = 0
+        self.brand = None
+        self.html_description = None
+        self.tags = None
+        self.meta_title = None
+        self.meta_description = None
+        self.visible: bool = False
+        self.featured: bool = False
+        self.is_new: bool = False
+        self.is_back_in_stock: bool = False
+        self.sort_order = None
+        self.in_store_only: bool = False
+        self.is_preorder = False
+        self.is_preorder_only = False
+        self.is_workshop = False
+        self.preorder_message = None
+        self.preorder_release_date = None
+        self.alt_text_1 = None
+        self.alt_text_2 = None
+        self.alt_text_3 = None
+        self.alt_text_4 = None
+        self.custom_url = None
 
-            def get_category_payload(self):
-                payload = {'input': {'title': self.name, 'handle': self.handle, 'sortOrder': 'BEST_SELLING'}}
-                # New items - Add store channel
-                if not self.collection_id:
-                    payload['input']['publications'] = {'publicationId': creds.Shopify.SalesChannel.online_store}
-                # Updates - Add Collection ID
-                if self.collection_id:
-                    payload['input']['id'] = f'gid://shopify/Collection/{self.collection_id}'
-                if self.description:
-                    payload['input']['descriptionHtml'] = self.description
-                if self.image_url:
-                    payload['input']['image'] = {'src': self.image_url}
-                    # if self.image_alt_text:
-                    #     payload['input']['image']['altText'] = self.image_alt_text
-                # for future use
-                if self.rule_set:
-                    payload['input']['ruleSet'] = {
-                        'appliedDisjunctively': False,
-                        'rules': [{{'column': 'TAG', 'relation': 'EQUALS', 'condition': 'summer'}}],
-                    }
-                return payload
+        # Custom Fields
+        self.meta_botanical_name = {'id': None, 'value': None}
+        self.meta_climate_zone = {'id': None, 'value': None}
+        self.meta_climate_zone_list = {'id': None, 'value': None}
+        self.meta_plant_type = {'id': None, 'value': None}
+        self.meta_height = {'id': None, 'value': None}
+        self.meta_width = {'id': None, 'value': None}
+        self.meta_light_requirements = {'id': None, 'value': None}
+        self.meta_size = {'id': None, 'value': None}
+        self.meta_bloom_season = {'id': None, 'value': None}
+        self.meta_features = {'id': None, 'value': None}
+        self.meta_colors = {'id': None, 'value': None}
+        self.meta_bloom_color = {'id': None, 'value': None}
+        self.meta_is_preorder = {'id': None, 'value': None}
+        self.meta_preorder_message = {'id': None, 'value': None}
+        self.meta_preorder_release_date = {'id': None, 'value': None}
+        self.meta_is_featured = {'id': None, 'value': None}
+        self.meta_is_new = {'id': None, 'value': None}
+        self.meta_is_back_in_stock = {'id': None, 'value': None}
+        self.meta_in_store_only = {'id': None, 'value': None}
+        self.meta_is_on_sale = {'id': None, 'value': None}
+        self.meta_sale_description = {'id': None, 'value': None}
 
-    class Product:
-        def __init__(self, product_data, last_sync=datetime(1970, 1, 1), verbose=False, inventory_only=False):
-            self.last_sync = last_sync
-            self.verbose = verbose
-            self.inventory_only = inventory_only
-            self.product_data = product_data
-            self.sku = product_data['sku']
-            self.binding_id = product_data['binding_id'] if 'binding_id' in product_data else None
-            # Determine if Bound
-            self.is_bound = True if self.binding_id else False
-            # self.variants will be list of variant objects
-            self.variants: list[Catalog.Product.Variant] = []
-            # self.parent will be a list of parent products. If length of list > 1, product validation will fail
-            self.parent: list[Catalog.Product.Variant] = []
+        self.lst_maint_dt = datetime(1970, 1, 1)
 
-            # A list of image objects
-            self.images: list[Catalog.Product.Image] = []
-            self.default_image: bool = False
-            self.expected_media_order = []
-            self.videos: list[Catalog.Product.Video] = []
-            self.media: list = []  # list of all media objects (Images and Videos)
-            self.reorder_media_queue = []
-            self.has_new_media = False
-            self.has_variant_image = False  # used during image processing
+        # E-Commerce Categories
+        self.cp_ecommerce_categories = []
+        self.shopify_collections = []
 
-            # Product Information
-            self.product_id = None
-            self.option_id = None
-            self.web_title = None
-            self.type = None
-            self.long_descr = None
-            self.default_price = None
-            self.cost = None
-            self.sale_price = None
-            self.taxable = None
-            self.weight = None
-            self.buffered_quantity = 0
-            self.brand = None
-            self.html_description = None
-            self.tags = None
-            self.meta_title = None
-            self.meta_description = None
-            self.visible: bool = False
-            self.featured: bool = False
-            self.is_new: bool = False
-            self.is_back_in_stock: bool = False
-            self.sort_order = None
-            self.in_store_only: bool = False
-            self.is_preorder = False
-            self.is_preorder_only = False
-            self.is_workshop = False
-            self.preorder_message = None
-            self.preorder_release_date = None
-            self.alt_text_1 = None
-            self.alt_text_2 = None
-            self.alt_text_3 = None
-            self.alt_text_4 = None
-            self.custom_url = None
+        # Validate Product
+        self.validation_retries = 10
 
-            # Custom Fields
-            self.meta_botanical_name = {'id': None, 'value': None}
-            self.meta_climate_zone = {'id': None, 'value': None}
-            self.meta_climate_zone_list = {'id': None, 'value': None}
-            self.meta_plant_type = {'id': None, 'value': None}
-            self.meta_height = {'id': None, 'value': None}
-            self.meta_width = {'id': None, 'value': None}
-            self.meta_light_requirements = {'id': None, 'value': None}
-            self.meta_size = {'id': None, 'value': None}
-            self.meta_bloom_season = {'id': None, 'value': None}
-            self.meta_features = {'id': None, 'value': None}
-            self.meta_colors = {'id': None, 'value': None}
-            self.meta_bloom_color = {'id': None, 'value': None}
-            self.meta_is_preorder = {'id': None, 'value': None}
-            self.meta_preorder_message = {'id': None, 'value': None}
-            self.meta_preorder_release_date = {'id': None, 'value': None}
-            self.meta_is_featured = {'id': None, 'value': None}
-            self.meta_is_new = {'id': None, 'value': None}
-            self.meta_is_back_in_stock = {'id': None, 'value': None}
-            self.meta_in_store_only = {'id': None, 'value': None}
-            self.meta_is_on_sale = {'id': None, 'value': None}
-            self.meta_sale_description = {'id': None, 'value': None}
+    def __str__(self):
+        result = ''
+        line = '-' * 25 + '\n\n'
+        result += line
+        result += f'Printing Product Details for: {self.web_title}\n'
+        for k, v in self.__dict__.items():
+            result += f'{k}: {v}\n'
+        result += line
+        if len(self.variants) > 1:
+            result += 'Printing Child Product Details\n'
+            variant_index = 1
+            for variant in self.variants:
+                result += f'Variant: {variant_index}\n'
+                result += line
+                for k, v in variant.__dict__.items():
+                    result += f'    {k}: {v}\n'
+                for image in variant.images:
+                    result += f'Image: {image.name}\n'
+                    result += f'    Thumbnail: {image.is_thumbnail}\n'
+                    result += f'    Variant Image: {image.is_variant_image}\n'
+                    result += f'    Sort Order: {image.sort_order}\n'
+                result += line
+                variant_index += 1
+        return result
 
-            self.lst_maint_dt = datetime(1970, 1, 1)
+    def get(self, last_sync):
+        """Get product details from Counterpoint and Middleware"""
 
-            # E-Commerce Categories
-            self.cp_ecommerce_categories = []
-            self.shopify_collections = []
+        def get_bound_product_details():
+            # clear children list
+            self.variants = []
 
-            # Validate Product
-            self.validation_retries = 10
-
-        def __str__(self):
-            result = ''
-            line = '-' * 25 + '\n\n'
-            result += line
-            result += f'Printing Product Details for: {self.web_title}\n'
-            for k, v in self.__dict__.items():
-                result += f'{k}: {v}\n'
-            result += line
-            if len(self.variants) > 1:
-                result += 'Printing Child Product Details\n'
-                variant_index = 1
-                for variant in self.variants:
-                    result += f'Variant: {variant_index}\n'
-                    result += line
-                    for k, v in variant.__dict__.items():
-                        result += f'    {k}: {v}\n'
-                    for image in variant.images:
-                        result += f'Image: {image.name}\n'
-                        result += f'    Thumbnail: {image.is_thumbnail}\n'
-                        result += f'    Variant Image: {image.is_variant_image}\n'
-                        result += f'    Sort Order: {image.sort_order}\n'
-                    result += line
-                    variant_index += 1
-            return result
-
-        def get(self, last_sync):
-            """Get product details from Counterpoint and Middleware"""
-
-            def get_bound_product_details():
-                # clear children list
-                self.variants = []
-
-                query = f"""
+            query = f"""
                 SELECT ITEM_NO
                 FROM {Table.CP.Item.table}
                 WHERE {Table.CP.Item.Column.binding_id} = '{self.binding_id}' and IS_ECOMM_ITEM = 'Y'
                 ORDER BY PRC_1
                 """
-                # Get children and append to child list in order of price
-                response = db.query(query)
-                if response is not None:
-                    # Create Product objects for each child and add object to bound parent list
-                    for item in response:
-                        variant = self.Variant(item[0], last_sync=last_sync)
-                        self.variants.append(variant)
+            # Get children and append to child list in order of price
+            response = db.query(query)
+            if response is not None:
+                # Create Product objects for each child and add object to bound parent list
+                for item in response:
+                    variant = self.Variant(item[0], last_sync=last_sync)
+                    self.variants.append(variant)
 
-                # Sort self.variants by variant.is_parent so parent is processed first.
-                self.variants.sort(key=lambda x: x.is_parent, reverse=True)
+            # Sort self.variants by variant.is_parent so parent is processed first.
+            self.variants.sort(key=lambda x: x.is_parent, reverse=True)
 
-                # Set parent
-                self.parent = [item for item in self.variants if item.is_parent]
+            # Set parent
+            self.parent = [item for item in self.variants if item.is_parent]
 
-                # Inherit Product Information from Parent Item
-                for bound in self.variants:
-                    if bound.is_parent:
-                        self.product_id = bound.product_id
-                        self.web_title = bound.web_title
-                        # self.type = bound.type
-                        self.default_price = bound.price_1
-                        self.cost = bound.cost
-                        self.sale_price = bound.price_2
-                        self.brand = bound.brand
-                        self.sort_order = bound.sort_order
-                        self.html_description = bound.html_description
-                        self.tags = bound.tags
-                        self.meta_title = bound.meta_title
-                        self.meta_description = bound.meta_description
-                        self.visible = bound.visible
-                        self.in_store_only = bound.in_store_only
-                        self.featured = bound.featured
-                        self.is_new = bound.is_new
-                        self.is_back_in_stock = bound.is_back_in_stock
-                        self.cp_ecommerce_categories = bound.cp_ecommerce_categories
-                        self.long_descr = bound.long_descr
-                        self.is_preorder = bound.is_preorder
-                        self.preorder_release_date = bound.preorder_release_date
-                        self.preorder_message = bound.preorder_message
+            # Inherit Product Information from Parent Item
+            for bound in self.variants:
+                if bound.is_parent:
+                    self.product_id = bound.product_id
+                    self.web_title = bound.web_title
+                    # self.type = bound.type
+                    self.default_price = bound.price_1
+                    self.cost = bound.cost
+                    self.sale_price = bound.price_2
+                    self.brand = bound.brand
+                    self.sort_order = bound.sort_order
+                    self.html_description = bound.html_description
+                    self.tags = bound.tags
+                    self.meta_title = bound.meta_title
+                    self.meta_description = bound.meta_description
+                    self.visible = bound.visible
+                    self.in_store_only = bound.in_store_only
+                    self.featured = bound.featured
+                    self.is_new = bound.is_new
+                    self.is_back_in_stock = bound.is_back_in_stock
+                    self.cp_ecommerce_categories = bound.cp_ecommerce_categories
+                    self.long_descr = bound.long_descr
+                    self.is_preorder = bound.is_preorder
+                    self.preorder_release_date = bound.preorder_release_date
+                    self.preorder_message = bound.preorder_message
 
-                        # Media
-                        self.videos = bound.videos
+                    # Media
+                    self.videos = bound.videos
 
-                        # Product Description
-                        self.product_id = bound.product_id
-                        self.web_title = bound.web_title
-                        self.long_descr = bound.long_descr
-                        self.html_description = bound.html_description
-                        self.meta_title = bound.meta_title
-                        self.meta_description = bound.meta_description
-                        self.brand = bound.brand
-                        self.sort_order = bound.sort_order
-                        # Prices/Cost
-                        self.default_price = bound.price_1
-                        self.cost = bound.cost
-                        self.sale_price = bound.price_2
-                        self.taxable = bound.taxable
-                        # Inventory
-                        self.buffered_quantity = bound.quantity_available - bound.buffer
-                        if self.buffered_quantity < 0:
-                            self.buffered_quantity = 0
-                        # Collections and Tags
-                        self.tags = bound.tags
-                        self.cp_ecommerce_categories = bound.cp_ecommerce_categories
-                        # Statuses
-                        self.in_store_only = bound.in_store_only
-                        self.visible = bound.visible
-                        self.featured = bound.featured
-                        self.is_preorder = bound.is_preorder
-                        self.preorder_release_date = bound.preorder_release_date
-                        self.preorder_message = bound.preorder_message
-                        # Meta Fields
-                        self.meta_botanical_name = bound.meta_botanical_name
-                        self.meta_climate_zone = bound.meta_climate_zone
-                        self.meta_climate_zone_list = bound.meta_climate_zone_list
-                        self.meta_plant_type = bound.meta_plant_type
-                        self.meta_light_requirements = bound.meta_light_requirements
-                        self.meta_height = bound.meta_height
-                        self.meta_width = bound.meta_width
-                        self.meta_size = bound.meta_size
-                        self.meta_bloom_season = bound.meta_bloom_season
-                        self.meta_features = bound.meta_features
-                        self.meta_colors = bound.meta_colors
-                        self.meta_bloom_color = bound.meta_bloom_color
-                        self.meta_is_preorder = bound.meta_is_preorder
-                        self.meta_preorder_message = bound.meta_preorder_message
-                        self.meta_preorder_release_date = bound.meta_preorder_release_date
-                        self.meta_is_featured = bound.meta_is_featured
-                        self.meta_in_store_only = bound.meta_in_store_only
-                        self.meta_is_on_sale = bound.meta_is_on_sale
-                        self.meta_sale_description = bound.meta_sale_description
-                        self.meta_is_new = bound.meta_is_new
-                        self.meta_is_back_in_stock = bound.meta_is_back_in_stock
+                    # Product Description
+                    self.product_id = bound.product_id
+                    self.web_title = bound.web_title
+                    self.long_descr = bound.long_descr
+                    self.html_description = bound.html_description
+                    self.meta_title = bound.meta_title
+                    self.meta_description = bound.meta_description
+                    self.brand = bound.brand
+                    self.sort_order = bound.sort_order
+                    # Prices/Cost
+                    self.default_price = bound.price_1
+                    self.cost = bound.cost
+                    self.sale_price = bound.price_2
+                    self.taxable = bound.taxable
+                    # Inventory
+                    self.buffered_quantity = bound.quantity_available - bound.buffer
+                    if self.buffered_quantity < 0:
+                        self.buffered_quantity = 0
+                    # Collections and Tags
+                    self.tags = bound.tags
+                    self.cp_ecommerce_categories = bound.cp_ecommerce_categories
+                    # Statuses
+                    self.in_store_only = bound.in_store_only
+                    self.visible = bound.visible
+                    self.featured = bound.featured
+                    self.is_preorder = bound.is_preorder
+                    self.preorder_release_date = bound.preorder_release_date
+                    self.preorder_message = bound.preorder_message
+                    # Meta Fields
+                    self.meta_botanical_name = bound.meta_botanical_name
+                    self.meta_climate_zone = bound.meta_climate_zone
+                    self.meta_climate_zone_list = bound.meta_climate_zone_list
+                    self.meta_plant_type = bound.meta_plant_type
+                    self.meta_light_requirements = bound.meta_light_requirements
+                    self.meta_height = bound.meta_height
+                    self.meta_width = bound.meta_width
+                    self.meta_size = bound.meta_size
+                    self.meta_bloom_season = bound.meta_bloom_season
+                    self.meta_features = bound.meta_features
+                    self.meta_colors = bound.meta_colors
+                    self.meta_bloom_color = bound.meta_bloom_color
+                    self.meta_is_preorder = bound.meta_is_preorder
+                    self.meta_preorder_message = bound.meta_preorder_message
+                    self.meta_preorder_release_date = bound.meta_preorder_release_date
+                    self.meta_is_featured = bound.meta_is_featured
+                    self.meta_in_store_only = bound.meta_in_store_only
+                    self.meta_is_on_sale = bound.meta_is_on_sale
+                    self.meta_sale_description = bound.meta_sale_description
+                    self.meta_is_new = bound.meta_is_new
+                    self.meta_is_back_in_stock = bound.meta_is_back_in_stock
 
-                        # Shipping
-                        self.weight = bound.weight
-                        # Last Maintenance Date
-                        self.lst_maint_dt = bound.lst_maint_dt
+                    # Shipping
+                    self.weight = bound.weight
+                    # Last Maintenance Date
+                    self.lst_maint_dt = bound.lst_maint_dt
 
-                def get_binding_id_images():
-                    binding_images = []
-                    photo_path = creds.Company.product_images
-                    list_of_files = os.listdir(photo_path)
-                    if list_of_files is not None:
-                        for file in list_of_files:
-                            if file.split('.')[0].split('^')[0].lower() == self.binding_id.lower():
-                                binding_images.append(file)
+            def get_binding_id_images():
+                binding_images = []
+                photo_path = creds.Company.product_images
+                list_of_files = os.listdir(photo_path)
+                if list_of_files is not None:
+                    for file in list_of_files:
+                        if file.split('.')[0].split('^')[0].lower() == self.binding_id.lower():
+                            binding_images.append(file)
 
-                    total_binding_images = len(binding_images)
+                total_binding_images = len(binding_images)
 
-                    if total_binding_images > 0:
-                        for image in binding_images:
-                            binding_img = self.Image(image)
+                if total_binding_images > 0:
+                    for image in binding_images:
+                        binding_img = Image(image)
 
-                            if binding_img.validate():
-                                self.images.append(binding_img)
-                            else:
-                                Catalog.error_handler.add_error_v(
-                                    error=f'Image {binding_img.name} failed validation. Image will not be added to product.',
-                                    origin='Image Validation',
-                                )
+                        if binding_img.validate():
+                            self.images.append(binding_img)
+                        else:
+                            Product.error_handler.add_error_v(
+                                error=f'Image {binding_img.name} failed validation. Image will not be added to product.',
+                                origin='Image Validation',
+                            )
 
-                if not self.inventory_only:
-                    # Add Binding ID Images to image list
-                    get_binding_id_images()
+            if not self.inventory_only:
+                # Add Binding ID Images to image list
+                get_binding_id_images()
 
-                # Get last maintained date of all the variants and set product last maintained date to the latest
-                # Add Variant Images to image list and establish which image is the variant thumbnail
-                lst_maint_dt_list = []
+            # Get last maintained date of all the variants and set product last maintained date to the latest
+            # Add Variant Images to image list and establish which image is the variant thumbnail
+            lst_maint_dt_list = []
 
-                for variant in self.variants:
-                    variant_image_count = 0
-                    # While we are here, let's get all the last maintenance dates for the variants
-                    lst_maint_dt_list.append(variant.lst_maint_dt)
-                    for variant_image in variant.images:
-                        if variant_image_count == 0:
-                            variant_image.is_variant_image = True
-                        self.images.append(variant_image)
-                        variant_image_count += 1
+            for variant in self.variants:
+                variant_image_count = 0
+                # While we are here, let's get all the last maintenance dates for the variants
+                lst_maint_dt_list.append(variant.lst_maint_dt)
+                for variant_image in variant.images:
+                    if variant_image_count == 0:
+                        variant_image.is_variant_image = True
+                    self.images.append(variant_image)
+                    variant_image_count += 1
 
-                # Set the product last maintained date to the latest of the variants. This will be used in the validation process.
-                # If the product has been updated since the last sync, it will go through full validation. Otherwise, it will be skipped.
+            # Set the product last maintained date to the latest of the variants. This will be used in the validation process.
+            # If the product has been updated since the last sync, it will go through full validation. Otherwise, it will be skipped.
 
-                self.lst_maint_dt = max(lst_maint_dt_list) if lst_maint_dt_list else datetime(1970, 1, 1)
-                self.default_image = len(self.images) == 1 and self.images[0].name == 'coming-soon.jpg'
+            self.lst_maint_dt = max(lst_maint_dt_list) if lst_maint_dt_list else datetime(1970, 1, 1)
+            self.default_image = len(self.images) == 1 and self.images[0].name == 'coming-soon.jpg'
 
-            def get_single_product_details():
-                self.variants.append(
-                    self.Variant(self.sku, last_sync=last_sync, inventory_only=self.inventory_only)
-                )
-                single = self.variants[0]
-                # Product Description
-                self.product_id = single.product_id
-                self.web_title = single.web_title
-                # self.type = single.type
-                self.long_descr = single.long_descr
-                self.html_description = single.html_description
-                self.meta_title = single.meta_title
-                self.meta_description = single.meta_description
-                self.brand = single.brand
-                self.sort_order = single.sort_order
-                # Prices/Cost
-                self.default_price = single.price_1
-                self.cost = single.cost
-                self.sale_price = single.price_2
-                self.taxable = single.taxable
-                # Inventory
-                self.buffered_quantity = single.quantity_available - single.buffer
-                if self.buffered_quantity < 0:
-                    self.buffered_quantity = 0
-                # Collections and Tags
-                self.tags = single.tags
-                self.cp_ecommerce_categories = single.cp_ecommerce_categories
-                # Media
-                self.images = single.images
-                self.videos = single.videos
-                # Statuses
-                self.in_store_only = single.in_store_only
-                self.visible = single.visible
-                self.featured = single.featured
-                self.is_new = single.is_new
-                self.is_back_in_stock = single.is_back_in_stock
-                self.is_preorder = single.is_preorder
-                self.preorder_release_date = single.preorder_release_date
-                self.preorder_message = single.preorder_message
-                # Meta Fields
-                self.meta_botanical_name = single.meta_botanical_name
-                self.meta_climate_zone = single.meta_climate_zone
-                self.meta_climate_zone_list = single.meta_climate_zone_list
-                self.meta_light_requirements = single.meta_light_requirements
-                self.meta_plant_type = single.meta_plant_type
-                self.meta_height = single.meta_height
-                self.meta_width = single.meta_width
-                self.meta_size = single.meta_size
-                self.meta_bloom_season = single.meta_bloom_season
-                self.meta_features = single.meta_features
-                self.meta_colors = single.meta_colors
-                self.meta_bloom_color = single.meta_bloom_color
-                self.meta_is_preorder = single.meta_is_preorder
-                self.meta_preorder_message = single.meta_preorder_message
-                self.meta_preorder_release_date = single.meta_preorder_release_date
-                self.meta_is_featured = single.meta_is_featured
-                self.meta_in_store_only = single.meta_in_store_only
-                self.meta_is_on_sale = single.meta_is_on_sale
-                self.meta_sale_description = single.meta_sale_description
-                self.meta_is_new = single.meta_is_new
-                self.meta_is_back_in_stock = single.meta_is_back_in_stock
-                # Shipping
-                self.weight = single.weight
-                # Last Maintenance Date
-                self.lst_maint_dt = single.lst_maint_dt
+        def get_single_product_details():
+            self.variants.append(self.Variant(self.sku, last_sync=last_sync, inventory_only=self.inventory_only))
+            single = self.variants[0]
+            # Product Description
+            self.product_id = single.product_id
+            self.web_title = single.web_title
+            # self.type = single.type
+            self.long_descr = single.long_descr
+            self.html_description = single.html_description
+            self.meta_title = single.meta_title
+            self.meta_description = single.meta_description
+            self.brand = single.brand
+            self.sort_order = single.sort_order
+            # Prices/Cost
+            self.default_price = single.price_1
+            self.cost = single.cost
+            self.sale_price = single.price_2
+            self.taxable = single.taxable
+            # Inventory
+            self.buffered_quantity = single.quantity_available - single.buffer
+            if self.buffered_quantity < 0:
+                self.buffered_quantity = 0
+            # Collections and Tags
+            self.tags = single.tags
+            self.cp_ecommerce_categories = single.cp_ecommerce_categories
+            # Media
+            self.images = single.images
+            self.videos = single.videos
+            # Statuses
+            self.in_store_only = single.in_store_only
+            self.visible = single.visible
+            self.featured = single.featured
+            self.is_new = single.is_new
+            self.is_back_in_stock = single.is_back_in_stock
+            self.is_preorder = single.is_preorder
+            self.preorder_release_date = single.preorder_release_date
+            self.preorder_message = single.preorder_message
+            # Meta Fields
+            self.meta_botanical_name = single.meta_botanical_name
+            self.meta_climate_zone = single.meta_climate_zone
+            self.meta_climate_zone_list = single.meta_climate_zone_list
+            self.meta_light_requirements = single.meta_light_requirements
+            self.meta_plant_type = single.meta_plant_type
+            self.meta_height = single.meta_height
+            self.meta_width = single.meta_width
+            self.meta_size = single.meta_size
+            self.meta_bloom_season = single.meta_bloom_season
+            self.meta_features = single.meta_features
+            self.meta_colors = single.meta_colors
+            self.meta_bloom_color = single.meta_bloom_color
+            self.meta_is_preorder = single.meta_is_preorder
+            self.meta_preorder_message = single.meta_preorder_message
+            self.meta_preorder_release_date = single.meta_preorder_release_date
+            self.meta_is_featured = single.meta_is_featured
+            self.meta_in_store_only = single.meta_in_store_only
+            self.meta_is_on_sale = single.meta_is_on_sale
+            self.meta_sale_description = single.meta_sale_description
+            self.meta_is_new = single.meta_is_new
+            self.meta_is_back_in_stock = single.meta_is_back_in_stock
+            # Shipping
+            self.weight = single.weight
+            # Last Maintenance Date
+            self.lst_maint_dt = single.lst_maint_dt
 
-            if self.is_bound:
-                get_bound_product_details()
-            else:
-                get_single_product_details()
+        if self.is_bound:
+            get_bound_product_details()
+        else:
+            get_single_product_details()
 
-            self.shopify_collections = self.get_shopify_collections()
+        self.shopify_collections = self.get_shopify_collections()
 
-            self.type = self.get_collection_names()[0] if self.get_collection_names() else None
+        self.type = self.get_collection_names()[0] if self.get_collection_names() else None
 
-            if self.tags == 'Workshop':
-                self.is_workshop = True
+        if self.tags == 'Workshop':
+            self.is_workshop = True
 
-            # Now all images are in self.images list and are in order by binding img first then variant img
-            # Add all images and videos to self.media list
-            self.media = self.images + self.videos
+        # Now all images are in self.images list and are in order by binding img first then variant img
+        # Add all images and videos to self.media list
+        self.media = self.images + self.videos
 
-        def validate(self):
-            """Validate product inputs to check for errors in user input"""
-            check_web_title = True
-            check_for_missing_categories = False
-            check_html_description = False
-            min_description_length = 20
-            check_missing_images = True
-            check_for_item_cost = False
+    def validate(self):
+        """Validate product inputs to check for errors in user input"""
+        check_web_title = True
+        check_for_missing_categories = False
+        check_html_description = False
+        min_description_length = 20
+        check_missing_images = True
+        check_for_item_cost = False
 
-            if self.inventory_only:
-                return True
+        if self.inventory_only:
+            return True
 
-            def set_parent(status: bool = True) -> None:
-                """Target lowest price item in family to set as parent."""
-                # Reestablish parent relationship
-                flag = 'Y' if status else 'N'
+        def set_parent(status: bool = True) -> None:
+            """Target lowest price item in family to set as parent."""
+            # Reestablish parent relationship
+            flag = 'Y' if status else 'N'
 
-                target_item = min(self.variants, key=lambda x: x.price_1).sku
+            target_item = min(self.variants, key=lambda x: x.price_1).sku
 
-                query = f"""
+            query = f"""
                 UPDATE {Table.CP.Item.table}
                 SET {Table.CP.Item.Column.is_parent} = '{flag}', LST_MAINT_DT = GETDATE()
                 WHERE ITEM_NO = '{target_item}'
                 """
-                db.query(query)
-                Catalog.logger.info(f'Parent status set to {flag} for {target_item}')
-                return self.get(last_sync=self.last_sync)
+            db.query(query)
+            Product.logger.info(f'Parent status set to {flag} for {target_item}')
+            return self.get(last_sync=self.last_sync)
 
-            if self.is_bound:
-                # Test for missing variant names
-                for child in self.variants:
-                    if not child.variant_name:
-                        message = f'Product {child.sku} is missing a variant name. Validation failed.'
-                        Catalog.error_handler.add_error_v(error=message, origin='Input Validation')
-                        return False
-
-                # Check for duplicate variant names
-                variant_names = [x.variant_name for x in self.variants]
-                if len(variant_names) != len(set(variant_names)):
-                    message = f'Product {self.binding_id} has duplicate variant names. Validation failed.'
-                    Catalog.error_handler.add_error_v(error=message, origin='Input Validation')
+        if self.is_bound:
+            # Test for missing variant names
+            for child in self.variants:
+                if not child.variant_name:
+                    message = f'Product {child.sku} is missing a variant name. Validation failed.'
+                    Product.error_handler.add_error_v(error=message, origin='Input Validation')
                     return False
 
-                # Check for single item with binding
-                if len(self.variants) == 1:
-                    message = f'Product {self.binding_id} has only one variant. self.is_bound=False.'
-                    Catalog.logger.warn(message)
-                    self.is_bound = False
+            # Check for duplicate variant names
+            variant_names = [x.variant_name for x in self.variants]
+            if len(variant_names) != len(set(variant_names)):
+                message = f'Product {self.binding_id} has duplicate variant names. Validation failed.'
+                Product.error_handler.add_error_v(error=message, origin='Input Validation')
+                return False
 
-            # ALL PRODUCTS
-            if check_web_title:
-                # Test for missing web title
-                if not self.web_title:
-                    if not self.long_descr:
-                        message = f'Product {self.binding_id} is missing a web title and long description. Validation failed.'
-                        Catalog.error_handler.add_error_v(error=message, origin='Input Validation')
-                        return False
-                    else:
-                        message = f'Product {self.binding_id} is missing a web title. Will set to long description.'
-                        Catalog.logger.warn(message)
+            # Check for single item with binding
+            if len(self.variants) == 1:
+                message = f'Product {self.binding_id} has only one variant. self.is_bound=False.'
+                Product.logger.warn(message)
+                self.is_bound = False
 
-                        if self.is_bound:
-                            # Bound product: use binding key and parent variant
-                            query = f"""
+        # ALL PRODUCTS
+        if check_web_title:
+            # Test for missing web title
+            if not self.web_title:
+                if not self.long_descr:
+                    message = (
+                        f'Product {self.binding_id} is missing a web title and long description. Validation failed.'
+                    )
+                    Product.error_handler.add_error_v(error=message, origin='Input Validation')
+                    return False
+                else:
+                    message = f'Product {self.binding_id} is missing a web title. Will set to long description.'
+                    Product.logger.warn(message)
+
+                    if self.is_bound:
+                        # Bound product: use binding key and parent variant
+                        query = f"""
                             UPDATE {Table.CP.Item.table}
                             SET {Table.CP.Item.Column.web_title} = '{self.long_descr}'
                             WHERE {Table.CP.Item.Column.binding_id} = '{self.binding_id}' and {Table.CP.Item.Column.is_parent} = 'Y'"""
 
-                        # Single Product use sku
-                        else:
-                            query = f"""
+                    # Single Product use sku
+                    else:
+                        query = f"""
                             UPDATE {Table.CP.Item.table}
                             SET {Table.CP.Item.Column.web_title} = '{self.long_descr}'
                             WHERE ITEM_NO = '{self.sku}'"""
 
-                            db.query(query)
-                            Catalog.logger.info(f'Web Title set to {self.web_title}')
-                            self.web_title = self.long_descr
+                        db.query(query)
+                        Product.logger.info(f'Web Title set to {self.web_title}')
+                        self.web_title = self.long_descr
 
-                # Test for dupicate web title
-                if self.web_title is not None:
-                    if self.is_bound:
-                        # For bound products, look for matching web titles OUTSIDE of the current binding id
-                        query = f"""
+            # Test for dupicate web title
+            if self.web_title is not None:
+                if self.is_bound:
+                    # For bound products, look for matching web titles OUTSIDE of the current binding id
+                    query = f"""
                         SELECT COUNT(ITEM_NO)
                         FROM {Table.CP.Item.table}
                         WHERE {Table.CP.Item.Column.web_title} = '{self.web_title.replace("'", "''")}' AND {Table.CP.Item.Column.binding_id} != '{self.binding_id}' AND IS_ECOMM_ITEM = 'Y'"""
 
-                    else:
-                        query = f"""
+                else:
+                    query = f"""
                         SELECT COUNT(ITEM_NO)
                         FROM {Table.CP.Item.table}
                         WHERE {Table.CP.Item.Column.web_title} = '{self.web_title.replace("'", "''")}' AND IS_ECOMM_ITEM = 'Y'"""
 
-                    response = db.query(query)
+                response = db.query(query)
 
-                    if response:
-                        if response[0][0] > 1:
-                            Catalog.logger.warn(
-                                f'Product {self.binding_id} has a duplicate web title. Will Append Sku to Web Title.'
-                            )
+                if response:
+                    if response[0][0] > 1:
+                        Product.logger.warn(
+                            f'Product {self.binding_id} has a duplicate web title. Will Append Sku to Web Title.'
+                        )
 
-                            if self.is_bound:
-                                new_web_title = f'{self.web_title} - {self.binding_id}'
-                            else:
-                                new_web_title = f'{self.web_title} - {self.sku}'
+                        if self.is_bound:
+                            new_web_title = f'{self.web_title} - {self.binding_id}'
+                        else:
+                            new_web_title = f'{self.web_title} - {self.sku}'
 
-                            self.web_title = new_web_title
+                        self.web_title = new_web_title
 
-                            Catalog.logger.info(f'New Web Title: {self.web_title}')
-                            if self.is_bound:
-                                # Update Parent Variant
-                                query = f"""
+                        Product.logger.info(f'New Web Title: {self.web_title}')
+                        if self.is_bound:
+                            # Update Parent Variant
+                            query = f"""
                                 UPDATE {Table.CP.Item.table}
                                 SET {Table.CP.Item.Column.web_title} = '{self.web_title.replace("'", "''")}'
                                 WHERE {Table.CP.Item.Column.binding_id} = '{self.binding_id}' and {Table.CP.Item.Column.is_parent} = 'Y'
                                 
                                 """
-                            else:
-                                # Update Single Product
-                                query = f"""
+                        else:
+                            # Update Single Product
+                            query = f"""
                                 UPDATE {Table.CP.Item.table}
                                 SET {Table.CP.Item.Column.web_title} = '{self.web_title.replace("'", "''")}'
                                 WHERE ITEM_NO = '{self.sku}'"""
-                            db.query(query)
+                        db.query(query)
 
+        # Test for missing html description
+        if check_html_description:
+            if len(self.html_description) < min_description_length:
+                message = f'Product {self.binding_id} is missing an html description. Validation failed.'
+                Product.error_handler.add_error_v(error=message, origin='Input Validation')
+                return False
+
+        # Test for missing E-Commerce Categories
+        if check_for_missing_categories:
+            if not self.shopify_collections:
+                message = f'Product {self.binding_id} is missing E-Commerce Categories. Validation failed.'
+                Product.error_handler.add_error_v(error=message, origin='Input Validation')
+                return False
+
+        # Test for missing cost
+        if check_for_item_cost:
+            if self.cost == 0:
+                message = f'Product {self.sku} is missing a cost. Validation failed.'
+                Product.error_handler.add_error_v(error=message, origin='Input Validation')
+                return False
+
+        # Test for missing price 1
+        if self.default_price == 0:
+            if self.in_store_only:
+                if self.verbose:
+                    Product.logger.warn(f'In-Store-Only Product {self.sku} is missing a price 1. Will Pass.')
+                pass
+            else:
+                message = f'Product {self.sku} is missing a price 1. Validation failed.'
+                Product.error_handler.add_error_v(error=message, origin='Input Validation')
+                return False
+
+        if check_html_description:
             # Test for missing html description
-            if check_html_description:
-                if len(self.html_description) < min_description_length:
-                    message = f'Product {self.binding_id} is missing an html description. Validation failed.'
-                    Catalog.error_handler.add_error_v(error=message, origin='Input Validation')
-                    return False
+            if len(self.html_description) < min_description_length:
+                message = f'Product {self.sku} is missing an html description. Validation failed.'
+                Product.error_handler.add_error_v(error=message, origin='Input Validation')
+                return False
 
-            # Test for missing E-Commerce Categories
-            if check_for_missing_categories:
-                if not self.shopify_collections:
-                    message = f'Product {self.binding_id} is missing E-Commerce Categories. Validation failed.'
-                    Catalog.error_handler.add_error_v(error=message, origin='Input Validation')
-                    return False
+        if check_missing_images:
+            missing = False
+            if len(self.images) == 0:
+                missing = True
 
-            # Test for missing cost
-            if check_for_item_cost:
-                if self.cost == 0:
-                    message = f'Product {self.sku} is missing a cost. Validation failed.'
-                    Catalog.error_handler.add_error_v(error=message, origin='Input Validation')
-                    return False
-
-            # Test for missing price 1
-            if self.default_price == 0:
-                if self.in_store_only:
-                    if self.verbose:
-                        Catalog.logger.warn(f'In-Store-Only Product {self.sku} is missing a price 1. Will Pass.')
-                    pass
-                else:
-                    message = f'Product {self.sku} is missing a price 1. Validation failed.'
-                    Catalog.error_handler.add_error_v(error=message, origin='Input Validation')
-                    return False
-
-            if check_html_description:
-                # Test for missing html description
-                if len(self.html_description) < min_description_length:
-                    message = f'Product {self.sku} is missing an html description. Validation failed.'
-                    Catalog.error_handler.add_error_v(error=message, origin='Input Validation')
-                    return False
-
-            if check_missing_images:
-                missing = False
-                if len(self.images) == 0:
+            elif len(self.images) == 1:
+                if self.images[0].name == 'coming-soon.jpg':
                     missing = True
 
-                elif len(self.images) == 1:
-                    if self.images[0].name == 'coming-soon.jpg':
-                        missing = True
+            if missing:
+                if creds.Integrator.set_missing_image_active:
+                    message = f'Product {self.binding_id} is missing images. Will use default image.'
+                    if self.verbose:
+                        Product.logger.warn(message)
 
-                if missing:
-                    if creds.Integrator.set_missing_image_active:
-                        message = f'Product {self.binding_id} is missing images. Will use default image.'
-                        if self.verbose:
-                            Catalog.logger.warn(message)
+                    default_image = Image(
+                        image_name='coming-soon.jpg',
+                        product_id=self.product_id,
+                        sku=self.sku,
+                        image_url=creds.Integrator.default_image_url,
+                        verbose=self.verbose,
+                    )
+                    self.images.append(default_image)
+                    self.media.append(default_image)
+                    self.default_image = True
+                else:
+                    message = f'Product {self.binding_id} is missing images. Will set visibility to draft.'
+                    if self.verbose:
+                        Product.logger.warn(message)
+                    self.visible = False
 
-                        default_image = Catalog.Product.Image(
-                            image_name='coming-soon.jpg',
-                            product_id=self.product_id,
-                            sku=self.sku,
-                            image_url=creds.Integrator.default_image_url,
-                            verbose=self.verbose,
-                        )
-                        self.images.append(default_image)
-                        self.media.append(default_image)
-                        self.default_image = True
-                    else:
-                        message = f'Product {self.binding_id} is missing images. Will set visibility to draft.'
-                        if self.verbose:
-                            Catalog.logger.warn(message)
-                        self.visible = False
-
-            # BOUND PRODUCTS
-            if self.is_bound:
-                if check_web_title:
-                    for child in self.variants:
-                        if not child.is_parent:
-                            if child.web_title == self.web_title:
-                                Catalog.logger.warn(
-                                    f'Non-Parent Variant {child.sku} has a web title. Will remove from child.'
-                                )
-                                child.web_title = ''
-                                query = f"""
+        # BOUND PRODUCTS
+        if self.is_bound:
+            if check_web_title:
+                for child in self.variants:
+                    if not child.is_parent:
+                        if child.web_title == self.web_title:
+                            Product.logger.warn(
+                                f'Non-Parent Variant {child.sku} has a web title. Will remove from child.'
+                            )
+                            child.web_title = ''
+                            query = f"""
                                 UPDATE {Table.CP.Item.table}
                                 SET {Table.CP.Item.Column.web_title} = NULL
                                 WHERE ITEM_NO = '{child.sku}'"""
-                                db.query(query)
+                            db.query(query)
 
-            return True
+        return True
 
-        def get_current_collections(self):
-            try:
-                query = f"""
+    def get_current_collections(self):
+        try:
+            query = f"""
                 SELECT CATEG_ID FROM SN_SHOP_PROD
                 WHERE ITEM_NO = '{self.sku}'
                 """
 
-                response = Database.query(query)
-
-                try:
-                    return [int(x) for x in response[0][0].split(',')]
-                except:
-                    if self.verbose:
-                        Catalog.logger.warn(f'Error getting current collections for {self.sku}, Query: {query}')
-                    return []
-            except:
-                Catalog.error_handler.add_error_v(
-                    error='Error getting current collections', origin='Input Validation', traceback=tb()
-                )
-                return []
-
-        def get_collections_to_leave(self):
-            """
-            - This assumes that shopify_collections is a
-              list of collections we want the product to be in.
-            - Also assuming that the current collections in
-              SN_SHOP_PROD are the collections that the product is currently in.
-            """
+            response = db.query(query)
 
             try:
-                collections_to_leave = self.get_current_collections()
-                for desired_collection in self.shopify_collections:
-                    if desired_collection in collections_to_leave:
-                        collections_to_leave.remove(desired_collection)
-                return collections_to_leave
+                return [int(x) for x in response[0][0].split(',')]
             except:
+                if self.verbose:
+                    Product.logger.warn(f'Error getting current collections for {self.sku}, Query: {query}')
                 return []
+        except:
+            Product.error_handler.add_error_v(
+                error='Error getting current collections', origin='Input Validation', traceback=tb()
+            )
+            return []
 
-        def get_payload(self):
-            """Build the payload for creating a product in Shopify.
-            This will include all variants, images, and custom fields."""
+    def get_collections_to_leave(self):
+        """
+        - This assumes that shopify_collections is a
+          list of collections we want the product to be in.
+        - Also assuming that the current collections in
+          SN_SHOP_PROD are the collections that the product is currently in.
+        """
 
-            def get_metafields():
-                result = []
+        try:
+            collections_to_leave = self.get_current_collections()
+            for desired_collection in self.shopify_collections:
+                if desired_collection in collections_to_leave:
+                    collections_to_leave.remove(desired_collection)
+            return collections_to_leave
+        except:
+            return []
 
-                # Botanical Name
-                if self.meta_botanical_name['value']:
-                    botantical_name_data = {'value': self.meta_botanical_name['value']}
-                    if self.meta_botanical_name['id']:
-                        botantical_name_data['id'] = f'{Shopify.Metafield.prefix}{self.meta_botanical_name['id']}'
+    def get_payload(self):
+        """Build the payload for creating a product in Shopify.
+        This will include all variants, images, and custom fields."""
+
+        def get_metafields():
+            result = []
+
+            # Botanical Name
+            if self.meta_botanical_name['value']:
+                botantical_name_data = {'value': self.meta_botanical_name['value']}
+                if self.meta_botanical_name['id']:
+                    botantical_name_data['id'] = f'{Shopify.Metafield.prefix}{self.meta_botanical_name['id']}'
+                else:
+                    botantical_name_data['namespace'] = Catalog.metafields['Botanical Name']['NAME_SPACE']
+                    botantical_name_data['key'] = Catalog.metafields['Botanical Name']['META_KEY']
+                    botantical_name_data['type'] = Catalog.metafields['Botanical Name']['TYPE']
+
+                result.append(botantical_name_data)
+
+            elif self.meta_botanical_name['id']:
+                Shopify.Metafield.delete(metafield_id=self.meta_botanical_name['id'])
+                self.meta_botanical_name['id'] = None
+
+            # Climate Zone
+            if self.meta_climate_zone['value']:
+                climate_zone_data = {'value': self.meta_climate_zone['value']}
+                if self.meta_climate_zone['id']:
+                    climate_zone_data['id'] = f'{Shopify.Metafield.prefix}{self.meta_climate_zone['id']}'
+                else:
+                    climate_zone_data['namespace'] = Catalog.metafields['Growing Zone']['NAME_SPACE']
+                    climate_zone_data['key'] = Catalog.metafields['Growing Zone']['META_KEY']
+                    climate_zone_data['type'] = Catalog.metafields['Growing Zone']['TYPE']
+
+                result.append(climate_zone_data)
+
+            elif self.meta_climate_zone['id']:
+                Shopify.Metafield.delete(metafield_id=self.meta_climate_zone['id'])
+                self.meta_climate_zone['id'] = None
+
+            # Climate Zone List
+            if self.meta_climate_zone_list['value']:
+                climate_zone_list_data = {'value': json.dumps(self.meta_climate_zone_list['value'])}
+                if self.meta_climate_zone_list['id']:
+                    climate_zone_list_data['id'] = f'{Shopify.Metafield.prefix}{self.meta_climate_zone_list["id"]}'
+                else:
+                    climate_zone_list_data['namespace'] = Catalog.metafields['Growing Zone List']['NAME_SPACE']
+                    climate_zone_list_data['key'] = Catalog.metafields['Growing Zone List']['META_KEY']
+                    climate_zone_list_data['type'] = Catalog.metafields['Growing Zone List']['TYPE']
+
+                result.append(climate_zone_list_data)
+            elif self.meta_climate_zone_list['id']:
+                Shopify.Metafield.delete(metafield_id=self.meta_climate_zone_list['id'])
+                self.meta_climate_zone_list['id'] = None
+
+            if self.meta_plant_type['value']:
+                plant_type_data = {'value': self.meta_plant_type['value']}
+                if self.meta_plant_type['id']:
+                    plant_type_data['id'] = f'{Shopify.Metafield.prefix}{self.meta_plant_type["id"]}'
+                else:
+                    plant_type_data['namespace'] = Catalog.metafields['Plant Type']['NAME_SPACE']
+                    plant_type_data['key'] = Catalog.metafields['Plant Type']['META_KEY']
+                    plant_type_data['type'] = Catalog.metafields['Plant Type']['TYPE']
+
+                result.append(plant_type_data)
+
+            elif self.meta_plant_type['id']:
+                Shopify.Metafield.delete(metafield_id=self.meta_plant_type['id'])
+                self.meta_plant_type['id'] = None
+
+            # Mature Height and Width
+            if self.meta_height['value']:
+                height_data = {'value': json.dumps(self.meta_height['value'])}
+                if self.meta_height['id']:
+                    height_data['id'] = f'{Shopify.Metafield.prefix}{self.meta_height["id"]}'
+                else:
+                    height_data['namespace'] = Catalog.metafields['Mature Height']['NAME_SPACE']
+                    height_data['key'] = Catalog.metafields['Mature Height']['META_KEY']
+                    height_data['type'] = Catalog.metafields['Mature Height']['TYPE']
+
+                result.append(height_data)
+
+            elif self.meta_height['id']:
+                Shopify.Metafield.delete(metafield_id=self.meta_height['id'])
+                self.meta_height['id'] = None
+
+            if self.meta_width['value']:
+                width_data = {'value': json.dumps(self.meta_width['value'])}
+                if self.meta_width['id']:
+                    width_data['id'] = f'{Shopify.Metafield.prefix}{self.meta_width["id"]}'
+                else:
+                    width_data['namespace'] = Catalog.metafields['Mature Width']['NAME_SPACE']
+                    width_data['key'] = Catalog.metafields['Mature Width']['META_KEY']
+                    width_data['type'] = Catalog.metafields['Mature Width']['TYPE']
+
+                result.append(width_data)
+            elif self.meta_width['id']:
+                Shopify.Metafield.delete(metafield_id=self.meta_width['id'])
+                self.meta_width['id'] = None
+
+            # Light Requirements
+            if self.meta_light_requirements['value']:
+                light_requirements_data = {'value': json.dumps(self.meta_light_requirements['value'])}
+                if self.meta_light_requirements['id']:
+                    light_requirements_data['id'] = (
+                        f'{Shopify.Metafield.prefix}{self.meta_light_requirements["id"]}'
+                    )
+                else:
+                    light_requirements_data['namespace'] = Catalog.metafields['Light Requirements']['NAME_SPACE']
+                    light_requirements_data['key'] = Catalog.metafields['Light Requirements']['META_KEY']
+                    light_requirements_data['type'] = Catalog.metafields['Light Requirements']['TYPE']
+
+                result.append(light_requirements_data)
+
+            elif self.meta_light_requirements['id']:
+                Shopify.Metafield.delete(metafield_id=self.meta_light_requirements['id'])
+                self.meta_light_requirements['id'] = None
+
+            # Size - *This only applies to single products*
+            if not self.binding_id:
+                if self.meta_size['value']:
+                    size_data = {'value': self.meta_size['value']}
+                    if self.meta_size['id']:
+                        size_data['id'] = f'{Shopify.Metafield.prefix}{self.meta_size["id"]}'
                     else:
-                        botantical_name_data['namespace'] = Catalog.metafields['Botanical Name']['NAME_SPACE']
-                        botantical_name_data['key'] = Catalog.metafields['Botanical Name']['META_KEY']
-                        botantical_name_data['type'] = Catalog.metafields['Botanical Name']['TYPE']
+                        size_data['namespace'] = Catalog.metafields['Size']['NAME_SPACE']
+                        size_data['key'] = Catalog.metafields['Size']['META_KEY']
+                        size_data['type'] = Catalog.metafields['Size']['TYPE']
 
-                    result.append(botantical_name_data)
+                    result.append(size_data)
+                elif self.meta_size['id']:
+                    Shopify.Metafield.delete(metafield_id=self.meta_size['id'])
+                    self.meta_size['id'] = None
 
-                elif self.meta_botanical_name['id']:
-                    Shopify.Metafield.delete(metafield_id=self.meta_botanical_name['id'])
-                    self.meta_botanical_name['id'] = None
+            # Bloom Season
+            if self.meta_bloom_season['value']:
+                bloom_season_data = {'value': json.dumps(self.meta_bloom_season['value'])}
+                if self.meta_bloom_season['id']:
+                    bloom_season_data['id'] = f'{Shopify.Metafield.prefix}{self.meta_bloom_season["id"]}'
+                else:
+                    bloom_season_data['namespace'] = Catalog.metafields['Bloom Season']['NAME_SPACE']
+                    bloom_season_data['key'] = Catalog.metafields['Bloom Season']['META_KEY']
+                    bloom_season_data['type'] = Catalog.metafields['Bloom Season']['TYPE']
 
-                # Climate Zone
-                if self.meta_climate_zone['value']:
-                    climate_zone_data = {'value': self.meta_climate_zone['value']}
-                    if self.meta_climate_zone['id']:
-                        climate_zone_data['id'] = f'{Shopify.Metafield.prefix}{self.meta_climate_zone['id']}'
-                    else:
-                        climate_zone_data['namespace'] = Catalog.metafields['Growing Zone']['NAME_SPACE']
-                        climate_zone_data['key'] = Catalog.metafields['Growing Zone']['META_KEY']
-                        climate_zone_data['type'] = Catalog.metafields['Growing Zone']['TYPE']
+                result.append(bloom_season_data)
 
-                    result.append(climate_zone_data)
+            elif self.meta_bloom_season['id']:
+                Shopify.Metafield.delete(metafield_id=self.meta_bloom_season['id'])
+                self.meta_bloom_season['id'] = None
 
-                elif self.meta_climate_zone['id']:
-                    Shopify.Metafield.delete(metafield_id=self.meta_climate_zone['id'])
-                    self.meta_climate_zone['id'] = None
+            # Features
+            if self.meta_features['value']:
+                features_data = {'value': json.dumps(self.meta_features['value'])}
+                if self.meta_features['id']:
+                    features_data['id'] = f'{Shopify.Metafield.prefix}{self.meta_features["id"]}'
+                else:
+                    features_data['namespace'] = Catalog.metafields['Features']['NAME_SPACE']
+                    features_data['key'] = Catalog.metafields['Features']['META_KEY']
+                    features_data['type'] = Catalog.metafields['Features']['TYPE']
 
-                # Climate Zone List
-                if self.meta_climate_zone_list['value']:
-                    climate_zone_list_data = {'value': json.dumps(self.meta_climate_zone_list['value'])}
-                    if self.meta_climate_zone_list['id']:
-                        climate_zone_list_data['id'] = (
-                            f'{Shopify.Metafield.prefix}{self.meta_climate_zone_list["id"]}'
-                        )
-                    else:
-                        climate_zone_list_data['namespace'] = Catalog.metafields['Growing Zone List']['NAME_SPACE']
-                        climate_zone_list_data['key'] = Catalog.metafields['Growing Zone List']['META_KEY']
-                        climate_zone_list_data['type'] = Catalog.metafields['Growing Zone List']['TYPE']
+                result.append(features_data)
+            elif self.meta_features['id']:
+                Shopify.Metafield.delete(metafield_id=self.meta_features['id'])
+                self.meta_features['id'] = None
 
-                    result.append(climate_zone_list_data)
-                elif self.meta_climate_zone_list['id']:
-                    Shopify.Metafield.delete(metafield_id=self.meta_climate_zone_list['id'])
-                    self.meta_climate_zone_list['id'] = None
-
-                if self.meta_plant_type['value']:
-                    plant_type_data = {'value': self.meta_plant_type['value']}
-                    if self.meta_plant_type['id']:
-                        plant_type_data['id'] = f'{Shopify.Metafield.prefix}{self.meta_plant_type["id"]}'
-                    else:
-                        plant_type_data['namespace'] = Catalog.metafields['Plant Type']['NAME_SPACE']
-                        plant_type_data['key'] = Catalog.metafields['Plant Type']['META_KEY']
-                        plant_type_data['type'] = Catalog.metafields['Plant Type']['TYPE']
-
-                    result.append(plant_type_data)
-
-                elif self.meta_plant_type['id']:
-                    Shopify.Metafield.delete(metafield_id=self.meta_plant_type['id'])
-                    self.meta_plant_type['id'] = None
-
-                # Mature Height and Width
-                if self.meta_height['value']:
-                    height_data = {'value': json.dumps(self.meta_height['value'])}
-                    if self.meta_height['id']:
-                        height_data['id'] = f'{Shopify.Metafield.prefix}{self.meta_height["id"]}'
-                    else:
-                        height_data['namespace'] = Catalog.metafields['Mature Height']['NAME_SPACE']
-                        height_data['key'] = Catalog.metafields['Mature Height']['META_KEY']
-                        height_data['type'] = Catalog.metafields['Mature Height']['TYPE']
-
-                    result.append(height_data)
-
-                elif self.meta_height['id']:
-                    Shopify.Metafield.delete(metafield_id=self.meta_height['id'])
-                    self.meta_height['id'] = None
-
-                if self.meta_width['value']:
-                    width_data = {'value': json.dumps(self.meta_width['value'])}
-                    if self.meta_width['id']:
-                        width_data['id'] = f'{Shopify.Metafield.prefix}{self.meta_width["id"]}'
-                    else:
-                        width_data['namespace'] = Catalog.metafields['Mature Width']['NAME_SPACE']
-                        width_data['key'] = Catalog.metafields['Mature Width']['META_KEY']
-                        width_data['type'] = Catalog.metafields['Mature Width']['TYPE']
-
-                    result.append(width_data)
-                elif self.meta_width['id']:
-                    Shopify.Metafield.delete(metafield_id=self.meta_width['id'])
-                    self.meta_width['id'] = None
-
-                # Light Requirements
-                if self.meta_light_requirements['value']:
-                    light_requirements_data = {'value': json.dumps(self.meta_light_requirements['value'])}
-                    if self.meta_light_requirements['id']:
-                        light_requirements_data['id'] = (
-                            f'{Shopify.Metafield.prefix}{self.meta_light_requirements["id"]}'
-                        )
-                    else:
-                        light_requirements_data['namespace'] = Catalog.metafields['Light Requirements'][
-                            'NAME_SPACE'
-                        ]
-                        light_requirements_data['key'] = Catalog.metafields['Light Requirements']['META_KEY']
-                        light_requirements_data['type'] = Catalog.metafields['Light Requirements']['TYPE']
-
-                    result.append(light_requirements_data)
-
-                elif self.meta_light_requirements['id']:
-                    Shopify.Metafield.delete(metafield_id=self.meta_light_requirements['id'])
-                    self.meta_light_requirements['id'] = None
-
-                # Size - *This only applies to single products*
-                if not self.binding_id:
-                    if self.meta_size['value']:
-                        size_data = {'value': self.meta_size['value']}
-                        if self.meta_size['id']:
-                            size_data['id'] = f'{Shopify.Metafield.prefix}{self.meta_size["id"]}'
-                        else:
-                            size_data['namespace'] = Catalog.metafields['Size']['NAME_SPACE']
-                            size_data['key'] = Catalog.metafields['Size']['META_KEY']
-                            size_data['type'] = Catalog.metafields['Size']['TYPE']
-
-                        result.append(size_data)
-                    elif self.meta_size['id']:
-                        Shopify.Metafield.delete(metafield_id=self.meta_size['id'])
-                        self.meta_size['id'] = None
-
-                # Bloom Season
-                if self.meta_bloom_season['value']:
-                    bloom_season_data = {'value': json.dumps(self.meta_bloom_season['value'])}
-                    if self.meta_bloom_season['id']:
-                        bloom_season_data['id'] = f'{Shopify.Metafield.prefix}{self.meta_bloom_season["id"]}'
-                    else:
-                        bloom_season_data['namespace'] = Catalog.metafields['Bloom Season']['NAME_SPACE']
-                        bloom_season_data['key'] = Catalog.metafields['Bloom Season']['META_KEY']
-                        bloom_season_data['type'] = Catalog.metafields['Bloom Season']['TYPE']
-
-                    result.append(bloom_season_data)
-
-                elif self.meta_bloom_season['id']:
-                    Shopify.Metafield.delete(metafield_id=self.meta_bloom_season['id'])
-                    self.meta_bloom_season['id'] = None
-
-                # Features
-                if self.meta_features['value']:
-                    features_data = {'value': json.dumps(self.meta_features['value'])}
-                    if self.meta_features['id']:
-                        features_data['id'] = f'{Shopify.Metafield.prefix}{self.meta_features["id"]}'
-                    else:
-                        features_data['namespace'] = Catalog.metafields['Features']['NAME_SPACE']
-                        features_data['key'] = Catalog.metafields['Features']['META_KEY']
-                        features_data['type'] = Catalog.metafields['Features']['TYPE']
-
-                    result.append(features_data)
-                elif self.meta_features['id']:
-                    Shopify.Metafield.delete(metafield_id=self.meta_features['id'])
-                    self.meta_features['id'] = None
-
-                # Colors
-                if self.meta_colors['value']:
-                    colors_data = {'value': json.dumps(self.meta_colors['value'])}
-                    if self.meta_colors['id']:
-                        colors_data['id'] = f'{Shopify.Metafield.prefix}{self.meta_colors["id"]}'
-                    else:
-                        colors_data['namespace'] = Catalog.metafields['Color']['NAME_SPACE']
-                        colors_data['key'] = Catalog.metafields['Color']['META_KEY']
-                        colors_data['type'] = Catalog.metafields['Color']['TYPE']
-                    result.append(colors_data)
-                elif self.meta_colors['id']:
-                    try:
-                        Shopify.Metafield.delete(metafield_id=self.meta_colors['id'])
-                    except Exception as e:
-                        Catalog.error_handler.add_error_v(f'Error deleting metafield: {e}')
-                        query = f"""
+            # Colors
+            if self.meta_colors['value']:
+                colors_data = {'value': json.dumps(self.meta_colors['value'])}
+                if self.meta_colors['id']:
+                    colors_data['id'] = f'{Shopify.Metafield.prefix}{self.meta_colors["id"]}'
+                else:
+                    colors_data['namespace'] = Catalog.metafields['Color']['NAME_SPACE']
+                    colors_data['key'] = Catalog.metafields['Color']['META_KEY']
+                    colors_data['type'] = Catalog.metafields['Color']['TYPE']
+                result.append(colors_data)
+            elif self.meta_colors['id']:
+                try:
+                    Shopify.Metafield.delete(metafield_id=self.meta_colors['id'])
+                except Exception as e:
+                    Product.error_handler.add_error_v(f'Error deleting metafield: {e}')
+                    query = f"""
                         UPDATE {Table.Middleware.products}
                         SET {creds.Shopify.Metafield.Product.color} = NULL
                         WHERE PRODUCT_ID = {self.product_id}
                         """
-                        db.query(query)
-                    self.meta_colors['id'] = None
+                    db.query(query)
 
-                # Bloom Color
-                if self.meta_bloom_color['value']:
-                    bloom_color_data = {'value': json.dumps(self.meta_bloom_color['value'])}
-                    if self.meta_bloom_color['id']:
-                        bloom_color_data['id'] = f'{Shopify.Metafield.prefix}{self.meta_bloom_color["id"]}'
-                    else:
-                        bloom_color_data['namespace'] = Catalog.metafields['Bloom Color']['NAME_SPACE']
-                        bloom_color_data['key'] = Catalog.metafields['Bloom Color']['META_KEY']
-                        bloom_color_data['type'] = Catalog.metafields['Bloom Color']['TYPE']
+                self.meta_colors['id'] = None
 
-                    result.append(bloom_color_data)
+            # Bloom Color
+            if self.meta_bloom_color['value']:
+                bloom_color_data = {'value': json.dumps(self.meta_bloom_color['value'])}
+                if self.meta_bloom_color['id']:
+                    bloom_color_data['id'] = f'{Shopify.Metafield.prefix}{self.meta_bloom_color["id"]}'
+                else:
+                    bloom_color_data['namespace'] = Catalog.metafields['Bloom Color']['NAME_SPACE']
+                    bloom_color_data['key'] = Catalog.metafields['Bloom Color']['META_KEY']
+                    bloom_color_data['type'] = Catalog.metafields['Bloom Color']['TYPE']
 
-                elif self.meta_bloom_color['id']:
-                    try:
-                        Shopify.Metafield.delete(metafield_id=self.meta_bloom_color['id'])
-                    except Exception as e:
-                        Catalog.error_handler.add_error_v(f'Error deleting metafield: {e}')
-                        query = f"""
+                result.append(bloom_color_data)
+
+            elif self.meta_bloom_color['id']:
+                try:
+                    Shopify.Metafield.delete(metafield_id=self.meta_bloom_color['id'])
+                except Exception as e:
+                    Product.error_handler.add_error_v(f'Error deleting metafield: {e}')
+                    query = f"""
                         UPDATE {Table.Middleware.products}
                         SET {creds.Shopify.Metafield.Product.bloom_color} = NULL
                         WHERE PRODUCT_ID = {self.product_id}
                         """
-                        db.query(query)
-                    self.meta_bloom_color['id'] = None
+                    db.query(query)
+                self.meta_bloom_color['id'] = None
 
-                # Preorder Status - All products are either preorder or not
-                preorder_data = {'value': 'true' if self.is_preorder else 'false'}
-                if self.meta_is_preorder['id']:
-                    preorder_data['id'] = f'{Shopify.Metafield.prefix}{self.meta_is_preorder["id"]}'
+            # Preorder Status - All products are either preorder or not
+            preorder_data = {'value': 'true' if self.is_preorder else 'false'}
+            if self.meta_is_preorder['id']:
+                preorder_data['id'] = f'{Shopify.Metafield.prefix}{self.meta_is_preorder["id"]}'
+            else:
+                preorder_data['namespace'] = Catalog.metafields['Preorder Item']['NAME_SPACE']
+                preorder_data['key'] = Catalog.metafields['Preorder Item']['META_KEY']
+                preorder_data['type'] = Catalog.metafields['Preorder Item']['TYPE']
+
+            result.append(preorder_data)
+
+            # Preorder Release Date
+            preorder_release_date = {'value': self.preorder_release_date}
+            if self.meta_preorder_release_date['value']:
+                if self.meta_preorder_release_date['id']:
+                    preorder_release_date['id'] = (
+                        f'{Shopify.Metafield.prefix}{self.meta_preorder_release_date["id"]}'
+                    )
                 else:
-                    preorder_data['namespace'] = Catalog.metafields['Preorder Item']['NAME_SPACE']
-                    preorder_data['key'] = Catalog.metafields['Preorder Item']['META_KEY']
-                    preorder_data['type'] = Catalog.metafields['Preorder Item']['TYPE']
+                    preorder_release_date['namespace'] = Catalog.metafields['Preorder Release Date']['NAME_SPACE']
+                    preorder_release_date['key'] = Catalog.metafields['Preorder Release Date']['META_KEY']
+                    preorder_release_date['type'] = Catalog.metafields['Preorder Release Date']['TYPE']
 
-                result.append(preorder_data)
+                result.append(preorder_release_date)
 
-                # Preorder Release Date
-                preorder_release_date = {'value': self.preorder_release_date}
-                if self.meta_preorder_release_date['value']:
-                    if self.meta_preorder_release_date['id']:
-                        preorder_release_date['id'] = (
-                            f'{Shopify.Metafield.prefix}{self.meta_preorder_release_date["id"]}'
+            elif self.meta_preorder_release_date['id']:
+                Shopify.Metafield.delete(metafield_id=self.meta_preorder_release_date['id'])
+                self.meta_preorder_release_date['id'] = None
+
+            # Preorder Message
+            preorder_message = {'value': self.preorder_message}
+            if self.meta_preorder_message['value']:
+                if self.meta_preorder_message['id']:
+                    preorder_message['id'] = f'{Shopify.Metafield.prefix}{self.meta_preorder_message["id"]}'
+                else:
+                    preorder_message['namespace'] = Catalog.metafields['Preorder Message']['NAME_SPACE']
+                    preorder_message['key'] = Catalog.metafields['Preorder Message']['META_KEY']
+                    preorder_message['type'] = Catalog.metafields['Preorder Message']['TYPE']
+
+                result.append(preorder_message)
+            elif self.meta_preorder_message['id']:
+                Shopify.Metafield.delete(metafield_id=self.meta_preorder_message['id'])
+                self.meta_preorder_message['id'] = None
+
+            # On Sale Status - All products are either on sale or not
+            on_sale_data = {'value': self.meta_is_on_sale['value']}
+            if self.meta_is_on_sale['id']:
+                on_sale_data['id'] = f'{Shopify.Metafield.prefix}{self.meta_is_on_sale["id"]}'
+            else:
+                on_sale_data['namespace'] = Catalog.metafields['On Sale']['NAME_SPACE']
+                on_sale_data['key'] = Catalog.metafields['On Sale']['META_KEY']
+                on_sale_data['type'] = Catalog.metafields['On Sale']['TYPE']
+            result.append(on_sale_data)
+
+            # On Sale Description
+            if self.meta_sale_description['value']:
+                on_sale_description_data = {'value': self.meta_sale_description['value']}
+                if self.meta_sale_description['id']:
+                    on_sale_description_data['id'] = f'{Shopify.Metafield.prefix}{self.meta_sale_description["id"]}'
+                else:
+                    on_sale_description_data['namespace'] = Catalog.metafields['On Sale Description']['NAME_SPACE']
+                    on_sale_description_data['key'] = Catalog.metafields['On Sale Description']['META_KEY']
+                    on_sale_description_data['type'] = Catalog.metafields['On Sale Description']['TYPE']
+
+                result.append(on_sale_description_data)
+
+            elif self.meta_sale_description['id']:
+                Shopify.Metafield.delete(metafield_id=self.meta_sale_description['id'])
+                self.meta_sale_description['id'] = None
+
+            # Featured Product Status - All products are either featured or not
+            featured_data = {'value': 'true' if self.featured else 'false'}
+            if self.meta_is_featured['id']:
+                featured_data['id'] = f'{Shopify.Metafield.prefix}{self.meta_is_featured["id"]}'
+            else:
+                featured_data['namespace'] = Catalog.metafields['Featured']['NAME_SPACE']
+                featured_data['key'] = Catalog.metafields['Featured']['META_KEY']
+                featured_data['type'] = Catalog.metafields['Featured']['TYPE']
+
+            result.append(featured_data)
+
+            # In Store Only Status - All products are either in store only or not
+            in_store_only_data = {'value': 'true' if self.in_store_only else 'false'}
+            if self.meta_in_store_only['id']:
+                in_store_only_data['id'] = f'{Shopify.Metafield.prefix}{self.meta_in_store_only["id"]}'
+            else:
+                in_store_only_data['namespace'] = Catalog.metafields['In Store Only']['NAME_SPACE']
+                in_store_only_data['key'] = Catalog.metafields['In Store Only']['META_KEY']
+                in_store_only_data['type'] = Catalog.metafields['In Store Only']['TYPE']
+
+            result.append(in_store_only_data)
+
+            # New Product Status - All products are either new or not
+            new_data = {'value': 'true' if self.is_new else 'false'}
+            if self.meta_is_new['id']:
+                new_data['id'] = f'{Shopify.Metafield.prefix}{self.meta_is_new["id"]}'
+            else:
+                new_data['namespace'] = Catalog.metafields['New']['NAME_SPACE']
+                new_data['key'] = Catalog.metafields['New']['META_KEY']
+                new_data['type'] = Catalog.metafields['New']['TYPE']
+
+            result.append(new_data)
+
+            # Back In Stock status - All products are either back in stock or not
+            back_in_stock_data = {'value': 'true' if self.is_back_in_stock else 'false'}
+            if self.meta_is_back_in_stock['id']:
+                back_in_stock_data['id'] = f'{Shopify.Metafield.prefix}{self.meta_is_back_in_stock["id"]}'
+            else:
+                back_in_stock_data['namespace'] = Catalog.metafields['Back In Stock']['NAME_SPACE']
+                back_in_stock_data['key'] = Catalog.metafields['Back In Stock']['META_KEY']
+                back_in_stock_data['type'] = Catalog.metafields['Back In Stock']['TYPE']
+
+            result.append(back_in_stock_data)
+
+            return result
+
+        def get_media_payload():
+            count = 0
+            for m in self.media:
+                if count == 0:
+                    m.is_thumbnail = True
+                if not m.db_id:
+                    # If new media is found, set flag to True to trigger correct mutation
+                    self.has_new_media = True
+                    # Set sort order for new media. Leave existing sort order for existing media
+                    m.sort_order = count
+                count += 1
+
+            if not self.has_new_media or (self.default_image and self.images[0].db_id):
+                for m in self.media:
+                    m.temp_sort_order = m.sort_order
+
+                return None
+
+            result = []
+            images = get_image_payload()
+            videos = get_video_payload()
+
+            for image in images:
+                result.append(image)
+
+            for video in videos:
+                result.append(video)
+
+            # Get Desired Sort Order of Images and Videos
+            i = 0  # Desired Sort Order
+            j = 0  # Temp Sort Order, used for created anticipated order of media in response
+
+            for m in self.media:
+                m.sort_order = i
+                i += 1
+                if m.db_id:
+                    m.temp_sort_order = j
+                    j += 1
+
+            for m in self.media:
+                if not m.db_id:
+                    m.temp_sort_order = j
+                    j += 1
+
+            return result
+
+        def get_image_payload():
+            result = []
+            file_list = []
+            stagedUploadsCreateVariables = {'input': []}
+
+            if len(self.images) == 1 and self.images[0].name == 'coming-soon.jpg':
+                target_image = self.images[0]
+                if not target_image.db_id:
+                    uploaded_files = [{'file_path': target_image.file_path, 'url': target_image.image_url}]
+            else:
+                for image in self.images:
+                    image_size = get_filesize(image.file_path)
+                    if image_size != image.size:
+                        if image.db_id:  # If image is in the database, delete the image from Shopify
+                            Shopify.Product.Media.Image.delete(image=image)
+                            db.Shopify.Product.Media.Image.delete(image_id=image.shopify_id)
+                            image.shopify_id = None
+                            image.image_url = None
+                            image.db_id = None
+                        image.size = get_filesize(image.file_path)
+                        file_list.append(image.file_path)
+                        stagedUploadsCreateVariables['input'].append(
+                            {
+                                'filename': image.name,
+                                'mimeType': 'image/jpg',
+                                'httpMethod': 'POST',
+                                'resource': 'IMAGE',
+                            }
                         )
-                    else:
-                        preorder_release_date['namespace'] = Catalog.metafields['Preorder Release Date'][
-                            'NAME_SPACE'
-                        ]
-                        preorder_release_date['key'] = Catalog.metafields['Preorder Release Date']['META_KEY']
-                        preorder_release_date['type'] = Catalog.metafields['Preorder Release Date']['TYPE']
 
-                    result.append(preorder_release_date)
+                # Upload new images
+                uploaded_files = Shopify.Product.Files.create(
+                    variables=stagedUploadsCreateVariables, file_list=file_list, eh=Catalog.eh
+                )
 
-                elif self.meta_preorder_release_date['id']:
-                    Shopify.Metafield.delete(metafield_id=self.meta_preorder_release_date['id'])
-                    self.meta_preorder_release_date['id'] = None
+            for file in uploaded_files:
+                for image in self.images:
+                    if file['file_path'] == image.file_path:
+                        image.image_url = file['url']
+                        image_payload = {
+                            'originalSource': image.image_url,
+                            'alt': image.description,
+                            'mediaContentType': image.type,
+                        }
+                        result.append(image_payload)
+            return result
 
-                # Preorder Message
-                preorder_message = {'value': self.preorder_message}
-                if self.meta_preorder_message['value']:
-                    if self.meta_preorder_message['id']:
-                        preorder_message['id'] = f'{Shopify.Metafield.prefix}{self.meta_preorder_message["id"]}'
-                    else:
-                        preorder_message['namespace'] = Catalog.metafields['Preorder Message']['NAME_SPACE']
-                        preorder_message['key'] = Catalog.metafields['Preorder Message']['META_KEY']
-                        preorder_message['type'] = Catalog.metafields['Preorder Message']['TYPE']
+        def get_video_payload():
+            result = []
+            for video in self.videos:
+                if video.has_valid_url:  # filter out videos with invalid URLs
+                    if not video.db_id:  # only add videos that are not already in the database
+                        video_payload = {'originalSource': video.url, 'mediaContentType': video.type}
 
-                    result.append(preorder_message)
-                elif self.meta_preorder_message['id']:
-                    Shopify.Metafield.delete(metafield_id=self.meta_preorder_message['id'])
-                    self.meta_preorder_message['id'] = None
+                        if video.shopify_id:
+                            video_payload['id'] = f'{Shopify.Product.Media.Video.prefix}{video.shopify_id}'
+                        if video.description:
+                            video_payload['alt'] = video.description
 
-                # On Sale Status - All products are either on sale or not
-                on_sale_data = {'value': self.meta_is_on_sale['value']}
-                if self.meta_is_on_sale['id']:
-                    on_sale_data['id'] = f'{Shopify.Metafield.prefix}{self.meta_is_on_sale["id"]}'
-                else:
-                    on_sale_data['namespace'] = Catalog.metafields['On Sale']['NAME_SPACE']
-                    on_sale_data['key'] = Catalog.metafields['On Sale']['META_KEY']
-                    on_sale_data['type'] = Catalog.metafields['On Sale']['TYPE']
-                result.append(on_sale_data)
+                        result.append(video_payload)
 
-                # On Sale Description
-                if self.meta_sale_description['value']:
-                    on_sale_description_data = {'value': self.meta_sale_description['value']}
-                    if self.meta_sale_description['id']:
-                        on_sale_description_data['id'] = (
-                            f'{Shopify.Metafield.prefix}{self.meta_sale_description["id"]}'
-                        )
-                    else:
-                        on_sale_description_data['namespace'] = Catalog.metafields['On Sale Description'][
-                            'NAME_SPACE'
-                        ]
-                        on_sale_description_data['key'] = Catalog.metafields['On Sale Description']['META_KEY']
-                        on_sale_description_data['type'] = Catalog.metafields['On Sale Description']['TYPE']
+            return result
 
-                    result.append(on_sale_description_data)
+        def get_brand_name(brand):
+            """Takes the brand profile code and returns the brand name"""
+            query = f"""
+                SELECT DESCR
+                FROM IM_ITEM_PROF_COD
+                WHERE PROF_COD = '{brand}'"""
+            response = db.query(query)
+            if response:
+                return response[0][0]
+            else:
+                return brand
 
-                elif self.meta_sale_description['id']:
-                    Shopify.Metafield.delete(metafield_id=self.meta_sale_description['id'])
-                    self.meta_sale_description['id'] = None
+        product_payload = {
+            'input': {
+                'title': self.web_title,
+                'status': 'ACTIVE' if self.visible else 'DRAFT',
+                'seo': {},
+                'metafields': get_metafields(),
+            }
+        }
 
-                # Featured Product Status - All products are either featured or not
-                featured_data = {'value': 'true' if self.featured else 'false'}
-                if self.meta_is_featured['id']:
-                    featured_data['id'] = f'{Shopify.Metafield.prefix}{self.meta_is_featured["id"]}'
-                else:
-                    featured_data['namespace'] = Catalog.metafields['Featured']['NAME_SPACE']
-                    featured_data['key'] = Catalog.metafields['Featured']['META_KEY']
-                    featured_data['type'] = Catalog.metafields['Featured']['TYPE']
+        media_payload = get_media_payload()
+        if media_payload:
+            product_payload['media'] = media_payload
 
-                result.append(featured_data)
+        if self.product_id:
+            product_payload['input']['id'] = f'gid://shopify/Product/{self.product_id}'
 
-                # In Store Only Status - All products are either in store only or not
-                in_store_only_data = {'value': 'true' if self.in_store_only else 'false'}
-                if self.meta_in_store_only['id']:
-                    in_store_only_data['id'] = f'{Shopify.Metafield.prefix}{self.meta_in_store_only["id"]}'
-                else:
-                    in_store_only_data['namespace'] = Catalog.metafields['In Store Only']['NAME_SPACE']
-                    in_store_only_data['key'] = Catalog.metafields['In Store Only']['META_KEY']
-                    in_store_only_data['type'] = Catalog.metafields['In Store Only']['TYPE']
+        if self.brand:
+            product_payload['input']['vendor'] = get_brand_name(self.brand)
 
-                result.append(in_store_only_data)
+        if self.type:
+            product_payload['input']['productType'] = self.type
 
-                # New Product Status - All products are either new or not
-                new_data = {'value': 'true' if self.is_new else 'false'}
-                if self.meta_is_new['id']:
-                    new_data['id'] = f'{Shopify.Metafield.prefix}{self.meta_is_new["id"]}'
-                else:
-                    new_data['namespace'] = Catalog.metafields['New']['NAME_SPACE']
-                    new_data['key'] = Catalog.metafields['New']['META_KEY']
-                    new_data['type'] = Catalog.metafields['New']['TYPE']
+        if self.tags:
+            product_payload['input']['tags'] = self.tags.split(',')
 
-                result.append(new_data)
+        if self.shopify_collections:
+            product_payload['input']['collectionsToJoin'] = [
+                f'gid://shopify/Collection/{x}' for x in self.shopify_collections
+            ]
 
-                # Back In Stock status - All products are either back in stock or not
-                back_in_stock_data = {'value': 'true' if self.is_back_in_stock else 'false'}
-                if self.meta_is_back_in_stock['id']:
-                    back_in_stock_data['id'] = f'{Shopify.Metafield.prefix}{self.meta_is_back_in_stock["id"]}'
-                else:
-                    back_in_stock_data['namespace'] = Catalog.metafields['Back In Stock']['NAME_SPACE']
-                    back_in_stock_data['key'] = Catalog.metafields['Back In Stock']['META_KEY']
-                    back_in_stock_data['type'] = Catalog.metafields['Back In Stock']['TYPE']
+            product_payload['input']['collectionsToLeave'] = [
+                f'gid://shopify/Collection/{x}' for x in self.get_collections_to_leave()
+            ]
 
-                result.append(back_in_stock_data)
+        if self.meta_title:
+            product_payload['input']['seo']['title'] = self.meta_title
 
-                return result
+        if self.html_description:
+            product_payload['input']['descriptionHtml'] = self.html_description
 
-            def get_media_payload():
-                count = 0
-                for m in self.media:
-                    if count == 0:
-                        m.is_thumbnail = True
-                    if not m.db_id:
-                        # If new media is found, set flag to True to trigger correct mutation
-                        self.has_new_media = True
-                        # Set sort order for new media. Leave existing sort order for existing media
-                        m.sort_order = count
-                    count += 1
+        if self.meta_description:
+            product_payload['input']['seo']['description'] = self.meta_description
 
-                if not self.has_new_media or (self.default_image and self.images[0].db_id):
-                    for m in self.media:
-                        m.temp_sort_order = m.sort_order
+        if not self.product_id:  # new product
+            # If Add Standalone Variant Option - will be deleted later
+            if self.is_bound:
+                product_payload['input']['productOptions'] = [
+                    {'name': 'Option', 'values': [{'name': '9999 Gallon'}]}
+                ]
 
-                    return None
+        return product_payload
 
-                result = []
-                images = get_image_payload()
-                videos = get_video_payload()
+    def get_variant_metafields(self, variant):
+        result = []
+        # Variant Size
+        if variant.meta_variant_size['value']:
+            variant_size = {'value': variant.meta_variant_size['value']}
+            if variant.meta_variant_size['id']:
+                variant_size['id'] = f'{Shopify.Metafield.prefix}{variant.meta_variant_size["id"]}'
+            else:
+                variant_size['namespace'] = Catalog.metafields['Variant Size']['NAME_SPACE']
+                variant_size['key'] = Catalog.metafields['Variant Size']['META_KEY']
+                variant_size['type'] = Catalog.metafields['Variant Size']['TYPE']
 
-                for image in images:
-                    result.append(image)
+            result.append(variant_size)
+        else:
+            if variant.meta_variant_size['id']:
+                Shopify.Metafield.delete(metafield_id=variant.meta_variant_size['id'])
+                variant.meta_variant_size['id'] = None
 
-                for video in videos:
-                    result.append(video)
+        return result
 
-                # Get Desired Sort Order of Images and Videos
-                i = 0  # Desired Sort Order
-                j = 0  # Temp Sort Order, used for created anticipated order of media in response
+    def get_bulk_variant_payload(self):
+        payload = {'media': [], 'strategy': 'REMOVE_STANDALONE_VARIANT', 'variants': []}
+        # If product_id exists, this is an update
+        if self.product_id:
+            payload['productId'] = f'gid://shopify/Product/{self.product_id}'
 
-                for m in self.media:
-                    m.sort_order = i
-                    i += 1
-                    if m.db_id:
-                        m.temp_sort_order = j
-                        j += 1
+        for child in self.variants:
+            variant_payload = {
+                'inventoryItem': {
+                    'cost': child.cost,
+                    'tracked': True if not (self.is_preorder or self.is_workshop) else False,
+                    'requiresShipping': True,
+                    'sku': child.sku,
+                },
+                'inventoryPolicy': 'DENY',  # Prevents overselling,
+                'price': child.price_1,  # May be overwritten by price_2 (below)
+                'compareAtPrice': 0,
+                'optionValues': {'optionName': 'Option'},
+                'taxable': child.taxable,
+                'metafields': self.get_variant_metafields(child),
+            }
 
-                for m in self.media:
-                    if not m.db_id:
-                        m.temp_sort_order = j
-                        j += 1
+            if child.variant_id:
+                variant_payload['id'] = f'gid://shopify/ProductVariant/{child.variant_id}'
+            else:
+                if not self.is_preorder:
+                    variant_payload['inventoryQuantities'] = {
+                        'availableQuantity': child.buffered_quantity,
+                        'locationId': creds.Shopify.Location.n2,
+                    }
 
-                return result
+            if child.price_2:
+                # If price_2 is set, use the lower of the two prices for sale price
+                variant_payload['price'] = min(child.price_1, child.price_2)
+                variant_payload['compareAtPrice'] = max(child.price_1, child.price_2)
 
-            def get_image_payload():
-                result = []
-                file_list = []
-                stagedUploadsCreateVariables = {'input': []}
+            if len(self.variants) > 1:
+                variant_payload['optionValues']['name'] = child.variant_name
 
-                if len(self.images) == 1 and self.images[0].name == 'coming-soon.jpg':
-                    target_image = self.images[0]
-                    if not target_image.db_id:
-                        uploaded_files = [{'file_path': target_image.file_path, 'url': target_image.image_url}]
-                else:
-                    for image in self.images:
-                        image_size = get_filesize(image.file_path)
-                        if image_size != image.size:
-                            if image.db_id:  # If image is in the database, delete the image from Shopify
-                                Shopify.Product.Media.Image.delete(image=image)
-                                Database.Shopify.Product.Media.Image.delete(image_id=image.shopify_id)
-                                image.shopify_id = None
-                                image.image_url = None
-                                image.db_id = None
-                            image.size = get_filesize(image.file_path)
-                            file_list.append(image.file_path)
-                            stagedUploadsCreateVariables['input'].append(
+            else:
+                # if child.custom_size:
+                #     variant_payload['optionValues']['name'] = child.variant_name
+                # else:
+                variant_payload['optionValues']['name'] = 'Default Title'
+
+            if child.weight:
+                variant_payload['inventoryItem']['measurement'] = {
+                    'weight': {'unit': 'POUNDS', 'value': child.weight}
+                }
+
+            # Add Variant Image
+            for image in child.images:
+                if image.is_variant_image:
+                    image_size = get_filesize(image.file_path)
+                    if image_size != image.size:
+                        file_list = [image.file_path]
+                        stagedUploadsCreateVariables = {
+                            'input': [
                                 {
                                     'filename': image.name,
                                     'mimeType': 'image/jpg',
                                     'httpMethod': 'POST',
                                     'resource': 'IMAGE',
                                 }
-                            )
-
-                    # Upload new images
-                    uploaded_files = Shopify.Product.Files.create(
-                        variables=stagedUploadsCreateVariables, file_list=file_list, eh=Catalog.eh
-                    )
-
-                for file in uploaded_files:
-                    for image in self.images:
-                        if file['file_path'] == image.file_path:
-                            image.image_url = file['url']
-                            image_payload = {
-                                'originalSource': image.image_url,
-                                'alt': image.description,
-                                'mediaContentType': image.type,
-                            }
-                            result.append(image_payload)
-                return result
-
-            def get_video_payload():
-                result = []
-                for video in self.videos:
-                    if video.has_valid_url:  # filter out videos with invalid URLs
-                        if not video.db_id:  # only add videos that are not already in the database
-                            video_payload = {'originalSource': video.url, 'mediaContentType': video.type}
-
-                            if video.shopify_id:
-                                video_payload['id'] = f'{Shopify.Product.Media.Video.prefix}{video.shopify_id}'
-                            if video.description:
-                                video_payload['alt'] = video.description
-
-                            result.append(video_payload)
-
-                return result
-
-            def get_brand_name(brand):
-                """Takes the brand profile code and returns the brand name"""
-                query = f"""
-                SELECT DESCR
-                FROM IM_ITEM_PROF_COD
-                WHERE PROF_COD = '{brand}'"""
-                response = db.query(query)
-                if response:
-                    return response[0][0]
-                else:
-                    return brand
-
-            product_payload = {
-                'input': {
-                    'title': self.web_title,
-                    'status': 'ACTIVE' if self.visible else 'DRAFT',
-                    'seo': {},
-                    'metafields': get_metafields(),
-                }
-            }
-
-            media_payload = get_media_payload()
-            if media_payload:
-                product_payload['media'] = media_payload
-
-            if self.product_id:
-                product_payload['input']['id'] = f'gid://shopify/Product/{self.product_id}'
-
-            if self.brand:
-                product_payload['input']['vendor'] = get_brand_name(self.brand)
-
-            if self.type:
-                product_payload['input']['productType'] = self.type
-
-            if self.tags:
-                product_payload['input']['tags'] = self.tags.split(',')
-
-            if self.shopify_collections:
-                product_payload['input']['collectionsToJoin'] = [
-                    f'gid://shopify/Collection/{x}' for x in self.shopify_collections
-                ]
-
-                product_payload['input']['collectionsToLeave'] = [
-                    f'gid://shopify/Collection/{x}' for x in self.get_collections_to_leave()
-                ]
-
-            if self.meta_title:
-                product_payload['input']['seo']['title'] = self.meta_title
-
-            if self.html_description:
-                product_payload['input']['descriptionHtml'] = self.html_description
-
-            if self.meta_description:
-                product_payload['input']['seo']['description'] = self.meta_description
-
-            if not self.product_id:  # new product
-                # If Add Standalone Variant Option - will be deleted later
-                if self.is_bound:
-                    product_payload['input']['productOptions'] = [
-                        {'name': 'Option', 'values': [{'name': '9999 Gallon'}]}
-                    ]
-
-            return product_payload
-
-        def get_variant_metafields(self, variant):
-            result = []
-            # Variant Size
-            if variant.meta_variant_size['value']:
-                variant_size = {'value': variant.meta_variant_size['value']}
-                if variant.meta_variant_size['id']:
-                    variant_size['id'] = f'{Shopify.Metafield.prefix}{variant.meta_variant_size["id"]}'
-                else:
-                    variant_size['namespace'] = Catalog.metafields['Variant Size']['NAME_SPACE']
-                    variant_size['key'] = Catalog.metafields['Variant Size']['META_KEY']
-                    variant_size['type'] = Catalog.metafields['Variant Size']['TYPE']
-
-                result.append(variant_size)
-            else:
-                if variant.meta_variant_size['id']:
-                    Shopify.Metafield.delete(metafield_id=variant.meta_variant_size['id'])
-                    variant.meta_variant_size['id'] = None
-
-            return result
-
-        def get_bulk_variant_payload(self):
-            payload = {'media': [], 'strategy': 'REMOVE_STANDALONE_VARIANT', 'variants': []}
-            # If product_id exists, this is an update
-            if self.product_id:
-                payload['productId'] = f'gid://shopify/Product/{self.product_id}'
-
-            for child in self.variants:
-                variant_payload = {
-                    'inventoryItem': {
-                        'cost': child.cost,
-                        'tracked': True if not (self.is_preorder or self.is_workshop) else False,
-                        'requiresShipping': True,
-                        'sku': child.sku,
-                    },
-                    'inventoryPolicy': 'DENY',  # Prevents overselling,
-                    'price': child.price_1,  # May be overwritten by price_2 (below)
-                    'compareAtPrice': 0,
-                    'optionValues': {'optionName': 'Option'},
-                    'taxable': child.taxable,
-                    'metafields': self.get_variant_metafields(child),
-                }
-
-                if child.variant_id:
-                    variant_payload['id'] = f'gid://shopify/ProductVariant/{child.variant_id}'
-                else:
-                    if not self.is_preorder:
-                        variant_payload['inventoryQuantities'] = {
-                            'availableQuantity': child.buffered_quantity,
-                            'locationId': creds.Shopify.Location.n2,
+                            ]
                         }
 
-                if child.price_2:
-                    # If price_2 is set, use the lower of the two prices for sale price
-                    variant_payload['price'] = min(child.price_1, child.price_2)
-                    variant_payload['compareAtPrice'] = max(child.price_1, child.price_2)
+                        uploaded_file = Shopify.Product.Files.create(
+                            variables=stagedUploadsCreateVariables, file_list=file_list, eh=Catalog.eh
+                        )
+                        variant_payload['mediaSrc'] = uploaded_file[0]['url']
+                        child.has_variant_image = True
 
-                if len(self.variants) > 1:
-                    variant_payload['optionValues']['name'] = child.variant_name
+            payload['variants'].append(variant_payload)
 
-                else:
-                    # if child.custom_size:
-                    #     variant_payload['optionValues']['name'] = child.variant_name
-                    # else:
-                    variant_payload['optionValues']['name'] = 'Default Title'
+        return payload
 
-                if child.weight:
-                    variant_payload['inventoryItem']['measurement'] = {
-                        'weight': {'unit': 'POUNDS', 'value': child.weight}
+    def get_single_variant_payload(self):
+        payload = {
+            'input': {
+                'id': f'gid://shopify/ProductVariant/{self.variants[0].variant_id}',
+                'inventoryItem': {
+                    'cost': self.cost,
+                    'measurement': {},
+                    'requiresShipping': True,
+                    'sku': self.sku,
+                    'tracked': True if not (self.is_preorder or self.is_workshop) else False,
+                },
+                'inventoryPolicy': 'DENY',
+                'price': self.default_price,
+                'compareAtPrice': 0,
+                'taxable': self.taxable,
+            }
+        }
+
+        if not self.is_preorder:
+            payload['input']['inventoryQuantities'] = {}
+            payload['input']['inventoryQuantities']['availableQuantity'] = self.buffered_quantity
+            payload['input']['inventoryQuantities']['locationId'] = creds.Shopify.Location.n2
+
+        if self.weight:
+            payload['input']['inventoryItem']['measurement'] = {'weight': {'unit': 'POUNDS', 'value': self.weight}}
+        if self.sale_price:
+            payload['input']['price'] = min(self.sale_price, self.default_price)
+            payload['input']['compareAtPrice'] = max(self.sale_price, self.default_price)
+
+        return payload
+
+    def get_inventory_payload(self):
+        payload = {
+            'input': {'name': 'available', 'reason': 'other', 'ignoreCompareQuantity': True, 'quantities': []}
+        }
+
+        for child in self.variants:
+            if child.variant_id:
+                payload['input']['quantities'].append(
+                    {
+                        'inventoryItemId': f'gid://shopify/InventoryItem/{child.inventory_id}',
+                        'locationId': creds.Shopify.Location.n2,
+                        'quantity': child.buffered_quantity,
                     }
-
-                # Add Variant Image
-                for image in child.images:
-                    if image.is_variant_image:
-                        image_size = get_filesize(image.file_path)
-                        if image_size != image.size:
-                            file_list = [image.file_path]
-                            stagedUploadsCreateVariables = {
-                                'input': [
-                                    {
-                                        'filename': image.name,
-                                        'mimeType': 'image/jpg',
-                                        'httpMethod': 'POST',
-                                        'resource': 'IMAGE',
-                                    }
-                                ]
-                            }
-
-                            uploaded_file = Shopify.Product.Files.create(
-                                variables=stagedUploadsCreateVariables, file_list=file_list, eh=Catalog.eh
-                            )
-                            variant_payload['mediaSrc'] = uploaded_file[0]['url']
-                            child.has_variant_image = True
-
-                payload['variants'].append(variant_payload)
-
-            return payload
-
-        def get_single_variant_payload(self):
-            payload = {
-                'input': {
-                    'id': f'gid://shopify/ProductVariant/{self.variants[0].variant_id}',
-                    'inventoryItem': {
-                        'cost': self.cost,
-                        'measurement': {},
-                        'requiresShipping': True,
-                        'sku': self.sku,
-                        'tracked': True if not (self.is_preorder or self.is_workshop) else False,
-                    },
-                    'inventoryPolicy': 'DENY',
-                    'price': self.default_price,
-                    'compareAtPrice': 0,
-                    'taxable': self.taxable,
-                }
-            }
-
-            if not self.is_preorder:
-                payload['input']['inventoryQuantities'] = {}
-                payload['input']['inventoryQuantities']['availableQuantity'] = self.buffered_quantity
-                payload['input']['inventoryQuantities']['locationId'] = creds.Shopify.Location.n2
-
-            if self.weight:
-                payload['input']['inventoryItem']['measurement'] = {
-                    'weight': {'unit': 'POUNDS', 'value': self.weight}
-                }
-            if self.sale_price:
-                payload['input']['price'] = min(self.sale_price, self.default_price)
-                payload['input']['compareAtPrice'] = max(self.sale_price, self.default_price)
-
-            return payload
-
-        def get_inventory_payload(self):
-            payload = {
-                'input': {'name': 'available', 'reason': 'other', 'ignoreCompareQuantity': True, 'quantities': []}
-            }
-
-            for child in self.variants:
-                if child.variant_id:
-                    payload['input']['quantities'].append(
-                        {
-                            'inventoryItemId': f'gid://shopify/InventoryItem/{child.inventory_id}',
-                            'locationId': creds.Shopify.Location.n2,
-                            'quantity': child.buffered_quantity,
-                        }
-                    )
-            return payload
-
-        def get_variant_image_payload(self):
-            # Add Variant Image
-            variant_image_payload = []
-            for child in self.variants:
-                if not child.has_variant_image:
-                    if self.verbose:
-                        Catalog.logger.info(f'Variant {child.sku} is missing an image. Checking images for variant')
-                    for image in child.images:
-                        if self.verbose:
-                            Catalog.logger.info(f'Checking Image: {image.name}')
-                        if image.is_variant_image:
-                            if self.verbose:
-                                Catalog.logger.info(f'Image: {image.name} is the variant image')
-                                Catalog.logger.info(f'Image ID: {image.shopify_id}')
-                                Catalog.logger.info(f'Variant ID: {child.variant_id}')
-                            variant_image_payload.append(
-                                {
-                                    'id': f'{Shopify.Product.Variant.prefix}{child.variant_id}',
-                                    'imageId': f'{Shopify.Product.Variant.Image.prefix}{image.shopify_id}',
-                                }
-                            )
-
-            return variant_image_payload
-
-        def process(self):
-            """Process Product Creation/Delete/Update in Shopify and Middleware."""
-
-            def create():
-                """Create new product in Shopify and Middleware."""
-                # Create Base Product
-                response = Shopify.Product.create(self.get_payload())
-                self.get_product_meta_ids(response)
-
-                # Assign Default Variant Properties
-                self.variants[0].variant_id = response['variant_ids'][0]
-                self.variants[0].option_id = self.option_id
-
-                if len(self.variants) > 1:
-                    self.variants[0].option_value_id = response['option_value_ids'][0]
-
-                self.variants[0].inventory_id = response['inventory_ids'][0]
-
-                if len(self.variants) > 1:
-                    # Save Default Option Value ID for Deletion
-                    delete_target = self.variants[0].option_value_id
-                    # Create Variants in Bulk
-                    self.variants[0].variant_id = None
-                    variant_payload = self.get_bulk_variant_payload()
-                    variant_response = Shopify.Product.Variant.create_bulk(variant_payload)
-
-                    for variant in self.variants:
-                        variant.option_id = self.option_id
-                        variant.option_value_id = variant_response[variant.sku]['option_value_id']
-                        variant.inventory_id = variant_response[variant.sku]['inventory_id']
-                        variant.variant_id = variant_response[variant.sku]['variant_id']
-                        variant.has_variant_image = variant_response[variant.sku]['has_image']
-
-                    # Remove Default Variant
-                    Shopify.Product.Option.update(
-                        product_id=self.product_id,
-                        option_id=self.option_id,
-                        option_values_to_delete=[delete_target],
-                    )
-
-                    Shopify.Product.Option.reorder(self)
-
-                    # Wait for images to process
-                    time.sleep(3)
-                    Shopify.Product.Variant.Image.create(self.product_id, self.get_variant_image_payload())
-                    self.get_variant_meta_ids(variant_response)
-
-                else:
-                    single_payload = self.get_single_variant_payload()
-                    variant_response = Shopify.Product.Variant.update_single(single_payload)
-
-                # Add Product to Sales Channel - by default, all are turned on.
-                Shopify.Product.publish(self.product_id)
-
-            def update():
-                """Will update existing product. Will clear out custom field data and reinsert."""
-
-                product_payload = self.get_payload()
-                response = Shopify.Product.update(product_payload)
-                self.get_product_meta_ids(response)
-                Shopify.Product.Media.reorder(self)  # Reorder media if necessary
-
-                if self.is_bound:
-                    # Update the Variants
-                    variant_response = Shopify.Product.Variant.update_bulk(self.get_bulk_variant_payload())
-
-                    for variant in self.variants:
-                        variant.option_id = self.option_id
-                        variant.option_value_id = variant_response[variant.sku]['option_value_id']
-                        variant.variant_id = variant_response[variant.sku]['variant_id']
-                        variant.has_variant_image = variant_response[variant.sku]['has_image']
-
-                    Shopify.Product.Option.reorder(self)
-
-                    # Wait for images to process
-                    time.sleep(3)
-                    Shopify.Product.Variant.Image.create(self.product_id, self.get_variant_image_payload())
-                    self.get_variant_meta_ids(variant_response)
-
-                else:
-                    variant_payload = self.get_single_variant_payload()
-                    variant_response = Shopify.Product.Variant.update_single(variant_payload)
-
-            try:
-                if not self.inventory_only:
-                    if self.product_id:
-                        update()
-                    else:
-                        create()
-                    # Update Middleware (Insert or Update)
-                    Database.Shopify.Product.sync(product=self, eh=Catalog.eh, verbose=self.verbose)
-
-                # Update Inventory
-                if not self.is_preorder:
-                    Shopify.Inventory.update(self.get_inventory_payload())
-
-            except Exception as e:
-                title = self.web_title + ' - ' + (self.binding_id if self.binding_id else self.sku)
-                Catalog.error_handler.add_error_v(
-                    f'Error processing product {title}: {e}', origin='Product.process', traceback=tb()
                 )
-                return False, self.product_data
+        return payload
+
+    def get_variant_image_payload(self):
+        # Add Variant Image
+        variant_image_payload = []
+        for child in self.variants:
+            if not child.has_variant_image:
+                if self.verbose:
+                    Product.logger.info(f'Variant {child.sku} is missing an image. Checking images for variant')
+                for image in child.images:
+                    if self.verbose:
+                        Product.logger.info(f'Checking Image: {image.name}')
+                    if image.is_variant_image:
+                        if self.verbose:
+                            Product.logger.info(f'Image: {image.name} is the variant image')
+                            Product.logger.info(f'Image ID: {image.shopify_id}')
+                            Product.logger.info(f'Variant ID: {child.variant_id}')
+                        variant_image_payload.append(
+                            {
+                                'id': f'{Shopify.Product.Variant.prefix}{child.variant_id}',
+                                'imageId': f'{Shopify.Product.Variant.Image.prefix}{image.shopify_id}',
+                            }
+                        )
+
+        return variant_image_payload
+
+    def process(self):
+        """Process Product Creation/Delete/Update in Shopify and Middleware."""
+
+        def create():
+            """Create new product in Shopify and Middleware."""
+            # Create Base Product
+            response = Shopify.Product.create(self.get_payload())
+            self.get_product_meta_ids(response)
+
+            # Assign Default Variant Properties
+            self.variants[0].variant_id = response['variant_ids'][0]
+            self.variants[0].option_id = self.option_id
+
+            if len(self.variants) > 1:
+                self.variants[0].option_value_id = response['option_value_ids'][0]
+
+            self.variants[0].inventory_id = response['inventory_ids'][0]
+
+            if len(self.variants) > 1:
+                # Save Default Option Value ID for Deletion
+                delete_target = self.variants[0].option_value_id
+                # Create Variants in Bulk
+                self.variants[0].variant_id = None
+                variant_payload = self.get_bulk_variant_payload()
+                variant_response = Shopify.Product.Variant.create_bulk(variant_payload)
+
+                for variant in self.variants:
+                    variant.option_id = self.option_id
+                    variant.option_value_id = variant_response[variant.sku]['option_value_id']
+                    variant.inventory_id = variant_response[variant.sku]['inventory_id']
+                    variant.variant_id = variant_response[variant.sku]['variant_id']
+                    variant.has_variant_image = variant_response[variant.sku]['has_image']
+
+                # Remove Default Variant
+                Shopify.Product.Option.update(
+                    product_id=self.product_id, option_id=self.option_id, option_values_to_delete=[delete_target]
+                )
+
+                Shopify.Product.Option.reorder(self)
+
+                # Wait for images to process
+                time.sleep(3)
+                Shopify.Product.Variant.Image.create(self.product_id, self.get_variant_image_payload())
+                self.get_variant_meta_ids(variant_response)
 
             else:
-                title = self.web_title + ' - ' + (self.binding_id if self.binding_id else self.sku)
-                Catalog.logger.success(f'Product {title} processed successfully.')
-                return True, self.product_data
+                single_payload = self.get_single_variant_payload()
+                variant_response = Shopify.Product.Variant.update_single(single_payload)
 
-        def replace_image(self, image) -> bool:
-            """Replace image in Shopify and SQL."""
-            self.delete_image(image)
-            image.shopify_id = Shopify.Product.Media.Image.create(image)
-            Database.Shopify.Product.Media.Image.insert(image)
+            # Add Product to Sales Channel - by default, all are turned on.
+            Shopify.Product.publish(self.product_id)
 
-        def get_product_meta_ids(self, response):
-            """Used to get metafield IDs for products from response."""
-            if 'product_id' in response:
-                self.product_id = response['product_id']
-            if 'option_ids' in response:
-                self.option_id = response['option_ids'][0]
+        def update():
+            """Will update existing product. Will clear out custom field data and reinsert."""
 
-            def get_metafield_ids(response):
-                for meta_id in response['meta_ids']:
-                    if meta_id['namespace'] == 'product-specification':
-                        if meta_id['key'] == Catalog.metafields['Botanical Name']['META_KEY']:
-                            self.meta_botanical_name['id'] = meta_id['id']
-                        elif meta_id['key'] == Catalog.metafields['Growing Zone']['META_KEY']:
-                            self.meta_climate_zone['id'] = meta_id['id']
-                        elif meta_id['key'] == Catalog.metafields['Growing Zone List']['META_KEY']:
-                            self.meta_climate_zone_list['id'] = meta_id['id']
-                        elif meta_id['key'] == Catalog.metafields['Plant Type']['META_KEY']:
-                            self.meta_plant_type['id'] = meta_id['id']
-                        elif meta_id['key'] == Catalog.metafields['Mature Height']['META_KEY']:
-                            self.meta_height['id'] = meta_id['id']
-                        elif meta_id['key'] == Catalog.metafields['Mature Width']['META_KEY']:
-                            self.meta_width['id'] = meta_id['id']
-                        elif meta_id['key'] == Catalog.metafields['Light Requirements']['META_KEY']:
-                            self.meta_light_requirements['id'] = meta_id['id']
-                        elif meta_id['key'] == Catalog.metafields['Size']['META_KEY']:
-                            self.meta_size['id'] = meta_id['id']
-                        elif meta_id['key'] == Catalog.metafields['Bloom Season']['META_KEY']:
-                            self.meta_bloom_season['id'] = meta_id['id']
-                        elif meta_id['key'] == Catalog.metafields['Features']['META_KEY']:
-                            self.meta_features['id'] = meta_id['id']
-                        elif meta_id['key'] == Catalog.metafields['Color']['META_KEY']:
-                            self.meta_colors['id'] = meta_id['id']
-                        elif meta_id['key'] == Catalog.metafields['Bloom Color']['META_KEY']:
-                            self.meta_bloom_color['id'] = meta_id['id']
+            product_payload = self.get_payload()
+            response = Shopify.Product.update(product_payload)
+            self.get_product_meta_ids(response)
+            Shopify.Product.Media.reorder(self)  # Reorder media if necessary
 
-                    elif meta_id['namespace'] == 'product-status':
-                        if meta_id['key'] == Catalog.metafields['Preorder Item']['META_KEY']:
-                            self.meta_is_preorder['id'] = meta_id['id']
-                        elif meta_id['key'] == Catalog.metafields['Preorder Release Date']['META_KEY']:
-                            self.meta_preorder_release_date['id'] = meta_id['id']
-                        elif meta_id['key'] == Catalog.metafields['Preorder Message']['META_KEY']:
-                            self.meta_preorder_message['id'] = meta_id['id']
-                        elif meta_id['key'] == Catalog.metafields['Featured']['META_KEY']:
-                            self.meta_is_featured['id'] = meta_id['id']
-                        elif meta_id['key'] == Catalog.metafields['In Store Only']['META_KEY']:
-                            self.meta_in_store_only['id'] = meta_id['id']
-                        elif meta_id['key'] == Catalog.metafields['On Sale']['META_KEY']:
-                            self.meta_is_on_sale['id'] = meta_id['id']
-                        elif meta_id['key'] == Catalog.metafields['On Sale Description']['META_KEY']:
-                            self.meta_sale_description['id'] = meta_id['id']
-                        elif meta_id['key'] == Catalog.metafields['New']['META_KEY']:
-                            self.meta_is_new['id'] = meta_id['id']
-                        elif meta_id['key'] == Catalog.metafields['Back In Stock']['META_KEY']:
-                            self.meta_is_back_in_stock['id'] = meta_id['id']
+            if self.is_bound:
+                # Update the Variants
+                variant_response = Shopify.Product.Variant.update_bulk(self.get_bulk_variant_payload())
 
-            if 'meta_ids' in response:
-                get_metafield_ids(response)
-
-            def get_media_ids(response):
-                for x in self.media:
-                    x.product_id = self.product_id
-                    x.shopify_id = response['media_ids'][x.temp_sort_order]
-                    if x.temp_sort_order > x.sort_order:
-                        # Newly added media will be at the end of the media response list.
-                        # If that expected position is higher than the required position, add to job queue.
-                        self.reorder_media_queue.append(x)
-
-                    elif response['media_ids'].index(x.shopify_id) != self.media.index(x):
-                        # This block accounts for existing media that has changed position.
-                        # Currently, this only applies to videos that are a comma separated list.
-                        x.sort_order = self.media.index(x)
-                        self.reorder_media_queue.append(x)
-
-            if 'media_ids' in response:
-                get_media_ids(response)
-
-        def get_variant_meta_ids(self, response):
-            """Used to get metafield IDs for variants."""
-            for item in response:
                 for variant in self.variants:
-                    if variant.sku == item:
-                        if 'variant_meta_ids' in response[item]:
-                            for variant_meta_id in response[item]['variant_meta_ids']:
-                                # Variant Size
-                                if (
-                                    variant_meta_id['key'] == 'variant_size'
-                                    and variant.meta_variant_size['value'] == variant_meta_id['value']
-                                ):
-                                    variant.meta_variant_size['id'] = variant_meta_id['id']
+                    variant.option_id = self.option_id
+                    variant.option_value_id = variant_response[variant.sku]['option_value_id']
+                    variant.variant_id = variant_response[variant.sku]['variant_id']
+                    variant.has_variant_image = variant_response[variant.sku]['has_image']
 
-        def get_shopify_collections(self):
-            """Get Shopify Collection IDs from Middleware Category IDs"""
-            result = []
+                Shopify.Product.Option.reorder(self)
 
-            if self.cp_ecommerce_categories:
-                for category in self.cp_ecommerce_categories:
-                    # Get Collection ID from Middleware Category ID
-                    q = f"""
+                # Wait for images to process
+                time.sleep(3)
+                Shopify.Product.Variant.Image.create(self.product_id, self.get_variant_image_payload())
+                self.get_variant_meta_ids(variant_response)
+
+            else:
+                variant_payload = self.get_single_variant_payload()
+                variant_response = Shopify.Product.Variant.update_single(variant_payload)
+
+        try:
+            if not self.inventory_only:
+                if self.product_id:
+                    update()
+                else:
+                    create()
+                # Update Middleware (Insert or Update)
+                db.Shopify.Product.sync(product=self, eh=Catalog.eh, verbose=self.verbose)
+
+            # Update Inventory
+            if not self.is_preorder:
+                Shopify.Inventory.update(self.get_inventory_payload())
+
+        except Exception as e:
+            msg = self.web_title + ' - ' + (self.binding_id if self.binding_id else self.sku)
+            Product.error_handler.add_error_v(
+                f'Error processing product {msg}: {e}', origin='Product.process', traceback=tb()
+            )
+            return False, self.product_data
+
+        else:
+            msg = self.web_title + ' - ' + (self.binding_id if self.binding_id else self.sku)
+            Product.logger.success(f'Product {msg} processed successfully.')
+            return True, self.product_data
+
+    def get_product_meta_ids(self, response):
+        """Used to get metafield IDs for products from response."""
+        if 'product_id' in response:
+            self.product_id = response['product_id']
+        if 'option_ids' in response:
+            self.option_id = response['option_ids'][0]
+
+        def get_metafield_ids(response):
+            for meta_id in response['meta_ids']:
+                if meta_id['namespace'] == 'product-specification':
+                    if meta_id['key'] == Catalog.metafields['Botanical Name']['META_KEY']:
+                        self.meta_botanical_name['id'] = meta_id['id']
+                    elif meta_id['key'] == Catalog.metafields['Growing Zone']['META_KEY']:
+                        self.meta_climate_zone['id'] = meta_id['id']
+                    elif meta_id['key'] == Catalog.metafields['Growing Zone List']['META_KEY']:
+                        self.meta_climate_zone_list['id'] = meta_id['id']
+                    elif meta_id['key'] == Catalog.metafields['Plant Type']['META_KEY']:
+                        self.meta_plant_type['id'] = meta_id['id']
+                    elif meta_id['key'] == Catalog.metafields['Mature Height']['META_KEY']:
+                        self.meta_height['id'] = meta_id['id']
+                    elif meta_id['key'] == Catalog.metafields['Mature Width']['META_KEY']:
+                        self.meta_width['id'] = meta_id['id']
+                    elif meta_id['key'] == Catalog.metafields['Light Requirements']['META_KEY']:
+                        self.meta_light_requirements['id'] = meta_id['id']
+                    elif meta_id['key'] == Catalog.metafields['Size']['META_KEY']:
+                        self.meta_size['id'] = meta_id['id']
+                    elif meta_id['key'] == Catalog.metafields['Bloom Season']['META_KEY']:
+                        self.meta_bloom_season['id'] = meta_id['id']
+                    elif meta_id['key'] == Catalog.metafields['Features']['META_KEY']:
+                        self.meta_features['id'] = meta_id['id']
+                    elif meta_id['key'] == Catalog.metafields['Color']['META_KEY']:
+                        self.meta_colors['id'] = meta_id['id']
+                    elif meta_id['key'] == Catalog.metafields['Bloom Color']['META_KEY']:
+                        self.meta_bloom_color['id'] = meta_id['id']
+
+                elif meta_id['namespace'] == 'product-status':
+                    if meta_id['key'] == Catalog.metafields['Preorder Item']['META_KEY']:
+                        self.meta_is_preorder['id'] = meta_id['id']
+                    elif meta_id['key'] == Catalog.metafields['Preorder Release Date']['META_KEY']:
+                        self.meta_preorder_release_date['id'] = meta_id['id']
+                    elif meta_id['key'] == Catalog.metafields['Preorder Message']['META_KEY']:
+                        self.meta_preorder_message['id'] = meta_id['id']
+                    elif meta_id['key'] == Catalog.metafields['Featured']['META_KEY']:
+                        self.meta_is_featured['id'] = meta_id['id']
+                    elif meta_id['key'] == Catalog.metafields['In Store Only']['META_KEY']:
+                        self.meta_in_store_only['id'] = meta_id['id']
+                    elif meta_id['key'] == Catalog.metafields['On Sale']['META_KEY']:
+                        self.meta_is_on_sale['id'] = meta_id['id']
+                    elif meta_id['key'] == Catalog.metafields['On Sale Description']['META_KEY']:
+                        self.meta_sale_description['id'] = meta_id['id']
+                    elif meta_id['key'] == Catalog.metafields['New']['META_KEY']:
+                        self.meta_is_new['id'] = meta_id['id']
+                    elif meta_id['key'] == Catalog.metafields['Back In Stock']['META_KEY']:
+                        self.meta_is_back_in_stock['id'] = meta_id['id']
+
+        if 'meta_ids' in response:
+            get_metafield_ids(response)
+
+        def get_media_ids(response):
+            for x in self.media:
+                x.product_id = self.product_id
+                x.shopify_id = response['media_ids'][x.temp_sort_order]
+                if x.temp_sort_order > x.sort_order:
+                    # Newly added media will be at the end of the media response list.
+                    # If that expected position is higher than the required position, add to job queue.
+                    self.reorder_media_queue.append(x)
+
+                elif response['media_ids'].index(x.shopify_id) != self.media.index(x):
+                    # This block accounts for existing media that has changed position.
+                    # Currently, this only applies to videos that are a comma separated list.
+                    x.sort_order = self.media.index(x)
+                    self.reorder_media_queue.append(x)
+
+        if 'media_ids' in response:
+            get_media_ids(response)
+
+    def get_variant_meta_ids(self, response):
+        """Used to get metafield IDs for variants."""
+        for item in response:
+            for variant in self.variants:
+                if variant.sku == item:
+                    if 'variant_meta_ids' in response[item]:
+                        for variant_meta_id in response[item]['variant_meta_ids']:
+                            # Variant Size
+                            if (
+                                variant_meta_id['key'] == 'variant_size'
+                                and variant.meta_variant_size['value'] == variant_meta_id['value']
+                            ):
+                                variant.meta_variant_size['id'] = variant_meta_id['id']
+
+    def get_shopify_collections(self):
+        """Get Shopify Collection IDs from Middleware Category IDs"""
+        result = []
+
+        if self.cp_ecommerce_categories:
+            for category in self.cp_ecommerce_categories:
+                # Get Collection ID from Middleware Category ID
+                q = f"""
                         SELECT COLLECTION_ID 
                         FROM {Table.Middleware.collections}
                         WHERE CP_CATEG_ID = '{category}'
                         """
-                    response = db.query(q)
-                    try:
-                        result.append(response[0][0])
-                    except:
-                        continue
-                    else:
-                        top_level = False
-                        while not top_level:
-                            # Get Parent Collection ID from Middleware Category ID
-                            q = f"""
+                response = db.query(q)
+                try:
+                    result.append(response[0][0])
+                except:
+                    continue
+                else:
+                    top_level = False
+                    while not top_level:
+                        # Get Parent Collection ID from Middleware Category ID
+                        q = f"""
                                 SELECT COLLECTION_ID
                                 FROM SN_SHOP_CATEG
                                 WHERE CP_CATEG_ID = (SELECT CP_PARENT_ID
                                                     FROM SN_SHOP_CATEG
                                                     WHERE CP_CATEG_ID = '{category}')
                                 """
-                            parent_response = db.query(q)
-                            try:
-                                result.append(parent_response[0][0])
-                            except:
-                                top_level = True
-                            else:
-                                category = parent_response[0][0]
+                        parent_response = db.query(q)
+                        try:
+                            result.append(parent_response[0][0])
+                        except:
+                            top_level = True
+                        else:
+                            category = parent_response[0][0]
 
-            return result
+        return result
 
-        def get_collection_names(self):
-            """Get Collection Names from Middleware Category IDs"""
-            result = []
-            if self.cp_ecommerce_categories:
-                for category in self.cp_ecommerce_categories:
-                    q = f"""
+    def get_collection_names(self):
+        """Get Collection Names from Middleware Category IDs"""
+        result = []
+        if self.cp_ecommerce_categories:
+            for category in self.cp_ecommerce_categories:
+                q = f"""
                         SELECT DESCR
                         FROM EC_CATEG
                         WHERE CATEG_ID = '{category}'
                         """
-                    response = db.query(q)
-                    try:
-                        result.append(response[0][0])
-                    except:
-                        continue
-                    else:
-                        top_level = False
-                        while not top_level:
-                            q = f"""
+                response = db.query(q)
+                try:
+                    result.append(response[0][0])
+                except:
+                    continue
+                else:
+                    top_level = False
+                    while not top_level:
+                        q = f"""
                                 SELECT DESCR
                                 FROM EC_CATEG
                                 WHERE CATEG_ID = (SELECT PARENT_ID
                                                     FROM EC_CATEG
                                                     WHERE CATEG_ID = '{category}')
                                 """
-                            parent_response = db.query(q)
-                            try:
-                                result.append(parent_response[0][0])
-                            except:
-                                top_level = True
-                            else:
-                                category = parent_response[0][0]
-            return result
+                        parent_response = db.query(q)
+                        try:
+                            result.append(parent_response[0][0])
+                        except:
+                            top_level = True
+                        else:
+                            category = parent_response[0][0]
+        return result
 
-        @staticmethod
-        def delete(sku, update_timestamp=False):
-            """Delete Product from Shopify and Middleware."""
-            if creds.Integrator.verbose_logging:
-                Catalog.logger.info(f'Deleting Product {sku}.')
-
-            def delete_product(sku, product_id, update_timestamp=False):
-                """Helper function."""
-                if product_id:
-                    Shopify.Product.delete(product_id)
-
-                Database.Shopify.Product.delete(product_id)
-
-                if sku and update_timestamp:
-                    Catalog.Product.update_timestamp(sku)
-
-            # Basic Delete Payload
-            delete_payload = {'sku': sku}
-
-            # Get Product ID
-            product_id = Database.Shopify.Product.get_id(item_no=sku)
-
-            # Add Binding ID to Payload if it exists
-            binding_id = Database.Shopify.Product.get_binding_id(product_id=product_id)
-            if binding_id is not None:
-                delete_payload['binding_id'] = binding_id
-
-            if binding_id:
-                total_variants_in_mw = Catalog.Product.get_family_members(binding_id=binding_id, count=True)
-                # Delete Single Product/Variants
-                if total_variants_in_mw < 3:
-                    if creds.Integrator.verbose_logging:
-                        Catalog.logger.info('Case 1')
-                    # Must have at least 3 Products before deletion to remain a bound product. Will delete product.
-                    delete_product(sku=sku, product_id=product_id, update_timestamp=update_timestamp)
-
-                elif Catalog.Product.is_parent(sku):
-                    if creds.Integrator.verbose_logging:
-                        Catalog.logger.info('Case 2 - Parent Product. Will delete product.')
-                    delete_product(sku=sku, product_id=product_id, update_timestamp=update_timestamp)
-
-                else:
-                    if creds.Integrator.verbose_logging:
-                        Catalog.logger.info('Case 3 - Child Product. Will delete variant.')
-                    option_id = Database.Shopify.Product.Variant.get_option_id(sku=sku)
-                    opt_val_id = Database.Shopify.Product.Variant.get_option_value_id(sku=sku)
-                    variant_id = Database.Shopify.Product.Variant.get_id(sku=sku)
-                    if creds.Integrator.verbose_logging:
-                        Catalog.logger.info(f'Option ID: {option_id}')
-                        Catalog.logger.info(f'Option Value ID: {opt_val_id}')
-                        Catalog.logger.info(f'Variant ID: {variant_id}')
-
-                    Shopify.Product.Option.update(
-                        product_id=product_id, option_id=option_id, option_values_to_delete=[opt_val_id]
-                    )
-
-                    # Delete Media Associated with Variant
-                    Shopify.Product.Variant.Image.delete_all(sku=sku, product_id=product_id)
-
-                    # Delete Variant from Middleware
-                    Database.Shopify.Product.Variant.delete(variant_id)
-
-            else:
-                Catalog.logger.info('No Binding ID - Delete Single Product')
-                delete_product(sku=sku, product_id=product_id, update_timestamp=update_timestamp)
-
-        def delete_image(self, image):
-            """Delete image from Shopify and Middleware."""
-            Shopify.Product.Media.Image.delete(image)
-            Database.Shopify.Product.Media.Image.delete(image)
-
-        @staticmethod
-        def is_parent(sku):
-            """Check if this product is a parent product."""
-            query = f"""
+    @staticmethod
+    def is_parent(sku):
+        """Check if this product is a parent product."""
+        query = f"""
             SELECT IS_PARENT
             FROM {Table.Middleware.products}
             WHERE ITEM_NO = '{sku}'
             """
-            response = db.query(query)
-            if response is not None:
-                return response[0][0] == 1
+        response = db.query(query)
+        if response is not None:
+            return response[0][0] == 1
 
-        def remove_parent(self):
-            if self.verbose:
-                Catalog.logger.info('Entering Remove Parent Function of Product Class')
-            """Remove parent status from all children"""
+    @staticmethod
+    def get_product_id(sku):
+        query = f"SELECT PRODUCT_ID FROM {Table.Middleware.products} WHERE ITEM_NO = '{sku}'"
+        response = db.query(query)
+        return response[0][0] if response is not None else None
+
+    @staticmethod
+    def get_binding_id(sku, middleware=False):
+        if middleware:
             query = f"""
-                    UPDATE {Table.CP.Item.table} 
-                    SET {Table.CP.Item.Column.is_parent} = 'N', LST_MAINT_DT = GETDATE()
-                    WHERE {Table.CP.Item.Column.binding_id} = '{self.binding_id}'
-                    """
-            db.query(query)
-            if self.verbose:
-                Catalog.logger.info('Parent status removed from all children.')
-
-        def is_last_variant(self, binding_id):
-            """Check if this is the last variant in the parent product."""
-            if binding_id is None:
-                return True
-            query = f"""SELECT COUNT(*) 
-            FROM {Table.Middleware.products} 
-            WHERE BINDING_ID = '{binding_id}'"""
-            response = db.query(query)
-            if response is not None:
-                return response[0][0] == 1
-
-        @staticmethod
-        def get_product_id(sku):
-            query = f"SELECT PRODUCT_ID FROM {Table.Middleware.products} WHERE ITEM_NO = '{sku}'"
-            response = db.query(query)
-            return response[0][0] if response is not None else None
-
-        @staticmethod
-        def get_binding_id(sku, middleware=False):
-            if middleware:
-                query = f"""
                 SELECT BINDING_ID
                 FROM {Table.Middleware.products}
                 WHERE ITEM_NO = '{sku}'
                 """
-            else:
-                query = f"""
+        else:
+            query = f"""
                 SELECT {Table.CP.Item.Column.binding_id}
                 FROM {Table.CP.Item.table}
                 WHERE ITEM_NO = '{sku}'
                 """
-            response = db.query(query)
-            return response[0][0] if response and response[0][0] is not None else None
+        response = db.query(query)
+        return response[0][0] if response and response[0][0] is not None else None
 
-        @staticmethod
-        def set_parent(binding_id, remove_current=False):
-            # Get Family Members.
-            family_members = Catalog.Product.get_family_members(binding_id=binding_id, price=True)
-            # Choose the lowest price family member as the parent.
-            parent_sku = min(family_members, key=lambda x: x['price_1'])['sku']
-            Catalog.logger.info(f'Family Members: {family_members}, Target new parent item: {parent_sku}')
+    @staticmethod
+    def set_parent(binding_id, remove_current=False):
+        # Get Family Members.
+        family_members = Product.get_family_members(binding_id=binding_id, price=True)
+        # Choose the lowest price family member as the parent.
+        parent_sku = min(family_members, key=lambda x: x['price_1'])['sku']
+        Product.logger.info(f'Family Members: {family_members}, Target new parent item: {parent_sku}')
 
-            if remove_current:
-                # Remove Parent Status from all children.
-                remove_parent_query = f"""
+        if remove_current:
+            # Remove Parent Status from all children.
+            remove_parent_query = f"""
                         UPDATE {Table.CP.Item.table} 
                         SET {Table.CP.Item.Column.is_parent} = 'N', 
                         LST_MAINT_DT = GETDATE()
                         WHERE {Table.CP.Item.Column.binding_id} = '{binding_id}'
                         """
-                remove_parent_response = db.query(remove_parent_query)
-                if remove_parent_response['code'] == 200:
-                    Catalog.logger.success(f'Parent status removed from all children of binding: {binding_id}.')
-                else:
-                    Catalog.error_handler.add_error_v(
-                        error=f'Error removing parent status from children of binding: {binding_id}. Response: {remove_parent_response}'
-                    )
+            remove_parent_response = db.query(remove_parent_query)
+            if remove_parent_response['code'] == 200:
+                Product.logger.success(f'Parent status removed from all children of binding: {binding_id}.')
+            else:
+                Product.error_handler.add_error_v(
+                    error=f'Error removing parent status from children of binding: {binding_id}. Response: {remove_parent_response}'
+                )
 
-            # Set Parent Status for new parent.
-            query = f"""
+        # Set Parent Status for new parent.
+        query = f"""
             UPDATE {Table.CP.Item.table}
             SET {Table.CP.Item.Column.is_parent} = 'Y'
             WHERE ITEM_NO = '{parent_sku}'
             """
-            set_parent_response = db.query(query)
+        set_parent_response = db.query(query)
 
-            if set_parent_response['code'] == 200:
-                Catalog.logger.success(f'Parent status set for {parent_sku}')
-            else:
-                Catalog.error_handler.add_error_v(
-                    error=f'Error setting parent status for {parent_sku}. Response {set_parent_response}'
-                )
+        if set_parent_response['code'] == 200:
+            Product.logger.success(f'Parent status set for {parent_sku}')
+        else:
+            Product.error_handler.add_error_v(
+                error=f'Error setting parent status for {parent_sku}. Response {set_parent_response}'
+            )
 
-            return parent_sku
+        return parent_sku
 
-        @staticmethod
-        def get_family_members(binding_id, count=False, price=False, counterpoint=False):
-            """Get all items associated with a binding_id. If count is True, return the count."""
-            # return a count of items in family
-            if count:
-                query = f"""
+    @staticmethod
+    def get_family_members(binding_id, count=False, price=False, counterpoint=False):
+        """Get all items associated with a binding_id. If count is True, return the count."""
+        # return a count of items in family
+        if count:
+            query = f"""
                 SELECT COUNT(ITEM_NO)
                 FROM {Table.Middleware.products}
                 WHERE BINDING_ID = '{binding_id}'
                 """
-                response = db.query(query)
-                if response:
-                    try:
-                        return response[0][0]
-                    except:
-                        Catalog.error_handler.add_error_v(
-                            error=f'Error getting family member count for {binding_id}. Response: {response}'
-                        )
-                        return 0
-                else:
+            response = db.query(query)
+            if response:
+                try:
+                    return response[0][0]
+                except:
+                    Product.error_handler.add_error_v(
+                        error=f'Error getting family member count for {binding_id}. Response: {response}'
+                    )
                     return 0
-
             else:
-                if price:
-                    # include retail price for each item
-                    query = f"""
+                return 0
+
+        else:
+            if price:
+                # include retail price for each item
+                query = f"""
                     SELECT ITEM_NO, PRC_1
                     FROM {Table.CP.Item.table}
                     WHERE {Table.CP.Item.Column.binding_id} = '{binding_id}' AND 
                     {Table.CP.Item.Column.web_enabled} = 'Y'
                     """
-                    response = db.query(query)
-                    if response is not None:
-                        return [{'sku': x[0], 'price_1': float(x[1])} for x in response]
+                response = db.query(query)
+                if response is not None:
+                    return [{'sku': x[0], 'price_1': float(x[1])} for x in response]
 
-                elif counterpoint:
-                    query = f"""
+            elif counterpoint:
+                query = f"""
                     SELECT ITEM_NO
                     FROM {Table.CP.Item.table}
                     WHERE {Table.CP.Item.Column.binding_id} = '{binding_id}' AND
                     {Table.CP.Item.Column.web_enabled} = 'Y'
                     """
-                    response = db.query(query)
-                    if response is not None:
-                        return [x[0] for x in response]
+                response = db.query(query)
+                if response is not None:
+                    return [x[0] for x in response]
 
-                else:
-                    query = f"""
+            else:
+                query = f"""
                     SELECT ITEM_NO
                     FROM {Table.Middleware.products}
                     WHERE BINDING_ID = '{binding_id}'
                     """
-                    response = db.query(query)
-                    if response is not None:
-                        return [x[0] for x in response]
+                response = db.query(query)
+                if response is not None:
+                    return [x[0] for x in response]
 
-        @staticmethod
-        def update_timestamp(sku):
-            """Updates the LST_MAINT_DT field in Counterpoint for a given SKU."""
-            query = f"""
-            UPDATE {Table.CP.Item.table}
-            SET LST_MAINT_DT = GETDATE()
-            WHERE ITEM_NO = '{sku}'
-            """
-            response = db.query(query)
-            if response['code'] == 200:
-                Catalog.logger.success(f'Timestamp updated for {sku}.')
+    @staticmethod
+    def delete(sku, update_timestamp=False):
+        """Delete Product from Shopify and Middleware."""
+        if creds.Integrator.verbose_logging:
+            Product.logger.info(f'Deleting Product {sku}.')
+
+        def delete_product(sku, product_id, update_timestamp=False):
+            """Helper function."""
+            if product_id:
+                Shopify.Product.delete(product_id)
+
+            db.Shopify.Product.delete(product_id)
+
+            if sku and update_timestamp:
+                db.Counterpoint.Product.update_timestamp(sku)
+
+        # Basic Delete Payload
+        delete_payload = {'sku': sku}
+
+        # Get Product ID
+        product_id = db.Shopify.Product.get_id(item_no=sku)
+
+        # Add Binding ID to Payload if it exists
+        binding_id = db.Shopify.Product.get_binding_id(product_id=product_id)
+        if binding_id is not None:
+            delete_payload['binding_id'] = binding_id
+
+        if binding_id:
+            total_variants_in_mw = Product.get_family_members(binding_id=binding_id, count=True)
+            # Delete Single Product/Variants
+            if total_variants_in_mw < 3:
+                if creds.Integrator.verbose_logging:
+                    Product.logger.info('Case 1')
+                # Must have at least 3 Products before deletion to remain a bound product. Will delete product.
+                delete_product(sku=sku, product_id=product_id, update_timestamp=update_timestamp)
+
+            elif Product.is_parent(sku):
+                if creds.Integrator.verbose_logging:
+                    Product.logger.info('Case 2 - Parent Product. Will delete product.')
+                delete_product(sku=sku, product_id=product_id, update_timestamp=update_timestamp)
+
             else:
-                Catalog.error_handler.add_error_v(error=f'Error updating timestamp for {sku}. Response: {response}')
+                if creds.Integrator.verbose_logging:
+                    Product.logger.info('Case 3 - Child Product. Will delete variant.')
+                option_id = db.Shopify.Product.Variant.get_option_id(sku=sku)
+                opt_val_id = db.Shopify.Product.Variant.get_option_value_id(sku=sku)
+                variant_id = db.Shopify.Product.Variant.get_id(sku=sku)
+                if creds.Integrator.verbose_logging:
+                    Product.logger.info(f'Option ID: {option_id}')
+                    Product.logger.info(f'Option Value ID: {opt_val_id}')
+                    Product.logger.info(f'Variant ID: {variant_id}')
 
-        class Variant:
-            def __init__(self, sku, last_sync=datetime(1970, 1, 1), verbose=False, inventory_only=False):
-                self.verbose = verbose
-                self.sku = sku
-                self.last_sync = last_sync
-                self.inventory_only = inventory_only
+                Shopify.Product.Option.update(
+                    product_id=product_id, option_id=option_id, option_values_to_delete=[opt_val_id]
+                )
 
-                # Product ID Info
-                product_data = self.get_variant_details()
+                # Delete Media Associated with Variant
+                Shopify.Product.Variant.Image.delete_all(sku=sku, product_id=product_id)
 
-                # Product Information
-                self.mw_db_id = product_data['mw_db_id']
-                self.binding_id = product_data['binding_id']
-                self.type = product_data['type']
-                self.mw_binding_id = product_data['mw_binding_id']
-                self.is_parent = True if product_data['is_parent'] == 'Y' else False
-                self.product_id: int = product_data['product_id'] if product_data['product_id'] else None
-                self.variant_id: int = product_data['variant_id'] if product_data['variant_id'] else None
-                self.inventory_id: int = product_data['inventory_id'] if product_data['inventory_id'] else None
-                self.option_id = None
-                self.option_value_id = None
-                # E-Commerce Categories
-                self.cp_ecommerce_categories = product_data['cp_ecommerce_categories']
+                # Delete Variant from Middleware
+                db.Shopify.Product.Variant.delete(variant_id)
 
-                # Status
-                self.visible: bool = product_data['web_visible']
-                self.featured: bool = product_data['is_featured']
-                self.is_preorder: bool = product_data['is_preorder']
-                self.is_new: bool = product_data['is_new']
-                self.is_back_in_stock: bool = product_data['is_back_in_stock']
-                self.preorder_release_date = product_data['preorder_release_date']
-                self.preorder_message = product_data['preorder_message']
-                self.is_on_sale: bool = product_data['custom_is_on_sale']
-                self.sale_description = product_data['custom_sale_description']
+        else:
+            Product.logger.info('No Binding ID - Delete Single Product')
+            delete_product(sku=sku, product_id=product_id, update_timestamp=update_timestamp)
 
-                # Product Details
-                self.web_title: str = product_data['web_title']
-                self.long_descr = product_data['long_descr']
-                self.variant_name = product_data['variant_name']
-                self.status = product_data['status']
-                self.brand = product_data['brand']
-                self.html_description = product_data['html_description']
-                self.tags = product_data['tags']
-                self.meta_title = product_data['meta_title']
-                self.meta_description = product_data['meta_description']
 
-                # Pricing
-                self.wholesale_price = float(product_data['reg_price'])
-                self.price_1 = float(product_data['price_1'])
-                self.price_2 = float(product_data['price_2']) if product_data['price_2'] else None
-                self.cost = float(product_data['cost'])
-                self.taxable = True if product_data['taxable'] == 'Y' else False
+class Variant:
+    """Variant objects represent a individual SKU in NCR Counterpoint."""
 
-                # Inventory Levels
-                self.quantity_available = product_data['quantity_available']
-                self.buffer = product_data['buffer']
-                self.buffered_quantity = self.quantity_available - self.buffer
-                if self.buffered_quantity < 0:
-                    self.buffered_quantity = 0
-                self.weight = float(product_data['weight']) if product_data['weight'] else None
-                self.in_store_only = product_data['in_store_only']
-                self.sort_order = product_data['sort_order']
+    logger = ProcessOutErrorHandler.logger
+    error_handler = ProcessOutErrorHandler.error_handler
 
-                # Alt Text
-                self.alt_text_1 = product_data['alt_text_1']
-                self.alt_text_2 = product_data['alt_text_2']
-                self.alt_text_3 = product_data['alt_text_3']
-                self.alt_text_4 = product_data['alt_text_4']
+    def __init__(self, sku, last_sync=datetime(1970, 1, 1), verbose=False, inventory_only=False):
+        self.verbose: bool = verbose
+        self.sku: str = sku
+        self.last_sync: datetime = last_sync
+        self.inventory_only: bool = inventory_only
 
-                # Custom Fields
-                # if self.binding_id and self.is_parent or not self.binding_id:
-                self.meta_plant_type = {
-                    'id': product_data['custom_plant_type_id'],
-                    'value': product_data['custom_plant_type'],
-                }
+        # Product ID Info
+        product_data: dict = self.get_variant_details()
 
-                self.meta_botanical_name = {
-                    'id': product_data['custom_botanical_name_id'],
-                    'value': product_data['custom_botanical_name'],
-                }
+        # Product Information
+        self.mw_db_id = product_data['mw_db_id']
+        self.binding_id = product_data['binding_id']
+        self.type = product_data['type']
+        self.mw_binding_id = product_data['mw_binding_id']
+        self.is_parent = True if product_data['is_parent'] == 'Y' else False
+        self.product_id: int = product_data['product_id'] if product_data['product_id'] else None
+        self.variant_id: int = product_data['variant_id'] if product_data['variant_id'] else None
+        self.inventory_id: int = product_data['inventory_id'] if product_data['inventory_id'] else None
+        self.option_id = None
+        self.option_value_id = None
+        # E-Commerce Categories
+        self.cp_ecommerce_categories = product_data['cp_ecommerce_categories']
 
-                # Climate Zone
-                climate_zone_min = product_data['custom_climate_zone_min']
-                if climate_zone_min:
-                    # regex for two characters number and a letter
-                    regex_res = re.match(r'\d{1,2}([a-zA-Z])?', climate_zone_min)
-                    if regex_res:
-                        climate_zone_min = regex_res.group() or None
+        # Status
+        self.visible: bool = product_data['web_visible']
+        self.featured: bool = product_data['is_featured']
+        self.is_preorder: bool = product_data['is_preorder']
+        self.is_new: bool = product_data['is_new']
+        self.is_back_in_stock: bool = product_data['is_back_in_stock']
+        self.preorder_release_date = product_data['preorder_release_date']
+        self.preorder_message = product_data['preorder_message']
+        self.is_on_sale: bool = product_data['custom_is_on_sale']
+        self.sale_description = product_data['custom_sale_description']
 
-                climate_zone_max = product_data['custom_climate_zone_max']
-                if climate_zone_max:
-                    # regex for two characters number and a letter
-                    regex_res = re.match(r'\d{1,2}([a-zA-Z])?', climate_zone_max)
-                    if regex_res:
-                        climate_zone_max = regex_res.group() or None
+        # Product Details
+        self.web_title: str = product_data['web_title']
+        self.long_descr: str = product_data['long_descr']
+        self.variant_name: str = product_data['variant_name']
+        self.status: str = product_data['status']
+        self.brand = product_data['brand']
+        self.html_description = product_data['html_description']
+        self.tags = product_data['tags']
+        self.meta_title = product_data['meta_title']
+        self.meta_description = product_data['meta_description']
 
-                # '3B - 11a'
-                if climate_zone_min and climate_zone_max:
-                    clim_value = f'{climate_zone_min} - {climate_zone_max}'
-                elif climate_zone_min:
-                    clim_value = f'{climate_zone_min}'
-                elif climate_zone_max:
-                    clim_value = f'{climate_zone_max}'
-                else:
-                    clim_value = None
-                self.meta_climate_zone = {'id': product_data['custom_climate_zone_id'], 'value': clim_value}
+        # Pricing
+        self.wholesale_price = float(product_data['reg_price'])
+        self.price_1 = float(product_data['price_1'])
+        self.price_2 = float(product_data['price_2']) if product_data['price_2'] else None
+        self.cost = float(product_data['cost'])
+        self.taxable = True if product_data['taxable'] == 'Y' else False
 
-                # Climate Zone List
-                # [3, 4, 5, 6, 7, 8, 9, 10, 11]
-                self.meta_climate_zone_list = {
-                    'id': product_data['custom_climate_zone_list_id'],
-                    'value': self.get_size_range(climate_zone_min, climate_zone_max, ''),
-                }
+        # Inventory Levels
+        self.quantity_available: int = product_data['quantity_available']
+        self.buffer: int = product_data['buffer']
+        self.buffered_quantity: int = self.quantity_available - self.buffer
+        if self.buffered_quantity < 0:
+            self.buffered_quantity = 0
+        self.weight = float(product_data['weight']) if product_data['weight'] else None
+        self.in_store_only: bool = product_data['in_store_only']
+        self.sort_order: int = product_data['sort_order']
 
-                # Height
-                height_min = product_data['custom_height_min']
-                height_max = product_data['custom_height_max']
-                height_unit = product_data['custom_height_unit']
-                height_list = self.get_size_range(height_min, height_max, height_unit)
+        # Alt Text
+        self.alt_text_1: str = product_data['alt_text_1']
+        self.alt_text_2: str = product_data['alt_text_2']
+        self.alt_text_3: str = product_data['alt_text_3']
+        self.alt_text_4: str = product_data['alt_text_4']
 
-                if height_list and height_unit:
-                    self.meta_height = {
-                        'id': product_data['custom_height_id'],
-                        'value': [f'{x} {height_unit.lower()}' for x in height_list],
-                    }
-                else:
-                    self.meta_height = {'id': product_data['custom_height_id'], 'value': None}
+        # Custom Fields
+        # if self.binding_id and self.is_parent or not self.binding_id:
+        self.meta_plant_type = {
+            'id': product_data['custom_plant_type_id'],
+            'value': product_data['custom_plant_type'],
+        }
 
-                # Width
-                width_min = product_data['custom_width_min']
-                width_max = product_data['custom_width_max']
-                width_unit = product_data['custom_width_unit']
-                width_list = self.get_size_range(width_min, width_max, width_unit)
-                if width_list and width_unit:
-                    self.meta_width = {
-                        'id': product_data['custom_width_id'],
-                        'value': [f'{x} {width_unit.lower()}' for x in width_list],
-                    }
-                else:
-                    self.meta_width = {'id': product_data['custom_width_id'], 'value': None}
+        self.meta_botanical_name = {
+            'id': product_data['custom_botanical_name_id'],
+            'value': product_data['custom_botanical_name'],
+        }
 
-                # Light Requirements
-                self.meta_light_requirements = {'id': product_data['custom_light_req_id'], 'value': []}
-                if product_data['custom_full_sun']:
-                    self.meta_light_requirements['value'].append('Full Sun')
-                if product_data['custom_part_sun']:
-                    self.meta_light_requirements['value'].append('Part Sun')
-                if product_data['custom_part_shade']:
-                    self.meta_light_requirements['value'].append('Part Shade')
-                if product_data['custom_full_shade']:
-                    self.meta_light_requirements['value'].append('Full Shade')
+        # Climate Zone
+        climate_zone_min = product_data['custom_climate_zone_min']
+        if climate_zone_min:
+            # regex for two characters number and a letter
+            regex_res = re.match(r'\d{1,2}([a-zA-Z])?', climate_zone_min)
+            if regex_res:
+                climate_zone_min = regex_res.group() or None
 
-                # Features
-                self.meta_features = {'id': product_data['custom_features_id'], 'value': []}
-                if product_data['custom_low_maintenance']:
-                    self.meta_features['value'].append('Low Maintenance')
-                if product_data['custom_evergreen']:
-                    self.meta_features['value'].append('Evergreen')
-                if product_data['custom_deciduous']:
-                    self.meta_features['value'].append('Deciduous')
-                if product_data['custom_privacy']:
-                    self.meta_features['value'].append('Privacy Option')
-                if product_data['custom_specimen']:
-                    self.meta_features['value'].append('Specimen')
-                if product_data['custom_shade']:
-                    self.meta_features['value'].append('Shade Option')
-                if product_data['custom_drought_tolerance']:
-                    self.meta_features['value'].append('Drought Tolerant')
-                if product_data['custom_heat_tolerance']:
-                    self.meta_features['value'].append('Heat Tolerant')
-                if product_data['custom_cold_tolerance']:
-                    self.meta_features['value'].append('Cold Tolerant')
-                if product_data['custom_fast_growth']:
-                    self.meta_features['value'].append('Fast Growing')
-                if product_data['custom_attracts_pollinators']:
-                    self.meta_features['value'].append('Attracts Pollinators')
-                if product_data['custom_attracts_wildlife']:
-                    self.meta_features['value'].append('Attracts Wildlife')
-                if product_data['custom_native']:
-                    self.meta_features['value'].append('Native')
-                if product_data['custom_fragrant']:
-                    self.meta_features['value'].append('Fragrant')
-                if product_data['custom_deer_resistant']:
-                    self.meta_features['value'].append('Deer Resistant')
-                if product_data['custom_easy_to_grow']:
-                    self.meta_features['value'].append('Easy to Grow')
-                if product_data['custom_low_light']:
-                    self.meta_features['value'].append('Low Light')
-                if product_data['custom_tropical']:
-                    self.meta_features['value'].append('Tropical')
-                if product_data['custom_vining']:
-                    self.meta_features['value'].append('Vining')
-                if product_data['custom_air_purifying']:
-                    self.meta_features['value'].append('Air Purifying')
-                if product_data['custom_pet_friendly']:
-                    self.meta_features['value'].append('Pet Friendly')
-                if product_data['custom_slow_growth']:
-                    self.meta_features['value'].append('Slow Growing')
-                if product_data['custom_edible']:
-                    self.meta_features['value'].append('Edible')
+        climate_zone_max = product_data['custom_climate_zone_max']
+        if climate_zone_max:
+            # regex for two characters number and a letter
+            regex_res = re.match(r'\d{1,2}([a-zA-Z])?', climate_zone_max)
+            if regex_res:
+                climate_zone_max = regex_res.group() or None
 
-                # Bloom Season
-                self.meta_bloom_season = {'id': product_data['custom_bloom_season_id'], 'value': []}
-                if product_data['custom_bloom_spring']:
-                    self.meta_bloom_season['value'].append('Spring')
-                if product_data['custom_bloom_summer']:
-                    self.meta_bloom_season['value'].append('Summer')
-                if product_data['custom_bloom_fall']:
-                    self.meta_bloom_season['value'].append('Fall')
-                if product_data['custom_bloom_winter']:
-                    self.meta_bloom_season['value'].append('Winter')
+        # '3B - 11a'
+        if climate_zone_min and climate_zone_max:
+            clim_value = f'{climate_zone_min} - {climate_zone_max}'
+        elif climate_zone_min:
+            clim_value = f'{climate_zone_min}'
+        elif climate_zone_max:
+            clim_value = f'{climate_zone_max}'
+        else:
+            clim_value = None
+        self.meta_climate_zone = {'id': product_data['custom_climate_zone_id'], 'value': clim_value}
 
-                # If self.meta_bloom_season is not empty, add 'Flowering' as a feature
-                if self.meta_bloom_season['value']:
-                    self.meta_features['value'].append('Flowering')
+        # Climate Zone List
+        # [3, 4, 5, 6, 7, 8, 9, 10, 11]
+        self.meta_climate_zone_list = {
+            'id': product_data['custom_climate_zone_list_id'],
+            'value': self.get_size_range(climate_zone_min, climate_zone_max, ''),
+        }
 
-                # Colors / Bloom Colors
-                # If this is a blooming item, color will be translated to Bloom Color
-                color_list = []
-                if product_data['custom_color_pink']:
-                    color_list.append('Pink')
-                if product_data['custom_color_red']:
-                    color_list.append('Red')
-                if product_data['custom_color_orange']:
-                    color_list.append('Orange')
-                if product_data['custom_color_yellow']:
-                    color_list.append('Yellow')
-                if product_data['custom_color_green']:
-                    color_list.append('Green')
-                if product_data['custom_color_blue']:
-                    color_list.append('Blue')
-                if product_data['custom_color_purple']:
-                    color_list.append('Purple')
-                if product_data['custom_color_white']:
-                    color_list.append('White')
-                if product_data['custom_color_custom']:
-                    for color in product_data['custom_color_custom']:
-                        color_list.append(color)
+        # Height
+        height_min = product_data['custom_height_min']
+        height_max = product_data['custom_height_max']
+        height_unit = product_data['custom_height_unit']
+        height_list = self.get_size_range(height_min, height_max, height_unit)
 
-                if color_list:
-                    if 'Flowering' in self.meta_features['value']:
-                        self.meta_bloom_color = {'id': product_data['custom_bloom_color_id'], 'value': color_list}
-                        self.meta_colors = {'id': product_data['custom_color_id'], 'value': None}
-                    else:
-                        self.meta_colors = {'id': product_data['custom_color_id'], 'value': color_list}
-                        self.meta_bloom_color = {'id': product_data['custom_bloom_color_id'], 'value': None}
-                else:
-                    self.meta_colors = {'id': product_data['custom_color_id'], 'value': None}
-                    self.meta_bloom_color = {'id': product_data['custom_bloom_color_id'], 'value': None}
+        if height_list and height_unit:
+            self.meta_height = {
+                'id': product_data['custom_height_id'],
+                'value': [f'{x} {height_unit.lower()}' for x in height_list],
+            }
+        else:
+            self.meta_height = {'id': product_data['custom_height_id'], 'value': None}
 
-                # Get Size
-                custom_size = product_data['custom_size']
-                custom_size_unit = product_data['custom_size_unit']
-                if custom_size and custom_size_unit:
-                    if float(custom_size).is_integer():
-                        custom_size = int(custom_size)
-                    custom_size = f'{custom_size} {custom_size_unit.lower()}'
-                else:
-                    custom_size = None
+        # Width
+        width_min = product_data['custom_width_min']
+        width_max = product_data['custom_width_max']
+        width_unit = product_data['custom_width_unit']
+        width_list = self.get_size_range(width_min, width_max, width_unit)
+        if width_list and width_unit:
+            self.meta_width = {
+                'id': product_data['custom_width_id'],
+                'value': [f'{x} {width_unit.lower()}' for x in width_list],
+            }
+        else:
+            self.meta_width = {'id': product_data['custom_width_id'], 'value': None}
 
-                # meta_size will be used on single products only.
-                self.meta_size = {
-                    'id': product_data['custom_size_id'],
-                    'value': f'{custom_size}' if custom_size else None,
-                }
+        # Light Requirements
+        self.meta_light_requirements = {'id': product_data['custom_light_req_id'], 'value': []}
+        if product_data['custom_full_sun']:
+            self.meta_light_requirements['value'].append('Full Sun')
+        if product_data['custom_part_sun']:
+            self.meta_light_requirements['value'].append('Part Sun')
+        if product_data['custom_part_shade']:
+            self.meta_light_requirements['value'].append('Part Shade')
+        if product_data['custom_full_shade']:
+            self.meta_light_requirements['value'].append('Full Shade')
 
-                # meta_variant_size will be used on bound products only.
-                self.meta_variant_size = {
-                    'id': product_data['custom__variant_size_id'],
-                    'value': f'{custom_size}' if custom_size else None,
-                }
+        # Features
+        self.meta_features = {'id': product_data['custom_features_id'], 'value': []}
+        if product_data['custom_low_maintenance']:
+            self.meta_features['value'].append('Low Maintenance')
+        if product_data['custom_evergreen']:
+            self.meta_features['value'].append('Evergreen')
+        if product_data['custom_deciduous']:
+            self.meta_features['value'].append('Deciduous')
+        if product_data['custom_privacy']:
+            self.meta_features['value'].append('Privacy Option')
+        if product_data['custom_specimen']:
+            self.meta_features['value'].append('Specimen')
+        if product_data['custom_shade']:
+            self.meta_features['value'].append('Shade Option')
+        if product_data['custom_drought_tolerance']:
+            self.meta_features['value'].append('Drought Tolerant')
+        if product_data['custom_heat_tolerance']:
+            self.meta_features['value'].append('Heat Tolerant')
+        if product_data['custom_cold_tolerance']:
+            self.meta_features['value'].append('Cold Tolerant')
+        if product_data['custom_fast_growth']:
+            self.meta_features['value'].append('Fast Growing')
+        if product_data['custom_attracts_pollinators']:
+            self.meta_features['value'].append('Attracts Pollinators')
+        if product_data['custom_attracts_wildlife']:
+            self.meta_features['value'].append('Attracts Wildlife')
+        if product_data['custom_native']:
+            self.meta_features['value'].append('Native')
+        if product_data['custom_fragrant']:
+            self.meta_features['value'].append('Fragrant')
+        if product_data['custom_deer_resistant']:
+            self.meta_features['value'].append('Deer Resistant')
+        if product_data['custom_easy_to_grow']:
+            self.meta_features['value'].append('Easy to Grow')
+        if product_data['custom_low_light']:
+            self.meta_features['value'].append('Low Light')
+        if product_data['custom_tropical']:
+            self.meta_features['value'].append('Tropical')
+        if product_data['custom_vining']:
+            self.meta_features['value'].append('Vining')
+        if product_data['custom_air_purifying']:
+            self.meta_features['value'].append('Air Purifying')
+        if product_data['custom_pet_friendly']:
+            self.meta_features['value'].append('Pet Friendly')
+        if product_data['custom_slow_growth']:
+            self.meta_features['value'].append('Slow Growing')
+        if product_data['custom_edible']:
+            self.meta_features['value'].append('Edible')
 
-                self.meta_is_preorder = {
-                    'id': product_data['custom_is_preorder_id'],
-                    'value': 'true' if self.is_preorder else 'false',
-                }
+        # Bloom Season
+        self.meta_bloom_season = {'id': product_data['custom_bloom_season_id'], 'value': []}
+        if product_data['custom_bloom_spring']:
+            self.meta_bloom_season['value'].append('Spring')
+        if product_data['custom_bloom_summer']:
+            self.meta_bloom_season['value'].append('Summer')
+        if product_data['custom_bloom_fall']:
+            self.meta_bloom_season['value'].append('Fall')
+        if product_data['custom_bloom_winter']:
+            self.meta_bloom_season['value'].append('Winter')
 
-                self.meta_preorder_message = {
-                    'id': product_data['custom_preorder_message_id'],
-                    'value': self.preorder_message,
-                }
+        # If self.meta_bloom_season is not empty, add 'Flowering' as a feature
+        if self.meta_bloom_season['value']:
+            self.meta_features['value'].append('Flowering')
 
-                self.meta_preorder_release_date = {
-                    'id': product_data['custom_preorder_date_id'],
-                    'value': self.preorder_release_date,
-                }
+        # Colors / Bloom Colors
+        # If this is a blooming item, color will be translated to Bloom Color
+        color_list = []
+        if product_data['custom_color_pink']:
+            color_list.append('Pink')
+        if product_data['custom_color_red']:
+            color_list.append('Red')
+        if product_data['custom_color_orange']:
+            color_list.append('Orange')
+        if product_data['custom_color_yellow']:
+            color_list.append('Yellow')
+        if product_data['custom_color_green']:
+            color_list.append('Green')
+        if product_data['custom_color_blue']:
+            color_list.append('Blue')
+        if product_data['custom_color_purple']:
+            color_list.append('Purple')
+        if product_data['custom_color_white']:
+            color_list.append('White')
+        if product_data['custom_color_custom']:
+            for color in product_data['custom_color_custom']:
+                color_list.append(color)
 
-                self.meta_is_featured = {
-                    'id': product_data['custom_is_featured_id'],
-                    'value': 'true' if self.featured else 'false',
-                }
-                self.meta_in_store_only = {
-                    'id': product_data['custom_in_store_only_id'],
-                    'value': 'true' if self.in_store_only else 'false',
-                }
+        if color_list:
+            if 'Flowering' in self.meta_features['value']:
+                self.meta_bloom_color = {'id': product_data['custom_bloom_color_id'], 'value': color_list}
+                self.meta_colors = {'id': product_data['custom_color_id'], 'value': None}
+            else:
+                self.meta_colors = {'id': product_data['custom_color_id'], 'value': color_list}
+                self.meta_bloom_color = {'id': product_data['custom_bloom_color_id'], 'value': None}
+        else:
+            self.meta_colors = {'id': product_data['custom_color_id'], 'value': None}
+            self.meta_bloom_color = {'id': product_data['custom_bloom_color_id'], 'value': None}
 
-                self.meta_is_on_sale = {
-                    'id': product_data['custom_is_on_sale_id'],
-                    'value': 'true' if self.is_on_sale else 'false',
-                }
+        # Get Size
+        custom_size = product_data['custom_size']
+        custom_size_unit = product_data['custom_size_unit']
+        if custom_size and custom_size_unit:
+            if float(custom_size).is_integer():
+                custom_size = int(custom_size)
+            custom_size = f'{custom_size} {custom_size_unit.lower()}'
+        else:
+            custom_size = None
 
-                self.meta_sale_description = {
-                    'id': product_data['custom_sale_description_id'],
-                    'value': self.sale_description,
-                }
+        # meta_size will be used on single products only.
+        self.meta_size = {'id': product_data['custom_size_id'], 'value': f'{custom_size}' if custom_size else None}
 
-                self.meta_is_new = {
-                    'id': product_data['custom_is_new_id'],
-                    'value': 'true' if self.is_new else 'false',
-                }
+        # meta_variant_size will be used on bound products only.
+        self.meta_variant_size = {
+            'id': product_data['custom__variant_size_id'],
+            'value': f'{custom_size}' if custom_size else None,
+        }
 
-                self.meta_is_back_in_stock = {
-                    'id': product_data['custom_is_back_in_stock_id'],
-                    'value': 'true' if self.is_back_in_stock else 'false',
-                }
+        self.meta_is_preorder = {
+            'id': product_data['custom_is_preorder_id'],
+            'value': 'true' if self.is_preorder else 'false',
+        }
 
-                # Product Images
-                self.images = []
-                self.has_variant_image = False
+        self.meta_preorder_message = {
+            'id': product_data['custom_preorder_message_id'],
+            'value': self.preorder_message,
+        }
 
-                # Dates
-                self.lst_maint_dt = product_data['lst_maint_dt']
+        self.meta_preorder_release_date = {
+            'id': product_data['custom_preorder_date_id'],
+            'value': self.preorder_release_date,
+        }
 
-                # Initialize Images
-                if not self.inventory_only:
-                    images = Catalog.get_local_product_images(self.sku)
-                    total_images = len(images)
-                    if total_images > 0:
-                        for image in images:
-                            img = Catalog.Product.Image(image_name=image, product_id=self.product_id)
-                            if img.validate():
-                                self.images.append(img)
+        self.meta_is_featured = {
+            'id': product_data['custom_is_featured_id'],
+            'value': 'true' if self.featured else 'false',
+        }
+        self.meta_in_store_only = {
+            'id': product_data['custom_in_store_only_id'],
+            'value': 'true' if self.in_store_only else 'false',
+        }
 
-                # Initialize Variant Image URL
-                if len(self.images) > 0:
-                    self.variant_image_url = self.images[0].image_url
-                else:
-                    self.variant_image_url = ''
+        self.meta_is_on_sale = {
+            'id': product_data['custom_is_on_sale_id'],
+            'value': 'true' if self.is_on_sale else 'false',
+        }
 
-                self.videos = [
-                    Catalog.Product.Video(url=video, sku=self.sku, binding_id=self.binding_id)
-                    for video in product_data['videos']
-                ]
+        self.meta_sale_description = {
+            'id': product_data['custom_sale_description_id'],
+            'value': self.sale_description,
+        }
 
-            def __str__(self):
-                result = ''
-                for k, v in self.__dict__.items():
-                    result += f'{k}: {v}\n'
-                return result
+        self.meta_is_new = {'id': product_data['custom_is_new_id'], 'value': 'true' if self.is_new else 'false'}
 
-            def get_variant_details(self):
-                """Get a list of all products that have been updated since the last run date.
-                Will check IM_ITEM. IM_PRC, IM_INV, EC_ITEM_DESCR, EC_CATEG_ITEM, and Image tables
-                have an after update Trigger implemented for updating IM_ITEM.LST_MAINT_DT."""
+        self.meta_is_back_in_stock = {
+            'id': product_data['custom_is_back_in_stock_id'],
+            'value': 'true' if self.is_back_in_stock else 'false',
+        }
 
-                query = f""" 
+        # Product Images
+        self.images: list[Image] = []
+        self.has_variant_image = False
+
+        # Dates
+        self.lst_maint_dt = product_data['lst_maint_dt']
+
+        # Initialize Images
+        if not self.inventory_only:
+            images = Catalog.get_local_product_images(self.sku)
+            total_images = len(images)
+            if total_images > 0:
+                for image in images:
+                    img = Image(image_name=image, product_id=self.product_id)
+                    if img.validate():
+                        self.images.append(img)
+
+        # Initialize Variant Image URL
+        if len(self.images) > 0:
+            self.variant_image_url = self.images[0].image_url
+        else:
+            self.variant_image_url = ''
+
+        self.videos = [
+            Video(url=video, sku=self.sku, binding_id=self.binding_id) for video in product_data['videos']
+        ]
+
+    def __str__(self):
+        result = ''
+        for k, v in self.__dict__.items():
+            result += f'{k}: {v}\n'
+        return result
+
+    def get_variant_details(self):
+        """Get a list of all products that have been updated since the last run date.
+        Will check IM_ITEM. IM_PRC, IM_INV, EC_ITEM_DESCR, EC_CATEG_ITEM, and Image tables
+        have an after update Trigger implemented for updating IM_ITEM.LST_MAINT_DT."""
+
+        query = f""" 
                 
                 SELECT MW.ID as 'mw_db_id(0)', 
                 ITEM.USR_PROF_ALPHA_16 as 'Binding ID(1)', 
@@ -3183,587 +3134,571 @@ class Catalog:
                 LEFT OUTER JOIN IM_ITEM_PROF_COD COD ON ITEM.PROF_COD_1 = COD.PROF_COD
                 WHERE ITEM.ITEM_NO = '{self.sku}'"""
 
-                item = db.query(query)
-                if item is not None:
-                    try:
-                        details = {
-                            # Product ID Info
-                            'mw_db_id': item[0][0],
-                            'binding_id': item[0][1],
-                            'mw_binding_id': item[0][88],
-                            'is_bound': True if item[0][1] else False,
-                            'is_parent': item[0][2],
-                            'product_id': item[0][3],
-                            'variant_id': item[0][4],
-                            'variant_name': item[0][5],
-                            'inventory_id': item[0][6],
-                            # Product Status
-                            'web_visible': True if item[0][7] == 'Y' else False,
-                            'is_featured': True if item[0][8] == 'Y' else False,
-                            'in_store_only': True if item[0][9] == 'Y' else False,
-                            'is_preorder': True if item[0][10] == 'Y' else False,
-                            'preorder_release_date': convert_to_utc(item[0][11]) if item[0][11] else None,
-                            'preorder_message': item[0][12],
-                            'sort_order': int(item[0][13]) if item[0][13] else 0,
-                            # Product Description
-                            'web_title': item[0][14],
-                            'meta_title': item[0][15],
-                            'meta_description': item[0][16],
-                            'html_description': item[0][17],
-                            'status': item[0][18],
-                            # Product Pricing
-                            'reg_price': item[0][19],
-                            'price_1': item[0][20],
-                            'price_2': item[0][21],
-                            'cost': item[0][22],
-                            # # Inventory Levels
-                            'quantity_available': item[0][23],
-                            'buffer': item[0][24],
-                            # E-Commerce Categories
-                            'cp_ecommerce_categories': str(item[0][25]).split(',') if item[0][25] else [],
-                            # Additional Details
-                            'item_type': item[0][26],  # Inventory/Non-Inventory NOT USED CURRENTLY
-                            'brand': item[0][27],
-                            'long_descr': item[0][28],
-                            'tags': item[0][29],
-                            # Alt Text
-                            'alt_text_1': item[0][30],
-                            'alt_text_2': item[0][31],
-                            'alt_text_3': item[0][32],
-                            'alt_text_4': item[0][33],
-                            # Custom Fields
-                            'custom_botanical_name': item[0][34],
-                            'custom_climate_zone_min': item[0][35],
-                            'custom_climate_zone_max': item[0][36],
-                            'custom_plant_type': item[0][37],
-                            'type': item[0][38],  # Shows on Shopify Catalog Backend
-                            'custom_height_min': item[0][39],
-                            'custom_height_max': item[0][40],
-                            'custom_height_unit': item[0][41],
-                            'custom_width_min': item[0][42],
-                            'custom_width_max': item[0][43],
-                            'custom_width_unit': item[0][44],
-                            'custom_size': item[0][89],
-                            # Light Requirements
-                            'custom_full_sun': True if item[0][45] == 'Y' else False,
-                            'custom_part_sun': True if item[0][46] == 'Y' else False,
-                            'custom_part_shade': True if item[0][47] == 'Y' else False,
-                            'custom_full_shade': True if item[0][48] == 'Y' else False,
-                            'custom_bloom_spring': True if item[0][49] == 'Y' else False,
-                            'custom_bloom_summer': True if item[0][50] == 'Y' else False,
-                            'custom_bloom_fall': True if item[0][51] == 'Y' else False,
-                            'custom_bloom_winter': True if item[0][52] == 'Y' else False,
-                            # Colors
-                            'custom_color_pink': True if item[0][53] == 'Y' else False,
-                            'custom_color_red': True if item[0][54] == 'Y' else False,
-                            'custom_color_orange': True if item[0][55] == 'Y' else False,
-                            'custom_color_yellow': True if item[0][56] == 'Y' else False,
-                            'custom_color_green': True if item[0][57] == 'Y' else False,
-                            'custom_color_blue': True if item[0][58] == 'Y' else False,
-                            'custom_color_purple': True if item[0][59] == 'Y' else False,
-                            'custom_color_white': True if item[0][60] == 'Y' else False,
-                            'custom_color_custom': item[0][61].split(',') if item[0][61] else [],
-                            # Features
-                            'custom_low_maintenance': True if item[0][62] == 'Y' else False,
-                            'custom_evergreen': True if item[0][63] == 'Y' else False,
-                            'custom_deciduous': True if item[0][64] == 'Y' else False,
-                            'custom_shade': True if item[0][65] == 'Y' else False,
-                            'custom_privacy': True if item[0][66] == 'Y' else False,
-                            'custom_specimen': True if item[0][67] == 'Y' else False,
-                            'custom_drought_tolerance': True if item[0][68] == 'Y' else False,
-                            'custom_heat_tolerance': True if item[0][69] == 'Y' else False,
-                            'custom_cold_tolerance': True if item[0][70] == 'Y' else False,
-                            'custom_fast_growth': True if item[0][71] == 'Y' else False,
-                            'custom_attracts_pollinators': True if item[0][72] == 'Y' else False,
-                            'custom_attracts_wildlife': True if item[0][73] == 'Y' else False,
-                            'custom_native': True if item[0][74] == 'Y' else False,
-                            'custom_fragrant': True if item[0][75] == 'Y' else False,
-                            'custom_deer_resistant': True if item[0][76] == 'Y' else False,
-                            'custom_easy_to_grow': True if item[0][77] == 'Y' else False,
-                            'custom_low_light': True if item[0][78] == 'Y' else False,
-                            'custom_tropical': True if item[0][79] == 'Y' else False,
-                            'custom_vining': True if item[0][80] == 'Y' else False,
-                            'custom_air_purifying': True if item[0][81] == 'Y' else False,
-                            'custom_pet_friendly': True if item[0][82] == 'Y' else False,
-                            'custom_slow_growth': True if item[0][83] == 'Y' else False,
-                            'custom_edible': True if item[0][84] == 'Y' else False,
-                            # Dates
-                            'lst_maint_dt': item[0][85],
-                            # Shipping
-                            'weight': item[0][86],
-                            'taxable': True if item[0][87] == 'Y' else False,
-                            # Custom Fields
-                            'custom_botanical_name_id': item[0][90],
-                            'custom_plant_type_id': item[0][91],
-                            'custom_height_id': item[0][92],
-                            'custom_width_id': item[0][93],
-                            'custom_color_id': item[0][94],
-                            'custom_size_id': item[0][95],
-                            'custom_bloom_season_id': item[0][96],
-                            'custom_bloom_color_id': item[0][97],
-                            'custom_light_req_id': item[0][98],
-                            'custom_features_id': item[0][99],
-                            'custom_climate_zone_id': item[0][100],
-                            'custom_climate_zone_list_id': item[0][101],
-                            'custom_is_preorder_id': item[0][102],
-                            'custom_preorder_date_id': item[0][103],
-                            'custom_preorder_message_id': item[0][104],
-                            'custom_is_featured_id': item[0][105],
-                            'custom_in_store_only_id': item[0][106],
-                            'custom_size_unit': item[0][107],
-                            'videos': item[0][108].replace(' ', '').split(',') if item[0][108] else [],
-                            'custom_is_on_sale': True if item[0][109] == 'Y' else False,
-                            'custom_is_on_sale_id': item[0][110],
-                            'custom_sale_description': item[0][111],
-                            'custom_sale_description_id': item[0][112],
-                            'custom__variant_size_id': item[0][113],
-                            'is_new': True if item[0][114] == 'Y' else False,
-                            'custom_is_new_id': item[0][115],
-                            'is_back_in_stock': True if item[0][116] == 'Y' else False,
-                            'custom_is_back_in_stock_id': item[0][117],
-                        }
-                    except KeyError:
-                        Catalog.error_handler.add_error_v(
-                            f'Error getting variant details for {self.sku}.\nResponse: {item}',
-                            origin='Product Variant Details',
-                        )
-                        return None
-
-                    return details
-
-            def validate(self):
-                # Test for missing variant name
-                if not self.variant_name:
-                    Catalog.error_handler.add_error_v(
-                        f'Product {self.sku} is missing a variant name. Validation failed.',
-                        origin='Product Validation',
-                    )
-                    raise Exception(f'Product {self.sku} is missing a variant name. Validation failed.')
-                # Test for missing price 1
-                if self.price_1 == 0:
-                    Catalog.error_handler.add_error_v(
-                        f'Product {self.sku} is missing a price 1. Validation failed.', origin='Product Validation'
-                    )
-                    raise Exception(f'Product {self.sku} is missing a price 1. Validation failed.')
-
-                return True
-
-            def get_size_range(self, min, max, unit='', string=False):
-                """Return a list of size values between min and max"""
-                if min and max:
-                    # use regex to extract numbers from beginning of string
-                    min = int(re.search(r'\d+', str(min)).group())
-                    max = int(re.search(r'\d+', str(max)).group())
-                    if string:
-                        return [f'{x} {unit}' for x in range(min, max + 1)]
-                    else:
-                        result = [x for x in range(min, max + 1)]
-                        return result
-                elif min:
-                    if string:
-                        return [f'{min} {unit}']
-                    else:
-                        return [min]
-                elif max:
-                    if string:
-                        return [f'{max} {unit}']
-                    else:
-                        return [max]
-
-            @staticmethod
-            def get_lst_maint_dt(file_path):
-                return (
-                    datetime.fromtimestamp(os.path.getmtime(file_path))
-                    if os.path.exists(file_path)
-                    else datetime(1970, 1, 1)
+        item = db.query(query)
+        if item is not None:
+            try:
+                details = {
+                    # Product ID Info
+                    'mw_db_id': item[0][0],
+                    'binding_id': item[0][1],
+                    'mw_binding_id': item[0][88],
+                    'is_bound': True if item[0][1] else False,
+                    'is_parent': item[0][2],
+                    'product_id': item[0][3],
+                    'variant_id': item[0][4],
+                    'variant_name': item[0][5],
+                    'inventory_id': item[0][6],
+                    # Product Status
+                    'web_visible': True if item[0][7] == 'Y' else False,
+                    'is_featured': True if item[0][8] == 'Y' else False,
+                    'in_store_only': True if item[0][9] == 'Y' else False,
+                    'is_preorder': True if item[0][10] == 'Y' else False,
+                    'preorder_release_date': convert_to_utc(item[0][11]) if item[0][11] else None,
+                    'preorder_message': item[0][12],
+                    'sort_order': int(item[0][13]) if item[0][13] else 0,
+                    # Product Description
+                    'web_title': item[0][14],
+                    'meta_title': item[0][15],
+                    'meta_description': item[0][16],
+                    'html_description': item[0][17],
+                    'status': item[0][18],
+                    # Product Pricing
+                    'reg_price': item[0][19],
+                    'price_1': item[0][20],
+                    'price_2': item[0][21],
+                    'cost': item[0][22],
+                    # # Inventory Levels
+                    'quantity_available': item[0][23],
+                    'buffer': item[0][24],
+                    # E-Commerce Categories
+                    'cp_ecommerce_categories': str(item[0][25]).split(',') if item[0][25] else [],
+                    # Additional Details
+                    'item_type': item[0][26],  # Inventory/Non-Inventory NOT USED CURRENTLY
+                    'brand': item[0][27],
+                    'long_descr': item[0][28],
+                    'tags': item[0][29],
+                    # Alt Text
+                    'alt_text_1': item[0][30],
+                    'alt_text_2': item[0][31],
+                    'alt_text_3': item[0][32],
+                    'alt_text_4': item[0][33],
+                    # Custom Fields
+                    'custom_botanical_name': item[0][34],
+                    'custom_climate_zone_min': item[0][35],
+                    'custom_climate_zone_max': item[0][36],
+                    'custom_plant_type': item[0][37],
+                    'type': item[0][38],  # Shows on Shopify Catalog Backend
+                    'custom_height_min': item[0][39],
+                    'custom_height_max': item[0][40],
+                    'custom_height_unit': item[0][41],
+                    'custom_width_min': item[0][42],
+                    'custom_width_max': item[0][43],
+                    'custom_width_unit': item[0][44],
+                    'custom_size': item[0][89],
+                    # Light Requirements
+                    'custom_full_sun': True if item[0][45] == 'Y' else False,
+                    'custom_part_sun': True if item[0][46] == 'Y' else False,
+                    'custom_part_shade': True if item[0][47] == 'Y' else False,
+                    'custom_full_shade': True if item[0][48] == 'Y' else False,
+                    'custom_bloom_spring': True if item[0][49] == 'Y' else False,
+                    'custom_bloom_summer': True if item[0][50] == 'Y' else False,
+                    'custom_bloom_fall': True if item[0][51] == 'Y' else False,
+                    'custom_bloom_winter': True if item[0][52] == 'Y' else False,
+                    # Colors
+                    'custom_color_pink': True if item[0][53] == 'Y' else False,
+                    'custom_color_red': True if item[0][54] == 'Y' else False,
+                    'custom_color_orange': True if item[0][55] == 'Y' else False,
+                    'custom_color_yellow': True if item[0][56] == 'Y' else False,
+                    'custom_color_green': True if item[0][57] == 'Y' else False,
+                    'custom_color_blue': True if item[0][58] == 'Y' else False,
+                    'custom_color_purple': True if item[0][59] == 'Y' else False,
+                    'custom_color_white': True if item[0][60] == 'Y' else False,
+                    'custom_color_custom': item[0][61].split(',') if item[0][61] else [],
+                    # Features
+                    'custom_low_maintenance': True if item[0][62] == 'Y' else False,
+                    'custom_evergreen': True if item[0][63] == 'Y' else False,
+                    'custom_deciduous': True if item[0][64] == 'Y' else False,
+                    'custom_shade': True if item[0][65] == 'Y' else False,
+                    'custom_privacy': True if item[0][66] == 'Y' else False,
+                    'custom_specimen': True if item[0][67] == 'Y' else False,
+                    'custom_drought_tolerance': True if item[0][68] == 'Y' else False,
+                    'custom_heat_tolerance': True if item[0][69] == 'Y' else False,
+                    'custom_cold_tolerance': True if item[0][70] == 'Y' else False,
+                    'custom_fast_growth': True if item[0][71] == 'Y' else False,
+                    'custom_attracts_pollinators': True if item[0][72] == 'Y' else False,
+                    'custom_attracts_wildlife': True if item[0][73] == 'Y' else False,
+                    'custom_native': True if item[0][74] == 'Y' else False,
+                    'custom_fragrant': True if item[0][75] == 'Y' else False,
+                    'custom_deer_resistant': True if item[0][76] == 'Y' else False,
+                    'custom_easy_to_grow': True if item[0][77] == 'Y' else False,
+                    'custom_low_light': True if item[0][78] == 'Y' else False,
+                    'custom_tropical': True if item[0][79] == 'Y' else False,
+                    'custom_vining': True if item[0][80] == 'Y' else False,
+                    'custom_air_purifying': True if item[0][81] == 'Y' else False,
+                    'custom_pet_friendly': True if item[0][82] == 'Y' else False,
+                    'custom_slow_growth': True if item[0][83] == 'Y' else False,
+                    'custom_edible': True if item[0][84] == 'Y' else False,
+                    # Dates
+                    'lst_maint_dt': item[0][85],
+                    # Shipping
+                    'weight': item[0][86],
+                    'taxable': True if item[0][87] == 'Y' else False,
+                    # Custom Fields
+                    'custom_botanical_name_id': item[0][90],
+                    'custom_plant_type_id': item[0][91],
+                    'custom_height_id': item[0][92],
+                    'custom_width_id': item[0][93],
+                    'custom_color_id': item[0][94],
+                    'custom_size_id': item[0][95],
+                    'custom_bloom_season_id': item[0][96],
+                    'custom_bloom_color_id': item[0][97],
+                    'custom_light_req_id': item[0][98],
+                    'custom_features_id': item[0][99],
+                    'custom_climate_zone_id': item[0][100],
+                    'custom_climate_zone_list_id': item[0][101],
+                    'custom_is_preorder_id': item[0][102],
+                    'custom_preorder_date_id': item[0][103],
+                    'custom_preorder_message_id': item[0][104],
+                    'custom_is_featured_id': item[0][105],
+                    'custom_in_store_only_id': item[0][106],
+                    'custom_size_unit': item[0][107],
+                    'videos': item[0][108].replace(' ', '').split(',') if item[0][108] else [],
+                    'custom_is_on_sale': True if item[0][109] == 'Y' else False,
+                    'custom_is_on_sale_id': item[0][110],
+                    'custom_sale_description': item[0][111],
+                    'custom_sale_description_id': item[0][112],
+                    'custom__variant_size_id': item[0][113],
+                    'is_new': True if item[0][114] == 'Y' else False,
+                    'custom_is_new_id': item[0][115],
+                    'is_back_in_stock': True if item[0][116] == 'Y' else False,
+                    'custom_is_back_in_stock_id': item[0][117],
+                }
+            except KeyError:
+                Variant.error_handler.add_error_v(
+                    f'Error getting variant details for {self.sku}.\nResponse: {item}',
+                    origin='Product Variant Details',
                 )
+                return None
 
-        class Image:
-            def __init__(self, image_name: str, product_id: int = None, verbose=False, image_url=None, sku=None):
-                self.verbose = verbose
-                self.type = 'IMAGE'
-                self.db_id = None
-                self.name = image_name  # This is the file name
-                self.sku = sku
-                self.file_path = f'{creds.Company.product_images}/{self.name}'
-                self.image_url = image_url
-                self.product_id = product_id
-                self.variant_id = None
-                self.shopify_id = None
-                self.is_thumbnail = False
-                self.number = 1
-                self.sort_order = 0
-                self.temp_sort_order = None
-                self.is_binding_image = False
-                self.binding_id = None
-                self.is_variant_image = False
-                self.description = ''
-                self.size = 0
-                self.last_maintained_dt = None
-                self.get_image_details()
+            return details
 
-            def __str__(self):
-                result = ''
-                for k, v in self.__dict__.items():
-                    result += f'{k}: {v}\n'
+    def validate(self):
+        # Test for missing variant name
+        if not self.variant_name:
+            Variant.error_handler.add_error_v(
+                f'Product {self.sku} is missing a variant name. Validation failed.', origin='Product Validation'
+            )
+            raise Exception(f'Product {self.sku} is missing a variant name. Validation failed.')
+        # Test for missing price 1
+        if self.price_1 == 0:
+            Variant.error_handler.add_error_v(
+                f'Product {self.sku} is missing a price 1. Validation failed.', origin='Product Validation'
+            )
+            raise Exception(f'Product {self.sku} is missing a price 1. Validation failed.')
+
+        return True
+
+    def get_size_range(self, min, max, unit='', string=False):
+        """Return a list of size values between min and max"""
+        if min and max:
+            # use regex to extract numbers from beginning of string
+            min = int(re.search(r'\d+', str(min)).group())
+            max = int(re.search(r'\d+', str(max)).group())
+            if string:
+                return [f'{x} {unit}' for x in range(min, max + 1)]
+            else:
+                result = [x for x in range(min, max + 1)]
                 return result
+        elif min:
+            if string:
+                return [f'{min} {unit}']
+            else:
+                return [min]
+        elif max:
+            if string:
+                return [f'{max} {unit}']
+            else:
+                return [max]
 
-            def get_image_details(self):
-                """Get image details from SQL"""
-                if self.name == 'coming-soon.jpg':
-                    query = f"""SELECT * 
+
+class Image:
+    """Product Image class used for validating, resizing, and creating product image payloads."""
+
+    logger = ProcessOutErrorHandler.logger
+    error_handler = ProcessOutErrorHandler.error_handler
+
+    def __init__(self, image_name: str, product_id: int = None, verbose=False, image_url=None, sku=None):
+        self.verbose = verbose
+        self.type = 'IMAGE'
+        self.db_id = None
+        self.name = image_name  # This is the file name
+        self.sku = sku
+        self.file_path = f'{creds.Company.product_images}/{self.name}'
+        self.image_url = image_url
+        self.product_id = product_id
+        self.variant_id = None
+        self.shopify_id = None
+        self.is_thumbnail = False
+        self.number = 1
+        self.sort_order = 0
+        self.temp_sort_order = None
+        self.is_binding_image = False
+        self.binding_id = None
+        self.is_variant_image = False
+        self.description = ''
+        self.size = 0
+        self.last_maintained_dt = None
+        self.get_image_details()
+
+    def __str__(self):
+        result = ''
+        for k, v in self.__dict__.items():
+            result += f'{k}: {v}\n'
+        return result
+
+    def get_image_details(self):
+        """Get image details from SQL"""
+        if self.name == 'coming-soon.jpg':
+            query = f"""SELECT * 
                             FROM {Table.Middleware.images} 
                             WHERE IMAGE_NAME = '{self.name}' AND ITEM_NO = '{self.sku}'
                             """
-                else:
-                    query = f"""SELECT * 
+        else:
+            query = f"""SELECT * 
                             FROM {Table.Middleware.images} 
                             WHERE IMAGE_NAME = '{self.name}'
                             """
-                response = db.query(query)
-                if response is not None:
-                    if len(response) == 1:
-                        self.db_id = response[0][0]
-                        self.name = response[0][1]
-                        self.sku = response[0][2]
-                        self.file_path = response[0][3]
-                        self.product_id = response[0][4]
-                        self.shopify_id = response[0][5]
-                        self.number = response[0][7]
-                        self.sort_order = response[0][8]
-                        self.is_binding_image = True if response[0][9] == 1 else False
-                        self.binding_id = response[0][10]
-                        self.is_variant_image = True if response[0][11] == 1 else False
-                        self.description = self.get_image_description()  # This will pull fresh data each sync.
-                        self.size = response[0][13]
-                        self.last_maintained_dt = response[0][14]
+        response = db.query(query)
+        if response is not None:
+            if len(response) == 1:
+                self.db_id = response[0][0]
+                self.name = response[0][1]
+                self.sku = response[0][2]
+                self.file_path = response[0][3]
+                self.product_id = response[0][4]
+                self.shopify_id = response[0][5]
+                self.number = response[0][7]
+                self.sort_order = response[0][8]
+                self.is_binding_image = True if response[0][9] == 1 else False
+                self.binding_id = response[0][10]
+                self.is_variant_image = True if response[0][11] == 1 else False
+                self.description = self.get_image_description()  # This will pull fresh data each sync.
+                self.size = response[0][13]
+                self.last_maintained_dt = response[0][14]
 
-                else:
-                    if self.name != 'coming-soon.jpg':
-                        self.set_image_details()
+        else:
+            if self.name != 'coming-soon.jpg':
+                self.set_image_details()
 
-            def validate(self):
-                """Images will be validated for size and format before being uploaded and written to middleware.
-                Images that have been written to database previously will be considered valid and will pass."""
-                if self.db_id:
-                    # These items have already been through check before.
-                    return True
-                else:
-                    # Check for valid file size/format
-                    size = (1280, 1280)
-                    q = 90
-                    exif_orientation = 0x0112
-                    if self.name.lower().endswith('jpg'):
-                        # Resize files larger than 1.8 MB
-                        if self.size > 1800000:
-                            Catalog.logger.warn(f'Found large file {self.name}. Attempting to resize.')
-                            try:
-                                im = Image.open(self.file_path)
-                                im.thumbnail(size, Image.LANCZOS)
-                                code = im.getexif().get(exif_orientation, 1)
-                                if code and code != 1:
-                                    im = ImageOps.exif_transpose(im)
-                                im.save(self.file_path, 'JPEG', quality=q)
-                                im.close()
-                                self.size = os.path.getsize(self.file_path)
-                            except Exception as e:
-                                Catalog.error_handler.add_error_v(
-                                    f'Error resizing {self.name}: {e}', origin='Image Resize'
-                                )
-                                return False
-                            else:
-                                Catalog.logger.success(f'Image {self.name} was resized.')
-
-                    # Remove Alpha Layer and Convert PNG to JPG
-                    if self.name.lower().endswith('png'):
-                        Catalog.logger.warn(f'Found PNG file: {self.name}. Attempting to reformat.')
-                        try:
-                            im = Image.open(self.file_path)
-                            im.thumbnail(size, Image.LANCZOS)
-                            # Preserve Rotational Data
-                            code = im.getexif().get(exif_orientation, 1)
-                            if code and code != 1:
-                                im = ImageOps.exif_transpose(im)
-                            rgb_im = im.convert('RGB')
-                            new_image_name = self.name.split('.')[0] + '.jpg'
-                            new_file_path = f'{creds.Company.product_images}/{new_image_name}'
-                            rgb_im.save(new_file_path, 'JPEG', quality=q)
-                            im.close()
-                            os.remove(self.file_path)
-                            self.file_path = new_file_path
-                            self.name = new_image_name
-                        except Exception as e:
-                            Catalog.error_handler.add_error_v(
-                                error=f'Error converting {self.name}: {e}', origin='Reformat PNG'
-                            )
-                            return False
-                        else:
-                            Catalog.logger.success('Conversion successful.')
-
-                    # replace .JPEG with .JPG
-                    if self.name.lower().endswith('jpeg'):
-                        Catalog.logger.warn('Found file ending with .JPEG. Attempting to reformat.')
-                        try:
-                            im = Image.open(self.file_path)
-                            im.thumbnail(size, Image.LANCZOS)
-                            # Preserve Rotational Data
-                            code = im.getexif().get(exif_orientation, 1)
-                            if code and code != 1:
-                                im = ImageOps.exif_transpose(im)
-                            new_image_name = self.name.split('.')[0] + '.jpg'
-                            new_file_path = f'{creds.Company.product_images}/{new_image_name}'
-                            im.save(new_file_path, 'JPEG', quality=q)
-                            im.close()
-                            os.remove(self.file_path)
-                            self.file_path = new_file_path
-                            self.name = new_image_name
-                        except Exception as e:
-                            Catalog.error_handler.add_error_v(
-                                error=f'Error converting {self.name}: {e}', origin='Image Rename JPEG'
-                            )
-                            return False
-                        else:
-                            Catalog.logger.success(f'Conversion successful for {self.name}')
-
-                    # check for description that is too long
-                    if len(self.description) >= 500:
-                        Catalog.error_handler.add_error_v(
-                            f'Description for {self.name} is too long. Validation failed.'
-                        )
+    def validate(self):
+        """Images will be validated for size and format before being uploaded and written to middleware.
+        Images that have been written to database previously will be considered valid and will pass."""
+        if self.db_id:
+            # These items have already been through check before.
+            return True
+        else:
+            # Check for valid file size/format
+            size = (1280, 1280)
+            q = 90
+            exif_orientation = 0x0112
+            if self.name.lower().endswith('jpg'):
+                # Resize files larger than 1.8 MB
+                if self.size > 1800000:
+                    Image.logger.warn(f'Found large file {self.name}. Attempting to resize.')
+                    try:
+                        im = PILImage.open(self.file_path)
+                        im.thumbnail(size, PILImage.LANCZOS)
+                        code = im.getexif().get(exif_orientation, 1)
+                        if code and code != 1:
+                            im = ImageOps.exif_transpose(im)
+                        im.save(self.file_path, 'JPEG', quality=q)
+                        im.close()
+                        self.size = os.path.getsize(self.file_path)
+                    except Exception as e:
+                        Image.error_handler.add_error_v(f'Error resizing {self.name}: {e}', origin='Image Resize')
                         return False
-
-                    # Check for images with words or trailing numbers in the name
-                    if '^' in self.name and not self.name.split('.')[0].split('^')[1].isdigit():
-                        Catalog.error_handler.add_error_v(
-                            f'Image {self.name} is not valid.', origin='Image Validation'
-                        )
-                        return False
-
-                    # Valid Image
-                    return True
-
-            def set_image_details(self):
-                def get_item_no_from_image_name(image_name):
-                    def get_binding_id(item_no):
-                        query = f"""
-                               SELECT {Table.CP.Item.Column.binding_id} FROM {Table.CP.Item.table}
-                               WHERE ITEM_NO = '{item_no}'
-                               """
-                        response = db.query(query)
-                        if response is not None:
-                            return response[0][0] if response[0][0] else ''
-
-                    # Check for binding image
-                    if image_name.split('.')[0].split('^')[0] in Catalog.all_binding_ids:
-                        item_no = ''
-                        binding_id = image_name.split('.')[0].split('^')[0]
-                        self.is_binding_image = True
                     else:
-                        item_no = image_name.split('.')[0].split('^')[0]
-                        binding_id = get_binding_id(item_no)
+                        Image.logger.success(f'Image {self.name} was resized.')
 
-                    return item_no, binding_id
-
-                def get_image_number():
-                    image_number = 1
-                    if '^' in self.name and self.name.split('.')[0].split('^')[1].isdigit():
-                        # secondary images
-                        for x in range(1, 100):
-                            if int(self.name.split('.')[0].split('^')[1]) == x:
-                                image_number = x + 1
-                                break
-                    return image_number
-
-                self.sku, self.binding_id = get_item_no_from_image_name(self.name)
-                self.number = get_image_number()
-
-                # self.size = os.path.getsize(self.file_path)
-
-                # Image Description Only non-binding images have descriptions at this time. Though,
-                # this could be handled with JSON reference in the future for binding images.
-                self.description = self.get_image_description()
-
-            def get_image_description(self):
-                # currently there are only 4 counterpoint fields for descriptions.
-                if self.number < 5:
-                    query = f"""
-                           SELECT {str(f'USR_PROF_ALPHA_{self.number + 21}')} FROM {Table.CP.Item.table}
-                           WHERE ITEM_NO = '{self.sku}'
-                           """
-                    response = db.query(query)
-
-                    if response is not None:
-                        if response[0][0]:
-                            return response[0][0]
-                        else:
-                            return ''
-                    else:
-                        return ''
-                else:
-                    # If image number is greater than 4, it  will not have a description
-                    return ''
-
-            def resize_image(self):
-                size = (1280, 1280)
-                q = 90
-                exif_orientation = 0x0112
-                if self.name.endswith('jpg'):
-                    im = Image.open(self.file_path)
-                    im.thumbnail(size, Image.LANCZOS)
+            # Remove Alpha Layer and Convert PNG to JPG
+            if self.name.lower().endswith('png'):
+                Image.logger.warn(f'Found PNG file: {self.name}. Attempting to reformat.')
+                try:
+                    im = PILImage.open(self.file_path)
+                    im.thumbnail(size, PILImage.LANCZOS)
+                    # Preserve Rotational Data
                     code = im.getexif().get(exif_orientation, 1)
                     if code and code != 1:
                         im = ImageOps.exif_transpose(im)
-                    im.save(self.file_path, 'JPEG', quality=q)
-                    Catalog.logger.log(f'Resized {self.name}')
-
-            @staticmethod
-            def delete(image_name=None, image_id=None):
-                """Takes in an image name and looks for matching image file in middleware. If found, delete."""
-                Catalog.logger.info(f'Deleting {image_name or image_id} from Shopify and Middleware.')
-                if not image_name and not image_id:
-                    Catalog.error_handler.add_error_v(
-                        'No image name or ID provided for deletion.', origin='Image Deletion'
+                    rgb_im = im.convert('RGB')
+                    new_image_name = self.name.split('.')[0] + '.jpg'
+                    new_file_path = f'{creds.Company.product_images}/{new_image_name}'
+                    rgb_im.save(new_file_path, 'JPEG', quality=q)
+                    im.close()
+                    os.remove(self.file_path)
+                    self.file_path = new_file_path
+                    self.name = new_image_name
+                except Exception as e:
+                    Image.error_handler.add_error_v(
+                        error=f'Error converting {self.name}: {e}', origin='Reformat PNG'
                     )
-                    return
+                    return False
+                else:
+                    Image.logger.success(f'{self.name}: Conversion from PNG to JPG successful.')
 
-                product_id = None
-                variant_id = None
-                image_id = image_id
-                is_variant = False
+            # replace .JPEG with .JPG
+            if self.name.lower().endswith('jpeg'):
+                Image.logger.warn('Found file ending with .JPEG. Attempting to reformat.')
+                try:
+                    im = PILImage.open(self.file_path)
+                    im.thumbnail(size, PILImage.LANCZOS)
+                    # Preserve Rotational Data
+                    code = im.getexif().get(exif_orientation, 1)
+                    if code and code != 1:
+                        im = ImageOps.exif_transpose(im)
+                    new_image_name = self.name.split('.')[0] + '.jpg'
+                    new_file_path = f'{creds.Company.product_images}/{new_image_name}'
+                    im.save(new_file_path, 'JPEG', quality=q)
+                    im.close()
+                    os.remove(self.file_path)
+                    self.file_path = new_file_path
+                    self.name = new_image_name
+                except Exception as e:
+                    Image.error_handler.add_error_v(
+                        error=f'Error converting {self.name}: {e}', origin='Image Rename JPEG'
+                    )
+                    return False
+                else:
+                    Image.logger.success(f'Conversion successful for {self.name}')
 
-                if not image_id:
-                    image_query = f"""
+            # check for description that is too long
+            if len(self.description) >= 500:
+                Image.error_handler.add_error_v(f'Description for {self.name} is too long. Validation failed.')
+                return False
+
+            # Check for images with words or trailing numbers in the name
+            if '^' in self.name and not self.name.split('.')[0].split('^')[1].isdigit():
+                Image.error_handler.add_error_v(f'Image {self.name} is not valid.', origin='Image Validation')
+                return False
+
+            # Valid Image
+            return True
+
+    def set_image_details(self):
+        def get_item_no_from_image_name(image_name):
+            def get_binding_id(item_no):
+                query = f"""
+                               SELECT {Table.CP.Item.Column.binding_id} FROM {Table.CP.Item.table}
+                               WHERE ITEM_NO = '{item_no}'
+                               """
+                response = db.query(query)
+                if response is not None:
+                    return response[0][0] if response[0][0] else ''
+
+            # Check for binding image
+            if image_name.split('.')[0].split('^')[0] in Catalog.all_binding_ids:
+                item_no = ''
+                binding_id = image_name.split('.')[0].split('^')[0]
+                self.is_binding_image = True
+            else:
+                item_no = image_name.split('.')[0].split('^')[0]
+                binding_id = get_binding_id(item_no)
+
+            return item_no, binding_id
+
+        def get_image_number():
+            image_number = 1
+            if '^' in self.name and self.name.split('.')[0].split('^')[1].isdigit():
+                # secondary images
+                for x in range(1, 100):
+                    if int(self.name.split('.')[0].split('^')[1]) == x:
+                        image_number = x + 1
+                        break
+            return image_number
+
+        self.sku, self.binding_id = get_item_no_from_image_name(self.name)
+        self.number = get_image_number()
+
+        # self.size = os.path.getsize(self.file_path)
+
+        # Image Description Only non-binding images have descriptions at this time. Though,
+        # this could be handled with JSON reference in the future for binding images.
+        self.description = self.get_image_description()
+
+    def get_image_description(self):
+        # currently there are only 4 counterpoint fields for descriptions.
+        if self.number < 5:
+            query = f"""
+                           SELECT {str(f'USR_PROF_ALPHA_{self.number + 21}')} FROM {Table.CP.Item.table}
+                           WHERE ITEM_NO = '{self.sku}'
+                           """
+            response = db.query(query)
+
+            if response is not None:
+                if response[0][0]:
+                    return response[0][0]
+                else:
+                    return ''
+            else:
+                return ''
+        else:
+            # If image number is greater than 4, it  will not have a description
+            return ''
+
+    def resize_image(self):
+        size = (1280, 1280)
+        q = 90
+        exif_orientation = 0x0112
+        if self.name.endswith('jpg'):
+            im = PILImage.open(self.file_path)
+            im.thumbnail(size, PILImage.LANCZOS)
+            code = im.getexif().get(exif_orientation, 1)
+            if code and code != 1:
+                im = ImageOps.exif_transpose(im)
+            im.save(self.file_path, 'JPEG', quality=q)
+            Image.logger.log(f'Resized {self.name}')
+
+    @staticmethod
+    def delete(image_name=None, image_id=None):
+        """Takes in an image name and looks for matching image file in middleware. If found, delete."""
+        Image.logger.info(f'Deleting {image_name or image_id} from Shopify and Middleware.')
+        if not image_name and not image_id:
+            Image.error_handler.add_error_v('No image name or ID provided for deletion.', origin='Image Deletion')
+            return
+
+        product_id = None
+        variant_id = None
+        image_id = image_id
+        is_variant = False
+
+        if not image_id:
+            image_query = f"""
                     SELECT IMG.PRODUCT_ID, PROD.VARIANT_ID, IMAGE_ID, IS_VARIANT_IMAGE 
                     FROM {Table.Middleware.images} IMG
                     FULL OUTER JOIN {Table.Middleware.products} PROD on IMG.ITEM_NO = PROD.ITEM_NO
                     WHERE IMAGE_NAME = '{image_name}'
                     """
-                else:
-                    image_query = f"""
+        else:
+            image_query = f"""
                     SELECT IMG.PRODUCT_ID, PROD.VARIANT_ID, IMAGE_ID, IS_VARIANT_IMAGE 
                     FROM {Table.Middleware.images} IMG
                     FULL OUTER JOIN {Table.Middleware.products} PROD on IMG.ITEM_NO = PROD.ITEM_NO
                     WHERE IMAGE_ID = '{image_id}'
                     """
 
-                res = db.query(image_query)
-                if res is not None:
-                    product_id, variant_id, image_id, is_variant = (res[0][0], res[0][1], res[0][2], res[0][3])
+        res = db.query(image_query)
+        if res is not None:
+            product_id, variant_id, image_id, is_variant = (res[0][0], res[0][1], res[0][2], res[0][3])
 
-                if is_variant:
-                    Shopify.Product.Variant.Image.delete(
-                        product_id=product_id, variant_id=variant_id, shopify_id=image_id
+        if is_variant:
+            Shopify.Product.Variant.Image.delete(product_id=product_id, variant_id=variant_id, shopify_id=image_id)
+
+        Shopify.Product.Media.Image.delete(product_id=product_id, shopify_id=image_id, variant_id=variant_id)
+        db.Shopify.Product.Media.Image.delete(
+            image_id=image_id, eh=Catalog.eh, verbose=creds.Integrator.verbose_logging
+        )
+
+
+class Video:
+    """Product Video class used for validating, and creating product video payloads."""
+
+    logger = ProcessOutErrorHandler.logger
+    error_handler = ProcessOutErrorHandler.error_handler
+
+    def __init__(self, url, sku, binding_id, verbose=False):
+        self.sku = sku
+        self.url = url
+        self.binding_id = binding_id
+        self.verbose = verbose
+        self.db_id = None
+        self.shopify_id = None
+        self.name = None
+        self.sort_order = None
+        self.temp_sort_order = None
+        self.file_path = None
+        self.size = None
+        self.has_valid_url = True
+        self.description = None
+
+        if self.url and not (self.file_path and self.name):
+            self.type = 'EXTERNAL_VIDEO'
+        else:
+            self.type = 'VIDEO'
+
+        self.get_video_details()
+
+    def __str__(self):
+        result = ''
+        for k, v in self.__dict__.items():
+            result += f'{k}: {v}\n'
+        return result
+
+    def get_video_details(self):
+        query = f"SELECT * FROM {Table.Middleware.videos} WHERE URL = '{self.url}' and ITEM_NO = '{self.sku}'"
+        response = db.query(query)
+        if response is not None:
+            self.db_id = response[0][0]
+            self.sku = response[0][1]
+            self.url = response[0][2]
+            self.name = response[0][3]
+            self.file_path = response[0][4]
+            self.product_id = response[0][5]
+            self.shopify_id = response[0][6]
+            self.sort_order = response[0][7]
+            self.binding_id = response[0][8]
+            self.description = response[0][9]
+            self.size = response[0][10]
+            self.last_maintained_dt = response[0][11]
+        else:
+            # All new videos will be checked for validity
+            self.has_valid_url = Video.validate(url=self.url)
+
+    @staticmethod
+    def validate(url):
+        # Check for valid URL
+        try:
+            response = requests.get(url)
+            if response.status_code != 200:
+                Video.error_handler.add_error_v(
+                    f'Video {url} is not a valid URL. Validation failed.', origin='Video Validation'
+                )
+                return False
+
+            if 'youtube.com' in url.lower():
+                if 'video unavailable' in response.text.lower():
+                    Video.error_handler.add_error_v(
+                        f'Video {url} is unavailable. Validation failed.', origin='Video Validation'
                     )
-
-                Shopify.Product.Media.Image.delete(
-                    product_id=product_id, shopify_id=image_id, variant_id=variant_id
-                )
-                Database.Shopify.Product.Media.Image.delete(
-                    image_id=image_id, eh=Catalog.eh, verbose=creds.Integrator.verbose_logging
-                )
-
-        class Video:
-            def __init__(self, url, sku, binding_id, verbose=False):
-                self.sku = sku
-                self.url = url
-                self.binding_id = binding_id
-                self.verbose = verbose
-                self.db_id = None
-                self.shopify_id = None
-                self.name = None
-                self.sort_order = None
-                self.temp_sort_order = None
-                self.file_path = None
-                self.size = None
-                self.has_valid_url = True
-                self.description = None
-
-                if self.url and not (self.file_path and self.name):
-                    self.type = 'EXTERNAL_VIDEO'
-                else:
-                    self.type = 'VIDEO'
-
-                self.get_video_details()
-
-            def __str__(self):
-                result = ''
-                for k, v in self.__dict__.items():
-                    result += f'{k}: {v}\n'
-                return result
-
-            def get_video_details(self):
-                query = (
-                    f"SELECT * FROM {Table.Middleware.videos} WHERE URL = '{self.url}' and ITEM_NO = '{self.sku}'"
-                )
-                response = db.query(query)
-                if response is not None:
-                    self.db_id = response[0][0]
-                    self.sku = response[0][1]
-                    self.url = response[0][2]
-                    self.name = response[0][3]
-                    self.file_path = response[0][4]
-                    self.product_id = response[0][5]
-                    self.shopify_id = response[0][6]
-                    self.sort_order = response[0][7]
-                    self.binding_id = response[0][8]
-                    self.description = response[0][9]
-                    self.size = response[0][10]
-                    self.last_maintained_dt = response[0][11]
-                else:
-                    # All new videos will be checked for validity
-                    self.has_valid_url = Catalog.Product.Video.validate(url=self.url)
-
-            @staticmethod
-            def validate(url):
-                # Check for valid URL
-                try:
-                    response = requests.get(url)
-                    if response.status_code != 200:
-                        Catalog.error_handler.add_error_v(
-                            f'Video {url} is not a valid URL. Validation failed.', origin='Video Validation'
-                        )
-                        return False
-
-                    if 'youtube.com' in url.lower():
-                        if 'video unavailable' in response.text.lower():
-                            Catalog.error_handler.add_error_v(
-                                f'Video {url} is unavailable. Validation failed.', origin='Video Validation'
-                            )
-                            return False
-
-                    elif 'vimeo' in url.lower():
-                        if 'sorry, this url is unavailable' in response.text.lower():
-                            Catalog.error_handler.add_error_v(
-                                f'Video {url} is unavailable. Validation failed.', origin='Video Validation'
-                            )
-                            return False
-
-                except Exception as e:
-                    Catalog.error_handler.add_error_v(f'Error checking URL {url}: {e}', origin='Video Validation')
                     return False
 
-                return True
-
-            @staticmethod
-            def delete(sku, url):
-                product_id = Catalog.Product.get_product_id(sku)
-                video_id = Database.Shopify.Product.Media.Video.get(sku=sku, url=url, column='VIDEO_ID')
-                if video_id:
-                    Shopify.Product.Media.delete(product_id=product_id, media_type='video', media_id=video_id)
-                    Database.Shopify.Product.Media.Video.delete(
-                        video_id=video_id, eh=Catalog.eh, verbose=creds.Integrator.verbose_logging
+            elif 'vimeo' in url.lower():
+                if 'sorry, this url is unavailable' in response.text.lower():
+                    Video.error_handler.add_error_v(
+                        f'Video {url} is unavailable. Validation failed.', origin='Video Validation'
                     )
+                    return False
 
-                else:
-                    # Shopify Video ID not found. Attempt MW cleanup with SKU and URL
-                    Database.Shopify.Product.Media.Video.delete(
-                        url=url, sku=sku, eh=Catalog.eh, verbose=creds.Integrator.verbose_logging
-                    )
+        except Exception as e:
+            Video.error_handler.add_error_v(f'Error checking URL {url}: {e}', origin='Video Validation')
+            return False
 
-        class Modifier:
-            """Placeholder for modifier class"""
+        return True
 
-            pass
+    @staticmethod
+    def delete(sku, url):
+        product_id = Product.get_product_id(sku)
+        video_id = db.Shopify.Product.Media.Video.get(sku=sku, url=url, column='VIDEO_ID')
+        if video_id:
+            Shopify.Product.Media.delete(product_id=product_id, media_type='video', media_id=video_id)
+            db.Shopify.Product.Media.Video.delete(
+                video_id=video_id, eh=Catalog.eh, verbose=creds.Integrator.verbose_logging
+            )
+
+        else:
+            # Shopify Video ID not found. Attempt MW cleanup with SKU and URL
+            db.Shopify.Product.Media.Video.delete(
+                url=url, sku=sku, eh=Catalog.eh, verbose=creds.Integrator.verbose_logging
+            )
 
 
 if __name__ == '__main__':

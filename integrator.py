@@ -1,7 +1,7 @@
-from integration.catalog_api import Catalog
+from integration.catalog_api import Catalog, Product
 from integration.customers_api import Customers
 from integration.promotions_api import Promotions
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from database import Database
 from integration import interface
@@ -92,6 +92,7 @@ class Integrator:
 
 
 def main_menu():
+    """WIP: Menu System for CLI Interface"""
     print(interface.art)
     print(f'Version: {interface.Version}\n')
     print(
@@ -117,7 +118,7 @@ def main_menu():
             if command == 'product':
                 sku = input('Enter product sku: ')
                 payload = Catalog.get_product(item_no=sku)
-                product = integrator.catalog.Product(product_data=payload, last_sync=integrator.last_sync)
+                product = Product(product_data=payload, last_sync=integrator.last_sync)
                 product.get()
                 print(product)
 
@@ -134,7 +135,7 @@ def main_menu():
         # Update timestamp for a product
         elif input_command == 'tc':
             sku = input('Enter product sku: ')
-            integrator.catalog.Product.update_timestamp(sku=sku)
+            Database.Counterpoint.Product.update_timestamp(sku=sku)
             main_menu()
 
         elif input_command == 'sync':
@@ -153,7 +154,7 @@ def main_menu():
                 print(f'Are you sure you want to delete product {sku}? (y/n)')
                 choice = input('Enter choice: ')
                 if choice.lower() == 'y':
-                    integrator.catalog.Product.delete(sku=sku, update_timestamp=True)
+                    Product.delete(sku=sku, update_timestamp=True)
                     main_menu()
                 else:
                     print('Aborted.')
@@ -212,7 +213,9 @@ if __name__ == '__main__':
 
     if len(sys.argv) > 1:
         if sys.argv[1] == 'input':
-            main_menu()
+            # main_menu()
+            print('Input Mode: Disabled')
+
         else:
             if '-y' in sys.argv:  # Run the integrator without user input
                 print(integrator)
@@ -226,15 +229,14 @@ if __name__ == '__main__':
                     while True:
                         now = datetime.now()
                         hour = now.hour
-                        if 19 > hour > 4:  # Daytime - between 7am and 7pm
+                        if creds.Integrator.day_start < hour < creds.Integrator.day_end:
                             minutes_between_sync = creds.Integrator.int_day_run_interval
                         else:
                             minutes_between_sync = creds.Integrator.int_night_run_interval
 
                         delay = minutes_between_sync * 60
-                        step = 12 # interations between collection sorts
+                        step = 12  # interations between collection sorts
 
-                       
                         for i in range(step):
                             try:
                                 integrator = Integrator()  # Reinitialize the integrator each time
@@ -244,11 +246,10 @@ if __name__ == '__main__':
                                 integrator.error_handler.add_error_v(
                                     error=f'Sync Error: {e}', origin=integrator.module, traceback=tb()
                                 )
-                                
+
                             else:
                                 time.sleep(delay)
-                        
-                        
+
                         if integrator.sort_collections:
                             try:
                                 SortOrderEngine.sort(verbose=integrator.verbose)

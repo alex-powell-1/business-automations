@@ -24,6 +24,8 @@ class Integrator:
     authors = Config.integrator['authors']
     version = Config.integrator['version']
     max_workers: int = Config.integrator['max_workers']  # Thread Pool
+    day_start: int = Config.integrator['day_start']
+    day_end: int = Config.integrator['day_end']
     int_day_run_interval: int = Config.integrator['integrator_day_run_interval']  # Minutes
     int_night_run_interval = Config.integrator['integrator_night_run_interval']  # Minutes
     inv_day_run_interval: int = Config.integrator['inventory_day_run_interval']  # Seconds

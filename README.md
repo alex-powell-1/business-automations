@@ -3,23 +3,44 @@
 #### Author: Alex Powell
 #### Contributor: Luke Barrier
 
-Business Automations is a data integration solution created to enhance productivity, increase revenue, and reduce manual data manipulation at a retail store location using Shopify and NCR Counterpoint Point of Sale. Written in python, the following files should be run as services: server.py, integrator.py, scheduled_tasks.py, async_consumers.py, inventory_sync.py
+Business Automations is a data integration solution created to enhance productivity, increase revenue, and reduce manual data manipulation at a retail store location using Shopify and NCR Counterpoint Point of Sale. Written in python, the following files should be run as services: server.py, integrator.py, scheduled_tasks.py, async_consumers.py, inventory_sync.py. NSSM.exe can be used to easily install these files as services.
+
+# Overview
 
 ## Server
 
-The server (`server.py`), built in flask and served with waitress, handles incoming requests, and sends incoming orders, marketing leads, draft orders to multi-threaded RabbitMQ async queue consumers (`async_consumers.py`).
+The server (`server.py`), built in flask and served with waitress, handles incoming requests, and sends incoming orders, marketing leads, draft orders to multi-threaded RabbitMQ async queue consumers (`async_consumers.py`). For organization, routes are defined in `routes` as blueprints that are imported in `server.py`.
 
 
 ## Scheduled Tasks
 
-Scheduled tasks (`scheduled_tasks.py`) runs as a windows service (installed with nssm.exe). This script creates a ScheduledTask object that fulfills hourly tasks, daily tasks, sms automations, health checks, backups, and other tasks as required. This script can be run as a scheduled task or as a windows service with the -l argument to run in a loop.
+Scheduled tasks (`scheduled_tasks.py`) runs as a windows service (installed with nssm.exe). This script creates a ScheduledTask object that fulfills hourly tasks, daily tasks, sms automations, health checks, backups, and other tasks as required. This script can be run as a scheduled task or as a windows service with the -l argument to run in a loop. For tunneling, a ngrok server is used. 
 
-## Integration
+## Integrator
 
-The integration folder contains modules related to product, category tree (collection), order, customer, newsletter subscriber, promotion, and discount code integration with Shopify using GraphQL queries and mutations. The BigCommerce folder exists from a prior integration and contains much of the logic of the Shopify integration and uses the REST API. This script can be run as a scheduled task or as a windows service with the -l argument to run in a loop.
+The integration folder contains modules related to product, category tree (collection), order, customer, newsletter subscriber, promotion, and discount code integration with Shopify using GraphQL queries and mutations. The BigCommerce folder exists from a prior integration and contains much of the logic of the Shopify integration and uses the REST API. This script can be run as a scheduled task or as a windows service with the -l argument to run in a loop. If running in a loop, the Integrator will run during the day at the interval specified by `creds.Integrator.int_day_run_interval` or at night by `creds.Integrator.int_day_run_interval`. Every x syncs, the `SortOrderEngine.sort()` will be called to reorder all products within the collections based on preorder status, sale status, and forecasted revenue by historical reporting.
 
-### Product Integration Notes
+### Catalog Integration Notes
+#### Custom Fields
+A number of custom fields are required to facilitate this integration. Binding ID, is_parent, is_preorder, is_in_store_only, preorder_release_dt, preorder_message, is_new, is_back_in_stock, and a number of other custom fields for metafield sync will need to be created. Custom fields for products have been added to the IM_ITEM table. Custom fields for customers have been added to the AR_CUST table. Middleware columns for metafield ID's associated with customer, product, and variant metafields are of type bigint. If adding columns to the AR_CUST or IM_ITEM table, you must run refresh_views.sql to avoid errors at point of sale.
+
+#### Processing Flow
+The Catalog integration will first check for updated or deleted media in the `Catalog.process_media()` function. A sync queue is then built by querying the database for items that have been updated since the last sync datetime. After that `Catalog.sync()` will run. Syncing the catalog is broken up into two main objectives: sync the collections, and sync the products. `Catalog.sync()` will first process changes to the NCR Counterpoint category tree (e-commerce categories) by deleting collections and then recursively building and analyzing the tree for updates. Collection additions and updates are sent to Shopify and synced to the database. Next, the main menu, which is a separate organizational unit from the collections on shopify, will be processed similarly. After that `process_product_deletions()` will be called to compare products in the middleware to products in counterpoint and delete products that have been deleted in counterpoint. Finally, the `sync()` function will process products with a last maintained date that is more recent than the last_sync date. This process will use the number of workers specificed in `creds.Integrator.maxworkers` to process each item in the queue. Single items will be processed first and bound products (Shopify product with variants) will be processed at the end of each sync. Shopify API error handling is provided in `shopify_api.py` by the Query class. If a product fails to process, it will be deleted and recreated at the end of the catalog sync. This helps to catch unexpected errors, fix broken mappings, and keep viable products online.
+
+#### Process Media
+`Catalog.process_media()` calls two helper functions: `process_images()`, `process_videos()`. `process_images()` will get a list of current product images and their file sizes from the ItemImages folder that is stored locally on the server. It will compare this against a list of images and files sizes from the middleware images table. If items exist in the middleware but do not exist locally, this is a deletion target. Deletion targets will be dealt with by first checking if the image is 'coming-soon.jpg' (a default image in case of missing images). If a default image is being used, the script will check if there are any new photos associated with it. If it does it will delete the default image for the product. Else, it will pass over deletion. If the deletion target image is not the default image, it will delete the image from shopify with a GraphQL mutation and deleting the row from the middeleware images table. In order to maintain the image sort order on Shopify, any remaining product images for the affected product will have their sort order decremented. After deletions are dealt with, this list and any photo addition targets will have their timestamps updated so that `get_sync_queue()` will find these items for processing. `process_videos()` will process videos in a similar manner by creating two lists of videos to compare. Objects existing in the middleware but not in counterpoint will be deleted.
+
+#### Binding ID and Parent Status
 In lieu of having a NCR Counterpoint Advanced Pricing license, this product integration relies on using a binding ID field to bind products together into a Shopify product with multiple variants. One product that shares the binding ID must be marked as the parent. 
+
+#### Process() function
+`Catalog.Product.Process()` is where all GraphQL mutations are called and products are synced with the middleware. This function first checks if this is an inventory only sync. If so, it bypasses most of the processing and just runs `Shopify.Inventory.update()`. If not, it determines if this is a product update or creation by determining if the product object has a middleware id. If it does, it will run `update()`, otherwise it will run `create()`. 
+
+#### create()
+create() begins by constructing a product payload that will be used in a GraphQL mutation. This includes basic product information, product and variant metafields (for properties like mature size, color, bloom season, preorder status, new status, and more), media (images and videos), brand, types, tags, collections, meta title, meta description, html descriptions, and product ID. This payload is then used to create a base item. Various ids are then parsed from the reponse in `get_product_meta_ids()`. In Shopify, items have a default variant and default option that is hidden. The id is retained for deletion later if this is a bound product. If this is a single item, then the single (hidden) variant is then updated with correct sku, location id, buffered inventory, shipping weight, sale price, and some other basic properties. If it is a bound product, a bound product payload will be generated, a bulk set of variants will be created, and then the default variant will be deleted. All remaining variants will then be ordered based on their retail price in ascending order. `time.sleep()` is called for 3 seconds to all all the variant images to process before creating variant images for each variant. Variant meta ids are parsed from response, and finally, the product is published on the predetermined sales channels (Online store, Shop, POS, Google, and Inbox).
+
+#### update()
+Update performs in a similar fashion as create but provides IDs for all shopify objects. It also reorders the media which could change at any point that the local file system has photos added or renamed. 
 
 ### Inventory Sync Notes
 inventory_sync.py is a specialized version of the integrator.py script. It can run very frequently and it will query the database for chnages to the inventory since the last inventory_sync timestamp. If there is a change, it will run the single updateInventory mutation. Every x cycles, this file also generates a csv of inventory for use on a website datatables.net widget.
