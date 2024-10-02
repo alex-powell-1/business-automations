@@ -1,4 +1,4 @@
-from database import Database
+from database import Database as db
 import concurrent.futures
 from integration.shopify_api import Shopify
 from setup.creds import Table
@@ -36,16 +36,16 @@ class Customers:
         the AR_LOY_PT_ADJ_HIST table since the last sync."""
 
         query = f"""SELECT CUST_NO FROM AR_LOY_PT_ADJ_HIST WHERE LST_MAINT_DT > '{self.last_sync}'"""
-        response = Database.query(query)
+        response = db.query(query)
         customer_list = [x[0] for x in response] if response is not None else []
         if customer_list:
-            Database.Counterpoint.Customer.update_timestamps(customer_list)
+            db.CP.Customer.update_timestamps(customer_list)
 
     def get_updated_customers(self):
         if self.test_mode:
-            response = Database.Counterpoint.Customer.get_all(customer_no=self.test_customer)
+            response = db.CP.Customer.get_all(customer_no=self.test_customer)
         else:
-            response = Database.Counterpoint.Customer.get_all(last_sync=self.last_sync)
+            response = db.CP.Customer.get_all(last_sync=self.last_sync)
 
         return [Customer(x, verbose=self.verbose) for x in response] if response is not None else []
 
@@ -55,7 +55,7 @@ class Customers:
         SELECT CUST_NO FROM {Table.CP.Customers.table}
         WHERE IS_ECOMM_CUST = 'Y'
         """
-        response = Database.query(query)
+        response = db.query(query)
         return [x[0] for x in response] if response is not None else []
 
     def get_mw_customers(self):
@@ -65,7 +65,7 @@ class Customers:
         SELECT CUST_NO FROM {Table.Middleware.customers}
         WHERE CUST_NO IS NOT NULL
         """
-        response = Database.query(query)
+        response = db.query(query)
         return [x[0] for x in response] if response is not None else []
 
     def process_deletes(self):
@@ -84,9 +84,9 @@ class Customers:
             count = 1
             for x in delete_queue:
                 Customers.logger.info(f'{count}/{len(delete_queue)}: Deleting customer CUST_NO: {x}', origin=origin)
-                shopify_cust_no = Database.Shopify.Customer.get_id(x)
+                shopify_cust_no = db.Shopify.Customer.get_id(x)
                 Shopify.Customer.delete(shopify_cust_no)
-                Database.Shopify.Customer.delete(shopify_cust_no)
+                db.Shopify.Customer.delete(shopify_cust_no)
                 count += 1
         else:
             if self.verbose:
@@ -246,7 +246,7 @@ class Customer:
         self.addresses.append(address_main)
 
         # Get additional addresses
-        address_res = Database.Counterpoint.Customer.ShippingAddress.get(cust_no=self.cp_cust_no)
+        address_res = db.CP.Customer.ShippingAddress.get(cust_no=self.cp_cust_no)
         if address_res is not None:
             for x in address_res:
                 address = {
@@ -560,7 +560,7 @@ class Customer:
             self.get_ids(response)
             self.update_loyalty_points()
 
-            Database.Shopify.Customer.sync(self)
+            db.Shopify.Customer.sync(self)
 
         except Exception as e:
             Customers.error_handler.add_error_v(
@@ -631,7 +631,7 @@ class Customer:
             SET LOY_PTS_BAL = 0, LST_MAINT_DT = GETDATE()
             WHERE CUST_NO = '{self.cp_cust_no}'
             """
-        response = Database.query(query)
+        response = db.query(query)
         if response['code'] == 200:
             Customer.logger.success(f'Customer {self.cp_cust_no} loyalty points set to 0.', origin='Customer')
         else:
@@ -667,7 +667,7 @@ class Subscribers:
         FROM {Table.newsletter}
         WHERE CREATED_DT > '{self.last_sync}'
         """
-        response = Database.query(query)
+        response = db.query(query)
         self.subscribers = [Subscriber(x[0], x[1], x[2]) for x in response] if response is not None else []
         if self.subscribers:
             for subscriber in self.subscribers:
@@ -707,12 +707,12 @@ class Subscriber:
         SELECT ID FROM {Table.Middleware.customers}
         WHERE SHOP_CUST_ID = {self.shopify_cust_no}
         """
-        response = Database.query(query)
+        response = db.query(query)
         return response[0][0] if response is not None else None
 
     def sync(self):
         if self.mw_id:
-            Database.Shopify.Customer.update(
+            db.Shopify.Customer.update(
                 cp_cust_no=self.cp_cust_no,
                 shopify_cust_no=self.shopify_cust_no,
                 store_credit_id=self.store_credit_id,
@@ -723,7 +723,7 @@ class Subscriber:
                 meta_wholesale_price_tier_id=self.meta_wholesale_price_tier_id,
             )
         else:
-            Database.Shopify.Customer.insert(
+            db.Shopify.Customer.insert(
                 cp_cust_no=self.cp_cust_no,
                 shopify_cust_no=self.shopify_cust_no,
                 store_credit_id=self.store_credit_id,
@@ -735,13 +735,13 @@ class Subscriber:
             )
 
     def process(self):
-        if Database.Counterpoint.Customer.get_by_email(self.email):
+        if db.CP.Customer.get_by_email(self.email):
             # Customer already exists in Counterpoint. Delete from SN_NEWS
             query = f"""
             DELETE FROM SN_NEWS
             WHERE EMAIL = '{self.email}'
             """
-            response = Database.query(query)
+            response = db.query(query)
             if response['code'] == 200:
                 Subscriber.logger.info(f'Deleted subscriber {self.email}')
             return

@@ -9,7 +9,7 @@ from database import Database
 def generate_random_coupon(length=10):
     res = generate_random_code(length)
 
-    if Database.Counterpoint.Discount.has_coupon(res):
+    if Database.CP.Discount.has_coupon(res):
         return generate_random_coupon(length)
 
     return res
@@ -51,7 +51,7 @@ def delete_expired_coupons():
 
     for id in ids[:-1]:
         Shopify.Discount.Code.delete(id)
-        Database.Counterpoint.Discount.delete(shop_id=id)
+        Database.CP.Discount.delete(shop_id=id)
 
     error_handler.logger.success(f'Expired Coupons Deactivated. {total} / {len(ids)}')
 

@@ -21,7 +21,7 @@ from traceback import format_exc as tb
 
 
 class Catalog:
-    all_binding_ids = db.Counterpoint.Product.get_all_binding_ids()
+    all_binding_ids = db.CP.Product.get_all_binding_ids()
     metafields = db.Shopify.Metafield_Definition.get()
     eh = ProcessOutErrorHandler
     logger = eh.logger
@@ -328,7 +328,7 @@ class Catalog:
         def process_videos():
             if self.verbose:
                 Catalog.logger.info('Processing Video Updates.')
-            self.product_videos = db.Counterpoint.Product.Media.Video.get()
+            self.product_videos = db.CP.Product.Media.Video.get()
             mw_video_data = db.Shopify.Product.Media.Video.get(column='ITEM_NO, URL')
             mw_video_list = [[x[0], x[1]] for x in mw_video_data] if mw_video_data else []
             delete_targets = Catalog.get_deletion_target(
@@ -351,15 +351,15 @@ class Catalog:
         """Sets new items to the sync queue."""
         if self.new_items:
             new_items = [x[0] for x in self.new_items]
-            db.Counterpoint.Product.add_to_new(new_items)
-            db.Counterpoint.Product.remove_from_new(new_items)
+            db.CP.Product.add_to_new(new_items)
+            db.CP.Product.remove_from_new(new_items)
 
     def set_back_in_stock_items(self):
         """Sets back in stock items to the sync queue."""
         if self.back_in_stock_items:
             back_in_stock_items = [x[0] for x in self.back_in_stock_items]
-            db.Counterpoint.Product.add_to_back_in_stock(back_in_stock_items)
-            db.Counterpoint.Product.remove_from_back_in_stock(back_in_stock_items)
+            db.CP.Product.add_to_back_in_stock(back_in_stock_items)
+            db.CP.Product.remove_from_back_in_stock(back_in_stock_items)
 
     def sync(self, initial=False):
         """Syncs the catalog with Shopify. This will update products, categories, and media."""
@@ -2578,7 +2578,7 @@ class Product:
             db.Shopify.Product.delete(product_id)
 
             if sku and update_timestamp:
-                db.Counterpoint.Product.update_timestamp(sku)
+                db.CP.Product.update_timestamp(sku)
 
         # Basic Delete Payload
         delete_payload = {'sku': sku}

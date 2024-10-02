@@ -144,7 +144,7 @@ def create_coupon(item_no, customer):
             first_name = customer.first_name.title()
             last_name = customer.last_name.title()
 
-        cp_id = Database.Counterpoint.Discount.create(
+        cp_id = Database.CP.Discount.create(
             description=f'{first_name} ' f'{last_name}-Stock:{item_no}',
             code=coupon_code,
             amount=10,

@@ -1,7 +1,7 @@
 import random
 from setup import creds
 from setup.creds import Table
-from setup.utilities import PhoneNumber
+from setup.utilities import PhoneNumber, EmailAddress
 from setup.error_handler import ProcessOutErrorHandler, ProcessInErrorHandler, LeadFormErrorHandler
 from datetime import datetime, timedelta
 from traceback import format_exc as tb
@@ -330,10 +330,10 @@ class Database:
                 self.to_phone = to_phone
                 self.from_phone = from_phone or creds.Twilio.phone_number
                 self.cust_no = cust_no
-                self.name = name or Database.Counterpoint.Customer.get_name(cust_no)
+                self.name = name or Database.CP.Customer.get_name(cust_no)
                 self.first_name = self.name.split(' ')[0] or None
-                self.category = category or Database.Counterpoint.Customer.get_category(cust_no)
-                self.points = points or Database.Counterpoint.Customer.get_loyalty_balance(cust_no)
+                self.category = category or Database.CP.Customer.get_category(cust_no)
+                self.points = points or Database.CP.Customer.get_loyalty_balance(cust_no)
                 self.message = message
                 self.media = media  # URL of the media
                 self.origin = None  # Origin of the text ('SERVER, AUTOMATIONS, MASS_CAMPAIGN, MESSENGER')
@@ -590,14 +590,14 @@ class Database:
             if not changes:
                 eh.logger.warn(f'{phone} not found in SMS subscriptions.')
 
-        def get_sms_subscriptions(phone_number: str, eh=ProcessInErrorHandler) -> bool:
+        def get_sms_subscriptions(phone_number: str, eh=ProcessInErrorHandler) -> dict:
             """Returns True if phone number is subscribed to SMS notifications."""
             # Find the columns that contain the phone number
             result = {
                 Table.CP.Customers.Column.sms_1_is_subscribed: False,
                 Table.CP.Customers.Column.sms_2_is_subscribed: False,
             }
-            phone_locations = Database.Counterpoint.Customer.find_phone(phone_number)
+            phone_locations = Database.CP.Customer.find_phone(phone_number)
 
             if not phone_locations:
                 return result
@@ -674,7 +674,7 @@ class Database:
             If cp is True, checks if email is subscribed to the newsletter in Counterpoint."""
             if not email:
                 return False
-            cust_no = Database.Counterpoint.Customer.lookup_customer_by_email(email)
+            cust_no = Database.CP.Customer.lookup_customer_by_email(email)
             if cust_no:
                 # Check if email is subscribed to the newsletter in Counterpoint
                 query = f"""
@@ -780,7 +780,7 @@ class Database:
                 # Email not found in Counterpoint.
                 if cust_no:
                     # If cust_no is provided, add email to customer record.
-                    response = Database.Counterpoint.Customer.add_email(email, cust_no)
+                    response = Database.CP.Customer.add_email(email, cust_no)
                     if response['code'] == 200:
                         eh.logger.success(
                             f'Subscribed {email} to newsletter.', origin='Database.Newsletter.subscribe'
@@ -798,7 +798,9 @@ class Database:
 
             return response
 
-    class Counterpoint:
+    class CP:
+        """Methods for interacting with the Counterpoint database."""
+
         class OpenOrder:
             def delete(doc_id=None, tkt_no=None, eh=ProcessOutErrorHandler):
                 if doc_id:
@@ -912,7 +914,7 @@ class Database:
                     response = Database.query(query)
                     if response is not None:
                         most_recent_ticket = response[0][0]
-                        if Database.Counterpoint.ClosedOrder.has_refund(most_recent_ticket):
+                        if Database.CP.ClosedOrder.has_refund(most_recent_ticket):
                             # Evaluate whether this is full or partial refund...
                             count += 1
                         else:
@@ -936,7 +938,7 @@ class Database:
                     response = Database.query(query)
                     if response is not None:
                         first_ticket = response[0][0]
-                        if Database.Counterpoint.ClosedOrder.has_refund(first_ticket):
+                        if Database.CP.ClosedOrder.has_refund(first_ticket):
                             count += 1
                         else:
                             # Return the most recent ticket that does not have a refund
@@ -1063,9 +1065,9 @@ class Database:
                     if verbose:
                         eh.logger.success(f'Sale status updated for {items}.')
                     if status:
-                        Database.Counterpoint.Product.add_to_sale_category(sku_list=items)
+                        Database.CP.Product.add_to_sale_category(sku_list=items)
                     else:
-                        Database.Counterpoint.Product.remove_from_sale_category(sku_list=items)
+                        Database.CP.Product.remove_from_sale_category(sku_list=items)
 
                 elif response['code'] == 201:
                     if verbose:
@@ -1375,22 +1377,22 @@ class Database:
                 if response['code'] == 200:
                     eh.logger.success(f'Product {payload["item_no"]} updated in Counterpoint.')
                     # if payload['item_no'] == '200373':
-                        # Work in progress
-                        # Database.Shopify.Product.Variant.update_metafields(
-                        #     sku=payload['item_no'],
-                        #     meta_is_preorder=payload['is_preorder_item']['id'],
-                        #     meta_preorder_release_date=payload['preorder_release_date']['id'],
-                        #     meta_preorder_message=payload['preorder_message']['id'],
-                        #     meta_is_new=payload['is_new']['id'],
-                        #     meta_is_back_in_stock=payload['is_back_in_stock']['id'],
-                        #     meta_in_store_only=payload['is_in_store_only']['id'],
-                        #     meta_is_featured=payload['is_featured']['id'],
-                        #     meta_is_on_sale=payload['is_on_sale']['id'],
-                        #     meta_sale_description=payload['sale_description']['id'],
-                        #     verbose=True,
-                        #     update_timestamp=False,
-                        #     eh=eh,
-                        # )
+                    # Work in progress
+                    # Database.Shopify.Product.Variant.update_metafields(
+                    #     sku=payload['item_no'],
+                    #     meta_is_preorder=payload['is_preorder_item']['id'],
+                    #     meta_preorder_release_date=payload['preorder_release_date']['id'],
+                    #     meta_preorder_message=payload['preorder_message']['id'],
+                    #     meta_is_new=payload['is_new']['id'],
+                    #     meta_is_back_in_stock=payload['is_back_in_stock']['id'],
+                    #     meta_in_store_only=payload['is_in_store_only']['id'],
+                    #     meta_is_featured=payload['is_featured']['id'],
+                    #     meta_is_on_sale=payload['is_on_sale']['id'],
+                    #     meta_sale_description=payload['sale_description']['id'],
+                    #     verbose=True,
+                    #     update_timestamp=False,
+                    #     eh=eh,
+                    # )
 
                 elif response['code'] == 201:
                     eh.logger.warn(f'Product {payload["item_no"]} not found in Counterpoint.')
@@ -1431,7 +1433,7 @@ class Database:
                     if verbose:
                         eh.logger.success(f'Buffer updated for {item_no}.')
                     if update_timestamp:
-                        Database.Counterpoint.Product.update_timestamp(item_no, verbose=verbose, eh=eh)
+                        Database.CP.Product.update_timestamp(item_no, verbose=verbose, eh=eh)
                 elif response['code'] == 201:
                     if verbose:
                         eh.logger.warn(f'No rows affected for {item_no}.')
@@ -1463,11 +1465,11 @@ class Database:
                         if verbose:
                             eh.logger.success(f'HTML Description updated for item {item_no}.')
                         if update_timestamp:
-                            Database.Counterpoint.Product.update_timestamp(item_no, eh=eh, verbose=verbose)
+                            Database.CP.Product.update_timestamp(item_no, eh=eh, verbose=verbose)
                     elif response['code'] == 201:
                         if verbose:
                             eh.logger.warn(f'No HTML Description found for ITEM_NO: {item_no}.')
-                        Database.Counterpoint.Product.HTMLDescription.insert(
+                        Database.CP.Product.HTMLDescription.insert(
                             item_no, html_descr, update_timestamp, verbose=verbose, eh=eh
                         )
                     else:
@@ -1487,7 +1489,7 @@ class Database:
                         if verbose:
                             eh.logger.success(f'INSERT: HTML Description for {item_no}.')
                         if update_timestamp:
-                            Database.Counterpoint.Product.update_timestamp(item_no, verbose=verbose, eh=eh)
+                            Database.CP.Product.update_timestamp(item_no, verbose=verbose, eh=eh)
                     else:
                         error = f'Error adding HTML Description for item {item_no}. \nQuery: {query}\nResponse: {response}'
                         eh.error_handler.add_error_v(error=error)
@@ -1542,7 +1544,7 @@ class Database:
 
         class Customer:
             def __init__(self, cust_no):
-                self.cust = Database.Counterpoint.Customer.get(cust_no)
+                self.cust = Database.CP.Customer.get(cust_no)
                 self.CUST_NO = self.cust['CUST_NO']
                 self.NAM = self.cust['NAM']
                 self.NAM_UPR = self.cust['NAM_UPR']
@@ -1887,24 +1889,6 @@ class Database:
                 else:
                     eh.logger.info(f'Phone number {phone_number} not found in Counterpoint.')
 
-            def find_email(email_address: str) -> list:
-                """Takes an email address and returns a list of columns that contain the email address"""
-                query = f"""
-                    SELECT {Table.CP.Customers.Column.email_1}, {Table.CP.Customers.Column.email_2}
-                    FROM {Table.CP.Customers.table}
-                    WHERE {Table.CP.Customers.Column.email_1} = '{email_address}' 
-                    OR {Table.CP.Customers.Column.email_2} = '{email_address}'
-                """
-                response = Database.query(query=query, mapped=True)
-                if response['code'] == 200:
-                    result = []
-                    data = response['data']
-                    for row in data:
-                        for column in row:
-                            if row[column]:
-                                result.append(column)
-                    return result
-
             @staticmethod
             def get_all(last_sync=datetime(1970, 1, 1), customer_no=None, customer_list=None):
                 if customer_no:
@@ -2128,6 +2112,125 @@ class Database:
                     eh.error_handler.add_error_v(error=error)
                     raise Exception(error)
 
+            class Email:
+                def find(email_address: str, eh=ProcessInErrorHandler) -> list[str]:
+                    """Takes an email address and returns a list of columns that contain the email address"""
+                    query = f"""
+                        SELECT {Table.CP.Customers.Column.email_1}, {Table.CP.Customers.Column.email_2}
+                        FROM {Table.CP.Customers.table}
+                        WHERE {Table.CP.Customers.Column.email_1} = '{email_address}' 
+                        OR {Table.CP.Customers.Column.email_2} = '{email_address}'
+                    """
+                    response = Database.query(query=query, mapped=True)
+                    if response['code'] == 200:
+                        result = []
+                        data = response['data']
+                        for row in data:
+                            for column in row:
+                                if row[column]:
+                                    result.append(column)
+                        return result
+
+                def get_subscriptions(email: str, eh=ProcessInErrorHandler) -> dict:
+                    """Returns a dict of email subscriptions."""
+                    # Find the columns that contain the email address
+                    result = {
+                        Table.CP.Customers.Column.email_1_is_subscribed: False,
+                        Table.CP.Customers.Column.email_1_is_subscribed: False,
+                    }
+                    email_locations = Database.CP.Customer.Email.find(email)
+
+                    if not email_locations:
+                        return result
+
+                    for location in email_locations:
+                        if location == Table.CP.Customers.Column.email_1:
+                            email_column = Table.CP.Customers.Column.email_1_is_subscribed
+
+                        elif location == Table.CP.Customers.Column.email_2:
+                            email_column = Table.CP.Customers.Column.email_2_is_subscribed
+
+                        else:
+                            continue
+
+                        query = f"""
+                        SELECT {email_column}
+                        FROM {Table.CP.Customers.table}
+                        WHERE {location} = '{email}'
+                        """
+                        response = Database.query(query)
+
+                        try:
+                            result[email_column] = response[0][0] == 'Y'
+                        except:
+                            pass
+
+                    return result
+
+                @staticmethod
+                def subscribe(email: str, eh=ProcessOutErrorHandler):
+                    if not EmailAddress.is_valid(email=email):
+                        return eh.error_handler.add_error_v(f'Invalid email address: {email}')
+
+                    subscriptions = Database.CP.Customer.Email.get_subscriptions(email)
+                    for x in subscriptions:
+                        if subscriptions[x]:
+                            eh.logger.warn(f'{email} already subscribed to {x}.')
+                        else:
+                            if x == Table.CP.Customers.Column.email_1_is_subscribed:
+                                email_column = Table.CP.Customers.Column.email_1
+
+                            elif x == Table.CP.Customers.Column.sms_2_is_subscribed:
+                                email_column = Table.CP.Customers.Column.email_2
+                            else:
+                                continue
+
+                            query = f"""
+                            UPDATE {Table.CP.Customers.table}
+                            SET {x} = 'Y'
+                            WHERE {email_column} = '{email}' and {x} = 'N'
+                            """
+                            response = Database.query(query)
+                            if response['code'] == 200:
+                                eh.logger.success(f'Subscribed {email_column}:{email} to {x}')
+                            elif response['code'] == 201:
+                                pass
+                            else:
+                                eh.error_handler.add_error_v(f'Error subscribing {email} to marketing emails')
+
+                @staticmethod
+                def unsubscribe(email, eh=ProcessInErrorHandler):
+                    if not EmailAddress.is_valid(email=email):
+                        return eh.error_handler.add_error_v(f'Invalid email address: {email}')
+
+                    subscriptions = Database.CP.Customer.Email.get_subscriptions(email)
+                    changes = False
+                    if subscriptions:
+                        for x in subscriptions:
+                            if subscriptions[x]:
+                                if x == Table.CP.Customers.Column.email_1_is_subscribed:
+                                    email_column = Table.CP.Customers.Column.email_1
+                                elif x == Table.CP.Customers.Column.email_2_is_subscribed:
+                                    email_column = Table.CP.Customers.Column.email_2
+                                else:
+                                    continue
+                                where = f"{email_column} = '{email}'"
+
+                                query = f"""
+                                UPDATE {Table.CP.Customers.table}
+                                SET {x} = 'N'
+                                WHERE {where} and {x} = 'Y'
+                                """
+                                response = Database.query(query)
+                                if response['code'] == 200:
+                                    changes = True
+                                    eh.logger.success(f'Unsubscribed {email_column}:{email} from {x}')
+                                else:
+                                    eh.error_handler.add_error_v(f'Error unsubscribing {email} from SMS')
+
+                    if not changes:
+                        eh.logger.warn(f'{email} not found in email subscriptions.')
+
             class ShippingAddress:
                 def get(cust_no):
                     query = f"""
@@ -2300,7 +2403,7 @@ class Database:
                 except Exception as e:
                     Database.error_handler.add_error_v(
                         error=f'CP Coupon Check Error: {e}\nCode: {code}',
-                        origin='Database.Counterpoint.Discount.cp_has_coupon',
+                        origin='Database.CP.Discount.cp_has_coupon',
                     )
                     return False
 
@@ -2328,7 +2431,7 @@ class Database:
                         Database.query(query)
                     except Exception as e:
                         Database.error_handler.add_error_v(
-                            error=f'CP Coupon Insertion Error: {e}', origin='Database.Counterpoint.Discount.create'
+                            error=f'CP Coupon Insertion Error: {e}', origin='Database.CP.Discount.create'
                         )
                     else:
                         Database.logger.success('CP Coupon Insertion Success!')
@@ -2343,7 +2446,7 @@ class Database:
                 the minimum discountable amount is set to $100,000. This will effectively deactivate the coupon."""
                 if not shop_id and not discount_code:
                     Database.error_handler.add_error_v(
-                        'No shop_id or discount_code provided', origin='Database.Counterpoint.Discount.deactivate'
+                        'No shop_id or discount_code provided', origin='Database.CP.Discount.deactivate'
                     )
                     return
                 if shop_id:
@@ -2369,23 +2472,23 @@ class Database:
                             Database.logger.success('Shopify Coupon Deactivated Successfully!')
                         else:
                             Database.error_handler.add_error_v(
-                                'Error deactivating coupon', origin='Database.Counterpoint.Discount.deactivate'
+                                'Error deactivating coupon', origin='Database.CP.Discount.deactivate'
                             )
                 except Exception as e:
                     Database.error_handler.add_error_v(
-                        f'Error deactivating coupon: {e}', origin='Database.Counterpoint.Discount.deactivate'
+                        f'Error deactivating coupon: {e}', origin='Database.CP.Discount.deactivate'
                     )
 
             def delete(discount_code=None, shop_id=None):
                 """Deletes a discount code from CounterPoint."""
                 if not discount_code and not shop_id:
                     Database.error_handler.add_error_v(
-                        'No discount_code or shop_id provided', origin='Database.Counterpoint.Discount.delete'
+                        'No discount_code or shop_id provided', origin='Database.CP.Discount.delete'
                     )
                     return
 
                 if shop_id:
-                    discount_code = Database.Counterpoint.Discount.get_disc_cod_from_shop_id(shop_id)
+                    discount_code = Database.CP.Discount.get_disc_cod_from_shop_id(shop_id)
 
                 if discount_code:
                     query = f"""
@@ -2404,13 +2507,12 @@ class Database:
                             return False
                         else:
                             Database.error_handler.add_error_v(
-                                error=f'CP Coupon Deletion Error: {response}',
-                                origin='Database.Counterpoint.Discount.delete',
+                                error=f'CP Coupon Deletion Error: {response}', origin='Database.CP.Discount.delete'
                             )
                             return False
                     except Exception as e:
                         Database.error_handler.add_error_v(
-                            error=f'CP Coupon Deletion Error: {e}', origin='Database.Counterpoint.Discount.delete'
+                            error=f'CP Coupon Deletion Error: {e}', origin='Database.CP.Discount.delete'
                         )
 
     class Shopify:

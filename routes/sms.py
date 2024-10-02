@@ -98,7 +98,7 @@ def incoming_sms():
             return str(resp)
 
     # Get Customer Name and Category from SQL
-    customer_number, full_name, category = Database.Counterpoint.Customer.get_customer_by_phone(from_phone)
+    customer_number, full_name, category = Database.CP.Customer.get_customer_by_phone(from_phone)
 
     Database.SMS.insert(
         origin='Webhook',

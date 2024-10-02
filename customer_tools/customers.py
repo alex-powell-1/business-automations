@@ -233,16 +233,16 @@ def get_customers_by_category(category):
 
 
 def lookup_customer(email_address=None, phone_number=None):
-    return db.Counterpoint.Customer.lookup_customer_by_email(
-        email_address
-    ) or db.Counterpoint.Customer.lookup_customer_by_phone(phone_number)
+    return db.CP.Customer.lookup_customer_by_email(email_address) or db.CP.Customer.lookup_customer_by_phone(
+        phone_number
+    )
 
 
 def is_customer(email_address, phone_number):
     """Checks to see if an email or phone number belongs to a current customer"""
     return (
-        db.Counterpoint.Customer.lookup_customer_by_email(email_address) is not None
-        or db.Counterpoint.Customer.lookup_customer_by_phone(phone_number) is not None
+        db.CP.Customer.lookup_customer_by_email(email_address) is not None
+        or db.CP.Customer.lookup_customer_by_phone(phone_number) is not None
     )
 
 
@@ -353,7 +353,7 @@ def add_new_customer(first_name, last_name, phone_number, email_address, street_
             print(f'Error: {response.status_code} - {response.text}')
 
         cust_id = response.json()['CUST_NO']
-        db.Counterpoint.Customer.update_timestamps(customer_no=cust_id)
+        db.CP.Customer.update_timestamps(customer_no=cust_id)
         return cust_id
     else:
         return 'Already a customer'
@@ -700,7 +700,7 @@ def fix_first_and_last_sale_dates(dt, eh=ScheduledTasksErrorHandler):
     """Updates the first and last sale dates for customers with refunds."""
     eh.logger.info(f'Fix First and Last Sale Dates: Starting at {datetime.now():%H:%M:%S}')
     # Get a list of customers with refunds from a day ago
-    customers = db.Counterpoint.ClosedOrder.get_refund_customers(dt.yesterday)
+    customers = db.CP.ClosedOrder.get_refund_customers(dt.yesterday)
     if not customers:
         eh.logger.info(f'No customers with refunds on {dt.yesterday}.')
     else:
@@ -710,36 +710,32 @@ def fix_first_and_last_sale_dates(dt, eh=ScheduledTasksErrorHandler):
             #################################
 
             # Get the last successful order for the customer
-            last_success_tkt_no = db.Counterpoint.ClosedOrder.get_last_successful_order(customer)
+            last_success_tkt_no = db.CP.ClosedOrder.get_last_successful_order(customer)
             if last_success_tkt_no:
                 # Get the date and amount of the last successful order
-                last_success_order_date = db.Counterpoint.ClosedOrder.get_business_date(tkt_no=last_success_tkt_no)
-                last_success_order_amt = db.Counterpoint.ClosedOrder.get_total(tkt_no=last_success_tkt_no)
+                last_success_order_date = db.CP.ClosedOrder.get_business_date(tkt_no=last_success_tkt_no)
+                last_success_order_amt = db.CP.ClosedOrder.get_total(tkt_no=last_success_tkt_no)
                 # Update the customer's last sale date and amount
-                db.Counterpoint.Customer.update_last_sale_date(
+                db.CP.Customer.update_last_sale_date(
                     cust_no=customer, last_sale_date=last_success_order_date, last_sale_amt=last_success_order_amt
                 )
             else:
                 # If the customer has no successful orders, set the last sale date to None
-                db.Counterpoint.Customer.update_last_sale_date(cust_no=customer, last_sale_date=None)
+                db.CP.Customer.update_last_sale_date(cust_no=customer, last_sale_date=None)
 
             ########################
             # Fix First Sale Date #
             ########################
             # Get the first successful order for the customer
-            first_success_tkt_no = db.Counterpoint.ClosedOrder.get_first_successful_order(customer)
+            first_success_tkt_no = db.CP.ClosedOrder.get_first_successful_order(customer)
             if first_success_tkt_no:
                 # Get the date of the first successful order
-                first_success_order_date = db.Counterpoint.ClosedOrder.get_business_date(
-                    tkt_no=first_success_tkt_no
-                )
+                first_success_order_date = db.CP.ClosedOrder.get_business_date(tkt_no=first_success_tkt_no)
                 # Update the customer's first sale date
-                db.Counterpoint.Customer.update_first_sale_date(
-                    cust_no=customer, first_sale_date=first_success_order_date
-                )
+                db.CP.Customer.update_first_sale_date(cust_no=customer, first_sale_date=first_success_order_date)
             else:
                 # If the customer has no successful orders, set the first sale date to None
-                db.Counterpoint.Customer.update_first_sale_date(cust_no=customer, first_sale_date=None)
+                db.CP.Customer.update_first_sale_date(cust_no=customer, first_sale_date=None)
 
     eh.logger.info(f'Fix First and Last Sale Dates: Finished at {datetime.now():%H:%M:%S}')
 

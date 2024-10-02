@@ -112,7 +112,7 @@ def set_products_to_inactive(eh=ScheduledTasksErrorHandler):
                 continue
             else:
                 try:
-                    db.Counterpoint.Product.set_inactive(item.item_no, eh=eh)
+                    db.CP.Product.set_inactive(item.item_no, eh=eh)
                 except:
                     continue
                 else:

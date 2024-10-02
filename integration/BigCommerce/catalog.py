@@ -37,7 +37,7 @@ class Catalog:
     error_handler = ProcessOutErrorHandler.error_handler
     logger = error_handler.logger
 
-    all_binding_ids = Database.Counterpoint.Product.get_all_binding_ids()
+    all_binding_ids = Database.CP.Product.get_all_binding_ids()
     mw_brands = set()
 
     def __init__(self, last_sync=datetime(1970, 1, 1)):

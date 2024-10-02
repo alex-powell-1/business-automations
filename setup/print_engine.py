@@ -100,7 +100,7 @@ class Printer:
         cust_no = OrderAPI.get_cust_no(order)
 
         # Get Basic Customer Info from Counterpoint if available
-        customer = Database.Counterpoint.Customer(cust_no)
+        customer = Database.CP.Customer(cust_no)
         if not customer.CUST_NO:
             Printer.logger.warn(f'Customer {cust_no} not found in Counterpoint')
             first_name = 'Web'

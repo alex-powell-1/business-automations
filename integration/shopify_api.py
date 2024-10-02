@@ -2658,7 +2658,7 @@ class Shopify:
 
 def refresh_order(tkt_no):
     """Delete order from PS_DOC_HDR and associated tables and rebuild from Shopify Data"""
-    Database.Counterpoint.OpenOrder.delete(tkt_no=tkt_no)
+    Database.CP.OpenOrder.delete(tkt_no=tkt_no)
 
     from integration.orders import Order as ShopifyOrder
 

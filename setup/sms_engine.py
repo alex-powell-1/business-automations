@@ -41,7 +41,7 @@ class SMSEngine:
 
         if category is None:
             if origin != 'SERVER':
-                category = (Database.Counterpoint.Customer.get_customer_by_phone(to_phone))[2]
+                category = (Database.CP.Customer.get_customer_by_phone(to_phone))[2]
 
         error_code = None
         error_message = None

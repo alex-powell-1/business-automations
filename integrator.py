@@ -148,7 +148,7 @@ def main_menu():
         # Update timestamp for a product
         elif input_command == 'tc':
             sku = input('Enter product sku: ')
-            Database.Counterpoint.Product.update_timestamp(sku=sku)
+            Database.CP.Product.update_timestamp(sku=sku)
             main_menu()
 
         elif input_command == 'sync':

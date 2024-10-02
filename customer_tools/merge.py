@@ -74,7 +74,7 @@ def get_duplicate_customers(email=False, phone=False) -> list:
 
 class Candidate:
     def __init__(self, cust_no):
-        self.customer = Database.Counterpoint.Customer(cust_no)
+        self.customer = Database.CP.Customer(cust_no)
 
     def __str__(self) -> str:
         return f'{self.customer.NAM} - {self.customer.CUST_NO} - Last Sale: {self.customer.LST_SAL_DAT} - Rewards Card: {self.customer.LOY_CARD_NO} - PT Balance: {self.customer.LOY_PTS_BAL}'
@@ -89,7 +89,7 @@ class Job:
         self.customers = [Candidate(x) for x in customer_list]
         self.to_customer: Candidate = self.get_to_customer()
         self.from_customers: list[Candidate] = self.get_from_customers()
-        self.combined_customer: Database.Counterpoint.Customer = self.combine_customer_data()
+        self.combined_customer: Database.CP.Customer = self.combine_customer_data()
         self.is_valid: bool = self.validate()
 
     def __str__(self) -> str:
@@ -208,12 +208,12 @@ class Job:
     def merge(self):
         for x in self.from_customers:
             # Step 1: Merge Shipping Addresses
-            Database.Counterpoint.Customer.ShippingAddress.merge(
+            Database.CP.Customer.ShippingAddress.merge(
                 from_cust_no=x.customer.CUST_NO, to_cust_no=self.to_customer.customer.CUST_NO, eh=self.eh
             )
 
             # Step 2: Merge Customer Data
-            Database.Counterpoint.Customer.merge_customer(
+            Database.CP.Customer.merge_customer(
                 from_cust_no=x.customer.CUST_NO, to_cust_no=self.to_customer.customer.CUST_NO, eh=self.eh
             )
 

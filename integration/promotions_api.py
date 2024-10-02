@@ -1,4 +1,4 @@
-from database import Database
+from database import Database as db
 from setup.error_handler import ProcessOutErrorHandler
 from setup.utilities import convert_to_utc
 from product_tools.products import Product
@@ -32,7 +32,7 @@ class Promotions:
         return result
 
     def get_promotions(self):
-        promo_data = Database.Counterpoint.Promotion.get()
+        promo_data = db.CP.Promotion.get()
 
         if promo_data:
             for promo in promo_data:
@@ -45,12 +45,12 @@ class Promotions:
     def process_deletes(self):
         """Deletes promotions that are no longer in Counterpoint."""
         cp_promotions = [x.grp_cod for x in self.promotions]
-        mw_promotions = Database.Shopify.Promotion.get()
+        mw_promotions = db.Shopify.Promotion.get()
         if mw_promotions:
             delete_count = 0
             for mw_promotion in mw_promotions:
                 if mw_promotion not in cp_promotions:
-                    shopify_id = Database.Shopify.Promotion.get(mw_promotion)
+                    shopify_id = db.Shopify.Promotion.get(mw_promotion)
                     if shopify_id:
                         Promotions.logger.info(f'Deleting Promotion: {mw_promotion}')
                         Promotion.delete(shopify_discount_code_id=shopify_id)
@@ -161,7 +161,7 @@ class Promotion:
             self.end_dat = convert_to_utc(self.end_dat)
 
     def get_price_rules(self):
-        rules = Database.Counterpoint.Promotion.PriceRule.get(self.grp_cod)
+        rules = db.CP.Promotion.PriceRule.get(self.grp_cod)
         if rules:
             for rule in rules:
                 self.price_rules.append(PriceRule(rule, verbose=self.verbose))
@@ -212,8 +212,8 @@ class Promotion:
 
         if rule.items:
             for i in rule.items:
-                shopify_id = Database.Shopify.Product.get_id(item_no=i)
-                variant_id = Database.Shopify.Product.Variant.get_id(sku=i)
+                shopify_id = db.Shopify.Product.get_id(item_no=i)
+                variant_id = db.Shopify.Product.Variant.get_id(sku=i)
                 if shopify_id:
                     if variant_id:
                         # Individual Variants for Bound Products
@@ -236,8 +236,8 @@ class Promotion:
         if rule.mw_bogo_items:
             for i in rule.mw_bogo_items:
                 if i not in rule.items:
-                    shopify_id = Database.Shopify.Product.get_id(item_no=i)
-                    variant_id = Database.Shopify.Product.Variant.get_id(sku=i)
+                    shopify_id = db.Shopify.Product.get_id(item_no=i)
+                    variant_id = db.Shopify.Product.Variant.get_id(sku=i)
                     if shopify_id:
                         if variant_id:
                             # Individual Variants for Bound Products
@@ -284,7 +284,7 @@ class Promotion:
                     )
                 # Remove Sale Price if the promotion is not retail. This could happen if a promotion is setup as
                 # retail and then changed to wholesale.
-                if Database.Shopify.Promotion.has_fixed_priced_items(rule):
+                if db.Shopify.Promotion.has_fixed_priced_items(rule):
                     self.remove_sale_price(rule)
             else:
                 #########################################################################
@@ -312,7 +312,7 @@ class Promotion:
 
                     # Sync BOGO Twoofer Promotions to Middleware.
                     # Fixed Price Promotions are processed outside this block.
-                    Database.Shopify.Promotion.sync(rule)
+                    db.Shopify.Promotion.sync(rule)
                 else:
                     ############################## RETAIL ################################
                     ######################################################################
@@ -336,7 +336,7 @@ class Promotion:
         FROM IM_PRC_RUL
         WHERE GRP_COD = '{self.grp_cod}'
         """
-        response = Database.query(query)
+        response = db.query(query)
         if response:
             cp_lines = [x[0] for x in response]
 
@@ -346,7 +346,7 @@ class Promotion:
         FROM SN_PROMO_LIN_FIX_PRC 
         WHERE GRP_COD = '{self.grp_cod}'
         """
-        response = Database.query(query)
+        response = db.query(query)
         if response:
             mw_lines = [x[0] for x in response]
 
@@ -360,15 +360,15 @@ class Promotion:
                     FROM SN_PROMO_LIN_FIX_PRC
                     WHERE GRP_COD = '{self.grp_cod}' AND RUL_SEQ_NO = '{seq_no}'
                     """
-                    response = Database.query(query)
+                    response = db.query(query)
                     if response:
                         item_list = [x[0] for x in response]
                         for item in item_list:
-                            Database.Shopify.Promotion.FixLine.delete(
+                            db.Shopify.Promotion.FixLine.delete(
                                 group_cod=self.grp_cod, rule_seq_no=seq_no, item_no=item
                             )
-                        Database.Counterpoint.Product.set_sale_status(items=item_list, status=False)
-                        Database.Counterpoint.Product.remove_sale_price(item_list)
+                        db.CP.Product.set_sale_status(items=item_list, status=False)
+                        db.CP.Product.remove_sale_price(item_list)
 
         # Check each price rule for deleted items. If an item is not in CP, then remove the sale price and delete.
         for rule in self.price_rules:
@@ -379,8 +379,8 @@ class Promotion:
                 delete_list = [x for x in mw_bogo_items if x not in cp_rule_items]
                 if delete_list:
                     print(f'GRP_COD: {self.grp_cod} BOGO Delete List: {delete_list}')
-                    Database.Shopify.Promotion.BxgyLine.delete(item_no_list=delete_list)
-                    Database.Counterpoint.Product.set_sale_status(items=delete_list, status=False)
+                    db.Shopify.Promotion.BxgyLine.delete(item_no_list=delete_list)
+                    db.CP.Product.set_sale_status(items=delete_list, status=False)
 
             mw_fixed_price = rule.mw_fixed_price_items
             # check fixed price items
@@ -388,16 +388,14 @@ class Promotion:
                 delete_list = [x for x in mw_fixed_price if x not in cp_rule_items]
                 if delete_list:
                     for item in delete_list:
-                        Database.Shopify.Promotion.FixLine.delete(
+                        db.Shopify.Promotion.FixLine.delete(
                             group_cod=self.grp_cod, rule_seq_no=rule.seq_no, item_no=item
                         )
-                    Database.Counterpoint.Product.set_sale_status(items=delete_list, status=False)
+                    db.CP.Product.set_sale_status(items=delete_list, status=False)
 
     def set_sale_status(self, rule: 'PriceRule'):
         if rule.items:
-            Database.Counterpoint.Product.set_sale_status(
-                items=rule.items, status=rule.is_enabled_cp, description=rule.badge_text
-            )
+            db.CP.Product.set_sale_status(items=rule.items, status=rule.is_enabled_cp, description=rule.badge_text)
 
         if rule.is_enabled_cp and not rule.is_enabled_mw:
             Shopify.Discount.Automatic.activate(rule.shopify_id)
@@ -437,7 +435,7 @@ class Promotion:
             Promotions.logger.warn(f'Add Sale Prices: No Items Found for Rule: {rule.seq_no}')
             return
 
-        Database.Counterpoint.Product.set_sale_status(items=rule.items, status=True, description=rule.badge_text)
+        db.CP.Product.set_sale_status(items=rule.items, status=True, description=rule.badge_text)
 
         # Set Sale Price
         target_price_break = rule.price_breaks[0]
@@ -455,16 +453,14 @@ class Promotion:
             if current_sale_price == target_sale_price:
                 continue  # Skip if the sale price is already set
             else:
-                Database.Counterpoint.Product.set_sale_price(sku=i, price=target_sale_price)
+                db.CP.Product.set_sale_price(sku=i, price=target_sale_price)
                 if rule.mw_fixed_price_items:
                     if i not in rule.mw_fixed_price_items:
-                        Database.Shopify.Promotion.FixLine.insert(
+                        db.Shopify.Promotion.FixLine.insert(
                             group_cod=self.grp_cod, rule_seq_no=rule.seq_no, item_no=i
                         )
                 else:
-                    Database.Shopify.Promotion.FixLine.insert(
-                        group_cod=self.grp_cod, rule_seq_no=rule.seq_no, item_no=i
-                    )
+                    db.Shopify.Promotion.FixLine.insert(group_cod=self.grp_cod, rule_seq_no=rule.seq_no, item_no=i)
 
     def remove_sale_price(self, rule: 'PriceRule'):
         """Removes the sale price for Non BOGO TWOOFER items in the promotion.
@@ -472,12 +468,12 @@ class Promotion:
         if not rule.items:
             Promotions.logger.warn(f'Remove Sale Prices: No Items Found for Rule: {rule.seq_no}')
             return
-        Database.Counterpoint.Product.remove_sale_price(rule.items)
+        db.CP.Product.remove_sale_price(rule.items)
 
-        Database.Counterpoint.Product.set_sale_status(items=rule.items, status=False)
+        db.CP.Product.set_sale_status(items=rule.items, status=False)
         # Remove Sale Price
         for item in rule.items:
-            Database.Shopify.Promotion.FixLine.delete(group_cod=self.grp_cod, rule_seq_no=rule.seq_no, item_no=item)
+            db.Shopify.Promotion.FixLine.delete(group_cod=self.grp_cod, rule_seq_no=rule.seq_no, item_no=item)
 
     @staticmethod
     def delete(group_code=None, shopify_discount_code_id=None):
@@ -487,18 +483,18 @@ class Promotion:
         if shopify_discount_code_id:
             rules = shopify_discount_code_id
         if group_code:
-            rules = Database.Shopify.Promotion.get(group_code=group_code)  # Get all rules with the same group code
+            rules = db.Shopify.Promotion.get(group_code=group_code)  # Get all rules with the same group code
         if not rules:
             Promotions.logger.warn(f'PROMOTIONS: No Shopify ID found for Group Code: {group_code}')
             return
 
         for shopify_id in rules:
-            items = Database.Shopify.Promotion.BxgyLine.get(shopify_id)
+            items = db.Shopify.Promotion.BxgyLine.get(shopify_id)
             if items:
-                Database.Counterpoint.Product.set_sale_status(items=items, status=False)
+                db.CP.Product.set_sale_status(items=items, status=False)
 
             Shopify.Discount.Automatic.delete(shopify_id)
-            Database.Shopify.Promotion.delete(shopify_id)
+            db.Shopify.Promotion.delete(shopify_id)
 
 
 class PriceRule:
@@ -527,9 +523,9 @@ class PriceRule:
 
         self.items: list[str] = self.get_cp_items()  # List of CP Item Numbers
 
-        self.mw_bogo_items: list[str] = Database.Shopify.Promotion.BxgyLine.get(self.shopify_id)
+        self.mw_bogo_items: list[str] = db.Shopify.Promotion.BxgyLine.get(self.shopify_id)
 
-        self.mw_fixed_price_items: list[str] = Database.Shopify.Promotion.FixLine.get(
+        self.mw_fixed_price_items: list[str] = db.Shopify.Promotion.FixLine.get(
             group_cod=self.grp_cod, rule_seq_no=self.seq_no
         )
 
@@ -560,7 +556,7 @@ class PriceRule:
                 FROM IM_PRC_RUL_BRK
                 WHERE GRP_COD = '{self.grp_cod}' AND RUL_SEQ_NO = '{self.seq_no}'
                 """
-        response = Database.query(query)
+        response = db.query(query)
         if response:
             result = []
             for break_data in response:
@@ -577,7 +573,7 @@ class PriceRule:
         where_filter + " AND IS_ECOMM_ITEM = 'Y'"
 
         query = f'SELECT ITEM_NO FROM IM_ITEM {where_filter}'
-        response = Database.query(query)
+        response = db.query(query)
         if response:
             for item in response:
                 item_no = item[0]
@@ -610,7 +606,7 @@ class PriceRule:
 
         if fixed_price:
             retail_price = None
-            response = Database.query(f"SELECT PRC_1 FROM IM_ITEM WHERE ITEM_NO = '{self.items[0]}'")
+            response = db.query(f"SELECT PRC_1 FROM IM_ITEM WHERE ITEM_NO = '{self.items[0]}'")
             try:
                 retail_price = response[0][0]
             except:
@@ -668,8 +664,8 @@ class PriceRule:
         """Takes in a rule sequence number and returns a list of associated Item Shopify Product IDs."""
         result = []
         for item in rule.items:
-            shopify_prod_id = Database.Shopify.Product.get_id(item_no=item)
-            shopify_variant_id = Database.Shopify.Product.Variant.get_id(sku=item)
+            shopify_prod_id = db.Shopify.Product.get_id(item_no=item)
+            shopify_variant_id = db.Shopify.Product.Variant.get_id(sku=item)
             if shopify_prod_id:
                 result.append({'sku': item, 'shopify_id': shopify_prod_id, 'variant_id': shopify_variant_id})
         return result

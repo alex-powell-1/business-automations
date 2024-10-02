@@ -307,7 +307,7 @@ def product_update():
     logger.log(f'Webhook: Product Update, SKU:{item_no}, Product ID: {product_id}, Web Title: {title}')
 
     if item_no and description:
-        Database.Counterpoint.Product.HTMLDescription.update(
+        Database.CP.Product.HTMLDescription.update(
             item_no=item_no, html_descr=description, update_timestamp=False, eh=ProcessInErrorHandler
         )
 
@@ -464,7 +464,7 @@ def product_update():
                 position = m['position']
                 update_payload[f'alt_text_{position}'] = m['alt_text']
         try:
-            Database.Counterpoint.Product.update(update_payload, eh=ProcessInErrorHandler)
+            Database.CP.Product.update(update_payload, eh=ProcessInErrorHandler)
         except Exception as e:
             ProcessInErrorHandler.error_handler.add_error_v(
                 error=f'Error updating product {item_no}: {e}',
