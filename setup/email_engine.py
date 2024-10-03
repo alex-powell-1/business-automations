@@ -215,6 +215,7 @@ class Email:
                     'company_phone': creds.Company.phone,
                     'company_url': creds.Company.url,
                     'company_reviews': creds.Company.reviews,
+                    'unsubscribe_endpoint': f'{creds.API.endpoint}{creds.API.Route.unsubscribe}?email={email}',
                 }
 
                 email_content = jinja_template.render(email_data)

@@ -1,29 +1,35 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
+  <head>
+    <meta charset="UTF-8" />
     <title>{{title}}</title>
-</head>
-<body>
-<p>{{greeting}}<br><br>
+  </head>
+  <body>
+    <p>
+      {{greeting}}<br /><br />
 
-Thanks for reaching out about {{service}} at {{company}}!<br><br>
+      Thanks for reaching out about {{service}} at {{company}}!<br /><br />
 
-We are excited to help you with your project!<br><br>
-Please take a look at the attached document.<br><br>
+      We are excited to help you with your project!<br /><br />
+      Please take a look at the attached document.<br /><br />
 
-What we need to know: <br>
-<ul>
-    {% for item in list_items: %}
-        <li>{{item}}</li>
-    {% endfor %}
-</ul>
-<br>
-Thanks,<br><br>
-{{signature_name}}<br>
-{{signature_title}}<br>
-{{company_phone}}<br>
-<a href={{company_url}}>{{company}}</a><br>
-<a href={{company_reviews}}>Recent Google Reviews</a>
-</body>
+      What we need to know: <br />
+    </p>
+
+    <ul>
+      {% for item in list_items: %}
+      <li>{{item}}</li>
+      {% endfor %}
+    </ul>
+    <br />
+    Thanks,<br /><br />
+    {{signature_name}}<br />
+    {{signature_title}}<br />
+    {{company_phone}}<br />
+    <a href="{{company_url}}">{{company}}</a><br />
+    <a href="{{company_reviews}}">Recent Google Reviews</a>
+  </body>
+  <footer>
+    <a href="{{ unsubscribe_endpoint }}">Unsubscribe from marketing</a>
+  </footer>
 </html>
