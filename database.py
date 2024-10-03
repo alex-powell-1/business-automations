@@ -947,19 +947,31 @@ class Database:
                         return None
 
         class Product:
-            def get_all_binding_ids():
-                """Returns a list of unique and validated binding IDs from the IM_ITEM table."""
+            def get_binding_id(item_no=None):
+                """Returns the binding id of a sku, or a list of unique and validated binding IDs 
+                from the ITEM table."""
+                if item_no:
+                    query = f"""
+                    SELECT {Table.CP.Item.Column.binding_id}
+                    FROM {Table.CP.Item.table}
+                    WHERE ITEM_NO = '{item_no}'
+                    """
+                    response = Database.query(query=query)
+                    try:
+                        return response[0][0]
+                    except:
+                        return None
+                else:
+                    response = Database.query(
+                        f'SELECT DISTINCT {Table.CP.Item.Column.binding_id} '
+                        f"FROM {Table.CP.Item.table} WHERE {Table.CP.Item.Column.web_enabled} = 'Y'"
+                        f'AND {Table.CP.Item.Column.binding_id} IS NOT NULL'
+                    )
 
-                response = Database.query(
-                    f'SELECT DISTINCT {Table.CP.Item.Column.binding_id} '
-                    f"FROM {Table.CP.Item.table} WHERE {Table.CP.Item.Column.web_enabled} = 'Y'"
-                    f'AND {Table.CP.Item.Column.binding_id} IS NOT NULL'
-                )
+                    def valid(binding_id):
+                        return re.match(creds.Company.binding_id_format, binding_id)
 
-                def valid(binding_id):
-                    return re.match(creds.Company.binding_id_format, binding_id)
-
-                return [binding[0] for binding in response if valid(binding[0])] if response else []
+                    return [binding[0] for binding in response if valid(binding[0])] if response else []
 
             def get_by_category(category):
                 query = f"""
@@ -1403,11 +1415,21 @@ class Database:
 
             @staticmethod
             def update_timestamp(item_no, verbose=False, eh=ProcessOutErrorHandler):
-                query = f"""
-                UPDATE IM_ITEM
-                SET LST_MAINT_DT = GETDATE()
-                WHERE ITEM_NO = '{item_no}'
-                """
+                binding_id = Database.CP.Product.get_binding_id(item_no)
+                
+                if binding_id:
+                    query = f"""
+                    UPDATE IM_ITEM
+                    SET LST_MAINT_DT = GETDATE()
+                    WHERE {Table.CP.Item.Column.binding_id} = '{binding_id}'
+                    """
+                else:
+                    query = f"""
+                    UPDATE IM_ITEM
+                    SET LST_MAINT_DT = GETDATE()
+                    WHERE ITEM_NO = '{item_no}'
+                    """
+                
                 response = Database.query(query)
                 if response['code'] == 200:
                     if verbose:
@@ -4352,4 +4374,4 @@ class Database:
 
 
 if __name__ == '__main__':
-    print(Database.Shopify.Product.get_parent_item_no(binding_id='B0006'))
+    print(Database.CP.Product.get_binding_id('10337'))

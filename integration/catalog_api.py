@@ -21,7 +21,7 @@ from traceback import format_exc as tb
 
 
 class Catalog:
-    all_binding_ids = db.CP.Product.get_all_binding_ids()
+    all_binding_ids = db.CP.Product.get_binding_id()
     metafields = db.Shopify.Metafield_Definition.get()
     eh = ProcessOutErrorHandler
     logger = eh.logger
@@ -199,18 +199,23 @@ class Catalog:
                         add_targets.append({'parent': item['sku'], 'variant': member})
                     elif not exists_in_mw:
                         add_targets.append({'parent': item['sku'], 'variant': member})
-
+        changes = False
         if delete_targets:
+            changes = True
             Catalog.logger.info(f'Product Delete Targets: {delete_targets}')
+            
             for x in delete_targets:
-                Product.delete(sku=x)
+                Product.delete(sku=x, update_timestamp=True)
         else:
             if self.verbose:
                 Catalog.logger.info('No products to delete.')
+        
         if self.verbose:
             Catalog.logger.info('Processing Product Additions.')
         if add_targets:
+            changes = True
             Catalog.logger.info(f'Product Add Targets: {add_targets}')
+            
             for x in add_targets:
                 parent_sku = x['parent']
                 variant_sku = x['variant']
@@ -219,10 +224,15 @@ class Catalog:
                 product_id = Product.get_product_id(parent_sku)
 
                 if product_id is not None:
-                    Product.add_variant(product_id=product_id, sku=variant_sku)
+                    Product.add_variant(product_id=product_id, variant_sku=variant_sku)
         else:
             if self.verbose:
                 Catalog.logger.info('No products to add.')
+        
+        if changes:
+            print("Getting Sync Queue after deletes/adds")
+            self.get_sync_queue()
+            print(self.sync_queue)
 
     def process_media(self):
         """Assesses Image folder. Deletes images from MW and Shopify.
@@ -2594,7 +2604,7 @@ class Product:
         #     response = Shopify.Product.Variant.create_bulk(payload)
 
     @staticmethod
-    def delete(sku, update_timestamp=False):
+    def delete(sku, update_timestamp=False, verbose=False):
         """Delete Product from Shopify and Middleware."""
         if creds.Integrator.verbose_logging:
             Product.logger.info(f'Deleting Product {sku}.')
@@ -2607,7 +2617,7 @@ class Product:
             db.Shopify.Product.delete(product_id)
 
             if sku and update_timestamp:
-                db.CP.Product.update_timestamp(sku)
+                db.CP.Product.update_timestamp(sku, verbose=verbose)
 
         # Basic Delete Payload
         delete_payload = {'sku': sku}
@@ -2623,7 +2633,7 @@ class Product:
         if binding_id:
             total_variants_in_mw = Product.get_family_members(binding_id=binding_id, count=True)
             # Delete Single Product/Variants
-            if total_variants_in_mw < 3:
+            if total_variants_in_mw <= 2:
                 if creds.Integrator.verbose_logging:
                     Product.logger.info('Case 1')
                 # Must have at least 3 Products before deletion to remain a bound product. Will delete product.
@@ -2637,6 +2647,7 @@ class Product:
             else:
                 if creds.Integrator.verbose_logging:
                     Product.logger.info('Case 3 - Child Product. Will delete variant.')
+                
                 option_id = db.Shopify.Product.Variant.get_option_id(sku=sku)
                 opt_val_id = db.Shopify.Product.Variant.get_option_value_id(sku=sku)
                 variant_id = db.Shopify.Product.Variant.get_id(sku=sku)

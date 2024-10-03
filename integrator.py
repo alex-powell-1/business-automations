@@ -295,6 +295,7 @@ if __name__ == '__main__':
                     integrator.error_handler.add_error_v(error=e, origin=integrator.module, traceback=tb())
 
     else:
+        integrator.verbose = True
         print(integrator)
         input = input('Continue? (y/n): ')
         if input.lower() == 'y':
