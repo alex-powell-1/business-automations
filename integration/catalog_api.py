@@ -411,6 +411,8 @@ class Catalog:
                 )
 
             if fail_count['items']:
+                retry_success_count = 0
+                retry_fail_count = {'number': 0, 'items': []}
 
                 def retry(target):
                     Product.delete(sku=target['sku'])
@@ -422,16 +424,17 @@ class Catalog:
                     for x in results:
                         success, item = x
                         if success:
-                            success_count += 1
+                            retry_success_count += 1
                         else:
-                            fail_count['number'] += 1
+                            retry_fail_count['number'] += 1
+                            retry_fail_count['items'].append(item)
 
                     Catalog.logger.info(
                         '\n-----------------------\n'
                         'Catalog Retry Complete.\n'
-                        f'Success Count: {success_count}\n'
-                        f'Fail Count: {fail_count["number"]}\n'
-                        f'Fail Items: {fail_count["items"]}\n'
+                        f'Success Count: {retry_success_count}\n'
+                        f'Fail Count: {retry_fail_count["number"]}\n'
+                        f'Fail Items: {retry_fail_count["items"]}\n'
                         '-----------------------\n'
                     )
 
