@@ -12,6 +12,7 @@ from product_tools.products import Product
 from setup import creds
 from setup.creds import API
 from setup.email_engine import Email
+from sms.sms_messages import SMSMessages
 from setup.error_handler import ScheduledTasksErrorHandler as error_handler
 
 from setup import barcode_engine as barcode_engine
@@ -19,14 +20,13 @@ from setup import barcode_engine as barcode_engine
 from setup.utilities import PhoneNumber, combine_images
 from setup.sms_engine import SMSEngine
 from integration.shopify_api import Shopify
+import random
 from database import Database
 
 from shutil import copy
 
 from time import sleep
 
-
-coupon_offer = 'save $10 on an order of $100 or more'
 
 
 def remove_file(file_path):
@@ -49,53 +49,6 @@ def copy_file(source, destination):
         error_handler.error_handler.add_error_v(f'Error copying file: {e}', origin='stock_notification.py')
 
 
-def send_email(greeting, email, item_number, coupon_code, photo=None):
-    """Send PDF attachment to customer"""
-    recipient = {'': email}
-    # Generate HTML
-    # ---------------
-
-    # Get Item Details by creating new Product Object
-    item = Product(item_number)
-
-    # Create Subject
-    email_subject = f'{item.web_title.title()} is back in stock!'
-
-    with open('./templates/stock_notification.html', 'r') as file:
-        template_str = file.read()
-
-    jinja_template = Template(template_str)
-
-    email_data = {
-        'title': email_subject,
-        'greeting': greeting,
-        'item': item.web_title,
-        'qty': item.buffered_quantity_available,
-        'company': creds.Company.name,
-        'item_description': item.web_description,
-        'item_url': item.item_url,
-        'coupon_code': coupon_code,
-        'coupon_offer': coupon_offer,
-        'signature_name': 'Beth',
-        'signature_title': 'Sales Manager',
-        'company_phone': creds.Company.phone,
-        'company_url': creds.Company.url,
-        'company_reviews': creds.Company.reviews,
-        'company_address_line_1': creds.Company.address_html_1,
-        'company_address_line_2': creds.Company.address_html_2,
-    }
-
-    email_content = jinja_template.render(email_data)
-
-    Email.send(
-        recipients_list=recipient,
-        subject=email_subject,
-        content=email_content,
-        image=photo,
-        image_name='coupon.png',
-        barcode=f'./{coupon_code}.png',
-    )
-
 
 def send_sms(greeting, phone, item, qty, webtitle, coupon_code, expiration_str, photo=None):
     """Send SMS text message to customer"""
@@ -117,7 +70,7 @@ def send_sms(greeting, phone, item, qty, webtitle, coupon_code, expiration_str, 
     coupon_message = ''
 
     if coupon_code is not None:
-        coupon_message = f'\n\nUse code: { coupon_code } online or in-store to { coupon_offer }! { expiration_str }'
+        coupon_message = f'\n\nUse code: { coupon_code } online or in-store to { creds.Marketing.StockNotification.offer }! { expiration_str }'
 
     message = f'{greeting}!\n\nYou requested to be notified when { item } was back in stock. We are excited to share that we have { int(qty) } available now!{ coupon_message } { link }'
     SMSEngine.send_text(
@@ -127,7 +80,6 @@ def send_sms(greeting, phone, item, qty, webtitle, coupon_code, expiration_str, 
         message=message,
         url=photo,
         username='Automation',
-        name='Unknown',
     )
 
 
@@ -147,8 +99,8 @@ def create_coupon(item_no, customer):
         cp_id = Database.CP.Discount.create(
             description=f'{first_name} ' f'{last_name}-Stock:{item_no}',
             code=coupon_code,
-            amount=10,
-            min_purchase=100,
+            amount=creds.Marketing.StockNotification.discount,
+            min_purchase=creds.Marketing.StockNotification.min_amt,
         )
 
         if cp_id is None:
@@ -168,8 +120,8 @@ def create_coupon(item_no, customer):
             # Send to Shopify. Create Coupon.
             shop_id = Shopify.Discount.Code.Basic.create(
                 name=f'Back in Stock({item_no}, {first_name+' '+last_name})',
-                amount=10,
-                min_purchase=100,
+                amount=creds.Marketing.StockNotification.discount,
+                min_purchase=creds.Marketing.StockNotification.min_amt,
                 code=coupon_code,
                 max_uses=1,
                 expiration=expiration_date,
@@ -244,19 +196,21 @@ def send_stock_notifications():
 
             cust_no = customer_tools.customers.lookup_customer(email_address=email, phone_number=phone)
 
-            greeting = 'Hey there'
+            greeting = random.choice(SMSMessages.greetings)
 
             customer = None
 
             if cust_no is not None:
-                customer = customer_tools.customers.Customer(cust_no)
-                greeting = f'Hey {customer.first_name}'
+                customer = Database.CP.Customer(cust_no)
+                greeting = f'{greeting} {customer.FST_NAM}'
 
             coupon_code = None
-            coupon_exclusions = ['45', '804', 'HB', 'BOSTON']
-            included = item_no not in coupon_exclusions
+            coupon_eligible = False
 
-            if included:
+            if item_no not in creds.Marketing.StockNotification.exclusions:
+                coupon_eligible = True
+            
+            if coupon_eligible:
                 coupon_code = create_coupon(item_no, customer)
                 if coupon_code is None:
                     error_handler.error_handler.add_error_v(f'Coupon Code Could Not Be Generated for {item_no}')
@@ -264,7 +218,7 @@ def send_stock_notifications():
 
             item_photo = creds.Company.product_images + f'/{item_no}.jpg'
 
-            if included:
+            if coupon_eligible:
                 expiration_date = datetime.datetime.now() + relativedelta(days=+5)
 
                 combine_images(
@@ -282,7 +236,7 @@ def send_stock_notifications():
 
             photos_to_remove.append(local_photo)
 
-            if included:
+            if coupon_eligible:
                 photos_to_remove.append(creds.API.public_files_local_path + f'/{item_no}-BARCODE.jpg')
                 product_photo = API.public_files + f'/{item_no}-BARCODE.jpg'
 
@@ -306,7 +260,8 @@ def send_stock_notifications():
 
             if email is not None:
                 query += f" AND EMAIL = '{email}'"
-                send_email(
+                
+                Email.Customer.StockNotification.send(
                     greeting=greeting, email=email, item_number=item_no, coupon_code=coupon_code, photo=local_photo
                 )
                 if phone is None:
@@ -328,13 +283,14 @@ def send_stock_notifications():
             except:
                 error_handler.error_handler.add_error_v('Error querying database', origin='stock_notification.py')
 
-            if included:
+            if coupon_eligible:
                 os.remove(f'./{coupon_code}.png')
 
         error_handler.logger.success('Completed: Send Stock Notification Text')
         error_handler.logger.info(f'Total Messages Sent: {messages_sent}')
 
         delete_expired_coupons()
+
     except Exception as e:
         error_handler.error_handler.add_error_v('Error sending stock notifications')
         error_handler.error_handler.add_error_v(f'Error: {e}', origin='stock_notification.py')

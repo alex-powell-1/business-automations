@@ -98,8 +98,8 @@ class Company:
     reviews = Config.company['reviews']
     address = Config.company['address']
     address_html = Config.company['address_html']
-    company_address_html_1 = address_html.split('<br>')[0]
-    company_address_html_2 = address_html.split('<br>')[1]
+    address_html_1 = address_html.split('<br>')[0]
+    address_html_2 = address_html.split('<br>')[1]
     url = Config.company['url']
     hours = Config.company['hours']['month']
     logo = Config.company['logo']
@@ -519,4 +519,13 @@ class Marketing:
 
     class Newsletter:
         schema = Config.marketing['newsletter']['schema']
+    
+    class StockNotification:
+        offer: str = Config.marketing['stock_notification']['offer'] # description
+        discount: int = Config.marketing['stock_notification']['discount'] # $ Amount
+        min_amt: int = Config.marketing['stock_notification']['min_amt'] # $ Amount
+        exclusions: list[str] = Config.marketing['stock_notification']['exclusions']
+
+
+print(Marketing.StockNotification.offer)
 

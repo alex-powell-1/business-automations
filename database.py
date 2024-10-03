@@ -2136,7 +2136,7 @@ class Database:
                     # Find the columns that contain the email address
                     result = {
                         Table.CP.Customers.Column.email_1_is_subscribed: False,
-                        Table.CP.Customers.Column.email_1_is_subscribed: False,
+                        Table.CP.Customers.Column.email_2_is_subscribed: False,
                     }
                     email_locations = Database.CP.Customer.Email.find(email)
 

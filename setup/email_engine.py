@@ -5,10 +5,12 @@ from email.mime.text import MIMEText
 from email.mime.image import MIMEImage
 from email.mime.application import MIMEApplication
 from setup.barcode_engine import generate_barcode
+from product_tools.products import Product
 from setup import utilities
 from datetime import datetime
 from reporting import product_reports
 from database import Database
+from date_presets import Dates
 
 from setup.admin_report_html import boiler_plate, css, body_start, body_end
 
@@ -229,9 +231,58 @@ class Email:
                     attachment=data.pdf_attachment,
                 )
 
+        class StockNotification:
+            def send(greeting, email, item_number, coupon_code, photo=None):
+                """Send PDF attachment to customer"""
+                recipient = {'': email}
+                # Generate HTML
+                # ---------------
+
+                # Get Item Details by creating new Product Object
+                item = Product(item_number)
+
+                # Create Subject
+                email_subject = f'{item.web_title.title()} is back in stock!'
+
+                with open('./templates/stock_notification.html', 'r') as file:
+                    template_str = file.read()
+
+                jinja_template = Template(template_str)
+
+                email_data = {
+                    'title': email_subject,
+                    'greeting': greeting,
+                    'item': item.web_title,
+                    'qty': item.buffered_quantity_available,
+                    'company': creds.Company.name,
+                    'item_description': item.web_description,
+                    'item_url': item.item_url,
+                    'coupon_code': coupon_code,
+                    'coupon_offer': creds.Marketing.StockNotification.offer,
+                    'signature_name': 'Beth',
+                    'signature_title': 'Sales Manager',
+                    'company_phone': creds.Company.phone,
+                    'company_url': creds.Company.url,
+                    'company_reviews': creds.Company.reviews,
+                    'company_address_line_1': creds.Company.address_html_1,
+                    'company_address_line_2': creds.Company.address_html_2,
+                    'unsubscribe_endpoint': f'{creds.API.endpoint}{creds.API.Route.unsubscribe}?email={email}',
+                }
+
+                email_content = jinja_template.render(email_data)
+
+                Email.send(
+                    recipients_list=recipient,
+                    subject=email_subject,
+                    content=email_content,
+                    image=photo,
+                    image_name='coupon.png',
+                    barcode=f'./{coupon_code}.png',
+                )
+
     class Staff:
         class AdminReport:
-            def send(recipients, dates):
+            def send(recipients: list[str], dates: Dates):
                 error_handler.logger.info(f'Generating Admin Report Data - Starting at {datetime.now():%H:%M:%S}')
 
                 subject = f'Administrative Report - {dates.today:%x}'
@@ -270,7 +321,7 @@ class Email:
                 error_handler.logger.info(f'Administrative Report: Completed at {datetime.now():%H:%M:%S}')
 
         class LowStockReport:
-            def send(recipients, dates):
+            def send(recipients: list[str], dates: Dates):
                 error_handler.logger.info(
                     f'Generating Low Stock Report Data - Starting at {datetime.now():%H:%M:%S}'
                 )
@@ -295,7 +346,7 @@ class Email:
                 error_handler.logger.info(f'Low Stock Report: Completed at {datetime.now():%H:%M:%S}')
 
         class ItemReport:
-            def send(recipients):
+            def send(recipients: list[str]):
                 error_handler.logger.info(f'Items Report: Starting at {datetime.now():%H:%M:%S}')
 
                 with open('./templates/reporting/item_report.html', 'r') as file:
@@ -329,7 +380,7 @@ class Email:
                 error_handler.logger.info(f'Items Report: Completed at {datetime.now():%H:%M:%S}')
 
         class DesignLeadNotification:
-            def send(recipients):
+            def send(recipients: list[str]):
                 """Renders Jinja2 template and sends HTML email to sales team with leads from yesterday
                 for follow-up"""
                 error_handler.logger.info(f'Lead Notification Email: Starting at {datetime.now():%H:%M:%S}')
@@ -405,7 +456,4 @@ class Email:
 
 
 if __name__ == '__main__':
-    from setup.date_presets import Dates
-
-    dates = Dates()
-    Email.Staff.LowStockReport.send(recipients=creds.Reports.LowStock.recipients, dates=dates)
+    pass

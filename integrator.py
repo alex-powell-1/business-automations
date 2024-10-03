@@ -258,7 +258,8 @@ if __name__ == '__main__':
                     while True:
                         now = datetime.now()
                         hour = now.hour
-                        if creds.Integrator.day_start < hour < creds.Integrator.day_end:
+                        
+                        if creds.Integrator.day_start <= hour <= creds.Integrator.day_end:
                             minutes_between_sync = creds.Integrator.int_day_run_interval
                         else:
                             minutes_between_sync = creds.Integrator.int_night_run_interval

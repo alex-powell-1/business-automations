@@ -46,16 +46,18 @@ if __name__ == '__main__':
     while True:
         now = datetime.now()
         hour = now.hour
-        if 18 > hour > 7:
-            delay = creds.Integrator.inv_day_run_interval
-            step = 6
+        
+        step = 6
+        if creds.Integrator.day_start <= hour <= creds.Integrator.day_end:
+            delay = creds.Integrator.inv_day_run_interval            
         else:
             delay = creds.Integrator.inv_night_run_interval
-            step = 10
+        
         try:
             # Upload Inventory to file share.
             inventory_upload.upload_inventory(verbose=inventory.verbose, eh=Inventory.eh)
-
+            
+            # Perform x(step) number of iterations of inventory sync before reuploading inventory.
             for i in range(step):
                 inventory = Inventory()
                 inventory.sync()
