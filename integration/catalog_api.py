@@ -219,9 +219,7 @@ class Catalog:
                 product_id = Product.get_product_id(parent_sku)
 
                 if product_id is not None:
-                    variant = Variant(sku=variant_sku)
-                    pass
-                    # Shopify.Product.Variant.create(variant)
+                    Product.add_variant(product_id=product_id, sku=variant_sku)
         else:
             if self.verbose:
                 Catalog.logger.info('No products to add.')
@@ -1915,6 +1913,7 @@ class Product:
                             'mediaContentType': image.type,
                         }
                         result.append(image_payload)
+            # print(f'Image Payload - {result}')
             return result
 
         def get_video_payload():
@@ -2017,13 +2016,18 @@ class Product:
 
         return result
 
-    def get_bulk_variant_payload(self):
+    def get_bulk_variant_payload(self, variants=None):
         payload = {'media': [], 'strategy': 'REMOVE_STANDALONE_VARIANT', 'variants': []}
         # If product_id exists, this is an update
         if self.product_id:
             payload['productId'] = f'gid://shopify/Product/{self.product_id}'
-
-        for child in self.variants:
+        
+        if variants:
+            variant_list = variants
+        else:
+            variant_list = self.variants
+        
+        for child in variant_list:
             variant_payload = {
                 'inventoryItem': {
                     'cost': child.cost,
@@ -2330,7 +2334,10 @@ class Product:
             get_metafield_ids(response)
 
         def get_media_ids(response):
+            # print(response['media_ids'])
             for x in self.media:
+                # print(f'Media: {x}')
+                # print(f'Temp sort order: {x.temp_sort_order}')
                 x.product_id = self.product_id
                 x.shopify_id = response['media_ids'][x.temp_sort_order]
                 if x.temp_sort_order > x.sort_order:
@@ -2344,7 +2351,7 @@ class Product:
                     x.sort_order = self.media.index(x)
                     self.reorder_media_queue.append(x)
 
-        if 'media_ids' in response:
+        if response['media_ids']:
             get_media_ids(response)
 
     def get_variant_meta_ids(self, response):
@@ -2564,6 +2571,27 @@ class Product:
                 response = db.query(query)
                 if response is not None:
                     return [x[0] for x in response]
+
+    @staticmethod
+    def add_variant(product_id: int, variant_sku: str):
+        variant = Variant(sku=variant_sku)
+        family_size = Product.get_family_members(binding_id=variant.binding_id, count=True)
+        parent_sku = db.Shopify.Product.get_parent_item_no(binding_id=variant.binding_id)
+        # For now...
+        Catalog.logger.info("In Add Variant: Will delete product...")
+        Product.delete(sku=parent_sku, update_timestamp=True)
+        # Work in Progress
+        # if family_size <= 2:
+        #     # This is a formerly 'single' product. Delete the product so it can be recreated as a bound product.
+        #     Product.delete(sku=parent_sku, update_timestamp=True)
+        # else:
+        #     data = {'sku': parent_sku, 'binding_id': variant.binding_id}
+            
+        #     product = Product(product_data=data, last_sync=variant.last_sync, verbose=variant.verbose)
+        #     product.get(last_sync=variant.last_sync)
+        #     # This is a bound product. Will run mutation to add variant to existing product.
+        #     payload = product.get_bulk_variant_payload(variants=[variant])
+        #     response = Shopify.Product.Variant.create_bulk(payload)
 
     @staticmethod
     def delete(sku, update_timestamp=False):

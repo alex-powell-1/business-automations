@@ -3061,16 +3061,22 @@ class Database:
                     Database.logger.warn('No product ID found for the given parameters.')
                     return None
 
-            def get_parent_item_no(product_id):
+            def get_parent_item_no(product_id=None, binding_id=None, eh=ProcessOutErrorHandler):
+                if not product_id and not binding_id:
+                    eh.error_handler.add_error_v("You must provide either product ID or binding ID", origin="get_parent_item_no")
+                    return
                 if product_id:
                     query = f"""
                             SELECT ITEM_NO FROM {Table.Middleware.products}
                             WHERE PRODUCT_ID = {product_id} AND (BINDING_ID IS NULL OR IS_PARENT = 1)
                             """
-                else:
-                    Database.logger.warn('No product ID provided for parent item number lookup.')
-                    return
+                elif binding_id:
+                    query = f"""
+                            SELECT ITEM_NO FROM {Table.Middleware.products}
+                            WHERE BINDING_ID = '{binding_id}' AND IS_PARENT = 1
+                            """
                 response = Database.query(query)
+
                 if response is not None:
                     try:
                         return response[0][0]
@@ -4346,4 +4352,4 @@ class Database:
 
 
 if __name__ == '__main__':
-    print(Database.SMS.subscribe('828-390-8030'))
+    print(Database.Shopify.Product.get_parent_item_no(binding_id='B0006'))
