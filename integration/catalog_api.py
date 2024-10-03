@@ -371,7 +371,7 @@ class Catalog:
             self.process_product_deletes()
 
         if not self.sync_queue:
-            if not self.inventory_only:  # don't log this for inventory sync.
+            if not self.inventory_only and not self.verbose:  # don't log this for inventory sync.
                 Catalog.logger.info(f'No products to sync. Last Sync: {self.last_sync}')
         else:
             queue_length = len(self.sync_queue)
@@ -395,8 +395,6 @@ class Catalog:
                 for x in results:
                     success, item = x
                     if success:
-                        if self.inventory_only:
-                            Catalog.logger.info(f'Inventory Sync Complete: {item["sku"]}')
                         success_count += 1
                     else:
                         fail_count['number'] += 1
@@ -1019,7 +1017,7 @@ class Product:
             if response is not None:
                 # Create Product objects for each child and add object to bound parent list
                 for item in response:
-                    variant = self.Variant(item[0], last_sync=last_sync)
+                    variant = Variant(item[0], last_sync=last_sync)
                     self.variants.append(variant)
 
             # Sort self.variants by variant.is_parent so parent is processed first.
@@ -1161,7 +1159,7 @@ class Product:
             self.default_image = len(self.images) == 1 and self.images[0].name == 'coming-soon.jpg'
 
         def get_single_product_details():
-            self.variants.append(self.Variant(self.sku, last_sync=last_sync, inventory_only=self.inventory_only))
+            self.variants.append(Variant(self.sku, last_sync=last_sync, inventory_only=self.inventory_only))
             single = self.variants[0]
             # Product Description
             self.product_id = single.product_id

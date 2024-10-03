@@ -1,6 +1,6 @@
 from integration.catalog_api import Catalog
 from product_tools import inventory_upload
-
+import sys
 from setup.date_presets import Dates
 from datetime import datetime
 from setup import creds
@@ -39,6 +39,10 @@ class Inventory:
 
 if __name__ == '__main__':
     inventory = Inventory()
+    if len(sys.argv) > 1:
+        if '-v' in sys.argv:  # Set verbose logging
+                        inventory.verbose = True
+    
     while True:
         now = datetime.now()
         hour = now.hour

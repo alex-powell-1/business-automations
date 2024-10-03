@@ -519,3 +519,4 @@ class Marketing:
 
     class Newsletter:
         schema = Config.marketing['newsletter']['schema']
+

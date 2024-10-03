@@ -36,7 +36,7 @@ class Integrator:
 
         # Sync component booleans for enabling/disabling
         self.customer_sync: bool = creds.Integrator.customer_sync
-        self.subscriber_sync: bool = creds.Integrator.newsletter_sync
+        self.subscriber_sync: bool = creds.Integrator.subscriber_sync
         self.promotions_sync: bool = creds.Integrator.promotion_sync
         self.catalog_sync: bool = creds.Integrator.catalog_sync
         self.sort_collections: bool = creds.Integrator.collection_sorting
@@ -300,3 +300,5 @@ if __name__ == '__main__':
             integrator.sync(eh=Integrator.eh, operation=Integrator.module)
         else:
             sys.exit(0)
+
+

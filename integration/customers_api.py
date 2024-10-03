@@ -661,6 +661,12 @@ class Subscribers:
         self.verbose = verbose
         self.subscribers: list[Subscriber] = []
 
+    def __str__(self):
+        result = ''
+        if self.subscribers:
+            result = f'Subscribers to process: {len(self.subscribers)}\n'
+        return result
+
     def sync(self):
         query = f"""
         SELECT EMAIL, ENABLED, CREATED_DT
