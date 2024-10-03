@@ -258,11 +258,14 @@ def encode_base64(input_string):
 
 def get_last_sync(file_name='last_sync.txt'):
     """Read the last sync time from a file for use in sync operations."""
-    with open(file_name, 'r+') as file:
-        time_data = file.read()
-        last_sync = datetime.strptime(time_data, '%Y-%m-%d %H:%M:%S')
+    try:
+        with open(file_name, 'r+') as file:
+            time_data = file.read()
+            last_sync = datetime.strptime(time_data, '%Y-%m-%d %H:%M:%S')
+    except FileNotFoundError:
+        last_sync = datetime.now()
 
-        return last_sync
+    return last_sync
 
 
 def set_last_sync(file_name, start_time):
