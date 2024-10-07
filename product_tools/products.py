@@ -668,7 +668,7 @@ def get_all_back_in_stock_items(start_date) -> list[list[str | int]]:
     INNER JOIN SN_SHOP_PROD mw
     on mw.ITEM_NO = lin.ITEM_NO
     WHERE lin.RECVR_DAT > '{start_date}' and (inv.QTY_AVAIL - item.PROF_NO_1) > 0
-    AND item.IS_ECOMM_ITEM = 'Y'
+    AND item.IS_ECOMM_ITEM = 'Y' AND item.{creds.Table.CP.Item.Column.is_preorder_item} = 'N'
     AND item.ITEM_NO in (
         SELECT ITEM_NO FROM PO_RECVR_HIST_LIN WHERE RECVR_DAT < '{start_date}'
     )

@@ -35,7 +35,6 @@ class Catalog:
         verbose=False,
         test_mode=False,
         test_queue=None,
-        enabled=True,
         initial_sync=False,
     ):
         self.dates: Dates = dates
@@ -64,8 +63,7 @@ class Catalog:
             self.process_media()
         if self.test_mode:
             self.sync_queue = self.test_queue
-        elif enabled:
-            self.get_sync_queue()
+        self.get_sync_queue()
 
     def __str__(self):
         result = ''
@@ -371,6 +369,9 @@ class Catalog:
 
     def sync(self, initial=False):
         """Syncs the catalog with Shopify. This will update products, categories, and media."""
+        # get this at start of sync in case product timestamps were updated during promotion sync
+        self.get_sync_queue() 
+        
         if not self.inventory_only:
             if not self.test_mode:
                 self.category_tree.sync()

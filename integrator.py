@@ -302,5 +302,3 @@ if __name__ == '__main__':
             integrator.sync(eh=Integrator.eh, operation=Integrator.module)
         else:
             sys.exit(0)
-
-
