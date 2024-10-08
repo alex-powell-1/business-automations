@@ -519,10 +519,9 @@ class Marketing:
 
     class Newsletter:
         schema = Config.marketing['newsletter']['schema']
-    
-    class StockNotification:
-        offer: str = Config.marketing['stock_notification']['offer'] # description
-        discount: int = Config.marketing['stock_notification']['discount'] # $ Amount
-        min_amt: int = Config.marketing['stock_notification']['min_amt'] # $ Amount
-        exclusions: list[str] = Config.marketing['stock_notification']['exclusions']
 
+    class StockNotification:
+        offer: str = Config.marketing['stock_notification']['offer']  # description
+        discount: int = Config.marketing['stock_notification']['discount']  # $ Amount
+        min_amt: int = Config.marketing['stock_notification']['min_amt']  # $ Amount
+        exclusions: list[str] = Config.marketing['stock_notification']['exclusions']

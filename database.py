@@ -1046,7 +1046,7 @@ class Database:
                 if not items:
                     raise Exception('No items provided to set sale status.')
 
-                where_filter = f' WHERE ITEM_NO IN ({','.join([f"'{x}'" for x in items])})'
+                where_filter = f""" WHERE ITEM_NO IN ({','.join([f"'{x}'" for x in items])})"""
 
                 query = f"""
                     UPDATE {Table.CP.Item.table}
@@ -3063,7 +3063,9 @@ class Database:
 
             def get_parent_item_no(product_id=None, binding_id=None, eh=ProcessOutErrorHandler):
                 if not product_id and not binding_id:
-                    eh.error_handler.add_error_v("You must provide either product ID or binding ID", origin="get_parent_item_no")
+                    eh.error_handler.add_error_v(
+                        'You must provide either product ID or binding ID', origin='get_parent_item_no'
+                    )
                     return
                 if product_id:
                     query = f"""
@@ -3675,7 +3677,7 @@ class Database:
                         res = Database.query(q)
                         if res['code'] == 200:
                             if verbose:
-                                eh.logger.success(f'{res['affected rows']} images deleted from Middleware.')
+                                eh.logger.success(f"""{res['affected rows']} images deleted from Middleware.""")
                             if (image_id or image) and prod_id:
                                 # Decrement sort order of remaining images
                                 query = f"""
@@ -3837,7 +3839,9 @@ class Database:
                                 eh.logger.success(f'Video {url} for product {sku} deleted from Middleware.')
 
                             if verbose:
-                                eh.logger.success(f'{response['affected rows']} videos deleted from Middleware.')
+                                eh.logger.success(
+                                    f"""{response['affected rows']} videos deleted from Middleware."""
+                                )
 
                             if product_id and sort_order:
                                 # Decrement sort order of remaining videos

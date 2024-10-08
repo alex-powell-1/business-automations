@@ -1,6 +1,7 @@
 beautifulsoup4==4.12.3
 bleach==6.1.0
 code128==0.3
+cryptography==43.0.1
 csv_diff==1.2
 docx==0.2.4
 docxtpl==0.18.0
@@ -17,13 +18,15 @@ pandas==2.2.3
 pika==1.3.2
 Pillow==10.4.0
 promise==2.3
+pymongo==4.10.1
 pyodbc==5.0.1
 python_dateutil==2.8.2
 pytz==2023.3.post1
-qrcode==7.4.2
+qrcode==8.0
 Requests==2.32.3
 selenium==4.25.0
 shortuuid==1.0.13
 twilio==8.10.2
 waitress==3.0.0
 Werkzeug==3.0.4
+gunicorn==23.0.0
