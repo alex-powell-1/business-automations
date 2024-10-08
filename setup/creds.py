@@ -1,4 +1,6 @@
 from config_file import config_data
+import platform
+import os
 
 
 class Config:
@@ -13,42 +15,6 @@ class Config:
     consumers: dict = config_data['consumers']
     backups: dict = config_data['backups']
     marketing: dict = config_data['marketing']
-
-
-class Integrator:
-    """Integrator Configuration"""
-
-    logs = Config.integrator['logs']
-    directory = Config.integrator['directory']
-    title = Config.integrator['title']
-    authors = Config.integrator['authors']
-    version = Config.integrator['version']
-    max_workers: int = Config.integrator['max_workers']  # Thread Pool
-    day_start: int = Config.integrator['day_start']
-    day_end: int = Config.integrator['day_end']
-    int_day_run_interval: int = Config.integrator['integrator_day_run_interval']  # Minutes
-    int_night_run_interval = Config.integrator['integrator_night_run_interval']  # Minutes
-    inv_day_run_interval: int = Config.integrator['inventory_day_run_interval']  # Seconds
-    inv_night_run_interval: int = Config.integrator['inventory_night_run_interval']  # Seconds
-    promotion_sync: bool = Config.integrator['promotion_sync']
-    customer_sync: bool = Config.integrator['customer_sync']
-    subscriber_sync: bool = Config.integrator['subscriber_sync']
-    catalog_sync: bool = Config.integrator['catalog_sync']
-    collection_sorting: bool = Config.integrator['collection_sorting']
-    inventory_sync: bool = Config.integrator['inventory_sync']
-    sms_sync_keyword: str = Config.integrator['sms_sync_keyword']
-    verbose_logging: bool = Config.integrator['verbose_logging']
-    default_image_url: str = Config.integrator['default_image_url']
-    set_missing_image_active: bool = Config.integrator['missing_image_active']
-
-
-class SQL:
-    """SQL Server Configuration"""
-
-    SERVER: str = Config.sql['address']
-    DATABASE: str = Config.sql['database']
-    USERNAME: str = Config.sql['db_username']
-    PASSWORD: str = Config.sql['db_password']
 
 
 class API:
@@ -87,6 +53,51 @@ class API:
             product_update = Config.api['routes']['shopify']['product_update']
             variant_out_of_stock = Config.api['routes']['shopify']['variant_out_of_stock']
             collection_update = Config.api['routes']['shopify']['collection_update']
+
+
+class Integrator:
+    """Integrator Configuration"""
+
+    if os.path.exists(Config.integrator['docker_logs_path']):
+        # Docker Container
+        logs = Config.integrator['docker_logs_path']
+    else:
+        # Local Development
+        if platform.system() == 'Windows':
+            logs = f'//{API.server_name}/' + Config.integrator['logs']
+        else:
+            logs = '/Volumes/' + Config.integrator['logs']
+
+    directory = Config.integrator['directory']
+    title = Config.integrator['title']
+    authors = Config.integrator['authors']
+    version = Config.integrator['version']
+    max_workers: int = Config.integrator['max_workers']  # Thread Pool
+    day_start: int = Config.integrator['day_start']
+    day_end: int = Config.integrator['day_end']
+    int_day_run_interval: int = Config.integrator['integrator_day_run_interval']  # Minutes
+    int_night_run_interval = Config.integrator['integrator_night_run_interval']  # Minutes
+    inv_day_run_interval: int = Config.integrator['inventory_day_run_interval']  # Seconds
+    inv_night_run_interval: int = Config.integrator['inventory_night_run_interval']  # Seconds
+    promotion_sync: bool = Config.integrator['promotion_sync']
+    customer_sync: bool = Config.integrator['customer_sync']
+    subscriber_sync: bool = Config.integrator['subscriber_sync']
+    catalog_sync: bool = Config.integrator['catalog_sync']
+    collection_sorting: bool = Config.integrator['collection_sorting']
+    inventory_sync: bool = Config.integrator['inventory_sync']
+    sms_sync_keyword: str = Config.integrator['sms_sync_keyword']
+    verbose_logging: bool = Config.integrator['verbose_logging']
+    default_image_url: str = Config.integrator['default_image_url']
+    set_missing_image_active: bool = Config.integrator['missing_image_active']
+
+
+class SQL:
+    """SQL Server Configuration"""
+
+    SERVER: str = Config.sql['address']
+    DATABASE: str = Config.sql['database']
+    USERNAME: str = Config.sql['db_username']
+    PASSWORD: str = Config.sql['db_password']
 
 
 # Company
@@ -525,3 +536,6 @@ class Marketing:
         discount: int = Config.marketing['stock_notification']['discount']  # $ Amount
         min_amt: int = Config.marketing['stock_notification']['min_amt']  # $ Amount
         exclusions: list[str] = Config.marketing['stock_notification']['exclusions']
+
+
+print(Integrator.logs)

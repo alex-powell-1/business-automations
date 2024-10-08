@@ -35,7 +35,7 @@ app.register_blueprint(sms.sms_routes)  # SMS Routes
 
 CORS(app)
 
-dev = True  # When False, app is served by Waitress
+dev = False  # When False, app is served by Waitress
 
 
 @app.before_request
@@ -103,30 +103,30 @@ def index():
 
 
 if __name__ == '__main__':
-    # if dev:
-    #     app.run(debug=False, port=API.port)
-    # else:
-    #     running = True
-    #     while running:
-    #         try:
-    #             print('Flask Server Running')
-    #             print(f'Host: localhost:{API.port}')
-    #             serve(
-    #                 app,
-    #                 host='localhost',
-    #                 port=API.port,
-    #                 threads=8,
-    #                 max_request_body_size=1073741824,  # 1 GB
-    #                 max_request_header_size=8192,  # 8 KB
-    #                 connection_limit=1000,
-    #             )
-    #         except Exception as e:
-    #             print('Error serving Flask app: ', e)
-    #             ProcessInErrorHandler.error_handler.add_error_v(
-    #                 error=f'Error serving Flask app: {e}', origin='server', traceback=tb()
-    #             )
-    #             time.sleep(5)
-    #         # Stop the server if Keyboard Interrupt
-    #         running = False
-    #         print('Flask Server Stopped')
-    app.run(debug=False, port=API.port)
+    if dev:
+        app.run(debug=False, port=API.port)
+
+    else:
+        running = True
+        while running:
+            try:
+                print('Flask Server Running')
+                print(f'Host: localhost:{API.port}')
+                serve(
+                    app,
+                    host='localhost',
+                    port=API.port,
+                    threads=8,
+                    max_request_body_size=1073741824,  # 1 GB
+                    max_request_header_size=8192,  # 8 KB
+                    connection_limit=1000,
+                )
+            except Exception as e:
+                print('Error serving Flask app: ', e)
+                ProcessInErrorHandler.error_handler.add_error_v(
+                    error=f'Error serving Flask app: {e}', origin='server', traceback=tb()
+                )
+                time.sleep(5)
+            # Stop the server if Keyboard Interrupt
+            running = False
+            print('Flask Server Stopped')

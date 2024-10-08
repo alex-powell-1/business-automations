@@ -3,7 +3,7 @@ ngrok.exe
 ngrok/ngrok.exe
 ngrok/ngrok.yml
 Dockerfile
-compose.yml
+compose.yaml
 integration/last_sync_integrator.txt
 integration/last_sync_inventory.txt
 static/barcodes/*
