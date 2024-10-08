@@ -369,6 +369,21 @@ class Promotion:
                             )
                         db.CP.Product.set_sale_status(items=item_list, status=False)
                         db.CP.Product.remove_sale_price(item_list)
+                
+                # Update TS of GRP for reprocessing
+                query = f"""
+                UPDATE IM_PRC_GRP
+                SET LST_MAINT_DT = GETDATE()
+                WHERE GRP_COD = '{self.grp_cod}'
+                """
+                response = db.query(query)
+                if response['code'] == 200:
+                    if self.verbose:
+                        Promotions.logger.info(f"Updated timestamp for {self.grp_cod}")
+                else:
+                    Promotions.error_handler.add_error_v(f"Error updating timestamp for {self.grp_cod}")
+
+
 
         # Check each price rule for deleted items. If an item is not in CP, then remove the sale price and delete.
         for rule in self.price_rules:
@@ -392,6 +407,18 @@ class Promotion:
                             group_cod=self.grp_cod, rule_seq_no=rule.seq_no, item_no=item
                         )
                     db.CP.Product.set_sale_status(items=delete_list, status=False)
+                                    # Update TS of GRP for reprocessing
+                    query = f"""
+                    UPDATE IM_PRC_GRP
+                    SET LST_MAINT_DT = GETDATE()
+                    WHERE GRP_COD = '{self.grp_cod}'
+                    """
+                    response = db.query(query)
+                    if response['code'] == 200:
+                        if self.verbose:
+                            Promotions.logger.info(f"Updated timestamp for {self.grp_cod}")
+                    else:
+                        Promotions.error_handler.add_error_v(f"Error updating timestamp for {self.grp_cod}")
 
     def set_sale_status(self, rule: 'PriceRule'):
         if rule.items:
@@ -698,8 +725,8 @@ class FixedPriceItem:
 if __name__ == '__main__':
     import datetime
 
-    promos = Promotions(last_sync=datetime.datetime(2024, 9, 1), verbose=True, enabled=True)
+    promos = Promotions(last_sync=datetime.datetime(2024, 10, 4), verbose=True)
     for promo in promos.promotions:
         print(promo)
-        # if promo.grp_cod in ['MUM', 'CALADIUM', 'SEPT-RETAI']:
-        #     promo.process()
+        if promo.grp_cod in ['OCTPROMO1']:
+            promo.process()

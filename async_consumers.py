@@ -255,7 +255,7 @@ def shutdown_handler(signum, frame):
     sys.exit(0)
 
 
-if __name__ == '__main__':
+if __name__ == '__main__2':
     try:
         signal.signal(signal.SIGINT, shutdown_handler)
         signal.signal(signal.SIGTERM, shutdown_handler)
@@ -315,5 +315,7 @@ if __name__ == '__main__':
         shutdown_handler(None, None)
 
 
-# if __name__ == '__main__':
-#     process_shopify_order('5672071102631')
+if __name__ == '__main__':
+    process_shopify_order('5701594022055')
+    process_shopify_order('5702870794407')
+    process_shopify_order('5703216169127')

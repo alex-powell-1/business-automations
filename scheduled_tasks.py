@@ -34,7 +34,7 @@ class ScheduledTasks:
         if admin_report.enabled:
             if admin_report.hour == self.dates.hour and admin_report.minute == self.dates.minute:
                 try:
-                    Email.Staff.AdminReport.send(recipients=admin_report.recipients, dates=self.dates)
+                    Email.Staff.AdminReport.send(recipients=admin_report.recipients)
                 except Exception as err:
                     self.error_handler.add_error_v(error=err, origin='Administrative Report')
 
@@ -52,7 +52,7 @@ class ScheduledTasks:
         if low_stock_report.enabled:
             if low_stock_report.hour == self.dates.hour and low_stock_report.minute == self.dates.minute:
                 try:
-                    Email.Staff.LowStockReport.send(recipients=low_stock_report.recipients, dates=self.dates)
+                    Email.Staff.LowStockReport.send(recipients=low_stock_report.recipients)
                 except Exception as err:
                     self.error_handler.add_error_v(error=err, origin='Low Stock Report')
 

@@ -282,9 +282,9 @@ class Email:
 
     class Staff:
         class AdminReport:
-            def send(recipients: list[str], dates: Dates):
+            def send(recipients: list[str]):
                 error_handler.logger.info(f'Generating Admin Report Data - Starting at {datetime.now():%H:%M:%S}')
-
+                dates = Dates()
                 subject = f'Administrative Report - {dates.today:%x}'
                 report_data = product_reports.report_generator(
                     title='Administrative Report',
@@ -321,10 +321,11 @@ class Email:
                 error_handler.logger.info(f'Administrative Report: Completed at {datetime.now():%H:%M:%S}')
 
         class LowStockReport:
-            def send(recipients: list[str], dates: Dates):
+            def send(recipients: list[str]):
                 error_handler.logger.info(
                     f'Generating Low Stock Report Data - Starting at {datetime.now():%H:%M:%S}'
                 )
+                dates = Dates()
 
                 subject = f'Low Stock Report - {dates.today:%x}'
 
@@ -456,4 +457,6 @@ class Email:
 
 
 if __name__ == '__main__':
-    pass
+    from setup.date_presets import Dates
+    dates = Dates()
+    Email.Staff.ItemReport.send(['accounting', 'alex'])
