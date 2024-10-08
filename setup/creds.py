@@ -4,6 +4,7 @@ import os
 
 
 class Config:
+    docker: dict = config_data['docker']
     integrator: dict = config_data['integrator']
     api: dict = config_data['api']
     company: dict = config_data['company']
@@ -19,9 +20,19 @@ class Config:
 
 class API:
     endpoint: str = Config.api['endpoint']
-    public_files: str = endpoint + Config.api['routes']['file_server']
-    public_files_local_path = Config.api['public_files_local']
     server_name: str = Config.api['server_name']
+    public_files: str = endpoint + Config.api['routes']['file_server']
+
+    if os.path.exists(Config.docker['public_files']):
+        # Docker Container
+        public_files_local_path = Config.docker['public_files']
+    else:
+        # Local Development
+        if platform.system() == 'Windows':
+            public_files_local_path = f'//{server_name}/' + Config.api['public_files_local']
+        else:
+            public_files_local_path = '/Volumes/' + Config.api['public_files_local']
+
     port: int = Config.api['port']
     default_rate: int = '100/second'
 
@@ -58,9 +69,9 @@ class API:
 class Integrator:
     """Integrator Configuration"""
 
-    if os.path.exists(Config.integrator['docker_logs_path']):
+    if os.path.exists(Config.docker['logs']):
         # Docker Container
-        logs = Config.integrator['docker_logs_path']
+        logs = Config.docker['logs']
     else:
         # Local Development
         if platform.system() == 'Windows':
