@@ -111,7 +111,6 @@ if __name__ == '__main__':
         while running:
             try:
                 print('Flask Server Running')
-                print(f'Host: localhost:{API.port}')
                 serve(
                     app,
                     host='localhost',

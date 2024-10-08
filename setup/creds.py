@@ -537,5 +537,3 @@ class Marketing:
         min_amt: int = Config.marketing['stock_notification']['min_amt']  # $ Amount
         exclusions: list[str] = Config.marketing['stock_notification']['exclusions']
 
-
-print(Integrator.logs)

@@ -150,7 +150,9 @@ class Email:
         class GiftCard:
             def send(name, email, gc_code, amount):
                 """Sends gift card to customer"""
-                recipient = {name: email}
+                # recipient = {name: email}
+                recipient = {name: 'alex@settlemyrenursery.com'}
+
                 try:
                     amount = int(amount)
                 except ValueError:
@@ -181,6 +183,8 @@ class Email:
 
                 email_content = jinja_template.render(email_data)
 
+                barcode = f'{creds.Company.barcodes}/{gc_code}.png'
+                
                 Email.send(
                     recipients_list=recipient,
                     subject=subject,
@@ -189,10 +193,10 @@ class Email:
                     image_name='gift_card.jpg',
                     mode='related',
                     logo=True,
-                    barcode=f'./{gc_code}.png',
+                    barcode=barcode,
                 )
 
-                os.remove(f'./{gc_code}.png')
+                os.remove(barcode)
 
         class DesignLead:
             def send(first_name, email):

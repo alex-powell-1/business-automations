@@ -2233,3 +2233,40 @@ class HoldOrder(DocumentAPI):
             )
 
         return lines
+
+if __name__ == '__main__': 
+    cp = {
+    'PS_DOC_HDR': {
+        'STR_ID': 'WEB',
+        'STA_ID': 'WEB',
+        'DRW_ID': 1,
+        'TKT_NUM': 'S1151',
+        'CUST_NO': '116245',
+        'TKT_TYP': 'T',
+        'DOC_TYP': 'O',
+        'USR_ID': 'POS',
+        'HAS_ENTD_LINS': 'N',
+        'TAX_COD': 'EXEMPT',
+        'NORM_TAX_COD': 'EXEMPT',
+        'SHIP_VIA_COD': 'C',
+        'PS_DOC_NOTE': [],
+        'PS_DOC_LIN': [],
+        '__PS_DOC_GFC__': [
+            {
+                'GFC_COD': 'GC',
+                'GFC_NO': 'E5AB-26G9-5GA1',
+                'AMT': 100.0,
+                'LIN_SEQ_NO': 1,
+                'DESCR': 'Gift Certificate',
+                'CREATE_AS_STC': 'N',
+                'GFC_SEQ_NO': 1,
+            }
+        ],
+        'PS_DOC_PMT': [{'AMT': 100.0, 'PAY_COD': 'SHOP', 'FINAL_PMT': 'N', 'PMT_LIN_TYP': 'T'}],
+        'PS_DOC_TAX': [
+            {'AUTH_COD': 'EXEMPT', 'RUL_COD': 'TAX', 'TAX_DOC_PART': 'S', 'TAX_AMT': '0', 'TOT_TXBL_AMT': 100.0}
+        ],
+    }
+    }
+    docs = DocumentAPI()
+    docs.post_document(cp)

@@ -276,7 +276,7 @@ class Shopify:
             return response.data
 
         @staticmethod
-        def as_bc_order(order_id: int, send=False):
+        def as_bc_order(order_id: int, send=True, gc_code=None):
             """Convert Shopify order to BigCommerce order format"""
             shopify_order = Shopify.Order.get(order_id)
             snode = shopify_order['node']
@@ -373,7 +373,7 @@ class Shopify:
                     'applied_discounts': [],
                 }
 
-                if item['isGiftCard'] and status == 'UNFULFILLED' and send and not is_refunded:
+                if item['isGiftCard'] and status == 'UNFULFILLED' and not is_refunded:
 
                     def has_code(code):
                         query = f"""
@@ -386,29 +386,36 @@ class Shopify:
                             return response[0][0] is not None
                         except:
                             return False
+                        
+                    if gc_code:
+                        # if gc_code is provided, use that.
+                        code = gc_code
+                    
+                    else:
+                        # Make sure code is unique
+                        def gen_code():
+                            code_gen = ShortUUID()
+                            code_gen.set_alphabet('ABCDEFG123456789')  # 16
+                            code = code_gen.random(12)
+                            code = f'{code[0:4]}-{code[4:8]}-{code[8:12]}'
 
-                    # Make sure code is unique
-                    def gen_code():
-                        code_gen = ShortUUID()
-                        code_gen.set_alphabet('ABCDEFG123456789')  # 16
-                        code = code_gen.random(12)
-                        code = f'{code[0:4]}-{code[4:8]}-{code[8:12]}'
+                            if has_code(code):
+                                return gen_code()
+                            else:
+                                return code
 
-                        if has_code(code):
-                            return gen_code()
-                        else:
-                            return code
-
-                    code = gen_code()
+                        code = gen_code()
+                
 
                     pl['gift_certificate_id'] = {'code': code}
-
-                    Email.Customer.GiftCard.send(
-                        name=f'{billing['firstName']} {billing["lastName"]}',
-                        email=snode['email'],
-                        gc_code=code,
-                        amount=price,
-                    )
+                    
+                    if send:
+                        Email.Customer.GiftCard.send(
+                            name=f'{billing['firstName']} {billing["lastName"]}',
+                            email=snode['email'],
+                            gc_code=code,
+                            amount=price,
+                        )   
 
                 shopify_products.append(pl)
 

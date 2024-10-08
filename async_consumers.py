@@ -224,10 +224,10 @@ def process_design_lead(body, eh=LeadFormErrorHandler, test_mode=False):
     logger.success(f'Processing Completed at {datetime.now():%H:%M:%S}\n')
 
 
-def process_shopify_order(order_id, eh=ProcessInErrorHandler):
+def process_shopify_order(order_id, eh=ProcessInErrorHandler, send=True, code=None):
     eh.logger.info(f'Beginning processing for Order #{order_id}')
     time.sleep(5)  # <-- This is to give payment processor time to complete
-    order = Shopify.Order.as_bc_order(order_id=order_id)  # Convert order to BC Order dictionary
+    order = Shopify.Order.as_bc_order(order_id=order_id, send=send, gc_code=code)  # Convert order to BC Order dictionary
     shopify_order = ShopifyOrder(order_id)
     shopify_order.post_shopify_order()
     eh.logger.info(f'Order {order_id} processed successfully')
@@ -316,6 +316,4 @@ if __name__ == '__main__2':
 
 
 if __name__ == '__main__':
-    process_shopify_order('5701594022055')
-    process_shopify_order('5702870794407')
-    process_shopify_order('5703216169127')
+    process_shopify_order('5709925712039', send=False, code='E5AB-26G9-5GA1')
