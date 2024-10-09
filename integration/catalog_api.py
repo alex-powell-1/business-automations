@@ -201,19 +201,19 @@ class Catalog:
         if delete_targets:
             changes = True
             Catalog.logger.info(f'Product Delete Targets: {delete_targets}')
-            
+
             for x in delete_targets:
                 Product.delete(sku=x, update_timestamp=True)
         else:
             if self.verbose:
                 Catalog.logger.info('No products to delete.')
-        
+
         if self.verbose:
             Catalog.logger.info('Processing Product Additions.')
         if add_targets:
             changes = True
             Catalog.logger.info(f'Product Add Targets: {add_targets}')
-            
+
             for x in add_targets:
                 parent_sku = x['parent']
                 variant_sku = x['variant']
@@ -226,9 +226,9 @@ class Catalog:
         else:
             if self.verbose:
                 Catalog.logger.info('No products to add.')
-        
+
         if changes:
-            print("Getting Sync Queue after deletes/adds")
+            print('Getting Sync Queue after deletes/adds')
             self.get_sync_queue()
             print(self.sync_queue)
 
@@ -370,8 +370,8 @@ class Catalog:
     def sync(self, initial=False):
         """Syncs the catalog with Shopify. This will update products, categories, and media."""
         # get this at start of sync in case product timestamps were updated during promotion sync
-        self.get_sync_queue() 
-        
+        self.get_sync_queue()
+
         if not self.inventory_only:
             if not self.test_mode:
                 self.category_tree.sync()
@@ -2032,12 +2032,12 @@ class Product:
         # If product_id exists, this is an update
         if self.product_id:
             payload['productId'] = f'gid://shopify/Product/{self.product_id}'
-        
+
         if variants:
             variant_list = variants
         else:
             variant_list = self.variants
-        
+
         for child in variant_list:
             variant_payload = {
                 'inventoryItem': {
@@ -2589,7 +2589,7 @@ class Product:
         family_size = Product.get_family_members(binding_id=variant.binding_id, count=True)
         parent_sku = db.Shopify.Product.get_parent_item_no(binding_id=variant.binding_id)
         # For now...
-        Catalog.logger.info("In Add Variant: Will delete product...")
+        Catalog.logger.info('In Add Variant: Will delete product...')
         Product.delete(sku=parent_sku, update_timestamp=True)
         # Work in Progress
         # if family_size <= 2:
@@ -2597,7 +2597,7 @@ class Product:
         #     Product.delete(sku=parent_sku, update_timestamp=True)
         # else:
         #     data = {'sku': parent_sku, 'binding_id': variant.binding_id}
-            
+
         #     product = Product(product_data=data, last_sync=variant.last_sync, verbose=variant.verbose)
         #     product.get(last_sync=variant.last_sync)
         #     # This is a bound product. Will run mutation to add variant to existing product.
@@ -2648,7 +2648,7 @@ class Product:
             else:
                 if creds.Integrator.verbose_logging:
                     Product.logger.info('Case 3 - Child Product. Will delete variant.')
-                
+
                 option_id = db.Shopify.Product.Variant.get_option_id(sku=sku)
                 opt_val_id = db.Shopify.Product.Variant.get_option_value_id(sku=sku)
                 variant_id = db.Shopify.Product.Variant.get_id(sku=sku)

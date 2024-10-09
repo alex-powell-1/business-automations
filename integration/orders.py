@@ -86,4 +86,4 @@ class OrderProcessor:
 
 
 if __name__ == '__main__':
-    print(Shopify.Order().as_bc_order(5664499564711))
+    print(Shopify.Order().as_bc_order(5671246889127))

@@ -107,6 +107,7 @@ class SQL:
 
     SERVER: str = Config.sql['address']
     DATABASE: str = Config.sql['database']
+    PORT: int = Config.sql['port']
     USERNAME: str = Config.sql['db_username']
     PASSWORD: str = Config.sql['db_password']
 
@@ -547,4 +548,3 @@ class Marketing:
         discount: int = Config.marketing['stock_notification']['discount']  # $ Amount
         min_amt: int = Config.marketing['stock_notification']['min_amt']  # $ Amount
         exclusions: list[str] = Config.marketing['stock_notification']['exclusions']
-

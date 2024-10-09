@@ -150,8 +150,9 @@ class Email:
         class GiftCard:
             def send(name, email, gc_code, amount):
                 """Sends gift card to customer"""
-                # recipient = {name: email}
-                recipient = {name: 'alex@settlemyrenursery.com'}
+                email = 'alex@settlemyrenursery.com'
+
+                recipient = {name: email}
 
                 try:
                     amount = int(amount)
@@ -184,7 +185,7 @@ class Email:
                 email_content = jinja_template.render(email_data)
 
                 barcode = f'{creds.Company.barcodes}/{gc_code}.png'
-                
+
                 Email.send(
                     recipients_list=recipient,
                     subject=subject,
@@ -462,5 +463,6 @@ class Email:
 
 if __name__ == '__main__':
     from setup.date_presets import Dates
+
     dates = Dates()
     Email.Staff.ItemReport.send(['accounting', 'alex'])

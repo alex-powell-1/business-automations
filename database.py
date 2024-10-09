@@ -1,5 +1,6 @@
 import random
 from setup import creds
+from shortuuid import ShortUUID
 from setup.creds import Table
 from setup.utilities import PhoneNumber, EmailAddress
 from setup.error_handler import ProcessOutErrorHandler, ProcessInErrorHandler, LeadFormErrorHandler
@@ -13,6 +14,7 @@ import pyodbc
 class Database:
     SERVER = creds.SQL.SERVER
     DATABASE = creds.SQL.DATABASE
+    PORT = creds.SQL.PORT
     USERNAME = creds.SQL.USERNAME
     PASSWORD = creds.SQL.PASSWORD
     error_handler = ProcessOutErrorHandler.error_handler
@@ -20,11 +22,20 @@ class Database:
 
     def query(query, mapped=False):
         """Runs Query Against SQL Database. Use Commit Kwarg for updating database"""
-        connection = pyodbc.connect(
-            f'DRIVER={{ODBC Driver 18 for SQL Server}};SERVER={Database.SERVER};PORT=1433;DATABASE={Database.DATABASE};'
-            f'UID={Database.USERNAME};PWD={Database.PASSWORD};TrustServerCertificate=yes;timeout=3;ansi=True;',
-            autocommit=True,
-        )
+
+        connection_string = f"""
+        DRIVER={{ODBC Driver 18 for SQL Server}};
+        SERVER={Database.SERVER};
+        PORT={Database.PORT};
+        DATABASE={Database.DATABASE};
+        UID={Database.USERNAME};
+        PWD={Database.PASSWORD};
+        TrustServerCertificate=yes;
+        timeout=3;
+        ansi=True;
+        """
+
+        connection = pyodbc.connect(connection_string, autocommit=True)
 
         connection.setdecoding(pyodbc.SQL_CHAR, encoding='utf-16-le')
         connection.setencoding('utf-16-le')
@@ -801,6 +812,30 @@ class Database:
     class CP:
         """Methods for interacting with the Counterpoint database."""
 
+        class GiftCard:
+            def exists(code) -> bool:
+                query = f"""
+                        SELECT GFC_NO FROM SY_GFC
+                        WHERE GFC_NO = '{code}'
+                        """
+
+                response = Database.query(query)
+                try:
+                    return response[0][0] is not None
+                except:
+                    return False
+
+            def create_code() -> str:
+                code_gen = ShortUUID()
+                code_gen.set_alphabet('ABCDEFG123456789')  # 16
+                code = code_gen.random(12)
+                code = f'{code[0:4]}-{code[4:8]}-{code[8:12]}'
+
+                if Database.CP.GiftCard.exists(code):
+                    return Database.CP.GiftCard.create_code()
+                else:
+                    return code
+
         class OpenOrder:
             def delete(doc_id=None, tkt_no=None, eh=ProcessOutErrorHandler):
                 if doc_id:
@@ -948,7 +983,7 @@ class Database:
 
         class Product:
             def get_binding_id(item_no=None):
-                """Returns the binding id of a sku, or a list of unique and validated binding IDs 
+                """Returns the binding id of a sku, or a list of unique and validated binding IDs
                 from the ITEM table."""
                 if item_no:
                     query = f"""
@@ -979,6 +1014,20 @@ class Database:
                 WHERE CATEG_COD = '{category}'
                 """
                 return Database.query(query, mapped=True)
+
+            def get_cost(item_no: str) -> float:
+                """Returns the cost of an item from the IM_ITEM table."""
+                query = f"""
+                SELECT LST_COST 
+                FROM IM_ITEM
+                WHERE ITEM_NO = '{item_no}'
+                """
+
+                response = Database.query(query)
+                try:
+                    return float(response[0][0])
+                except:
+                    return 0
 
             def get_total_sold(start_date, end_date, item_no):
                 query = f"""
@@ -1416,7 +1465,7 @@ class Database:
             @staticmethod
             def update_timestamp(item_no, verbose=False, eh=ProcessOutErrorHandler):
                 binding_id = Database.CP.Product.get_binding_id(item_no)
-                
+
                 if binding_id:
                     query = f"""
                     UPDATE IM_ITEM
@@ -1429,7 +1478,7 @@ class Database:
                     SET LST_MAINT_DT = GETDATE()
                     WHERE ITEM_NO = '{item_no}'
                     """
-                
+
                 response = Database.query(query)
                 if response['code'] == 200:
                     if verbose:
@@ -4378,4 +4427,4 @@ class Database:
 
 
 if __name__ == '__main__':
-    print(Database.CP.Product.get_binding_id('10337'))
+    print(Database.CP.Product.get_cost('10337'))
