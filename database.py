@@ -1,4 +1,5 @@
 import random
+import math
 from setup import creds
 from shortuuid import ShortUUID
 from setup.creds import Table
@@ -835,6 +836,54 @@ class Database:
                     return Database.CP.GiftCard.create_code()
                 else:
                     return code
+
+        class Loyalty:
+            def write_line(doc_id: int, lin_seq_no: int, points_earned: int, eh=ProcessInErrorHandler):
+                query = f"""
+                INSERT INTO PS_DOC_LIN_LOY 
+                (DOC_ID, LIN_SEQ_NO, LIN_LOY_PTS_EARND, LOY_PGM_RDM_ELIG, LOY_PGM_AMT_PD_WITH_PTS, LOY_PT_EARN_RUL_DESCR, LOY_PT_EARN_RUL_SEQ_NO) 
+                VALUES 
+                ('{doc_id}', {lin_seq_no}, {points_earned}, 'Y', 0, 'Basic', 5)
+                """
+
+                response = Database.query(query)
+
+                if response['code'] == 200:
+                    eh.logger.success(f'Line loyalty points ({points_earned})')
+                else:
+                    eh.error_handler.add_error_v(f'Line #{lin_seq_no} could not receive loyalty points')
+
+            def get_points_used(doc_id, eh=ProcessInErrorHandler) -> int:
+                """Returns the total number of loyalty points used in a Counterpoint order."""
+                query = f"""
+                SELECT AMT FROM PS_DOC_PMT
+                WHERE PAY_COD = 'LOYALTY' AND DOC_ID = '{doc_id}'
+                """
+
+                response = Database.query(query)
+                points_used = 0
+                try:
+                    points_used = math.floor(float(response[0][0])) if response else 0
+                except:
+                    pass
+                return points_used
+
+            def write_ps_doc_hdr_loy_pgm(
+                doc_id, points_earned: float, points_redeemed: float, point_balance: float, eh=ProcessInErrorHandler
+            ):
+                query = f"""
+                INSERT INTO PS_DOC_HDR_LOY_PGM
+                (DOC_ID, LIN_LOY_PTS_EARND, LOY_PTS_EARND_GROSS, LOY_PTS_ADJ_FOR_RDM, LOY_PTS_ADJ_FOR_INC_RND, LOY_PTS_ADJ_FOR_OVER_MAX, LOY_PTS_EARND_NET, LOY_PTS_RDM, LOY_PTS_BAL)
+                VALUES
+                ('{doc_id}', 0, 0, 0, 0, 0, {points_earned}, {points_redeemed}, {point_balance})
+                """
+
+                response = Database.query(query)
+
+                if response['code'] == 200:
+                    eh.logger.success('Loyalty points written')
+                else:
+                    eh.error_handler.add_error_v('Loyalty points could not be written')
 
         class OpenOrder:
             def delete(doc_id=None, tkt_no=None, eh=ProcessOutErrorHandler):
@@ -2134,16 +2183,32 @@ class Database:
                     return None
 
             @staticmethod
-            def get_loyalty_balance(cust_no):
+            def get_loyalty_balance(cust_no: str) -> float:
                 query = f"""
-                SELECT LOY_PTS_BAL FROM AR_CUST
+                SELECT LOY_PTS_BAL 
+                FROM {Table.CP.Customers.table}
                 WHERE CUST_NO = '{cust_no}'
                 """
                 response = Database.query(query)
-                if response:
-                    return response[0][0]
+                try:
+                    balance = float(response[0][0])
+                except:
+                    balance = 0
+
+                return float(balance)
+
+            def set_loyalty_balance(cust_no: str, balance: int, eh=ProcessInErrorHandler):
+                query = f"""
+                UPDATE AR_CUST
+                SET LOY_PTS_BAL = {balance}
+                WHERE CUST_NO = '{cust_no}'
+                """
+                response = Database.query(query)
+
+                if response['code'] == 200:
+                    eh.logger.success('Cust Loyalty points written')
                 else:
-                    return None
+                    eh.error_handler.add_error_v('Cust Loyalty points could not be written')
 
             @staticmethod
             def get_name(cust_no):
@@ -2585,6 +2650,36 @@ class Database:
                         Database.error_handler.add_error_v(
                             error=f'CP Coupon Deletion Error: {e}', origin='Database.CP.Discount.delete'
                         )
+
+            def write_discount(
+                doc_id: int,
+                disc_seq_no: int,
+                disc_amt: float,
+                disc_id: str,
+                apply_to: str,
+                disc_type: str,
+                disc_pct: float,
+                disc_amt_shipped,
+                lin_seq_no: int = None,
+                eh=ProcessInErrorHandler,
+            ):
+                """Write an order discount to the PS_DOC_DISC table."""
+                query = f"""
+                INSERT INTO PS_DOC_DISC
+                (DOC_ID, DISC_SEQ_NO, LIN_SEQ_NO, DISC_ID, APPLY_TO, DISC_TYP, 
+                DISC_AMT, DISC_PCT, DISC_AMT_SHIPPED)
+                
+                VALUES
+                
+                ('{doc_id}', {disc_seq_no}, {lin_seq_no or "NULL"}, {disc_id}, '{apply_to}', '{disc_type}', 
+                {disc_amt}, {disc_pct}, {disc_amt_shipped})
+                """
+
+                response = Database.query(query)
+                if response['code'] == 200:
+                    eh.logger.success(f'Discount {disc_seq_no} created')
+                else:
+                    eh.error_handler.add_error_v(f'Discount {disc_seq_no} could not be created')
 
     class Shopify:
         def rebuild_tables(self):
@@ -4427,4 +4522,4 @@ class Database:
 
 
 if __name__ == '__main__':
-    print(Database.CP.Product.get_cost('10337'))
+    print(Database.CP.Customer.get_loyalty_balance('105786afd'))

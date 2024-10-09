@@ -14,6 +14,7 @@ from traceback import format_exc as tb
 ORDER_PREFIX = 'S'
 REFUND_SUFFIX = 'R'
 PARTIAL_REFUND_SUFFIX = 'PR'
+LOYALTY_EXCLUSIONS = ['SERVICE', 'DELIVERY']
 
 
 # This class is primarily used to interact with the NCR Counterpoint API
@@ -175,29 +176,31 @@ class OrderAPI(DocumentAPI):
                 }
             )
 
-        def get_gift_card_payments(order: ShopifyOrder) -> list[dict]:
-            """Returns a list of gift card payments from a order."""
-            gfc_payments = []
+        # Gift Card Payments are not supported in our current setup
 
-            if not order.transactions:
-                return gfc_payments
+        # def get_gift_card_payments(order: ShopifyOrder) -> list[dict]:
+        #     """Returns a list of gift card payments from a order."""
+        #     gfc_payments = []
 
-            for pay_method in order.transactions['data']:
-                if pay_method['method'] == 'gift_certificate':
-                    gfc_payment = {
-                        'AMT': float(pay_method['amount']),
-                        'PAY_COD': 'GC',
-                        'FINAL_PMT': 'N',
-                        'CARD_NO': pay_method['gift_certificate']['code'],
-                        'PMT_LIN_TYP': 'C' if self.is_refund() else 'T',
-                        'REMAINING_BAL': float(pay_method['gift_certificate']['remaining_balance']),
-                    }
+        #     if not order.transactions:
+        #         return gfc_payments
 
-                    gfc_payments.append(gfc_payment)
+        #     for pay_method in order.transactions['data']:
+        #         if pay_method['method'] == 'gift_certificate':
+        #             gfc_payment = {
+        #                 'AMT': float(pay_method['amount']),
+        #                 'PAY_COD': 'GC',
+        #                 'FINAL_PMT': 'N',
+        #                 'CARD_NO': pay_method['gift_certificate']['code'],
+        #                 'PMT_LIN_TYP': 'C' if self.is_refund() else 'T',
+        #                 'REMAINING_BAL': float(pay_method['gift_certificate']['remaining_balance']),
+        #             }
 
-            return gfc_payments
+        #             gfc_payments.append(gfc_payment)
 
-        payments += get_gift_card_payments(order)
+        #     return gfc_payments
+
+        # payments += get_gift_card_payments(order)
 
         return payments
 
@@ -210,194 +213,86 @@ class OrderAPI(DocumentAPI):
 
         return notes
 
-    def write_discounts(self, doc_id, bc_order, line_items: list[dict]):
+    def write_discounts(self, doc_id, order: ShopifyOrder, line_items: list[CPOrder.LineItem]):
         """Write discounts to the PS_DOC_DISC table."""
 
-        def write_disc_line(doc_id, disc_seq_no: int, disc_amt: float, lin_seq_no: int = None):
-            """Write a discount to the PS_DOC_DISC table."""
-            apply_to = 'L' if lin_seq_no else 'H'  # L for line, H for header
-            disc_type = 'A'  # Amount
-            disc_id = '100000000000331' if lin_seq_no else '100000000000330'
-            disc_pct = 0
-            disc_amt_shipped = 0
-
+        def write_h(doc_id, disc_seq_no: int, disc_amt: float, lin_seq_no: int = None):
+            """Helper function to write discounts to the PS_DOC_DISC table."""
             if self.is_refund():
                 disc_amt = -disc_amt
 
-            if apply_to == 'H':
+            if not lin_seq_no:
                 self.total_hdr_disc += disc_amt
             else:
                 self.total_lin_disc += disc_amt
 
-            query = f"""
-            INSERT INTO PS_DOC_DISC
-            (DOC_ID, DISC_SEQ_NO, LIN_SEQ_NO, DISC_ID, APPLY_TO, DISC_TYP, 
-            DISC_AMT, DISC_PCT, DISC_AMT_SHIPPED)
-            
-            VALUES
-            
-            ('{doc_id}', {disc_seq_no}, {lin_seq_no or "NULL"}, {disc_id}, '{apply_to}', '{disc_type}', 
-            {disc_amt}, {disc_pct}, {disc_amt_shipped})
-            """
-
             self.total_discount_amount += abs(disc_amt)
 
-            response = Database.query(query)
-
-            if response['code'] == 200:
-                self.logger.success(f'Discount {disc_seq_no} created')
-            else:
-                self.error_handler.add_error_v(f'Discount {disc_seq_no} could not be created')
+            Database.CP.Discount.write_discount(
+                doc_id=doc_id,
+                disc_seq_no=disc_seq_no,
+                disc_amt=disc_amt,
+                disc_id='100000000000331' if lin_seq_no else '100000000000330',
+                apply_to='L' if lin_seq_no else 'H',  # L for line, H for header
+                disc_type='A',  # Amount,
+                disc_pct=0,
+                disc_amt_shipped=0,
+                lin_seq_no=lin_seq_no,
+            )
 
         self.logger.info('Writing discounts')
-        coupons = bc_order['coupons']['url']
-        if coupons:
-            coupon_total: float = 0
-            for coupon in coupons:
-                coupon_total += float(coupon['amount'])
 
-            if coupon_total > 0:
-                self.logger.info(f'Writing coupon discount: ${coupon_total}')
-                write_disc_line(doc_id, disc_seq_no=self.discount_seq_no, disc_amt=coupon_total)
+        # Processing order discounts
+        if order.header_discount:
+            self.logger.info(f'Writing header discount: ${order.header_discount}')
+            write_h(doc_id, disc_seq_no=self.discount_seq_no, disc_amt=order.header_discount)
+            self.discount_seq_no += 1
+
+        # Processing line discounts
+        for i, item in enumerate(line_items, start=1):
+            if item.discount_amount:
+                self.logger.info(f'Writing line discount: ${item.discount_amount}')
+                write_h(doc_id, disc_seq_no=self.discount_seq_no, disc_amt=item.discount_amount, lin_seq_no=i)
                 self.discount_seq_no += 1
 
-        for i, line_item in enumerate(line_items, start=1):
-            amt = float(line_item['DSC_AMT'])
-            if amt > 0:
-                self.logger.info(f'Writing line discount: ${amt}')
-                write_disc_line(doc_id, disc_seq_no=self.discount_seq_no, disc_amt=amt, lin_seq_no=i)
-                self.discount_seq_no += 1
-
-    # Write loyalty line
-    def write_one_lin_loy(self, doc_id, line_item: dict, lin_seq_no: int):
-        if line_item['sku'] == 'SERVICE':
-            return 0
-        if line_item['sku'] == 'DELIVERY':
-            return 0
-
-        points_earned = (float(line_item['EXT_PRC'] or 0) / 20) or 0
-
-        query = f"""
-        INSERT INTO PS_DOC_LIN_LOY 
-        (DOC_ID, LIN_SEQ_NO, LIN_LOY_PTS_EARND, LOY_PGM_RDM_ELIG, LOY_PGM_AMT_PD_WITH_PTS, LOY_PT_EARN_RUL_DESCR, LOY_PT_EARN_RUL_SEQ_NO) 
-        VALUES 
-        ('{doc_id}', {lin_seq_no}, {points_earned}, 'Y', 0, 'Basic', 5)
-        """
-
-        response = Database.query(query)
-
-        if response['code'] == 200:
-            self.logger.success(f'Line loyalty points ({points_earned})')
-        else:
-            self.error_handler.add_error_v(f'Line #{lin_seq_no} could not receive loyalty points')
-
-        return points_earned
-
-    # Write all loyalty lines from a list of line items from a BC order.
-    def write_lin_loy(self, doc_id, line_items: list[dict]):
-        points = 0
-        for lin_seq_no, line_item in enumerate(line_items, start=1):
-            points += self.write_one_lin_loy(doc_id, line_item, lin_seq_no)
-
-        return points
-
-    # Write entry into PS_DOC_HDR_LOY_PGM
-    def write_ps_doc_hdr_loy_pgm(self, doc_id, cust_no, points_earned: float, points_redeemed: float):
-        query = f"""
-        SELECT LOY_PTS_BAL 
-        FROM {creds.Table.CP.Customers.table}
-        WHERE CUST_NO = '{cust_no}'
-        """
-        response = Database.query(query)
-        points_balance = 0
-        try:
-            points_balance = float(response[0][0]) if response else 0
-        except:
-            pass
-
-        wquery = f"""
-        INSERT INTO PS_DOC_HDR_LOY_PGM
-        (DOC_ID, LIN_LOY_PTS_EARND, LOY_PTS_EARND_GROSS, LOY_PTS_ADJ_FOR_RDM, LOY_PTS_ADJ_FOR_INC_RND, LOY_PTS_ADJ_FOR_OVER_MAX, LOY_PTS_EARND_NET, LOY_PTS_RDM, LOY_PTS_BAL)
-        VALUES
-        ('{doc_id}', 0, 0, 0, 0, 0, {points_earned}, {points_redeemed}, {points_balance})
-        """
-
-        response = Database.query(wquery)
-
-        if response['code'] == 200:
-            self.logger.success('Loyalty points written')
-        else:
-            self.error_handler.add_error_v('Loyalty points could not be written')
-
-        if points_balance + points_earned < 0:
-            new_bal = 0
-        else:
-            new_bal = points_balance + points_earned
-
-        query = f"""
-        UPDATE AR_CUST
-        SET LOY_PTS_BAL = {new_bal}
-        WHERE CUST_NO = '{cust_no}'
-        """
-
-        response = Database.query(query)
-
-        if response['code'] == 200:
-            self.logger.success('Cust Loyalty points written')
-        else:
-            self.error_handler.add_error_v('Cust Loyalty points could not be written')
-
-    # Returns total number of loyalty points used.
-    def get_loyalty_points_used(self, doc_id):
-        query = f"""
-        SELECT AMT FROM PS_DOC_PMT
-        WHERE PAY_COD = 'LOYALTY' AND DOC_ID = '{doc_id}'
-        """
-
-        response = Database.query(query)
-
-        points_used = 0
-
-        try:
-            points_used = math.floor(float(response[0][0])) if response else 0
-        except:
-            pass
-
-        return points_used
-
-    # Write loyalty points.
     def write_loyalty(self, doc_id, cust_no, line_items: list[dict]):
         self.logger.info('Writing loyalty')
 
-        # count = 1
-        # for item in line_items:
-        #     self.logger.info(f'Line item: {count}')
-        #     for k, v in item.items():
-        #         self.logger.info(f'{k}: {v}')
-        #     count += 1
+        def write_lin_loy(self, doc_id, line_items: list[dict]) -> int:
+            points = 0
 
-        points_earned = math.floor(self.write_lin_loy(doc_id, line_items))
-        points_redeemed = self.get_loyalty_points_used(doc_id)
+            def write_loyalty_line(doc_id, line_item: dict, lin_seq_no: int):
+                if line_item['sku'] in LOYALTY_EXCLUSIONS:
+                    return 0
 
-        self.write_ps_doc_hdr_loy_pgm(doc_id, cust_no, points_earned, points_redeemed)
+                points_earned = (float(line_item['EXT_PRC'] or 0) / 20) or 0
+                Database.CP.Loyalty.write_line(doc_id, lin_seq_no, points_earned)
+                return points_earned
 
-    # Returns the total line discount amount summed together.
-    def get_total_lin_disc(self, line_items: list[dict]):
-        total = 0
+            for lin_seq_no, line_item in enumerate(line_items, start=1):
+                points += write_loyalty_line(doc_id, line_item, lin_seq_no)
 
-        for line_item in line_items:
-            total += float(line_item['DSC_AMT'])
+            return math.floor(points)
 
-        return total
+        points_earned = write_lin_loy(doc_id, line_items)
+        points_redeemed = Database.CP.Loyalty.get_points_used(doc_id)
+        point_balance = Database.CP.Customer.get_loyalty_balance(cust_no)
+        Database.CP.Loyalty.write_ps_doc_hdr_loy_pgm(doc_id, points_earned, points_redeemed, point_balance)
 
-    def get_store_id(self, bc_order: dict):
-        return 1 if bc_order['channel'].lower() == 'pos' else 'WEB'
+        new_bal = point_balance + points_earned
+        if new_bal < 0:
+            new_bal = 0
 
-    def get_station_id(self, bc_order: dict):
-        return 'POS' if bc_order['channel'].lower() == 'pos' else 'WEB'
+        Database.CP.Customer.set_loyalty_balance(cust_no, new_bal)
 
-    def get_drawer_id(self, bc_order: dict):
-        return 'POS' if bc_order['channel'].lower() == 'pos' else 1
+    def get_store_id(self, order: ShopifyOrder):
+        return 1 if order.channel.lower() == 'pos' else 'WEB'
+
+    def get_station_id(self, order: ShopifyOrder):
+        return 'POS' if order.channel.lower() == 'pos' else 'WEB'
+
+    def get_drawer_id(self, order: ShopifyOrder):
+        return 'POS' if order.channel.lower() == 'pos' else 1
 
     def get_post_order_payload(self, cust_no: str, order: ShopifyOrder):
         """Returns the POST payload for a Counterpoint order."""
@@ -456,57 +351,26 @@ class OrderAPI(DocumentAPI):
 
         return payload
 
-    # Check if the AR_CUST table has a customer with the provided cust_no
-    def has_cust(self, cust_no):
+    def has_cust(self, cust_no: str) -> bool:
+        """Returns True if the customer exists in the AR_CUST table, False if it does not."""
         return customers.is_current_customer(cust_no)
 
     # Check if the AR_CUST table has a customer with the provided email and phone
-    def has_cust_info(self, bc_order: dict):
-        email = self.billing_or_shipping(bc_order, 'email')
-        phone = self.billing_or_shipping(bc_order, 'phone')
-
+    def has_cust_info(self, order: ShopifyOrder):
+        email = order.shipping_address.email or order.billing_address.email or order.email
+        phone = order.shipping_address.phone or order.billing_address.phone
         return OrderAPI.get_customer_from_info({'email': email, 'phone': phone})
 
-    # Returns the key from the billing_address
-    def billing(self, bc_order: dict, key: str):
-        try:
-            return bc_order['billing_address'][key]
-        except:
-            return None
-
-    # Return the key from the shipping_addresses
-    def shipping(self, bc_order: dict, key: str):
-        try:
-            return bc_order['shipping_addresses']['url'][0][key]
-        except:
-            return None
-
-    # Return the key from the billing_address or shipping_addresses
-    def billing_or_shipping(self, bc_order: dict, key: str):
-        try:
-            return self.billing(bc_order, key) or self.shipping(bc_order, key)
-        except:
-            return None
-
     # Create a new customer from a BigCommerce order.
-    def create_new_customer(self, bc_order: dict):
-        def billing_or_shipping(key: str):
-            return self.billing_or_shipping(bc_order, key)
-
-        def b(key: str):
-            return self.billing(bc_order, key)
-
-        def s(key: str):
-            return self.shipping(bc_order, key)
-
-        first_name = billing_or_shipping('first_name')
-        last_name = billing_or_shipping('last_name')
-        phone_number = billing_or_shipping('phone')
-        email_address = billing_or_shipping('email')
-        street_address = b('street_1')
-        city = b('city')
-        state = b('state')
-        zip_code = b('zip')
+    def create_new_customer(self, order: ShopifyOrder):
+        first_name = order.billing_address.first_name or order.shipping_address.first_name
+        last_name = order.billing_address.last_name or order.shipping_address.last_name
+        phone_number = order.billing_address.phone or order.shipping_address.phone
+        email_address = order.billing_address.email or order.shipping_address.email
+        street_address = order.billing_address.address_1
+        city = order.billing_address.city
+        state = order.billing_address.province
+        zip_code = order.billing_address.zip
 
         cust_no = customers.add_new_customer(
             first_name=first_name,
@@ -518,19 +382,20 @@ class OrderAPI(DocumentAPI):
             state=state,
             zip_code=zip_code,
         )
+
         # Add to the middleware database
-        shopify_cust_no = bc_order['customer_id'].split('/')[-1]
+        shopify_cust_no = order.customer.id.split('/')[-1]
         Database.Shopify.Customer.insert(cp_cust_no=cust_no, shopify_cust_no=shopify_cust_no)
 
         def write_shipping_adr():
-            first_name = s('first_name')
-            last_name = s('last_name')
-            phone_number = s('phone')
-            email_address = s('email')
-            street_address = s('street_1')
-            city = s('city')
-            state = s('state')
-            zip_code = s('zip')
+            first_name = order.shipping_address.first_name
+            last_name = order.shipping_address.last_name
+            phone_number = order.shipping_address.phone
+            email_address = order.shipping_address.email
+            street_address = order.shipping_address.address_1
+            city = order.shipping_address.city
+            state = order.shipping_address.province
+            zip_code = order.shipping_address.zip
 
             if (
                 first_name is None
@@ -562,7 +427,7 @@ class OrderAPI(DocumentAPI):
                 self.error_handler.add_error_v('Shipping address could not be updated')
                 self.error_handler.add_error_v(response['message'])
 
-        if (len(bc_order['shipping_addresses']['url']) or 0) > 0:
+        if order.shipping_address:
             write_shipping_adr()
 
     # Update an existing customer from a BigCommerce order.
@@ -656,44 +521,33 @@ class OrderAPI(DocumentAPI):
     @staticmethod
     def post_shopify_order(shopify_order_id: str | int, cust_no_override: str = None):
         """Convert Shopify order format to BigCommerce order format"""
-        bc_order = Shopify.Order.as_bc_order(order_id=shopify_order_id, send=True)
+        order = Shopify.Order.as_bc_order(order_id=shopify_order_id, send=True)
 
-        OrderAPI.post_order(
-            order_id=shopify_order_id, bc_order_override=bc_order, cust_no_override=cust_no_override
-        )
+        OrderAPI.post_order(order_id=shopify_order_id, bc_order_override=order, cust_no_override=cust_no_override)
 
     # This function will run the whole ordeal using the provided BigCommerce order_id.
     # cust_no_override is used to override the customer number for the order when posted to Counterpoint.
     # Session can be provided to use the same http session for all requests.
     @staticmethod
     def post_order(
-        order_id: str | int,
-        cust_no_override: str = None,
-        session: requests.Session = requests.Session(),
-        bc_order_override=None,
+        order_id: str | int, cust_no_override: str = None, session: requests.Session = requests.Session()
     ):
         oapi = OrderAPI(session=session)
+        order = Shopify.Order.as_bc_order(order_id=order_id, send=True)
 
-        bc_order = {}
-
-        if bc_order_override is None:
-            bc_order = OrderAPI.get_order(order_id)
-        else:
-            bc_order = bc_order_override
-
-        if str(bc_order['payment_status']).lower() in ['declined', '']:
+        if order.payment_status.lower() in ['declined', '']:
             oapi.error_handler.add_error_v('Order payment declined')
-            oapi.error_handler.add_error_v(f"Payment status: '{bc_order["payment_status"]}'")
+            oapi.error_handler.add_error_v(f"Payment status: '{order.payment_status}'")
             raise Exception('Order payment declined')
 
         cust_no = ''
 
         if cust_no_override is None:
             try:
-                if not oapi.has_cust_info(bc_order):
+                if not oapi.has_cust_info(order):
                     CounterPointAPI.logger.info('Creating new customer')
-                    oapi.create_new_customer(bc_order)
-                    cust_no = OrderAPI.get_cust_no(bc_order)
+                    oapi.create_new_customer(order)
+                    cust_no = OrderAPI.get_cust_no(order)
 
                 else:
                     CounterPointAPI.logger.info('Updating existing customer')
@@ -841,17 +695,15 @@ class OrderAPI(DocumentAPI):
         return response
 
     # Post an order/refund to Counterpoint.
-    def post_bc_order(self, cust_no: str, bc_order: dict):
+    def post_bc_order(self, cust_no: str, order: ShopifyOrder):
         self.logger.info('Posting order')
 
         if cust_no is None or cust_no == '' or not self.has_cust(cust_no):
             self.error_handler.add_error_v('Valid customer number is required')
             return
 
-        print(f'Getting payload for customer: {cust_no}, order: \n{bc_order}\n')
-
-        payload = self.get_post_order_payload(cust_no, bc_order)
-
+        print(f'Getting payload for customer: {cust_no}, order: \n{order}\n')
+        payload = self.get_post_order_payload(cust_no, order)
         print(f'Payload: \n{payload}\n')
 
         response = self.post_document(payload)
@@ -872,7 +724,7 @@ class OrderAPI(DocumentAPI):
 
         try:
             if payload['PS_DOC_HDR']['TKT_NUM'] and payload['PS_DOC_HDR']['TKT_NUM'] != '':
-                if self.is_refund(bc_order):
+                if self.refund:
                     refund_index = self.get_refund_index(
                         tkt_num=payload['PS_DOC_HDR']['TKT_NUM'], suffix=REFUND_SUFFIX
                     )
@@ -884,7 +736,7 @@ class OrderAPI(DocumentAPI):
 
         # WRITE PS_DOC_GFC
 
-        if len(payload['PS_DOC_HDR']['__PS_DOC_GFC__']) > 0 and not self.is_refund(bc_order):
+        if len(payload['PS_DOC_HDR']['__PS_DOC_GFC__']) > 0 and not self.refund:
             for gift_card in payload['PS_DOC_HDR']['__PS_DOC_GFC__']:
                 query = f"""
                 INSERT INTO PS_DOC_GFC
@@ -1909,53 +1761,40 @@ class OrderAPI(DocumentAPI):
     def get_customer_from_info(user_info):
         return customers.lookup_customer(email_address=user_info['email'], phone_number=user_info['phone'])
 
-    # Get the customer's phone number from the BigCommerce order
     @staticmethod
-    def get_cust_phone(bc_order: dict):
+    def get_cust_phone(order: ShopifyOrder):
+        """Get the customer's phone number from the Shopify order"""
         try:
-            phone = bc_order['billing_address']['phone']
+            phone = order.billing_address.phone
 
             if phone is None or phone == '':
-                phone = bc_order['shipping_addresses']['url'][0]['phone']
+                if order.shipping_address:
+                    phone = order.shipping_address.phone
 
             return phone
         except:
             return ''
 
-    # Get the customer's email address from the BigCommerce order
     @staticmethod
-    def get_cust_email(bc_order: dict):
+    def get_cust_email(order: ShopifyOrder):
+        """Get the customer's email from the Shopify order"""
         try:
-            email = bc_order['billing_address']['email']
+            email = order.billing_address.email
 
             if email is None or email == '':
-                email = bc_order['shipping_addresses']['url'][0]['email']
-
+                email = order.shipping_address.email or order.email
             return email
         except:
             return ''
 
     # Get the customer's number from the BigCommerce order
     @staticmethod
-    def get_cust_no(bc_order: dict):
-        user_info = {'email': OrderAPI.get_cust_email(bc_order), 'phone': OrderAPI.get_cust_phone(bc_order)}
+    def get_cust_no(order: ShopifyOrder):
+        user_info = {'email': OrderAPI.get_cust_email(order), 'phone': OrderAPI.get_cust_phone(order)}
 
         cust_no = OrderAPI.get_customer_from_info(user_info)
 
         return cust_no
-
-    # Get the BigCommerce order object for a given order ID.
-    @staticmethod
-    def get_order(order_id: str | int):
-        url = f'https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v2/orders/{order_id}'
-        order = JsonTools.get_json(url)
-
-        order['transactions'] = JsonTools.get_json(
-            f'https://api.bigcommerce.com/stores/{creds.test_big_store_hash}/v3/orders/{order_id}/transactions'
-        )
-        order = JsonTools.unpack(order)
-
-        return order
 
 
 # This class is used to parse the BigCommerce order response.

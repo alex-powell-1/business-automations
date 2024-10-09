@@ -16,7 +16,11 @@ class ShopifyOrder:
         self.date_created: str = ShopifyOrder.convert_date(self.node['createdAt'])
         self.date_modified: str = ShopifyOrder.convert_date(self.node['updatedAt'])
         self.billing_address: ShopifyOrder.BillingAddress = ShopifyOrder.BillingAddress(self.node)
-        self.shipping_address: ShopifyOrder.ShippingAddress = ShopifyOrder.ShippingAddress(self.node)
+        self.has_shipping_address: bool = self.node['shippingAddress'] is not None
+        if self.has_shipping_address:
+            self.shipping_address: ShopifyOrder.ShippingAddress = ShopifyOrder.ShippingAddress(self.node)
+        else:
+            self.shipping_address = None
         self.email: str = self.node['email'] or ''
         self.payment_status: str = self.node['displayFinancialStatus']
         self.refunds: list[dict] = self.node['refunds']
@@ -29,7 +33,7 @@ class ShopifyOrder:
         self.base_shipping_cost: float = self.shipping_cost
         self.get_shipping_item()
         self.header_discount: float = ShopifyOrder.get_money(node['totalDiscountsSet'])
-        self.order_coupons = self.node['discountCodes']
+        self.coupon_codes: list[str] = self.node['discountCodes']
         self.coupon_amount: float = self.header_discount
         self.subtotal: float = self.get_subtotal()
         self.subtotal_ex_tax: float = self.subtotal
@@ -60,18 +64,27 @@ class ShopifyOrder:
         result += f'Transactions: {self.transactions}\n'
         result += '\nItems\n'
         result += '-----\n'
-        for item in self.items:
+
+        for i, item in enumerate(self.items):
+            result += f'\nItem {i + 1}\n'
+            result += '---------'
             result += str(item)
+
+        result += '\nDiscounts\n'
+        result += '---------\n'
+        result += f'Coupon Codes: {self.coupon_codes}\n'
+        result += f'Coupon Amount: ${self.coupon_amount}\n'
+        result += f'Header Discount: ${self.header_discount}\n'
         result += '\nTotals\n'
         result += '------\n'
-        result += f'Subtotal: {self.subtotal}\n'
-        result += f'Subtotal Ex Tax: {self.subtotal_ex_tax}\n'
-        result += f'Subtotal Inc Tax: {self.subtotal_inc_tax}\n'
-        result += f'Total: {self.total}\n'
-        result += f'Total Ex Tax: {self.total_ex_tax}\n'
-        result += f'Total Inc Tax: {self.total_inc_tax}\n'
-        result += f'Refund Total: {self.refund_total}\n'
-        result += f'Store Credit Amount: {self.store_credit_amount}\n'
+        result += f'Subtotal: ${self.subtotal}\n'
+        result += f'Subtotal Ex Tax: ${self.subtotal_ex_tax}\n'
+        result += f'Subtotal Inc Tax: ${self.subtotal_inc_tax}\n'
+        result += f'Total: ${self.total}\n'
+        result += f'Total Ex Tax: ${self.total_ex_tax}\n'
+        result += f'Total Inc Tax: ${self.total_inc_tax}\n'
+        result += f'Refund Total: ${self.refund_total}\n'
+        result += f'Store Credit Amount: ${self.store_credit_amount}\n'
 
         return result
 

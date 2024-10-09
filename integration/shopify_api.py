@@ -280,6 +280,7 @@ class Shopify:
             """Convert Shopify response to ShopifyOrder object"""
             node = Shopify.Order.get(order_id)['node']
             if node:
+                print(node)
                 order = ShopifyOrder(node)
                 print(order)
                 return order
@@ -2648,4 +2649,4 @@ def refresh_order(tkt_no):
 
 
 if __name__ == '__main__':
-    Shopify.Order.as_bc_order(5714696765607)
+    Shopify.Order.as_bc_order(5713897619623)
