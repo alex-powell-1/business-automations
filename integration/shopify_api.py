@@ -7,10 +7,9 @@ from setup.error_handler import ProcessOutErrorHandler
 from pathlib import Path
 from database import Database
 from setup.email_engine import Email
-from customer_tools.customers import lookup_customer
 from traceback import print_exc as tb
 from setup.utilities import PhoneNumber, local_to_utc
-from integration.models.orders import ShopifyOrder
+from integration.models.shopify_orders import ShopifyOrder
 from datetime import datetime
 from product_tools import products
 import random
@@ -262,13 +261,18 @@ class Shopify:
         prefix = 'gid://shopify/Order/'
 
         @staticmethod
-        def get(order_id: int):
+        def get(order_id: int, original=False):
             response = Shopify.Query(
                 document=Shopify.Order.queries,
                 operation_name='order',
                 variables={'id': f'{Shopify.Order.prefix}{order_id}'},
             )
-            return response.data
+            if original:
+                return response.data
+
+            node = response.data['node']
+            if node:
+                return ShopifyOrder(node)
 
         @staticmethod
         def get_all():
@@ -278,13 +282,7 @@ class Shopify:
         @staticmethod
         def as_bc_order(order_id: int, send=False) -> ShopifyOrder:
             """Convert Shopify response to ShopifyOrder object"""
-            node = Shopify.Order.get(order_id)['node']
-            if node:
-                print(node)
-                order = ShopifyOrder(node)
-                print(order)
-                return order
-
+            snode = Shopify.Order.get(order_id)['node']
             # billing = snode['billingAddress'] or {
             #     'firstName': snode['customer']['firstName'],
             #     'lastName': snode['customer']['lastName'],
@@ -2649,4 +2647,4 @@ def refresh_order(tkt_no):
 
 
 if __name__ == '__main__':
-    Shopify.Order.as_bc_order(5713897619623)
+    print(Shopify.Order.get(5713897619623))

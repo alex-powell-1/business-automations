@@ -837,6 +837,108 @@ class Database:
                 else:
                     return code
 
+            def insert(
+                doc_id: str,
+                pay_code: str,
+                card_no: str,
+                amount: float,
+                lin_seq_no: int,
+                descr: str,
+                gfc_seq_no: int,
+                store_credit: bool = False,
+                eh=ProcessInErrorHandler,
+            ):
+                """Inserts a gift card into the Counterpoint database."""
+                store_credit = 'Y' if store_credit else 'N'
+
+                query = f"""
+                INSERT INTO PS_DOC_GFC
+                (DOC_ID, GFC_COD, GFC_NO, AMT, LIN_SEQ_NO, DESCR, CREATE_AS_STC, GFC_SEQ_NO)
+                VALUES
+                ('{doc_id}', '{pay_code}', '{card_no}', {amount}, {lin_seq_no}, '{descr}', 
+                '{store_credit}', {gfc_seq_no})
+                """
+
+                response = Database.query(query)
+
+                if response['code'] == 200:
+                    eh.logger.success(f'Gift card {card_no} written for ${amount}')
+                else:
+                    eh.error_handler.add_error_v(f'Gift card {card_no} could not be written')
+                    eh.error_handler.add_error_v(response['message'])
+
+            def get_balance(card_no: str) -> float:
+                query = f"""
+                    SELECT CURR_AMT FROM SY_GFC
+                    WHERE GFC_NO = '{card_no}'
+                    """
+
+                response = Database.query(query)
+                try:
+                    return float(response[0][0])
+                except:
+                    return 0
+
+            def get_next_seq_no(gfc_no: str) -> int:
+                query = f"""
+                    SELECT MAX(SEQ_NO) 
+                    FROM SY_GFC_ACTIV
+                    WHERE GFC_NO = '{gfc_no}'
+                    """
+
+                response = Database.query(query)
+
+                try:
+                    return int(response[0][0]) + 1
+                except:
+                    return 1
+
+            def add_balance(tkt_no: str, card_no: str, amount: float, doc_id: str, eh=ProcessInErrorHandler):
+                current_date = datetime.now().strftime('%Y-%m-%d')
+                seq_no = Database.CP.GiftCard.get_next_seq_no(card_no)
+
+                query = f"""
+                        INSERT INTO SY_GFC_ACTIV
+                        (GFC_NO, SEQ_NO, DAT, STR_ID, STA_ID, DOC_NO, ACTIV_TYP, AMT, 
+                        LST_MAINT_DT, LST_MAINT_USR_ID, DOC_ID)
+                        VALUES
+                        ('{card_no}', {seq_no}, '{current_date}', 'WEB', 
+                        'WEB', '{tkt_no}', 'R', {amount}, GETDATE(), 'POS', '{doc_id}')
+                        """
+                response = Database.query(query)
+
+                if response['code'] == 200:
+                    eh.logger.success('Gift card balance updated')
+                else:
+                    eh.error_handler.add_error_v('Gift card balance could not be updated')
+                    eh.error_handler.add_error_v(response['message'])
+
+            def delete_balance(card_no: str, eh=ProcessInErrorHandler):
+                query = f"""
+                        UPDATE SY_GFC
+                        SET CURR_AMT = {0}
+                        WHERE GFC_NO = '{card_no}'
+                        """
+                response = Database.query(query)
+                if response['code'] == 200:
+                    eh.logger.success('Gift card balance updated')
+                else:
+                    eh.error_handler.add_error_v('Gift card balance could not be updated')
+                    eh.error_handler.add_error_v(response['message'])
+
+            def get_last_activity_index(card_no: str) -> int:
+                query = f"""
+                SELECT MAX(SEQ_NO) FROM SY_GFC_ACTIV
+                WHERE GFC_NO = '{card_no}'
+                """
+
+                response = Database.query(query)
+
+                try:
+                    return int(response[0][0])
+                except:
+                    return 1
+
         class Loyalty:
             def write_line(doc_id: int, lin_seq_no: int, points_earned: int, eh=ProcessInErrorHandler):
                 query = f"""
@@ -885,7 +987,64 @@ class Database:
                 else:
                     eh.error_handler.add_error_v('Loyalty points could not be written')
 
+            def redeem(amount: int, cust_no: str, eh=ProcessInErrorHandler):
+                query = f"""
+                UPDATE {creds.Table.CP.Customers.table}
+                SET LOY_PTS_BAL = LOY_PTS_BAL - {amount}
+                WHERE CUST_NO = '{cust_no}'
+                """
+
+                response = Database.query(query)
+
+                if response['code'] == 200:
+                    eh.logger.success('Loyalty points added')
+                else:
+                    eh.error_handler.add_error_v('Loyalty points could not be added')
+                    eh.error_handler.add_error_v(response['message'])
+
+            def add_points(amount: int, cust_no: str, eh=ProcessInErrorHandler):
+                query = f"""
+                UPDATE {creds.Table.CP.Customers.table}
+                SET LOY_PTS_BAL = LOY_PTS_BAL + {amount}
+                WHERE CUST_NO = '{cust_no}'
+                """
+
+                response = Database.query(query)
+
+                if response['code'] == 200:
+                    eh.logger.success('Loyalty points added')
+                else:
+                    eh.error_handler.add_error_v('Loyalty points could not be added')
+                    eh.error_handler.add_error_v(response['message'])
+
         class OpenOrder:
+            def set_value(table, column, value, index, doc_id, eh=ProcessInErrorHandler):
+                query = f"""
+                    UPDATE {table}
+                    SET {column} = {value}
+                    WHERE DOC_ID = '{doc_id}' AND LIN_SEQ_NO = {index}
+                    """
+                r = Database.query(query)
+                if r['code'] == 200:
+                    eh.logger.success(f'[{table}] Line {index} {column} set to {value}')
+                else:
+                    eh.error_handler.add_error_v(f'[{table}] Line {index} {column} could not be set to {value}')
+                    eh.error_handler.add_error_v(r['message'])
+
+            def get_value(table, column, index, doc_id, eh=ProcessInErrorHandler):
+                query = f"""
+                SELECT {column} FROM {table}
+                WHERE DOC_ID = '{doc_id}' AND LIN_SEQ_NO = {index}
+                """
+
+                response = Database.query(query)
+
+                try:
+                    return float(response[0][0]) if response else None
+                except Exception as e:
+                    eh.error_handler.add_error_v(f'[{table}] Line {index} {column} could not be retrieved')
+                    raise e
+
             def delete(doc_id=None, tkt_no=None, eh=ProcessOutErrorHandler):
                 if doc_id:
                     query = f"""
@@ -921,6 +1080,298 @@ class Database:
                     return response[0][0] is not None
                 except:
                     return False
+
+            def tkt_num_exists(self, tkt_num: str, suffix: str = '', index: int = 1) -> bool:
+                """Returns true if the provided ticket number exists in the PS_DOC_HDR table."""
+
+                query = f"""
+                SELECT TKT_NO 
+                FROM PS_DOC_HDR
+                WHERE TKT_NO like '{tkt_num}{suffix}{index}'
+                """
+
+                response = Database.query(query)
+
+                try:
+                    ticket_amt = len(response)
+
+                    if ticket_amt == 0:
+                        return False
+                    else:
+                        return True
+                except:
+                    return False
+
+            def write_ticket_number(doc_id: str, tkt_no: str, eh=ProcessInErrorHandler):
+                tables = ['PS_DOC_HDR', 'PS_DOC_LIN', 'PS_DOC_PMT']
+                for table in tables:
+                    query = f"""
+                    UPDATE {table}
+                    SET TKT_NO = '{tkt_no}'
+                    WHERE DOC_ID = '{doc_id}'
+                    """
+
+                    response = Database.query(query)
+
+                    if response['code'] == 200:
+                        eh.logger.success('Ticket number updated.')
+                    elif response['code'] == 201:
+                        eh.logger.warn(f'DOC ID not found in {table}.')
+                    else:
+                        eh.error_handler.add_error_v(f'Ticket number could not be updated in {table}.')
+                        eh.error_handler.add_error_v(response['message'])
+
+            def update_payment_amount(doc_id: str, amount: float, pay_code: str = None, eh=ProcessInErrorHandler):
+                pay_code_filter = f"AND PAY_COD = '{pay_code}'" if pay_code else ''
+
+                query = f"""
+                UPDATE PS_DOC_PMT
+                SET AMT = {amount},
+                HOME_CURNCY_AMT = {amount} 
+                WHERE DOC_ID = '{doc_id} {pay_code_filter}'
+                """
+
+                response = Database.query(query)
+                ending_text = (
+                    f'for DOC_ID: {doc_id} and PAY_COD: {pay_code}' if pay_code else f' for DOC_ID: {doc_id}'
+                )
+                if response['code'] == 200:
+                    eh.logger.success(f'Payment amount updated {ending_text}')
+                elif response['code'] == 201:
+                    eh.logger.warn(f'DOC ID {doc_id} not found in PS_DOC_PMT.')
+                else:
+                    eh.error_handler.add_error_v(f'Payment amount could not be updated {ending_text}')
+                    eh.error_handler.add_error_v(response['message'])
+
+            def update_payment_apply(doc_id: str, amount: float, pay_code: str = None, eh=ProcessInErrorHandler):
+                pay_code_filter = f"AND PAY_COD = '{pay_code}'" if pay_code else ''
+                query = f"""
+                    UPDATE PS_DOC_PMT_APPLY
+                    SET AMT = {amount},
+                    HOME_CURNCY_AMT = {amount}
+                    WHERE DOC_ID = '{doc_id}' AND PMT_SEQ_NO in (
+                        SELECT PMT_SEQ_NO FROM PS_DOC_PMT WHERE DOC_ID = '{doc_id}' {pay_code_filter}
+                    )
+                    """
+
+                r = Database.query(query)
+                ending_text = (
+                    f'for DOC_ID: {doc_id} and PAY_COD: {pay_code}' if pay_code else f' for DOC_ID: {doc_id}'
+                )
+                if r['code'] == 200:
+                    eh.logger.success(f'Payment applied updated {ending_text}')
+                else:
+                    eh.error_handler.add_error_v(f'Payment applied could not be updated {ending_text}')
+                    eh.error_handler.add_error_v(r['message'])
+
+            def get_total(doc_id: str, eh=ProcessInErrorHandler) -> float:
+                query = f"""
+                SELECT SUM(EXT_PRC) FROM PS_DOC_LIN
+                WHERE DOC_ID = '{doc_id}'
+                """
+
+                response = Database.query(query)
+
+                try:
+                    return abs(float(response[0][0]))
+                except:
+                    return 0
+
+            def get_payment_by_code(doc_id: str, pay_code: str, eh=ProcessInErrorHandler) -> float:
+                query = f"""
+                SELECT AMT FROM PS_DOC_PMT
+                WHERE DOC_ID = '{doc_id}' AND PAY_COD = '{pay_code}'
+                """
+
+                response = Database.query(query)
+
+                try:
+                    return abs(float(response[0][0]))
+                except:
+                    return 0
+
+            def has_loyalty_payment(doc_id: str) -> bool:
+                """Returns True if the provided document ID has a loyalty payment."""
+                query = f"""
+                SELECT COUNT(*) FROM PS_DOC_PMT
+                WHERE DOC_ID = '{doc_id}' AND PAY_COD = 'LOYALTY'
+                """
+
+                response = Database.query(query)
+
+                try:
+                    return int(response[0][0]) > 0
+                except:
+                    return False
+
+            def has_gc_payment(doc_id: str) -> bool:
+                query = f"""
+                SELECT COUNT(*) FROM PS_DOC_PMT
+                WHERE DOC_ID = '{doc_id}' AND PAY_COD = 'GC'
+                """
+
+                response = Database.query(query)
+
+                try:
+                    return int(response[0][0]) > 0
+                except:
+                    return False
+
+            def set_ticket_date(doc_id: str, date: str, eh=ProcessInErrorHandler):
+                query = f"""
+                UPDATE PS_DOC_HDR
+                SET TKT_DT = '{date}'
+                WHERE DOC_ID = '{doc_id}'
+                """
+
+                response = Database.query(query)
+
+                if response['code'] == 200:
+                    eh.logger.success('Date updated')
+                else:
+                    eh.error_handler.add_error_v('Date could not be updated')
+                    eh.error_handler.add_error_v(response['message'])
+
+            def delete_hdr_total_entry(doc_id: str, eh=ProcessInErrorHandler):
+                query = f"""
+                DELETE FROM PS_DOC_HDR_TOT
+                WHERE DOC_ID = '{doc_id}'
+                """
+
+                response = Database.query(query)
+
+                if response['code'] == 200:
+                    eh.logger.success('Total removed')
+                else:
+                    eh.error_handler.add_error_v('Total could not be removed')
+                    eh.error_handler.add_error_v(response['message'])
+
+            def insert_hdr_total_entry(
+                doc_id: str,
+                lines: int,
+                gfc_amt: float,
+                sub_tot: float,
+                tot_ext_cost: float,
+                tot_tender: float,
+                tot: float,
+                total_hdr_disc: float,
+                total_lin_disc: float,
+                eh=ProcessInErrorHandler,
+            ):
+                query = f"""
+                INSERT INTO PS_DOC_HDR_TOT
+                (DOC_ID, TOT_TYP, INITIAL_MIN_DUE, HAS_TAX_OVRD, TAX_AMT_SHIPPED, LINS, TOT_GFC_AMT, 
+                TOT_SVC_AMT, SUB_TOT, TAX_OVRD_LINS, TOT_EXT_COST, TOT_MISC, TAX_AMT, NORM_TAX_AMT, 
+                TOT_TND, TOT_CHNG, TOT_WEIGHT, TOT_CUBE, TOT, AMT_DUE, TOT_HDR_DISC, TOT_LIN_DISC, 
+                TOT_HDR_DISCNTBL_AMT, TOT_TIP_AMT)
+                VALUES
+                ('{doc_id}', 'S', 0, '!', 0, {lines}, {gfc_amt}, 
+                0, {sub_tot}, 0, {tot_ext_cost}, 0, 0, 0, 
+                {tot_tender}, 0, 0, 0, {tot}, 0, {total_hdr_disc}, {total_lin_disc}, 
+                {sub_tot}, 0)
+                """
+
+                response = Database.query(query)
+
+                if response['code'] == 200:
+                    eh.logger.success('Total written')
+                else:
+                    eh.error_handler.add_error_v('Total could not be written')
+                    eh.error_handler.add_error_v(response['message'])
+
+            def set_loyalty_program(doc_id: str, program_code: str = 'BASIC', eh=ProcessInErrorHandler):
+                query = f"""
+                UPDATE PS_DOC_HDR
+                SET LOY_PGM_COD = '{program_code}'
+                WHERE DOC_ID = '{doc_id}'
+                """
+
+                response = Database.query(query)
+
+                if response['code'] == 200:
+                    eh.logger.success(f'Loyalty program code updated to {program_code} for DOC_ID: {doc_id}')
+                elif response['code'] == 201:
+                    eh.logger.warn(f'DOC ID {doc_id} not found in PS_DOC_HDR.')
+                else:
+                    eh.error_handler.add_error_v(f'Doc ID {doc_id} could not be updated to {program_code}')
+                    eh.error_handler.add_error_v(response['message'])
+
+            def set_line_type(doc_id: str, line_type: str, eh=ProcessInErrorHandler) -> None:
+                """Updates the line type for all lines in a given document."""
+                if line_type not in ['S', 'R']:
+                    raise Exception('Invalid line type. Must be "S" or "R"')
+
+                query = f"""
+                UPDATE PS_DOC_LIN
+                SET LIN_TYP = '{line_type}'
+                WHERE DOC_ID = '{doc_id}'
+                """
+                response = Database.query(query)
+
+                if response['code'] == 200:
+                    eh.logger.success(f'Updated line types to {line_type} for DOC_ID: {doc_id}')
+                elif response['code'] == 201:
+                    eh.logger.info(f'No lines to update for Doc ID: {doc_id}')
+                else:
+                    eh.error_handler.add_error_v(f'Line types could not be updated for DOC_ID: {doc_id}')
+
+            def get_orig_doc_id(doc_id: str) -> str:
+                """Returns the original document ID for a given document ID."""
+
+                query = f"""
+                SELECT ORIG_DOC_ID 
+                FROM PS_DOC_HDR_ORIG_DOC 
+                WHERE DOC_ID = '{doc_id}'
+                """
+                response = Database.query(query)
+                try:
+                    return response[0][0]
+                except:
+                    return None
+
+            def set_apply_type(doc_id: str, apply_type: str = 'S', eh=ProcessInErrorHandler):
+                query = f"""
+                UPDATE PS_DOC_PMT_APPLY
+                SET APPL_TYP = '{apply_type}'
+                WHERE DOC_ID = '{doc_id}'
+                """
+                response = Database.query(query)
+
+                if response['code'] == 200:
+                    eh.logger.success(f'Updated payment application types to {apply_type} for DOC_ID: {doc_id}')
+                elif response['code'] == 201:
+                    eh.logger.info(f'No payment applications found to update for DOC_ID: {doc_id}')
+                else:
+                    eh.error_handler.add_error_v(
+                        f'Payment application types could not be updated for DOC_ID: {doc_id}'
+                    )
+                    eh.error_handler.add_error_v(response['message'])
+
+            def set_line_totals(
+                doc_id: str,
+                number_of_lines: int,
+                line_total: float,
+                is_return: bool = False,
+                eh=ProcessInErrorHandler,
+            ):
+                table = 'RET_LINS' if is_return else 'SAL_LINS'
+                to_release_lines = f', TO_REL_LINS = {number_of_lines}' if not is_return else ''
+                line_tot = f', RET_LIN_TOT = {line_total}' if is_return else f'SAL_LIN_TOT = {line_total}'
+
+                query = f"""
+                UPDATE PS_DOC_HDR
+                SET {table} = {number_of_lines} {to_release_lines} {line_tot}
+                WHERE DOC_ID = '{doc_id}'
+                """
+                response = Database.query(query)
+
+                if response['code'] == 200:
+                    eh.logger.success(f'Updated line items to {number_of_lines} for DOC_ID: {doc_id}')
+                elif response['code'] == 201:
+                    eh.logger.info(f'No lines to update for DOC_ID: {doc_id}')
+                else:
+                    eh.error_handler.add_error_v(f'Line items could not be updated for DOC_ID: {doc_id}')
+                    eh.error_handler.add_error_v(response['message'])
 
         class ClosedOrder:
             def get_refund_customers(date):
@@ -1064,8 +1515,10 @@ class Database:
                 """
                 return Database.query(query, mapped=True)
 
-            def get_cost(item_no: str) -> float:
+            def get_cost(item_no: str, eh=ProcessInErrorHandler) -> float:
                 """Returns the cost of an item from the IM_ITEM table."""
+                cost: float = 0
+
                 query = f"""
                 SELECT LST_COST 
                 FROM IM_ITEM
@@ -1074,9 +1527,12 @@ class Database:
 
                 response = Database.query(query)
                 try:
-                    return float(response[0][0])
-                except:
-                    return 0
+                    cost = float(response[0][0])
+                except Exception as e:
+                    eh.error_handler.add_error_v(f'Could not get cost for {item_no}')
+                    eh.error_handler.add_error_v(str(e))
+
+                return cost
 
             def get_total_sold(start_date, end_date, item_no):
                 query = f"""
@@ -2103,7 +2559,8 @@ class Database:
                 return customer_no, full_name, category
 
             @staticmethod
-            def lookup_customer_by_email(email_address):
+            def lookup_customer_by_email(email_address) -> str:
+                """Takes an email address and returns the customer number associated with it."""
                 if email_address is None:
                     return
                 email_address = email_address.replace("'", "''")
@@ -2116,7 +2573,8 @@ class Database:
                 if response is not None:
                     return response[0][0]
 
-            def lookup_customer_by_phone(phone_number):
+            def lookup_customer_by_phone(phone_number: str) -> str:
+                """Takes a phone number and returns the customer number associated with it."""
                 if phone_number is None:
                     return
                 phone_number = PhoneNumber(phone_number).to_cp()
@@ -2128,6 +2586,19 @@ class Database:
                 response = Database.query(query)
                 if response is not None:
                     return response[0][0]
+
+            def lookup_customer(email_address=None, phone_number=None) -> str:
+                """Looks up a customer by email or phone number and returns customer number."""
+                return Database.CP.Customer.lookup_customer_by_email(
+                    email_address
+                ) or Database.CP.Customer.lookup_customer_by_phone(phone_number)
+
+            def is_customer(email_address, phone_number) -> bool:
+                """Checks to see if an email or phone number belongs to a current customer"""
+                return (
+                    Database.CP.Customer.lookup_customer_by_email(email_address) is not None
+                    or Database.CP.Customer.lookup_customer_by_phone(phone_number) is not None
+                )
 
             @staticmethod
             def update_timestamps(customer_list: list = None, customer_no: str = None):
@@ -2209,6 +2680,22 @@ class Database:
                     eh.logger.success('Cust Loyalty points written')
                 else:
                     eh.error_handler.add_error_v('Cust Loyalty points could not be written')
+
+            def decrement_orders(cust_no: str, eh=ProcessInErrorHandler):
+                # Update the customer order count
+                query = f"""
+                UPDATE AR_CUST
+                SET NO_OF_ORDS = NO_OF_ORDS - 1
+                WHERE CUST_NO = '{cust_no}'"""
+
+                response = Database.query(query)
+                if response['code'] == 200:
+                    eh.logger.success('Updated customer order count')
+                elif response['code'] == 201:
+                    eh.logger.warn('No rows affected for customer order count')
+                else:
+                    eh.error_handler.add_error_v('Customer order count could not be updated')
+                    eh.error_handler.add_error_v(response['message'])
 
             @staticmethod
             def get_name(cust_no):
@@ -2911,17 +3398,18 @@ class Database:
                 return Database.query(query)
 
             def insert(
-                shopify_cust_no,
-                cp_cust_no=None,
-                store_credit_id=None,
-                meta_cust_no_id=None,
-                meta_loyalty_point_id=None,
-                meta_category_id=None,
-                meta_birth_month_id=None,
-                meta_spouse_birth_month_id=None,
-                meta_wholesale_price_tier_id=None,
+                shopify_cust_no: int,
+                cp_cust_no: str = None,
+                store_credit_id: int = None,
+                meta_cust_no_id: int = None,
+                meta_loyalty_point_id: int = None,
+                meta_category_id: int = None,
+                meta_birth_month_id: int = None,
+                meta_spouse_birth_month_id: int = None,
+                meta_wholesale_price_tier_id: int = None,
                 eh=ProcessOutErrorHandler,
             ):
+                """Inserts a customer into the Middleware database."""
                 query = f"""
                         INSERT INTO {Table.Middleware.customers} (CUST_NO, SHOP_CUST_ID, 
                         LOY_ACCOUNT, META_CUST_NO, META_LOY_PTS_BAL, META_CATEG, META_BIR_MTH, 
@@ -2947,17 +3435,18 @@ class Database:
                     raise Exception(error)
 
             def update(
-                shopify_cust_no,
-                cp_cust_no=None,
-                store_credit_id=None,
-                meta_cust_no_id=None,
-                meta_loyalty_point_id=None,
-                meta_category_id=None,
-                meta_birth_month_id=None,
-                meta_spouse_birth_month_id=None,
-                meta_wholesale_price_tier_id=None,
+                shopify_cust_no: int,
+                cp_cust_no: str = None,
+                store_credit_id: int = None,
+                meta_cust_no_id: int = None,
+                meta_loyalty_point_id: int = None,
+                meta_category_id: int = None,
+                meta_birth_month_id: int = None,
+                meta_spouse_birth_month_id: int = None,
+                meta_wholesale_price_tier_id: int = None,
                 eh=ProcessOutErrorHandler,
             ):
+                """Updates a customer in the Middleware database."""
                 if cp_cust_no:
                     where = f"CUST_NO = '{cp_cust_no}'"
                     cust_value = ''

@@ -42,14 +42,12 @@ class Order:
 
     def get_payload(self):
         if self.payload is None:
-            self.payload = self.oapi.get_post_order_payload(
-                bc_order=self.get_bc_order(), cust_no=self.get_cust_no()
-            )
+            self.payload = self.oapi.get_post_payload(bc_order=self.get_bc_order(), cust_no=self.get_cust_no())
         return self.payload
 
     def post_bc_order(self, cust_no_override: str = None):
         try:
-            OrderAPI.post_order(self.order_id, cust_no_override=cust_no_override)
+            OrderAPI.process_order(self.order_id, cust_no_override=cust_no_override)
         except Exception as e:
             ProcessInErrorHandler.error_handler.add_error_v(
                 error=f'Error processing order {self.order_id}',

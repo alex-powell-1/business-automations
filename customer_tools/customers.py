@@ -5,7 +5,7 @@ from setup import creds
 from database import Database as db
 from setup.error_handler import ScheduledTasksErrorHandler
 
-from setup.utilities import PhoneNumber
+from setup.utilities import PhoneNumber, states
 
 
 class Customer:
@@ -232,78 +232,15 @@ def get_customers_by_category(category):
         return customer_list
 
 
-def lookup_customer(email_address=None, phone_number=None):
-    return db.CP.Customer.lookup_customer_by_email(email_address) or db.CP.Customer.lookup_customer_by_phone(
-        phone_number
-    )
-
-
-def is_customer(email_address, phone_number):
-    """Checks to see if an email or phone number belongs to a current customer"""
-    return (
-        db.CP.Customer.lookup_customer_by_email(email_address) is not None
-        or db.CP.Customer.lookup_customer_by_phone(phone_number) is not None
-    )
-
-
-def add_new_customer(first_name, last_name, phone_number, email_address, street_address, city, state, zip_code):
-    states = {
-        'Alabama': 'AL',
-        'Alaska': 'AK',
-        'Arizona': 'AZ',
-        'Arkansas': 'AR',
-        'California': 'CA',
-        'Colorado': 'CO',
-        'Connecticut': 'CT',
-        'Delaware': 'DE',
-        'Florida': 'FL',
-        'Georgia': 'GA',
-        'Hawaii': 'HI',
-        'Idaho': 'ID',
-        'Illinois': 'IL',
-        'Indiana': 'IN',
-        'Iowa': 'IA',
-        'Kansas': 'KS',
-        'Kentucky': 'KY',
-        'Louisiana': 'LA',
-        'Maine': 'ME',
-        'Maryland': 'MD',
-        'Massachusetts': 'MA',
-        'Michigan': 'MI',
-        'Minnesota': 'MN',
-        'Mississippi': 'MS',
-        'Missouri': 'MO',
-        'Montana': 'MT',
-        'Nebraska': 'NE',
-        'Nevada': 'NV',
-        'New Hampshire': 'NH',
-        'New Jersey': 'NJ',
-        'New Mexico': 'NM',
-        'New York': 'NY',
-        'North Carolina': 'NC',
-        'North Dakota': 'ND',
-        'Ohio': 'OH',
-        'Oklahoma': 'OK',
-        'Oregon': 'OR',
-        'Pennsylvania': 'PA',
-        'Rhode Island': 'RI',
-        'South Carolina': 'SC',
-        'South Dakota': 'SD',
-        'Tennessee': 'TN',
-        'Texas': 'TX',
-        'Utah': 'UT',
-        'Vermont': 'VT',
-        'Virginia': 'VA',
-        'Washington': 'WA',
-        'West Virginia': 'WV',
-        'Wisconsin': 'WI',
-        'Wyoming': 'WY',
-    }
+def add_new_customer(
+    first_name, last_name, phone_number, email_address, street_address, city, state, zip_code
+) -> str:
+    """Add a new customer to Counterpoint and returns customer number"""
 
     if phone_number is not None:
         phone_number = PhoneNumber(phone_number).to_cp()
 
-    if not is_customer(email_address=email_address, phone_number=phone_number):
+    if not db.CP.Customer.is_customer(email_address=email_address, phone_number=phone_number):
         url = f'{creds.Counterpoint.API.server}/CUSTOMER/'
         headers = {
             'Authorization': f'Basic {creds.Counterpoint.API.user}',
@@ -354,6 +291,7 @@ def add_new_customer(first_name, last_name, phone_number, email_address, street_
 
         cust_id = response.json()['CUST_NO']
         db.CP.Customer.update_timestamps(customer_no=cust_id)
+
         return cust_id
     else:
         return 'Already a customer'
@@ -370,59 +308,6 @@ def update_customer(
     state: str,
     zip_code: str,
 ):
-    states = {
-        'Alabama': 'AL',
-        'Alaska': 'AK',
-        'Arizona': 'AZ',
-        'Arkansas': 'AR',
-        'California': 'CA',
-        'Colorado': 'CO',
-        'Connecticut': 'CT',
-        'Delaware': 'DE',
-        'Florida': 'FL',
-        'Georgia': 'GA',
-        'Hawaii': 'HI',
-        'Idaho': 'ID',
-        'Illinois': 'IL',
-        'Indiana': 'IN',
-        'Iowa': 'IA',
-        'Kansas': 'KS',
-        'Kentucky': 'KY',
-        'Louisiana': 'LA',
-        'Maine': 'ME',
-        'Maryland': 'MD',
-        'Massachusetts': 'MA',
-        'Michigan': 'MI',
-        'Minnesota': 'MN',
-        'Mississippi': 'MS',
-        'Missouri': 'MO',
-        'Montana': 'MT',
-        'Nebraska': 'NE',
-        'Nevada': 'NV',
-        'New Hampshire': 'NH',
-        'New Jersey': 'NJ',
-        'New Mexico': 'NM',
-        'New York': 'NY',
-        'North Carolina': 'NC',
-        'North Dakota': 'ND',
-        'Ohio': 'OH',
-        'Oklahoma': 'OK',
-        'Oregon': 'OR',
-        'Pennsylvania': 'PA',
-        'Rhode Island': 'RI',
-        'South Carolina': 'SC',
-        'South Dakota': 'SD',
-        'Tennessee': 'TN',
-        'Texas': 'TX',
-        'Utah': 'UT',
-        'Vermont': 'VT',
-        'Virginia': 'VA',
-        'Washington': 'WA',
-        'West Virginia': 'WV',
-        'Wisconsin': 'WI',
-        'Wyoming': 'WY',
-    }
-
     if state is not None:
         try:
             state = states[state]
