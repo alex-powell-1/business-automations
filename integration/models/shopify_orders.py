@@ -1,8 +1,8 @@
 from database import Database
-from setup.email_engine import Email
 from setup.error_handler import ProcessInErrorHandler
 from setup.utilities import PhoneNumber
 from datetime import datetime, timezone
+from setup.email_engine import Email
 
 
 class ShopifyOrder:
@@ -21,8 +21,9 @@ class ShopifyOrder:
             self.shipping_address: ShippingAddress = ShippingAddress(self.node)
         else:
             self.shipping_address = None
-        self.customer = Customer(self.node, cp_id=self.get_cp_customer_id())
+        self.customer = Customer(self.node)
         self.payment_status: str = self.node['displayFinancialStatus']
+        self.is_declined: bool = self.payment_status.lower() in ['declined', '']
         self.refunds: list[dict] = self.node['refunds']
         self.status: str = self.get_status()
         self.is_refund: bool = self.status in ['Refunded', 'Partially Refunded']
@@ -46,9 +47,7 @@ class ShopifyOrder:
         self.store_credit_amount: float = self.get_store_credit_amount()
         self.customer_message: str = self.node['note']
         self.transactions: dict = {'data': []}  # Not implemented
-
-        if send_gfc:
-            self.send_gift_cards()
+        self.send_gift_cards()
 
     def __str__(self) -> str:
         result = f'\nOrder ID: {self.id}\n'
@@ -95,26 +94,7 @@ class ShopifyOrder:
         else:
             return self.node['displayFulfillmentStatus']
 
-    def get_cp_customer_id(self) -> str:
-        """Returns the CP Customer ID"""
-        email = self.email
-        if not email and self.billing_address.email:
-            email = self.billing_address.email
-
-        if not email and self.shipping_address:
-            email = self.shipping_address.email
-
-        phone = None
-
-        if self.billing_address.phone:
-            phone = self.billing_address.phone
-
-        if not phone and self.shipping_address:
-            phone = self.shipping_address.phone
-
-        return Database.CP.Customer.lookup_customer(email, phone)
-
-    def get_items(self) -> list['ShopifyOrder.LineItem']:
+    def get_items(self) -> list['LineItem']:
         node_items = []
         for i in self.node['lineItems']['edges']:
             item = i['node']
@@ -128,7 +108,7 @@ class ShopifyOrder:
         if not node_items:
             return []
 
-        results: list[ShopifyOrder.LineItem] = []
+        results: list['LineItem'] = []
 
         for item in node_items:
             price = ShopifyOrder.get_money(item['originalUnitPriceSet'])
@@ -256,13 +236,13 @@ class ShopifyOrder:
             )
 
     def get_store_credit_amount(self) -> float:
-        store_credit_amount = 0
+        store_credit_amount: float = 0
         for transaction in self.node['transactions']:
             if transaction['gateway'] == 'shopify_store_credit':
                 store_credit_amount = float(transaction['amountSet']['shopMoney']['amount'])
                 break
 
-        return float(store_credit_amount)
+        return store_credit_amount
 
     def get_channel(self) -> str:
         if self.node['channelInformation'] is not None:
@@ -299,6 +279,7 @@ class ShopifyOrder:
 
     @staticmethod
     def get_money(money: dict) -> float:
+        """Returns the money or 0 from a shopify money object"""
         result = 0
         try:
             result = float(money['shopMoney']['amount'])
@@ -309,13 +290,9 @@ class ShopifyOrder:
 
 
 class Customer:
-    def __init__(self, node: dict, cp_id: str):
+    def __init__(self, node: dict):
         self.id: int = int(node['customer']['id'].split('/')[-1])
         """Shopify Customer ID (last part of the URL)"""
-
-        self.cp_id: str = cp_id
-        """Counterpoint Customer ID"""
-
         self.first_name: str = node['customer']['firstName']
         self.last_name: str = node['customer']['lastName']
         self.email: str = node['customer']['email']
@@ -326,7 +303,6 @@ class Customer:
         result = '\nCustomer\n'
         result += '--------\n'
         result += f'Shopify ID: {self.id}\n'
-        result += f'Counterpoint ID: {self.cp_id}\n'
         result += f'First Name: {self.first_name}\n'
         result += f'Last Name: {self.last_name}\n'
         result += f'Email: {self.email}\n'

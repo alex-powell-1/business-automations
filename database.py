@@ -869,7 +869,8 @@ class Database:
 
             def get_balance(card_no: str) -> float:
                 query = f"""
-                    SELECT CURR_AMT FROM SY_GFC
+                    SELECT CURR_AMT 
+                    FROM SY_GFC
                     WHERE GFC_NO = '{card_no}'
                     """
 
@@ -893,30 +894,45 @@ class Database:
                 except:
                     return 1
 
-            def add_balance(tkt_no: str, card_no: str, amount: float, doc_id: str, eh=ProcessInErrorHandler):
+            def insert_activity(
+                tkt_no: str,
+                card_no: str,
+                amount: float,
+                doc_id: str,
+                store: str,
+                station: str,
+                activity: str = 'R',  # R = Redeem
+                user_id: str = 'POS',
+                eh=ProcessInErrorHandler,
+            ):
                 current_date = datetime.now().strftime('%Y-%m-%d')
                 seq_no = Database.CP.GiftCard.get_next_seq_no(card_no)
 
                 query = f"""
                         INSERT INTO SY_GFC_ACTIV
-                        (GFC_NO, SEQ_NO, DAT, STR_ID, STA_ID, DOC_NO, ACTIV_TYP, AMT, 
+                        (GFC_NO, SEQ_NO, DAT, STR_ID, 
+                        STA_ID, DOC_NO, ACTIV_TYP, AMT, 
                         LST_MAINT_DT, LST_MAINT_USR_ID, DOC_ID)
+                        
                         VALUES
-                        ('{card_no}', {seq_no}, '{current_date}', 'WEB', 
-                        'WEB', '{tkt_no}', 'R', {amount}, GETDATE(), 'POS', '{doc_id}')
+                        ('{card_no}', {seq_no}, '{current_date}', '{store}', 
+                        '{station}', '{tkt_no}', '{activity}', {amount}, 
+                        GETDATE(), '{user_id}', '{doc_id}')
                         """
                 response = Database.query(query)
 
                 if response['code'] == 200:
-                    eh.logger.success('Gift card balance updated')
+                    eh.logger.success(f'Activty {activity} for ${amount} on {card_no} written')
                 else:
-                    eh.error_handler.add_error_v('Gift card balance could not be updated')
+                    eh.error_handler.add_error_v(
+                        f'Activity {activity} for ${amount} on {card_no} could not be written'
+                    )
                     eh.error_handler.add_error_v(response['message'])
 
-            def delete_balance(card_no: str, eh=ProcessInErrorHandler):
+            def update_balance(card_no: str, amount: float, eh=ProcessInErrorHandler):
                 query = f"""
                         UPDATE SY_GFC
-                        SET CURR_AMT = {0}
+                        SET CURR_AMT = {amount}
                         WHERE GFC_NO = '{card_no}'
                         """
                 response = Database.query(query)
@@ -938,6 +954,21 @@ class Database:
                     return int(response[0][0])
                 except:
                     return 1
+
+            def update_activity(card_no: str, tkt_no: str, amt_spent: float, eh=ProcessInErrorHandler):
+                query = f"""
+                UPDATE SY_GFC_ACTIV
+                SET AMT = {amt_spent},
+                DOC_NO = '{tkt_no}'
+                WHERE GFC_NO = '{card_no}' AND SEQ_NO = {Database.CP.GiftCard.get_last_activity_index()}
+                """
+
+                response = Database.query(query)
+                if response['code'] == 200:
+                    eh.logger.success(f'TKT_NO: {tkt_no}: Gift card activity updated ${amt_spent}')
+                else:
+                    eh.error_handler.add_error_v('Gift card activity could not be updated')
+                    eh.error_handler.add_error_v(response['message'])
 
         class Loyalty:
             def write_line(doc_id: int, lin_seq_no: int, points_earned: int, eh=ProcessInErrorHandler):
@@ -1045,26 +1076,38 @@ class Database:
                     eh.error_handler.add_error_v(f'[{table}] Line {index} {column} could not be retrieved')
                     raise e
 
-            def delete(doc_id=None, tkt_no=None, eh=ProcessOutErrorHandler):
-                if doc_id:
-                    query = f"""
-                    DELETE FROM {Table.CP.open_orders}
-                    WHERE DOC_ID = {doc_id}"""
-                elif tkt_no:
-                    query = f"""
-                    DELETE FROM {Table.CP.open_orders}
-                    WHERE TKT_NO = '{tkt_no}'"""
-
-                else:
+            def delete(doc_id: str = None, tkt_no: str = None, orig_doc: bool = False, eh=ProcessOutErrorHandler):
+                """Deletes an order from the PS_DOC_HDR table. If orig_doc is True, deletes from PS_DOC_HDR_ORIG_DOC."""
+                if not doc_id and not tkt_no:
+                    eh.error_handler.add_error_v('No doc_id or tkt_no provided to delete order.')
                     return
+                if orig_doc:
+                    table = 'PS_DOC_HDR_ORIG_DOC'
+                else:
+                    table = 'PS_DOC_HDR'
+
+                if doc_id:
+                    column = 'DOC_ID'
+                    value = doc_id
+                elif tkt_no:
+                    if orig_doc:
+                        eh.error_handler.add_error_v('Cannot delete original document by tkt_no.')
+                        return
+                    column = 'TKT_NO'
+                    value = tkt_no
+
+                query = f"""
+                DELETE FROM {table}
+                WHERE {column} = '{value}'
+                """
 
                 response = Database.query(query)
                 if response['code'] == 200:
-                    eh.logger.success(f'Order {doc_id or tkt_no} deleted from PS_DOC_HDR.')
+                    eh.logger.success(f'Order {doc_id or tkt_no} deleted from {table}.')
                 elif response['code'] == 201:
-                    eh.logger.warn(f'Order {doc_id or tkt_no} not found in PS_DOC_HDR.')
+                    eh.logger.warn(f'Order {doc_id or tkt_no} not found in {table}.')
                 else:
-                    error = f'Error deleting order {doc_id or tkt_no} from PS_DOC_HDR. \n Query: {query}\nResponse: {response}'
+                    error = f'Error deleting order {doc_id or tkt_no} from {table}. \n Query: {query}\nResponse: {response}'
                     eh.error_handler.add_error_v(error=error)
                     raise Exception(error)
 
@@ -1372,6 +1415,32 @@ class Database:
                 else:
                     eh.error_handler.add_error_v(f'Line items could not be updated for DOC_ID: {doc_id}')
                     eh.error_handler.add_error_v(response['message'])
+
+            def set_ps_doc_lin_quantities(
+                doc_id: str, qty: float, ext_prc: float, ext_cost: float, lin_seq_no: int, eh=ProcessInErrorHandler
+            ):
+                query = f"""
+                    UPDATE PS_DOC_LIN
+                    SET QTY_SOLD = {qty},
+                    EXT_PRC = {ext_prc},
+                    EXT_COST = {ext_cost}
+                    WHERE DOC_ID = '{doc_id}' AND LIN_SEQ_NO = {lin_seq_no}
+                    """
+                r = Database.query(query)
+
+                if r['code'] == 200:
+                    eh.logger.success(f'Doc ID: {doc_id} Line {lin_seq_no} updated')
+                elif r['code'] == 201:
+                    eh.logger.warn(f'Doc ID: {doc_id} Line {lin_seq_no} not found')
+                else:
+                    eh.error_handler.add_error_v(f'Doc ID: {doc_id} Line {lin_seq_no} could not be updated')
+                    eh.error_handler.add_error_v(r['message'])
+
+            def get_ps_doc_pmt_index(pay_cod: str, payments: list[dict]) -> int:
+                for index, pmt in enumerate(payments):
+                    if pmt['PAY_COD'] == pay_cod:
+                        return index
+                return -1
 
         class ClosedOrder:
             def get_refund_customers(date):

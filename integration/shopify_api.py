@@ -6,9 +6,8 @@ from time import sleep
 from setup.error_handler import ProcessOutErrorHandler
 from pathlib import Path
 from database import Database
-from setup.email_engine import Email
 from traceback import print_exc as tb
-from setup.utilities import PhoneNumber, local_to_utc
+from setup.utilities import local_to_utc
 from integration.models.shopify_orders import ShopifyOrder
 from datetime import datetime
 from product_tools import products
@@ -279,246 +278,246 @@ class Shopify:
             response = Shopify.Query(document=Shopify.Order.queries, operation_name='orders')
             return response.data
 
-        @staticmethod
-        def as_bc_order(order_id: int, send=False) -> ShopifyOrder:
-            """Convert Shopify response to ShopifyOrder object"""
-            snode = Shopify.Order.get(order_id)['node']
-            # billing = snode['billingAddress'] or {
-            #     'firstName': snode['customer']['firstName'],
-            #     'lastName': snode['customer']['lastName'],
-            #     'company': None,
-            #     'address1': None,
-            #     'address2': None,
-            #     'city': None,
-            #     'province': None,
-            #     'zip': None,
-            #     'country': None,
-            #     'phone': snode['customer']['phone'],
-            #     'email': snode['customer']['email'],
-            # }
-            # status = snode['displayFulfillmentStatus']
+        # @staticmethod
+        # def as_bc_order(order_id: int, send=False) -> ShopifyOrder:
+        #     """Convert Shopify response to ShopifyOrder object"""
+        #     snode = Shopify.Order.get(order_id)['node']
+        # billing = snode['billingAddress'] or {
+        #     'firstName': snode['customer']['firstName'],
+        #     'lastName': snode['customer']['lastName'],
+        #     'company': None,
+        #     'address1': None,
+        #     'address2': None,
+        #     'city': None,
+        #     'province': None,
+        #     'zip': None,
+        #     'country': None,
+        #     'phone': snode['customer']['phone'],
+        #     'email': snode['customer']['email'],
+        # }
+        # status = snode['displayFulfillmentStatus']
 
-            # shopify_products = []
+        # shopify_products = []
 
-            # delivery_from_lines = 0
+        # delivery_from_lines = 0
 
-            # refunded_subtotal = 0
+        # refunded_subtotal = 0
 
-            # items = []
+        # items = []
 
-            # # Convert gift card line into multiple lines
-            # for i, _item in enumerate(snode['lineItems']['edges']):
-            #     item = _item['node']
+        # # Convert gift card line into multiple lines
+        # for i, _item in enumerate(snode['lineItems']['edges']):
+        #     item = _item['node']
 
-            #     if item['sku'] is not None and 'GFC' in item['sku'] and item['quantity'] > 1:
-            #         for _ in range(item['quantity']):
-            #             items.append(item)
-            #     else:
-            #         items.append(item)
+        #     if item['sku'] is not None and 'GFC' in item['sku'] and item['quantity'] > 1:
+        #         for _ in range(item['quantity']):
+        #             items.append(item)
+        #     else:
+        #         items.append(item)
 
-            # for item in items:
+        # for item in items:
 
-            #     def get_money(money: dict):
-            #         return money['shopMoney']['amount']
+        #     def get_money(money: dict):
+        #         return money['shopMoney']['amount']
 
-            #     price = float(get_money(item['originalUnitPriceSet']))  # Fixed
+        #     price = float(get_money(item['originalUnitPriceSet']))  # Fixed
 
-            #     is_refunded = False
-            #     quantity_refunded = 0
+        #     is_refunded = False
+        #     quantity_refunded = 0
 
-            #     if len(snode['refunds']) > 0:
-            #         for refunds in snode['refunds']:
-            #             for refund in refunds['refundLineItems']['edges']:
-            #                 if refund['node']['lineItem']['id'] == item['id']:
-            #                     is_refunded = True
-            #                     quantity_refunded = int(refund['node']['quantity'])
-            #                     refunded_subtotal += price * float(quantity_refunded)
+        #     if len(snode['refunds']) > 0:
+        #         for refunds in snode['refunds']:
+        #             for refund in refunds['refundLineItems']['edges']:
+        #                 if refund['node']['lineItem']['id'] == item['id']:
+        #                     is_refunded = True
+        #                     quantity_refunded = int(refund['node']['quantity'])
+        #                     refunded_subtotal += price * float(quantity_refunded)
 
-            #     if item['name'] is None:
-            #         item['name'] = ''
+        #     if item['name'] is None:
+        #         item['name'] = ''
 
-            #     if item['name'].split('-')[0].strip().lower() == 'delivery':
-            #         if is_refunded:
-            #             item['quantity'] = quantity_refunded
+        #     if item['name'].split('-')[0].strip().lower() == 'delivery':
+        #         if is_refunded:
+        #             item['quantity'] = quantity_refunded
 
-            #         delivery_from_lines += price * float(item['quantity'])
-            #         continue
+        #         delivery_from_lines += price * float(item['quantity'])
+        #         continue
 
-            #     if item['name'].split('-')[0].strip().lower() == 'service':
-            #         item['sku'] = 'SERVICE'
+        #     if item['name'].split('-')[0].strip().lower() == 'service':
+        #         item['sku'] = 'SERVICE'
 
-            #     if item['sku'] is None:
-            #         continue
+        #     if item['sku'] is None:
+        #         continue
 
-            #     item['isGiftCard'] = 'GFC' in item['sku']
+        #     item['isGiftCard'] = 'GFC' in item['sku']
 
-            #     pl = {
-            #         'id': item['id'],
-            #         'sku': item['sku'],
-            #         'type': 'giftcertificate' if item['isGiftCard'] else 'physical',
-            #         'base_price': price,
-            #         'price_ex_tax': price,
-            #         'price_inc_tax': price,
-            #         'price_tax': 0,
-            #         'base_total': price,
-            #         'total_ex_tax': price,
-            #         'total_inc_tax': price,
-            #         'total_tax': 0,
-            #         'quantity': item['quantity'],
-            #         'is_refunded': is_refunded,
-            #         'quantity_refunded': quantity_refunded,
-            #         'refund_amount': 0,
-            #         'return_id': 0,
-            #         'fixed_shipping_cost': 0,
-            #         'gift_certificate_id': None,
-            #         'discounted_total_inc_tax': get_money(item['discountedTotalSet']),
-            #         'applied_discounts': [],
-            #     }
+        #     pl = {
+        #         'id': item['id'],
+        #         'sku': item['sku'],
+        #         'type': 'giftcertificate' if item['isGiftCard'] else 'physical',
+        #         'base_price': price,
+        #         'price_ex_tax': price,
+        #         'price_inc_tax': price,
+        #         'price_tax': 0,
+        #         'base_total': price,
+        #         'total_ex_tax': price,
+        #         'total_inc_tax': price,
+        #         'total_tax': 0,
+        #         'quantity': item['quantity'],
+        #         'is_refunded': is_refunded,
+        #         'quantity_refunded': quantity_refunded,
+        #         'refund_amount': 0,
+        #         'return_id': 0,
+        #         'fixed_shipping_cost': 0,
+        #         'gift_certificate_id': None,
+        #         'discounted_total_inc_tax': get_money(item['discountedTotalSet']),
+        #         'applied_discounts': [],
+        #     }
 
-            #     if item['isGiftCard'] and not is_refunded:
-            #         code = Database.CP.GiftCard.create_code()
-            #         # code = 'E5AB-26G9-5GA1'
-            #         pl['gift_certificate_id'] = {'code': code}
+        #     if item['isGiftCard'] and not is_refunded:
+        #         code = Database.CP.GiftCard.create_code()
+        #         # code = 'E5AB-26G9-5GA1'
+        #         pl['gift_certificate_id'] = {'code': code}
 
-            #         # if send:
-            #         #     Email.Customer.GiftCard.send(
-            #         #         name=f'{billing['firstName']} {billing["lastName"]}',
-            #         #         email=snode['email'],
-            #         #         gc_code=code,
-            #         #         amount=price,
-            #         #     )
+        #         # if send:
+        #         #     Email.Customer.GiftCard.send(
+        #         #         name=f'{billing['firstName']} {billing["lastName"]}',
+        #         #         email=snode['email'],
+        #         #         gc_code=code,
+        #         #         amount=price,
+        #         #     )
 
-            #     shopify_products.append(pl)
+        #     shopify_products.append(pl)
 
-            # def get_money(money: dict):
-            #     return money['shopMoney']['amount']
+        # def get_money(money: dict):
+        #     return money['shopMoney']['amount']
 
-            # try:
-            #     shippingCost = float(get_money(snode['shippingLine']['discountedPriceSet']))
-            # except:
-            #     shippingCost = float(0)
+        # try:
+        #     shippingCost = float(get_money(snode['shippingLine']['discountedPriceSet']))
+        # except:
+        #     shippingCost = float(0)
 
-            # header_discount = float(get_money(snode['totalDiscountsSet']))
+        # header_discount = float(get_money(snode['totalDiscountsSet']))
 
-            # subtotal = float(get_money(snode['currentSubtotalPriceSet'])) + header_discount + shippingCost
-            # total = float(get_money(snode['currentTotalPriceSet']) or 0)
-            # refund_total = float(get_money(snode['totalRefundedSet']))
+        # subtotal = float(get_money(snode['currentSubtotalPriceSet'])) + header_discount + shippingCost
+        # total = float(get_money(snode['currentTotalPriceSet']) or 0)
+        # refund_total = float(get_money(snode['totalRefundedSet']))
 
-            # if len(snode['refunds']) > 0:
-            #     status = 'Partially Refunded'
-            #     subtotal = refunded_subtotal
-            #     total = float(get_money(snode['totalRefundedSet']))
-            #     shippingCost = float(get_money(snode['totalRefundedShippingSet']))
+        # if len(snode['refunds']) > 0:
+        #     status = 'Partially Refunded'
+        #     subtotal = refunded_subtotal
+        #     total = float(get_money(snode['totalRefundedSet']))
+        #     shippingCost = float(get_money(snode['totalRefundedShippingSet']))
 
-            # # Delivery from lines is total from Dummy Delivery Item
-            # shippingCost += delivery_from_lines
+        # # Delivery from lines is total from Dummy Delivery Item
+        # shippingCost += delivery_from_lines
 
-            # def create_shipping_item():
-            #     return {
-            #         'id': '',
-            #         'sku': 'DELIVERY',
-            #         'type': 'physical',
-            #         'base_price': shippingCost,
-            #         'price_ex_tax': shippingCost,
-            #         'price_inc_tax': shippingCost,
-            #         'price_tax': 0,
-            #         'base_total': shippingCost,
-            #         'total_ex_tax': shippingCost,
-            #         'total_inc_tax': shippingCost,
-            #         'total_tax': 0,
-            #         'quantity': 1,
-            #         'is_refunded': True if status == 'Partially Refunded' else False,
-            #         'quantity_refunded': 1 if status == 'Partially Refunded' else 0,
-            #         'refund_amount': 0,
-            #         'return_id': 0,
-            #         'fixed_shipping_cost': 0,
-            #         'gift_certificate_id': None,
-            #         'discounted_total_inc_tax': shippingCost,
-            #         'applied_discounts': [],
-            #     }
+        # def create_shipping_item():
+        #     return {
+        #         'id': '',
+        #         'sku': 'DELIVERY',
+        #         'type': 'physical',
+        #         'base_price': shippingCost,
+        #         'price_ex_tax': shippingCost,
+        #         'price_inc_tax': shippingCost,
+        #         'price_tax': 0,
+        #         'base_total': shippingCost,
+        #         'total_ex_tax': shippingCost,
+        #         'total_inc_tax': shippingCost,
+        #         'total_tax': 0,
+        #         'quantity': 1,
+        #         'is_refunded': True if status == 'Partially Refunded' else False,
+        #         'quantity_refunded': 1 if status == 'Partially Refunded' else 0,
+        #         'refund_amount': 0,
+        #         'return_id': 0,
+        #         'fixed_shipping_cost': 0,
+        #         'gift_certificate_id': None,
+        #         'discounted_total_inc_tax': shippingCost,
+        #         'applied_discounts': [],
+        #     }
 
-            # def get_store_credit_amount() -> float:
-            #     store_credit_amount = 0
-            #     for transaction in snode['transactions']:
-            #         if transaction['gateway'] == 'shopify_store_credit':
-            #             store_credit_amount = float(transaction['amountSet']['shopMoney']['amount'])
-            #             break
-            #     return float(store_credit_amount)
+        # def get_store_credit_amount() -> float:
+        #     store_credit_amount = 0
+        #     for transaction in snode['transactions']:
+        #         if transaction['gateway'] == 'shopify_store_credit':
+        #             store_credit_amount = float(transaction['amountSet']['shopMoney']['amount'])
+        #             break
+        #     return float(store_credit_amount)
 
-            # if shippingCost > 0:
-            #     shopify_products.append(create_shipping_item())
+        # if shippingCost > 0:
+        #     shopify_products.append(create_shipping_item())
 
-            # def get_phone():
-            #     try:
-            #         return PhoneNumber(
-            #             billing['phone']
-            #             or snode['customer']['phone']
-            #             or ((snode['shippingAddress'] or {'phone': None})['phone'])
-            #         ).to_cp()
-            #     except:
-            #         return None
+        # def get_phone():
+        #     try:
+        #         return PhoneNumber(
+        #             billing['phone']
+        #             or snode['customer']['phone']
+        #             or ((snode['shippingAddress'] or {'phone': None})['phone'])
+        #         ).to_cp()
+        #     except:
+        #         return None
 
-            # bc_order = {
-            #     'id': snode['name'],
-            #     'customer_id': snode['customer']['id'],
-            #     'date_created': snode['createdAt'],
-            #     'date_modified': snode['updatedAt'],
-            #     'status': status,
-            #     'subtotal_ex_tax': subtotal,
-            #     'subtotal_inc_tax': subtotal,
-            #     'base_shipping_cost': shippingCost,
-            #     'total_ex_tax': total,
-            #     'total_inc_tax': total,
-            #     'refund_total': refund_total,
-            #     'items_total': snode['subtotalLineItemsQuantity'],
-            #     'payment_status': snode['displayFinancialStatus'],
-            #     'store_credit_amount': get_store_credit_amount(),
-            #     'customer_message': snode['note'],
-            #     'billing_address': {
-            #         'first_name': billing['firstName'],
-            #         'last_name': billing['lastName'],
-            #         'company': billing['company'],
-            #         'street_1': billing['address1'],
-            #         'street_2': billing['address2'],
-            #         'city': billing['city'],
-            #         'state': billing['province'],
-            #         'zip': billing['zip'],
-            #         'country': billing['country'],
-            #         'phone': get_phone(),
-            #         'email': snode['email'] or snode['customer']['email'],
-            #     },
-            #     'products': {'url': shopify_products},
-            #     'shipping_addresses': {
-            #         'url': [
-            #             {
-            #                 'first_name': (snode['shippingAddress'] or {'firstName': None})['firstName'],
-            #                 'last_name': (snode['shippingAddress'] or {'lastName': None})['lastName'],
-            #                 'company': (snode['shippingAddress'] or {'company': None})['company'],
-            #                 'street_1': (snode['shippingAddress'] or {'address1': None})['address1'],
-            #                 'street_2': (snode['shippingAddress'] or {'address2': None})['address2'],
-            #                 'city': (snode['shippingAddress'] or {'city': None})['city'],
-            #                 'state': (snode['shippingAddress'] or {'province': None})['province'],
-            #                 'zip': (snode['shippingAddress'] or {'zip': None})['zip'],
-            #                 'country': (snode['shippingAddress'] or {'country': None})['country'],
-            #                 'phone': (snode['shippingAddress'] or {'phone': None})['phone'] or get_phone(),
-            #                 'email': snode['email'],
-            #             }
-            #         ]
-            #     },
-            #     'coupons': {'url': []},
-            #     'transactions': {'data': []},
-            #     'order_coupons': snode['discountCodes'],
-            #     'channel': snode['channelInformation']['channelDefinition']['handle']
-            #     if snode['channelInformation'] is not None
-            #     else 'EMPTY',
-            # }
+        # bc_order = {
+        #     'id': snode['name'],
+        #     'customer_id': snode['customer']['id'],
+        #     'date_created': snode['createdAt'],
+        #     'date_modified': snode['updatedAt'],
+        #     'status': status,
+        #     'subtotal_ex_tax': subtotal,
+        #     'subtotal_inc_tax': subtotal,
+        #     'base_shipping_cost': shippingCost,
+        #     'total_ex_tax': total,
+        #     'total_inc_tax': total,
+        #     'refund_total': refund_total,
+        #     'items_total': snode['subtotalLineItemsQuantity'],
+        #     'payment_status': snode['displayFinancialStatus'],
+        #     'store_credit_amount': get_store_credit_amount(),
+        #     'customer_message': snode['note'],
+        #     'billing_address': {
+        #         'first_name': billing['firstName'],
+        #         'last_name': billing['lastName'],
+        #         'company': billing['company'],
+        #         'street_1': billing['address1'],
+        #         'street_2': billing['address2'],
+        #         'city': billing['city'],
+        #         'state': billing['province'],
+        #         'zip': billing['zip'],
+        #         'country': billing['country'],
+        #         'phone': get_phone(),
+        #         'email': snode['email'] or snode['customer']['email'],
+        #     },
+        #     'products': {'url': shopify_products},
+        #     'shipping_addresses': {
+        #         'url': [
+        #             {
+        #                 'first_name': (snode['shippingAddress'] or {'firstName': None})['firstName'],
+        #                 'last_name': (snode['shippingAddress'] or {'lastName': None})['lastName'],
+        #                 'company': (snode['shippingAddress'] or {'company': None})['company'],
+        #                 'street_1': (snode['shippingAddress'] or {'address1': None})['address1'],
+        #                 'street_2': (snode['shippingAddress'] or {'address2': None})['address2'],
+        #                 'city': (snode['shippingAddress'] or {'city': None})['city'],
+        #                 'state': (snode['shippingAddress'] or {'province': None})['province'],
+        #                 'zip': (snode['shippingAddress'] or {'zip': None})['zip'],
+        #                 'country': (snode['shippingAddress'] or {'country': None})['country'],
+        #                 'phone': (snode['shippingAddress'] or {'phone': None})['phone'] or get_phone(),
+        #                 'email': snode['email'],
+        #             }
+        #         ]
+        #     },
+        #     'coupons': {'url': []},
+        #     'transactions': {'data': []},
+        #     'order_coupons': snode['discountCodes'],
+        #     'channel': snode['channelInformation']['channelDefinition']['handle']
+        #     if snode['channelInformation'] is not None
+        #     else 'EMPTY',
+        # }
 
-            # if header_discount > 0:
-            #     bc_order['coupons']['url'] = [{'amount': header_discount}]
+        # if header_discount > 0:
+        #     bc_order['coupons']['url'] = [{'amount': header_discount}]
 
-            # return bc_order
+        # return bc_order
 
-        def get_orders_not_in_cp():
+        def get_orders_not_in_cp(print_mode=True):
             query = """
             SELECT TKT_NO, TKT_DT FROM PS_DOC_HDR
             WHERE STR_ID = 'WEB' OR STA_ID = 'POS'
@@ -544,6 +543,10 @@ class Shopify:
 
                     if order['name'] not in tkt_nos:
                         orders.append(order)
+                if print_mode:
+                    print('\n')
+                    for order in orders:
+                        print(order)
 
                 return orders
 
@@ -608,7 +611,7 @@ class Shopify:
                     if customer is not None and phone is None:
                         phone = customer['phone']
 
-                    return lookup_customer(email_address=email, phone_number=phone)
+                    return Database.CP.Customer.lookup_customer(email_address=email, phone_number=phone)
                 except:
                     return None
 
@@ -849,7 +852,7 @@ class Shopify:
                     store_credit_id = Shopify.Customer.StoreCredit.add_store_credit(shop_cust_id, 1)
                     Shopify.Customer.StoreCredit.remove_store_credit(shop_cust_id, 1)
 
-                    cust_number = lookup_customer(email, phone)
+                    cust_number = Database.CP.Customer.lookup_customer(email, phone)
                     if cust_number:
                         if not Database.Shopify.Customer.exists(shopify_cust_no=shop_cust_id):
                             Database.Shopify.Customer.insert(
@@ -2648,3 +2651,4 @@ def refresh_order(tkt_no):
 
 if __name__ == '__main__':
     print(Shopify.Order.get(5713897619623))
+    # Shopify.Order.get_orders_not_in_cp()

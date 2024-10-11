@@ -13,7 +13,6 @@ from datetime import datetime
 from product_tools.products import Product
 from traceback import format_exc as tb
 from setup.order_engine import utc_to_local
-from integration.cp_api import OrderAPI
 from database import Database
 
 test_mode = False
@@ -96,8 +95,8 @@ class Printer:
     def print_order(order_id, test_mode=False):
         """Takes Shopify Order ID ex. 5642506862759 and pulls data, converts to a BigCommerce Order (for parsing)
         and prints a Word Document with the order details. The document is then printed to the default printer."""
-        order = Shopify.Order.as_bc_order(order_id)
-        cust_no = OrderAPI.get_cust_no(order)
+        order = Shopify.Order.get(order_id)
+        cust_no = order.customer.cp_id
 
         # Get Basic Customer Info from Counterpoint if available
         customer = Database.CP.Customer(cust_no)

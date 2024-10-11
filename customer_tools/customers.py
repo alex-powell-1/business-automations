@@ -3,8 +3,8 @@ import requests
 from datetime import datetime
 from setup import creds
 from database import Database as db
-from setup.error_handler import ScheduledTasksErrorHandler
-
+from setup.error_handler import ScheduledTasksErrorHandler, ProcessInErrorHandler
+from integration.models.shopify_orders import ShopifyOrder
 from setup.utilities import PhoneNumber, states
 
 
@@ -233,7 +233,15 @@ def get_customers_by_category(category):
 
 
 def add_new_customer(
-    first_name, last_name, phone_number, email_address, street_address, city, state, zip_code
+    first_name,
+    last_name,
+    phone_number,
+    email_address,
+    street_address,
+    city,
+    state,
+    zip_code,
+    eh=ProcessInErrorHandler,
 ) -> str:
     """Add a new customer to Counterpoint and returns customer number"""
 
@@ -285,9 +293,9 @@ def add_new_customer(
         response = requests.post(url, headers=headers, verify=False, json=payload)
 
         if response.status_code in [200, 201]:
-            print(f'Customer Added: {response.json()}')
+            eh.logger.success(f'Customer Added: {response.json()}')
         else:
-            print(f'Error: {response.status_code} - {response.text}')
+            eh.error_handler.add_error_v(f'Error: {response.status_code} - {response.text}')
 
         cust_id = response.json()['CUST_NO']
         db.CP.Customer.update_timestamps(customer_no=cust_id)
@@ -307,6 +315,7 @@ def update_customer(
     city: str,
     state: str,
     zip_code: str,
+    eh=ProcessInErrorHandler,
 ):
     if state is not None:
         try:
@@ -364,8 +373,33 @@ def update_customer(
     query += f" WHERE CUST_NO = '{cust_no}'"
 
     response = db.query(query)
+    if response['code'] == 200:
+        eh.logger.success('Customer updated in Counterpoint')
+    else:
+        eh.error_handler.add_error_v('Customer could not be updated in Counterpoint')
+        eh.error_handler.add_error_v(response['message'])
 
     return response
+
+
+def get_cp_cust_no(order: 'ShopifyOrder') -> str:
+    """Takes a ShopifyOrder and returns the CP Customer ID"""
+    email = order.email
+    if not email and order.billing_address.email:
+        email = order.billing_address.email
+
+    if not email and order.shipping_address:
+        email = order.shipping_address.email
+
+    phone = None
+
+    if order.billing_address.phone:
+        phone = order.billing_address.phone
+
+    if not phone and order.shipping_address:
+        phone = order.shipping_address.phone
+
+    return db.CP.Customer.lookup_customer(email, phone)
 
 
 def update_customer_shipping(
