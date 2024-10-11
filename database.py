@@ -1394,12 +1394,12 @@ class Database:
                 doc_id: str,
                 number_of_lines: int,
                 line_total: float,
-                is_return: bool = False,
+                is_refund: bool = False,
                 eh=ProcessInErrorHandler,
             ):
-                table = 'RET_LINS' if is_return else 'SAL_LINS'
-                to_release_lines = f', TO_REL_LINS = {number_of_lines}' if not is_return else ''
-                line_tot = f', RET_LIN_TOT = {line_total}' if is_return else f'SAL_LIN_TOT = {line_total}'
+                table = 'RET_LINS' if is_refund else 'SAL_LINS'
+                to_release_lines = f', TO_REL_LINS = {number_of_lines}' if not is_refund else ''
+                line_tot = f', RET_LIN_TOT = {line_total}' if is_refund else f'SAL_LIN_TOT = {line_total}'
 
                 query = f"""
                 UPDATE PS_DOC_HDR

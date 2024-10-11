@@ -56,11 +56,14 @@ class ShopifyOrder:
         result += f'Email: {self.email}\n'
         result += f'Date Created: {self.date_created}\n'
         result += f'Date Modified: {self.date_modified}\n'
+        result += f'Is Refund: {self.is_refund}\n'
+        result += f'Is Declined: {self.is_declined}\n'
+        result += f'Payment Status: {self.payment_status}\n'
+        result += f'Status: {self.status}\n'
         result += str(self.customer)
         result += str(self.billing_address)
-        result += str(self.shipping_address)
-        result += f'Status: {self.status}\n'
-        result += f'Payment Status: {self.payment_status}\n'
+        if self.has_shipping_address:
+            result += str(self.shipping_address)
         result += f'Transactions: {self.transactions}\n'
         result += '\nItems\n'
         result += '-----\n'

@@ -18,6 +18,10 @@ ORDER_PREFIX = 'S'
 REFUND_SUFFIX = 'R'
 PARTIAL_REFUND_SUFFIX = 'PR'
 LOYALTY_EXCLUSIONS = ['SERVICE', 'DELIVERY']
+SHOPIFY_PAYCODE = 'SHOP'
+LOYALTY_PAYCODE = 'LOYALTY'
+GIFT_CARD_PAYCODE = 'GC'
+LOYALTY_MULTIPLIER = 0.05
 
 
 # This class is primarily used to interact with the NCR Counterpoint API
@@ -92,10 +96,6 @@ class OrderAPI(DocumentAPI):
         super().__init__(session=session)
         self.order: ShopifyOrder = Shopify.Order.get(order_id=order_id)
         self.is_refund: bool = self.order.status in ['Refunded', 'Partially Refunded']
-        self.store_id: str = self.get_store_id()
-        self.station_id: str = self.get_station_id()
-        self.drawer_id: str = self.get_drawer_id()
-        self.cust_no: str = self.get_customer_number()
         self.doc_id: str = None
         self.orig_doc_id: str = None
         self.cp_tkt_no: str = None  # 1133
@@ -113,6 +113,13 @@ class OrderAPI(DocumentAPI):
         self.has_gift_card_payment: bool = False
         self.total_lin_items: int = 0
         self.line_item_length: int = 0
+        self.store_id: str = self.get_store_id()
+        self.station_id: str = self.get_station_id()
+        self.drawer_id: str = self.get_drawer_id()
+        self.cust_no: str = self.get_customer_number()
+        self.physical_items: list[CPLineItem] = self.get_physical_line_items()
+        self.gift_card_purchases: list[CPGiftCard] = self.get_gift_card_purchases()
+        self.notes: list[CPNote] = self.get_notes()
         self.payload = self.get_post_payload()
 
     def get_store_id(self):
@@ -136,11 +143,11 @@ class OrderAPI(DocumentAPI):
         line_items = []
         for item in self.order.items:
             if item.type == 'physical':
-                line_items.append(CPLineItem(item).payload)
+                line_items.append(CPLineItem(item))
                 self.total_lin_items += 1
         return line_items
 
-    def get_gift_card_purchases(self) -> list[dict]:
+    def get_gift_card_purchases(self) -> list[CPGiftCard]:
         """Returns a list of gift cards from a list of products from a BigCommerce order."""
 
         gift_cards = []
@@ -150,7 +157,7 @@ class OrderAPI(DocumentAPI):
                 continue
 
             if product.type == 'giftcertificate':
-                gift_cards.append(CPGiftCard(product, self.line_item_length + 1, i).payload)
+                gift_cards.append(CPGiftCard(product, self.line_item_length + 1, i))
                 self.line_item_length += 1
                 self.total_gfc_amount += float(product.base_price)
 
@@ -162,7 +169,7 @@ class OrderAPI(DocumentAPI):
         payments = [
             {
                 'AMT': order.total_inc_tax - order.store_credit_amount,
-                'PAY_COD': 'SHOP',
+                'PAY_COD': SHOPIFY_PAYCODE,
                 'FINAL_PMT': 'N',
                 'PMT_LIN_TYP': 'C' if self.is_refund else 'T',
             }
@@ -172,7 +179,7 @@ class OrderAPI(DocumentAPI):
             payments.append(
                 {
                     'AMT': order.store_credit_amount,
-                    'PAY_COD': 'LOYALTY',
+                    'PAY_COD': LOYALTY_PAYCODE,
                     'FINAL_PMT': 'N',
                     'PMT_LIN_TYP': 'C' if self.is_refund else 'T',
                 }
@@ -196,11 +203,11 @@ class OrderAPI(DocumentAPI):
 
         return payments
 
-    def get_notes(self) -> list[dict]:
+    def get_notes(self) -> list[CPNote]:
         """Returns a list of notes from a order."""
         notes = []
         if self.order.customer_message:
-            notes.append(CPNote(self.order).payload)
+            notes.append(CPNote(self.order))
         return notes
 
     def get_post_payload(self) -> dict:
@@ -225,9 +232,9 @@ class OrderAPI(DocumentAPI):
                 'NORM_TAX_COD': 'EXEMPT',
                 'SHIP_VIA_COD': 'CPC_FLAT' if self.is_refund else 'T' if order.is_shipping else 'C',
                 'PS_DOC_NOTE': self.get_notes(),
-                'PS_DOC_LIN': self.get_physical_line_items(),
+                'PS_DOC_LIN': [line_item.payload for line_item in self.physical_items],
                 # "PS_DOC_GFC": self.get_gift_cards_from_bc_products(bc_products),
-                '__PS_DOC_GFC__': self.get_gift_card_purchases(),
+                '__PS_DOC_GFC__': [gc.payload for gc in self.gift_card_purchases],
                 'PS_DOC_PMT': self.get_payments(),
                 'PS_DOC_TAX': [
                     {
@@ -256,7 +263,7 @@ class OrderAPI(DocumentAPI):
 
         return payload
 
-    def write_discounts(self, line_items: list[dict]):
+    def write_discounts(self):
         """Write discounts to the PS_DOC_DISC table."""
 
         def write_h(doc_id, disc_seq_no: int, disc_amt: float, lin_seq_no: int = None):
@@ -290,7 +297,7 @@ class OrderAPI(DocumentAPI):
             self.discount_seq_no += 1
 
         # Processing line discounts
-        for i, item in enumerate(line_items, start=1):
+        for i, item in enumerate(self.physical_items, start=1):
             if item.discount_amount:
                 self.logger.info(f'Writing line discount: ${item.discount_amount}')
                 write_h(self.doc_id, self.discount_seq_no, item.discount_amount, i)
@@ -298,8 +305,9 @@ class OrderAPI(DocumentAPI):
 
         self.total_lin_disc = abs(self.total_lin_disc) if self.is_refund else self.total_lin_disc
 
-    def write_loyalty(self, line_items: list[dict]):
+    def write_loyalty(self):
         self.logger.info('Writing loyalty')
+        lines = self.payload['PS_DOC_HDR']['PS_DOC_LIN']
 
         def write_lin_loy(line_items: list[dict]) -> int:
             points = 0
@@ -308,7 +316,7 @@ class OrderAPI(DocumentAPI):
                 if line_item['sku'] in LOYALTY_EXCLUSIONS:
                     return 0
 
-                points_earned = (float(line_item['EXT_PRC'] or 0) / 20) or 0
+                points_earned = (float(line_item['EXT_PRC'] or 0) * LOYALTY_MULTIPLIER) or 0
                 Database.CP.Loyalty.write_line(self.doc_id, lin_seq_no, points_earned)
                 return points_earned
 
@@ -317,7 +325,7 @@ class OrderAPI(DocumentAPI):
 
             return math.floor(points)
 
-        points_earned = write_lin_loy(self.doc_id, line_items)
+        points_earned = write_lin_loy(lines)
         points_redeemed = Database.CP.Loyalty.get_points_used(self.doc_id)
         point_balance = Database.CP.Customer.get_loyalty_balance(self.cust_no)
         Database.CP.Loyalty.write_ps_doc_hdr_loy_pgm(self.doc_id, points_earned, points_redeemed, point_balance)
@@ -499,7 +507,7 @@ class OrderAPI(DocumentAPI):
                     INSERT INTO SY_GFC
                     (GFC_NO, DESCR, DESCR_UPR, ORIG_DAT, ORIG_STR_ID, ORIG_STA_ID, ORIG_DOC_NO, ORIG_CUST_NO, GFC_COD, NO_EXP_DAT, ORIG_AMT, CURR_AMT, CREATE_METH, LIAB_ACCT_NO, RDM_ACCT_NO, RDM_METH, FORF_ACCT_NO, IS_VOID, LST_ACTIV_DAT, LST_MAINT_DT, LST_MAINT_USR_ID, ORIG_DOC_ID, ORIG_BUS_DAT, RS_STAT)
                     VALUES
-                    ('{gift_card["GFC_NO"]}', 'Gift Certificate', 'GIFT CERTIFICATE', '{current_date}', 'WEB', 'WEB', '{tkt_no}', '{self.cust_no}', 'GC', 'Y', {amt}, {amt}, 'G', 2090, 2090, '!', 8510, 'N', '{current_date}', GETDATE(), 'POS', '{self.doc_id}', '{current_date}', 0)
+                    ('{gift_card["GFC_NO"]}', 'Gift Certificate', 'GIFT CERTIFICATE', '{current_date}', 'WEB', 'WEB', '{tkt_no}', '{self.cust_no}', GIFT_CARD_PAYCODE, 'Y', {amt}, {amt}, 'G', 2090, 2090, '!', 8510, 'N', '{current_date}', GETDATE(), 'POS', '{self.doc_id}', '{current_date}', 0)
                     """
                 )
 
@@ -551,52 +559,51 @@ class OrderAPI(DocumentAPI):
 
         self.logger.success(f'Order Created. DOC_ID: {self.doc_id}')
 
-        # # Set Order Properties
-        # self.cp_tkt_no = self.payload['PS_DOC_HDR']['TKT_NUM']  # S1133
-        # item_lines = self.payload['PS_DOC_HDR']['PS_DOC_LIN']
-        # gift_lines = self.payload['PS_DOC_HDR']['__PS_DOC_GFC__']
-        # self.has_loyalty_payment = Database.CP.OpenOrder.has_loyalty_payment(self.doc_id)
-        # self.has_gift_card_payment = Database.CP.OpenOrder.has_gc_payment(self.doc_id)
-        # self.total_tender = self.order.refund_total if self.is_refund else self.get_total_tender()
+        # Set Order Properties
+        self.cp_tkt_no = self.payload['PS_DOC_HDR']['TKT_NUM']  # S1133
+        gift_lines = self.payload['PS_DOC_HDR']['__PS_DOC_GFC__']
+        self.has_loyalty_payment = Database.CP.OpenOrder.has_loyalty_payment(self.doc_id)
+        self.has_gift_card_payment = Database.CP.OpenOrder.has_gc_payment(self.doc_id)
+        self.total_tender = self.order.refund_total if self.is_refund else self.get_total_tender()
 
-        # # Write Tables
-        # self.write_ticket_no()
-        # self.write_loyalty(item_lines)
-        # self.write_discounts(item_lines)
+        # Write Tables
+        self.write_ticket_no()
+        self.write_loyalty()
+        self.write_discounts()
 
-        # if self.is_refund:
-        #     self.invalidate_gfc_purchases()
-        #     self.total_paid = -self.order.total_inc_tax
-        #     Database.CP.OpenOrder.update_payment_amount(doc_id=self.doc_id, amount=self.total_paid)
-        #     if self.is_partial_refund:
-        #         self.process_partial_refund()
-        #     self.refund_payments()
-        # else:
-        #     # Flow for Standard Orders
-        #     self.redeem_loyalty_pmts()
-        #     if gift_lines:
-        #         self.write_gift_cards()
+        if self.is_refund:
+            self.invalidate_gfc_purchases()
+            self.total_paid = -self.order.total_inc_tax
+            Database.CP.OpenOrder.update_payment_amount(doc_id=self.doc_id, amount=self.total_paid)
+            if self.is_partial_refund:
+                self.process_partial_refund()
+            self.refund_payments()
+        else:
+            # Flow for Standard Orders
+            self.redeem_loyalty_pmts()
+            if gift_lines:
+                self.write_gift_cards()
 
-        # Database.CP.OpenOrder.set_ticket_date(self.doc_id, self.order.date_created)
-        # Database.CP.OpenOrder.delete_hdr_total_entry(self.doc_id)
-        # Database.CP.OpenOrder.set_loyalty_program(self.doc_id)
-        # self.write_hdr_total_entry()
-        # Database.CP.OpenOrder.set_line_type(self.doc_id, line_type='R' if self.is_refund else 'S')
-        # Database.CP.OpenOrder.set_apply_type(self.doc_id, apply_type='S')
-        # Database.CP.OpenOrder.set_line_totals(self.doc_id, self.total_lin_items, is_refund=self.is_refund)
-        # self.set_line_quantities()
+        Database.CP.OpenOrder.set_ticket_date(self.doc_id, self.order.date_created)
+        Database.CP.OpenOrder.delete_hdr_total_entry(self.doc_id)
+        Database.CP.OpenOrder.set_loyalty_program(self.doc_id)
+        self.write_hdr_total_entry()
+        Database.CP.OpenOrder.set_line_type(self.doc_id, line_type='R' if self.is_refund else 'S')
+        Database.CP.OpenOrder.set_apply_type(self.doc_id, apply_type='S')
+        Database.CP.OpenOrder.set_line_totals(self.doc_id, self.total_lin_items, is_refund=self.is_refund)
+        self.set_line_quantities()
 
-        # # Clean up the original document and the reference to the original document.
-        # # The original document is the ORDER document that was created at the NCR Counterpoint API POST.
-        # # The original document is different than the final TICKET document that we see and is not needed.
-        # self.orig_doc_id = Database.CP.OpenOrder.get_orig_doc_id(self.doc_id)
-        # self.logger.info(f'Cleaning up document {self.orig_doc_id}')
-        # Database.CP.Customer.decrement_orders(self.cust_no)
-        # Database.CP.OpenOrder.delete(self.orig_doc_id)
-        # Database.CP.OpenOrder.delete(self.doc_id, orig_doc=True)
+        # Clean up the original document and the reference to the original document.
+        # The original document is the ORDER document that was created at the NCR Counterpoint API POST.
+        # The original document is different than the final TICKET document that we see and is not needed.
+        self.orig_doc_id = Database.CP.OpenOrder.get_orig_doc_id(self.doc_id)
+        self.logger.info(f'Cleaning up document {self.orig_doc_id}')
+        Database.CP.Customer.decrement_orders(self.cust_no)
+        Database.CP.OpenOrder.delete(self.orig_doc_id)
+        Database.CP.OpenOrder.delete(self.doc_id, orig_doc=True)
 
-        # self.logger.success(f'Order {self.doc_id} created')
-        # return response
+        self.logger.success(f'Order {self.doc_id} created')
+        return response
 
     def write_ticket_no(self) -> None:
         """Updates tables with the ticket number for the order."""
@@ -627,7 +634,7 @@ class OrderAPI(DocumentAPI):
         order_db = Database.CP.OpenOrder
         payments = self.payload['PS_DOC_HDR']['PS_DOC_PMT']
 
-        shop_payment = order_db.get_payment_by_code(self.doc_id, 'SHOP')
+        shop_payment = order_db.get_payment_by_code(self.doc_id, SHOPIFY_PAYCODE)
 
         remaining: float = 0
 
@@ -640,22 +647,22 @@ class OrderAPI(DocumentAPI):
 
         if shop_payment > 0:
             shop_refund = -shop
-            Database.CP.OpenOrder.update_payment_amount(self.doc_id, shop_refund, 'SHOP')
-            Database.CP.OpenOrder.update_payment_apply(self.doc_id, shop_refund, 'SHOP')
+            Database.CP.OpenOrder.update_payment_amount(self.doc_id, shop_refund, SHOPIFY_PAYCODE)
+            Database.CP.OpenOrder.update_payment_apply(self.doc_id, shop_refund, SHOPIFY_PAYCODE)
 
         if self.has_gift_card_payment():
             gc_refund = -gc
-            gc_index = order_db.get_ps_doc_pmt_index('GC', payments)
+            gc_index = order_db.get_ps_doc_pmt_index(GIFT_CARD_PAYCODE, payments)
             payments[gc_index]['AMT'] = gc_refund
-            Database.CP.OpenOrder.update_payment_amount(self.doc_id, gc_refund, 'GC')
-            Database.CP.OpenOrder.update_payment_apply(self.doc_id, gc_refund, 'GC')
+            Database.CP.OpenOrder.update_payment_amount(self.doc_id, gc_refund, GIFT_CARD_PAYCODE)
+            Database.CP.OpenOrder.update_payment_apply(self.doc_id, gc_refund, GIFT_CARD_PAYCODE)
 
         if self.has_loyalty_payment:
             loy_refund = -loy
-            loy_index = order_db.get_ps_doc_pmt_index('LOYALTY')
+            loy_index = order_db.get_ps_doc_pmt_index(LOYALTY_PAYCODE)
             payments[loy_index]['AMT'] = loy_refund
-            Database.CP.OpenOrder.update_payment_amount(self.doc_id, loy_refund, 'LOYALTY')
-            Database.CP.OpenOrder.update_payment_apply(self.doc_id, loy_refund, 'LOYALTY')
+            Database.CP.OpenOrder.update_payment_amount(self.doc_id, loy_refund, LOYALTY_PAYCODE)
+            Database.CP.OpenOrder.update_payment_apply(self.doc_id, loy_refund, LOYALTY_PAYCODE)
 
         self.total_paid = shop + gc + loy
 
@@ -673,23 +680,23 @@ class OrderAPI(DocumentAPI):
 
         def refund_loyalty_points(payment: dict):
             for payment in payments:
-                if payment['PAY_COD'] == 'LOYALTY':
+                if payment['PAY_COD'] == LOYALTY_PAYCODE:
                     points = abs(math.floor(float(payment['AMT'])))
                     Database.CP.Loyalty.add_points(cust_no=self.cust_no, points=points)
 
         for payment in payments:
-            if payment['PAY_COD'] == 'GC':
+            if payment['PAY_COD'] == GIFT_CARD_PAYCODE:
                 refund_gift_cards(payment)
-            elif payment['PAY_COD'] == 'LOYALTY':
+            elif payment['PAY_COD'] == LOYALTY_PAYCODE:
                 refund_loyalty_points(payment)
 
         # PAYMENT APPLY REFUND
         if not self.is_partial_refund():
-            Database.CP.OpenOrder.update_payment_apply(self.doc_id, total_paid, 'SHOP')
+            Database.CP.OpenOrder.update_payment_apply(self.doc_id, total_paid, SHOPIFY_PAYCODE)
 
     def redeem_loyalty_pmts(self):
         for payment in self.payload['PS_DOC_HDR']['PS_DOC_PMT']:
-            if payment['PAY_COD'] == 'LOYALTY':
+            if payment['PAY_COD'] == LOYALTY_PAYCODE:
                 amount = abs(math.floor(float(payment['AMT'])))
                 Database.CP.Loyalty.redeem(amount, self.cust_no)
 
@@ -854,7 +861,7 @@ class OrderAPI(DocumentAPI):
     def cleanup(error: Exception, cust_no: str):
         """Cleans up the order if an error occurs."""
         OrderAPI.error_handler.add_error_v('Order could not be posted', traceback=tb())
-        OrderAPI.error_handler.add_error_v(str(error))
+        # OrderAPI.error_handler.add_error_v(str(error))
 
         query = f"""
         SELECT TOP 2 DOC_ID FROM PS_DOC_HDR
@@ -873,6 +880,10 @@ class OrderAPI(DocumentAPI):
             OrderAPI.error_handler.add_error_v('Could not cleanup order')
 
         raise error
+
+    @staticmethod
+    def delete(doc_id: str):
+        Database.CP.OpenOrder.delete(doc_id)
 
 
 # This class is used to parse the BigCommerce order response.
@@ -1079,3 +1090,4 @@ class HoldOrder(DocumentAPI):
 
 if __name__ == '__main__':
     OrderAPI.process_order(5713897619623, verbose=True)
+    # OrderAPI.delete('107437185281494')
