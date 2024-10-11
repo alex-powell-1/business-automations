@@ -982,7 +982,7 @@ class Database:
                 response = Database.query(query)
 
                 if response['code'] == 200:
-                    eh.logger.success(f'Line loyalty points ({points_earned})')
+                    eh.logger.success(f'Line loyalty points ({points_earned}) for line {lin_seq_no} written')
                 else:
                     eh.error_handler.add_error_v(f'Line #{lin_seq_no} could not receive loyalty points')
 
@@ -1014,11 +1014,14 @@ class Database:
                 response = Database.query(query)
 
                 if response['code'] == 200:
-                    eh.logger.success('Loyalty points written')
+                    eh.logger.success(
+                        f'Loyalty points written to PS_DOC_HDR_LOY_PGM. Earned: {points_earned}, Redeemed: {points_redeemed}, Balance: {point_balance}'
+                    )
                 else:
                     eh.error_handler.add_error_v('Loyalty points could not be written')
 
             def redeem(amount: int, cust_no: str, eh=ProcessInErrorHandler):
+                """Subtracts loyalty points from a customer's account."""
                 query = f"""
                 UPDATE {creds.Table.CP.Customers.table}
                 SET LOY_PTS_BAL = LOY_PTS_BAL - {amount}
@@ -1028,12 +1031,13 @@ class Database:
                 response = Database.query(query)
 
                 if response['code'] == 200:
-                    eh.logger.success('Loyalty points added')
+                    eh.logger.success(f'{amount} Loyalty points subtracted from {cust_no}')
                 else:
-                    eh.error_handler.add_error_v('Loyalty points could not be added')
+                    eh.error_handler.add_error_v('Loyalty points could not be subtracted')
                     eh.error_handler.add_error_v(response['message'])
 
             def add_points(amount: int, cust_no: str, eh=ProcessInErrorHandler):
+                """Adds loyalty points to a customer's account."""
                 query = f"""
                 UPDATE {creds.Table.CP.Customers.table}
                 SET LOY_PTS_BAL = LOY_PTS_BAL + {amount}
@@ -1043,7 +1047,7 @@ class Database:
                 response = Database.query(query)
 
                 if response['code'] == 200:
-                    eh.logger.success('Loyalty points added')
+                    eh.logger.success(f'{amount} Loyalty points added from {cust_no}')
                 else:
                     eh.error_handler.add_error_v('Loyalty points could not be added')
                     eh.error_handler.add_error_v(response['message'])
@@ -1399,11 +1403,11 @@ class Database:
             ):
                 table = 'RET_LINS' if is_refund else 'SAL_LINS'
                 to_release_lines = f', TO_REL_LINS = {number_of_lines}' if not is_refund else ''
-                line_tot = f', RET_LIN_TOT = {line_total}' if is_refund else f'SAL_LIN_TOT = {line_total}'
+                line_tot = f', RET_LIN_TOT = {line_total}' if is_refund else f'SAL_LIN_TOT = {line_total} '
 
                 query = f"""
                 UPDATE PS_DOC_HDR
-                SET {table} = {number_of_lines} {to_release_lines} {line_tot}
+                SET {table} = {number_of_lines} {to_release_lines}, {line_tot}
                 WHERE DOC_ID = '{doc_id}'
                 """
                 response = Database.query(query)
@@ -1413,8 +1417,9 @@ class Database:
                 elif response['code'] == 201:
                     eh.logger.info(f'No lines to update for DOC_ID: {doc_id}')
                 else:
-                    eh.error_handler.add_error_v(f'Line items could not be updated for DOC_ID: {doc_id}')
-                    eh.error_handler.add_error_v(response['message'])
+                    eh.error_handler.add_error_v(
+                        f'Line items could not be updated for DOC_ID: {doc_id}.\nResponse: {response}\nQuery: {query}'
+                    )
 
             def set_ps_doc_lin_quantities(
                 doc_id: str, qty: float, ext_prc: float, ext_cost: float, lin_seq_no: int, eh=ProcessInErrorHandler

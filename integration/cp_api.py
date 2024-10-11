@@ -132,9 +132,8 @@ class OrderAPI(DocumentAPI):
         return 'POS' if self.order.channel.lower() == 'pos' else 1
 
     def get_customer_number(self) -> str:
-        if self.station_id == 'POS':
-            if not self.order.customer.id:
-                return 'CASH'
+        if self.station_id == 'POS' and not self.order.customer.id:
+            return 'CASH'
         else:
             return get_cp_cust_no(self.order)
 
@@ -590,7 +589,9 @@ class OrderAPI(DocumentAPI):
         self.write_hdr_total_entry()
         Database.CP.OpenOrder.set_line_type(self.doc_id, line_type='R' if self.is_refund else 'S')
         Database.CP.OpenOrder.set_apply_type(self.doc_id, apply_type='S')
-        Database.CP.OpenOrder.set_line_totals(self.doc_id, self.total_lin_items, is_refund=self.is_refund)
+        Database.CP.OpenOrder.set_line_totals(
+            self.doc_id, self.total_lin_items, self.order.total_inc_tax, self.is_refund
+        )
         self.set_line_quantities()
 
         # Clean up the original document and the reference to the original document.
@@ -752,6 +753,9 @@ class OrderAPI(DocumentAPI):
                 set_value_lin('QTY_ENTD', 0)
                 set_value_lin('QTY_TO_REL', get_value_lin('QTY_SOLD'))
                 set_value_lin('QTY_TO_LEAVE', 0)
+                set_value_lin('EXT_PRC', line_item['EXT_PRC'])
+                set_value_lin('GROSS_EXT_PRC', line_item['EXT_PRC'])
+                set_value_lin('GROSS_DISP_EXT_PRC', line_item['EXT_PRC'])
         else:
             # Refund
             def invert_line_qty(line_item: dict, index: int):
@@ -882,8 +886,14 @@ class OrderAPI(DocumentAPI):
         raise error
 
     @staticmethod
-    def delete(doc_id: str):
-        Database.CP.OpenOrder.delete(doc_id)
+    def delete(doc_id: str = None, ticket_no: str = None):
+        if not doc_id and not ticket_no:
+            OrderAPI.logger.warning('No document ID or ticket number provided')
+            return
+        if doc_id:
+            Database.CP.OpenOrder.delete(doc_id=doc_id)
+        elif ticket_no:
+            doc_id = Database.CP.OpenOrder.delete(tkt_no=ticket_no)
 
 
 # This class is used to parse the BigCommerce order response.
@@ -1089,5 +1099,6 @@ class HoldOrder(DocumentAPI):
 
 
 if __name__ == '__main__':
-    OrderAPI.process_order(5713897619623, verbose=True)
-    # OrderAPI.delete('107437185281494')
+    OrderAPI.process_order(5713856987303, verbose=True)
+    # OrderAPI.delete(ticket_no='S1154')
+    # Database.CP.Loyalty.redeem(2, '12061')
