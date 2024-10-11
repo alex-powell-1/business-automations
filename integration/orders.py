@@ -22,27 +22,35 @@ class Order:
     error_handler = ProcessInErrorHandler.error_handler
 
     def __init__(
-        self, order_id: int, post: bool = True, send_gfc: bool = True, print: bool = True, verbose: bool = False
+        self,
+        order_id: int,
+        post: bool = True,
+        send_gfc: bool = True,
+        print_order: bool = True,
+        verbose: bool = False,
+        gift_card_override: str = None,  # Gift Card Code Override (for testing or specific code)
     ):
         self.verbose = verbose
-        self.order: ShopifyOrder = Shopify.Order.get(order_id)
-        self.post: bool = True
+        self.order_id: int = order_id
+        self.order: ShopifyOrder = Shopify.Order.get(order_id, gift_card_override=gift_card_override)
+        self.post: bool = post
         self.send_gfc: bool = send_gfc
-        self.print: bool = print
+        self.print_it: bool = print_order
 
     def __str__(self) -> str:
         return self.order
 
-    def process(self):
+    def process(self, gfc_code_override: str = None):
+        """Process the order by sending gift cards, posting to CP, and printing the order."""
         try:
             if self.post:
-                OrderAPI.process_order(self.order)
+                OrderAPI.process_order(order=self.order, verbose=self.verbose)
 
             if self.send_gfc:
                 Order.send_gift_cards(self.order)
 
-            if self.print:
-                Order.print(self.order)
+            if self.print_it:
+                Order.print_order(order=self.order)
 
         except Exception as e:
             Order.error_handler.add_error_v(
@@ -54,12 +62,19 @@ class Order:
             Order.error_handler.add_error_v(error=str(e), origin='integration.orders')
 
     @staticmethod
-    def send_gift_cards(order: ShopifyOrder):
-        """Sends gift cards to customers."""
+    def send_gift_cards(order: ShopifyOrder, code_override: str = None):
+        """Sends gift cards to customers. Use code_override to send a specific code."""
         for item in order.items:
             if item.type == 'giftcertificate' and not item.is_refunded:
-                code = Database.CP.GiftCard.create_code()
-                item.gift_certificate_id = code
+                if not item.gift_certificate_id and not code_override:
+                    Order.error_handler.add_error_v('Cannot Send Gift Card - No Code Provided')
+                    continue
+
+                if code_override:
+                    code = code_override
+                else:
+                    code = item.gift_certificate_id
+
                 email = order.email
                 if email:
                     first_name = order.billing_address.first_name
@@ -68,7 +83,7 @@ class Order:
                     Email.Customer.GiftCard.send(
                         name=f'{first_name.title()} {last_name.title()}',
                         email=email,
-                        gc_code=item.gift_certificate_id,
+                        gc_code=code,
                         amount=item.base_price,
                     )
                 else:
@@ -96,7 +111,7 @@ class Order:
             first_name = order.customer.first_name or 'Web'
             last_name = order.customer.last_name or 'Customer'
             email = order.email or 'No Email'
-            phone = order.get_phone() or 'No Phone'
+            phone = order.get_phone(order=order) or 'No Phone'
 
         # Get Product List
         products = order.items
@@ -123,7 +138,7 @@ class Order:
         else:
             OrderAPI.logger.info('Creating barcode')
             try:
-                barcode_file = generate_barcode(data=order['id'])
+                barcode_file = generate_barcode(data=order.id)
             except Exception as err:
                 error_type = 'barcode'
                 OrderAPI.error_handler.add_error_v(error=f'Error ({error_type}): {err}', origin='Design - Barcode')
@@ -131,14 +146,8 @@ class Order:
                 OrderAPI.logger.success(f'Creating barcode - Success at {datetime.now():%H:%M:%S}')
 
             try:
-                bc_date = order['date_created']
-                bc_date = datetime.strptime(bc_date, '%Y-%m-%dT%H:%M:%SZ')
-                # convert to local time
-                bc_date = utc_to_local(bc_date)
-                # Format Date and Time
-                # dt_date = utils.parsedate_to_datetime(bc_date)
-                date = f'{bc_date:%m/%d/%Y}'  # ex. 04/24/2024
-                time = f'{bc_date:%I:%M:%S %p}'  # ex. 02:34:24 PM
+                date = f'{order.date_created:%m/%d/%Y}'  # ex. 04/24/2024
+                time = f'{order.date_created:%I:%M:%S %p}'  # ex. 02:34:24 PM
 
                 doc = DocxTemplate('./templates/order_print_template.docx')
 
@@ -164,9 +173,9 @@ class Order:
                     'cb_name': first_name + ' ' + last_name,
                     'cb_phone': phone,
                     'cb_email': email,
-                    'cb_street': order.billing_address.street_1 or '',
+                    'cb_street': order.billing_address.address_1 or '',
                     'cb_city': order.billing_address.city or '',
-                    'cb_state': order.billing_address.state or '',
+                    'cb_state': order.billing_address.province or '',
                     'cb_zip': order.billing_address.zip or '',
                     # Customer Shipping
                     'shipping_method': 'Delivery' if order.base_shipping_cost > 0 else 'Pickup',
@@ -177,26 +186,22 @@ class Order:
                     'cs_email': order.shipping_address.email or '',
                     'cs_street': order.shipping_address.address_1 or '',
                     'cs_city': order.shipping_address.city or '',
-                    'cs_state': order.shipping_address.state or '',
+                    'cs_state': order.shipping_address.province or '',
                     'cs_zip': order.shipping_address.zip or '',
                     # Product Details
-                    'number_of_items': order['items_total'],
-                    'ticket_notes': order['customer_message'] or '',
+                    'number_of_items': len(order.items),
+                    'ticket_notes': order.customer_message or '',
                     'products': product_list,
-                    'coupon_code': ', '.join(order['order_coupons']),
-                    'coupon_discount': float(order['coupons']['url'][0]['amount'])
-                    if len(order['coupons']['url']) > 0
-                    else 0,
-                    'loyalty': float(order['store_credit_amount']),
-                    'gc_amount': float(order['gift_certificate_amount'])
-                    if 'gift_certificate_amount' in order
-                    else 0,
+                    'coupon_code': ', '.join(order.coupon_codes),
+                    'coupon_discount': order.coupon_amount if order.coupon_codes else 0,
+                    'loyalty': order.store_credit_amount,
+                    'gc_amount': order.gift_certificate_payment,
                     'barcode': barcode,
                     'status': order.status,
                 }
 
                 doc.render(context)
-                ticket_name = f"ticket_{order['id']}_{datetime.now().strftime("%m_%d_%y_%H_%M_%S")}.docx"
+                ticket_name = f"ticket_{order.id}_{datetime.now().strftime("%m_%d_%y_%H_%M_%S")}.docx"
                 file_path = creds.Company.ticket_location + '/' + ticket_name
                 doc.save(file_path)
 
@@ -235,4 +240,4 @@ class OrderProcessor:
 
 
 if __name__ == '__main__':
-    Order.process(5712291233959)
+    Order(5703560200359, print_order=False, send_gfc=False).process()

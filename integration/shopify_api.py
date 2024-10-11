@@ -260,7 +260,7 @@ class Shopify:
         prefix = 'gid://shopify/Order/'
 
         @staticmethod
-        def get(order_id: int, original=False):
+        def get(order_id: int, original=False, gift_card_override: str = None):
             response = Shopify.Query(
                 document=Shopify.Order.queries,
                 operation_name='order',
@@ -271,7 +271,7 @@ class Shopify:
 
             node = response.data['node']
             if node:
-                return ShopifyOrder(node)
+                return ShopifyOrder(node, gift_card_override=gift_card_override)
 
         @staticmethod
         def get_all():

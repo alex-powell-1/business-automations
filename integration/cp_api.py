@@ -97,8 +97,6 @@ class OrderAPI(DocumentAPI):
         order: ShopifyOrder = None,
         session: requests.Session = requests.Session(),
         verbose: bool = False,
-        print: bool = True,
-        send_gift_cards: bool = True,
     ):
         if not order and not order_id:
             raise Exception('Order or order_id is required')
@@ -109,6 +107,7 @@ class OrderAPI(DocumentAPI):
             self.order = order
         else:
             self.order: ShopifyOrder = Shopify.Order.get(order_id=order_id)
+
         self.is_refund: bool = self.order.status in ['Refunded', 'Partially Refunded']
         self.doc_id: str = None
         self.orig_doc_id: str = None
@@ -464,11 +463,11 @@ class OrderAPI(DocumentAPI):
         for gift_card in self.payload['PS_DOC_HDR']['__PS_DOC_GFC__']:
             Database.CP.GiftCard.insert(
                 doc_id=self.doc_id,
-                paycode=gift_card['GFC_COD'],
-                number=gift_card['GFC_NO'],
+                pay_code=GIFT_CARD_PAYCODE,
+                card_no=gift_card['GFC_NO'],
                 amount=gift_card['AMT'],
-                line_seq_no=gift_card['LIN_SEQ_NO'],
-                description=gift_card['DESCR'],
+                lin_seq_no=gift_card['LIN_SEQ_NO'],
+                descr=gift_card['DESCR'],
                 gfc_seq_no=gift_card['GFC_SEQ_NO'],
             )
 
@@ -852,7 +851,7 @@ class OrderAPI(DocumentAPI):
     @staticmethod
     def get_customer_number(order: ShopifyOrder) -> str:
         station = OrderAPI.get_station_id(order)
-        if station == 'POS' and not order.customer.id:
+        if station == 'POS' and not order.customer:
             return 'CASH'
         else:
             return get_cp_cust_no(order)
@@ -864,7 +863,14 @@ class OrderAPI(DocumentAPI):
         session: requests.Session = requests.Session(),
         verbose: bool = False,
     ):
-        oapi = OrderAPI(order_id, session, verbose=verbose)
+        if not order_id and not order:
+            raise Exception('No order ID or order object provided')
+
+        if not order:
+            oapi = OrderAPI(order_id, session, verbose=verbose)
+        else:
+            oapi = OrderAPI(order=order, session=session, verbose=verbose)
+
         order = oapi.order
 
         if order.is_declined:

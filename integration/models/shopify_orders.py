@@ -5,8 +5,9 @@ from datetime import datetime, timezone
 
 
 class ShopifyOrder:
-    def __init__(self, node: dict):
+    def __init__(self, node: dict, gift_card_override: str = None):
         self.node = node
+        self.gift_card_override: str = gift_card_override
         self.logger = ProcessInErrorHandler.logger
         self.error_handler = ProcessInErrorHandler.error_handler
         self.id: str = self.node['name']
@@ -20,7 +21,10 @@ class ShopifyOrder:
             self.shipping_address: ShippingAddress = ShippingAddress(self.node)
         else:
             self.shipping_address: ShippingAddress = None
-        self.customer = Customer(self.node)
+        if self.node['customer'] is not None:
+            self.customer = Customer(self.node)
+        else:
+            self.customer = None
         self.payment_status: str = self.node['displayFinancialStatus']
         self.is_declined: bool = self.payment_status.lower() in ['declined', '']
         self.refunds: list[dict] = self.node['refunds']
@@ -44,6 +48,7 @@ class ShopifyOrder:
         self.total_inc_tax: float = self.total
         self.refund_total: float = ShopifyOrder.get_money(node['totalRefundedSet'])
         self.store_credit_amount: float = self.get_store_credit_amount()
+        self.gift_certificate_payment: float = 0  # Not implemented
         self.customer_message: str = self.node['note']
         self.transactions: dict = {'data': []}  # Not implemented
 
@@ -141,6 +146,13 @@ class ShopifyOrder:
 
             item['isGiftCard'] = 'GFC' in item['sku']
 
+            def get_gift_certificate_id(item: dict) -> str:
+                if item['isGiftCard']:
+                    if self.gift_card_override:
+                        return self.gift_card_override
+                    else:
+                        Database.CP.GiftCard.create_code()
+
             results.append(
                 LineItem(
                     id=item['id'],
@@ -160,7 +172,7 @@ class ShopifyOrder:
                     refund_amount=0,
                     return_id=0,
                     fixed_shipping_cost=0,
-                    gift_certificate_id=None,
+                    gift_certificate_id=get_gift_certificate_id(item),
                     discounted_total_inc_tax=ShopifyOrder.get_money(item['discountedTotalSet']),
                     applied_discounts=[],
                 )
@@ -237,18 +249,32 @@ class ShopifyOrder:
             return 'EMPTY'
 
     @staticmethod
-    def get_phone(node):
-        try:
-            return PhoneNumber(
-                node['billingAddress']['phone']
-                or node['customer']['phone']
-                or ((node['shippingAddress'] or {'phone': None})['phone'])
-            ).to_cp()
-        except:
+    def get_phone(node=None, order: 'ShopifyOrder' = None) -> str:
+        if not node and not order:
             return None
 
+        if node:
+            try:
+                return PhoneNumber(
+                    node['billingAddress']['phone']
+                    or node['customer']['phone']
+                    or ((node['shippingAddress'] or {'phone': None})['phone'])
+                ).to_cp()
+            except:
+                return None
+
+        elif order:
+            try:
+                return PhoneNumber(
+                    order.billing_address.phone
+                    or order.customer.phone
+                    or (order.shipping_address or {'phone': None}).phone
+                ).to_cp()
+            except:
+                return None
+
     @staticmethod
-    def convert_date(date_string: str) -> str:
+    def convert_date(date_string: str, as_dt: bool = False) -> datetime:
         date = None
         try:
             date = datetime.strptime(date_string, '%a, %d %b %Y %H:%M:%S %z')
@@ -259,9 +285,7 @@ class ShopifyOrder:
             except:
                 pass
 
-        date = date.replace(tzinfo=timezone.utc).astimezone(tz=None)
-        date_string = date.strftime('%Y-%m-%d %H:%M:%S.%f')
-        return date_string[:-3]
+        return date.replace(tzinfo=timezone.utc).astimezone(tz=None)
 
     @staticmethod
     def get_money(money: dict) -> float:
@@ -355,10 +379,16 @@ class BillingAddress:
             else:
                 self.email = node['email']
         else:
-            self.first_name = node['customer']['firstName']
-            self.last_name = node['customer']['lastName']
-            self.phone = node['customer']['phone']
-            self.email = node['customer']['email'] or node['email']
+            if node['customer']:
+                self.first_name = node['customer']['firstName']
+                self.last_name = node['customer']['lastName']
+                self.phone = node['customer']['phone']
+                self.email = node['customer']['email'] or node['email']
+            else:
+                self.first_name = None
+                self.last_name = None
+                self.phone = None
+                self.email = None
 
 
 class ShippingAddress:
@@ -373,7 +403,7 @@ class ShippingAddress:
         self.zip: str = None
         self.country: str = None
         self.phone: str = None
-        self.email: str = node['email']
+        self.email: str = node['email'] if node else None
         self.get_shipping_address(node)
 
     def __str__(self) -> str:
@@ -417,7 +447,7 @@ class ShippingAddress:
         if 'phone' in node['shippingAddress']:
             self.phone = node['shippingAddress']['phone']
         else:
-            self.phone = ShopifyOrder.get_phone(node)
+            self.phone = ShopifyOrder.get_phone(node=node)
 
 
 class LineItem:
