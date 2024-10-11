@@ -10,11 +10,11 @@ from traceback import format_exc as tb
 from datetime import datetime
 
 from integration.draft_orders import on_draft_created, on_draft_updated
-from customer_tools.customers import lookup_customer, add_new_customer
+from integration.cp_api import OrderAPI
+from customer_tools.customers import add_new_customer
 import threading
 from setup.sms_engine import SMSEngine
 from setup.utilities import PhoneNumber
-from integration.shopify_api import Shopify
 from integration.orders import Order as ShopifyOrder
 from setup.print_engine import Printer
 from setup.email_engine import Email
@@ -96,7 +96,7 @@ def process_design_lead(body, eh=LeadFormErrorHandler, test_mode=False):
 
     logger.info(f'Received message from {first_name} {last_name}. Beginning Processing...')
     # Check if this is a current customer
-    cust_no = lookup_customer(phone_number=phone, email_address=email)
+    cust_no = Database.CP.Customer.lookup_customer(phone_number=phone, email_address=email)
 
     if not cust_no:
         # Add new customer if not found
@@ -227,25 +227,7 @@ def process_design_lead(body, eh=LeadFormErrorHandler, test_mode=False):
 def process_shopify_order(order_id, eh=ProcessInErrorHandler):
     eh.logger.info(f'Beginning processing for Order #{order_id}')
     time.sleep(5)  # <-- This is to give payment processor time to complete
-
-    shopify_order = ShopifyOrder(order_id)
-    shopify_order.post_shopify_order()
-    eh.logger.info(f'Order {order_id} processed successfully')
-
-    # Printing
-    order = Shopify.Order.as_bc_order(order_id=order_id)  # Convert order to BC Order dictionary
-    # PRINTING - Filter out DECLINED payments
-    if order['status'] == 'UNFULFILLED' or order['status'] == 'FULFILLED':
-        Printer.print_order(order_id)
-
-    elif order['status'] == 'Partially Refunded':
-        eh.error_handler.add_error_v(
-            error=f'Order {order_id} was partially refunded. Skipping...', origin='Design Consumer'
-        )
-    elif order['status'] == 'ON_HOLD':
-        eh.logger.info(message=f'Order {order_id} is on hold. Skipping...for now...')
-    else:
-        eh.logger.info(message=f'Order {order_id} status is {order['status']}. Skipping...')
+    OrderAPI(order_id).process_order()
 
 
 def shutdown_handler(signum, frame):
