@@ -2,11 +2,10 @@ from database import Database
 from setup.error_handler import ProcessInErrorHandler
 from setup.utilities import PhoneNumber
 from datetime import datetime, timezone
-from setup.email_engine import Email
 
 
 class ShopifyOrder:
-    def __init__(self, node: dict, send_gfc=False):
+    def __init__(self, node: dict):
         self.node = node
         self.logger = ProcessInErrorHandler.logger
         self.error_handler = ProcessInErrorHandler.error_handler
@@ -20,7 +19,7 @@ class ShopifyOrder:
         if self.has_shipping_address:
             self.shipping_address: ShippingAddress = ShippingAddress(self.node)
         else:
-            self.shipping_address = None
+            self.shipping_address: ShippingAddress = None
         self.customer = Customer(self.node)
         self.payment_status: str = self.node['displayFinancialStatus']
         self.is_declined: bool = self.payment_status.lower() in ['declined', '']
@@ -47,7 +46,6 @@ class ShopifyOrder:
         self.store_credit_amount: float = self.get_store_credit_amount()
         self.customer_message: str = self.node['note']
         self.transactions: dict = {'data': []}  # Not implemented
-        self.send_gift_cards()
 
     def __str__(self) -> str:
         result = f'\nOrder ID: {self.id}\n'
@@ -180,21 +178,6 @@ class ShopifyOrder:
     def get_total(self) -> float:
         target = self.node['totalRefundedSet'] if len(self.refunds) > 0 else self.node['currentTotalPriceSet']
         return ShopifyOrder.get_money(target)
-
-    def send_gift_cards(self):
-        for item in self.items:
-            if item.type == 'giftcertificate' and not item.is_refunded:
-                code = Database.CP.GiftCard.create_code()
-                item.gift_certificate_id = code
-                if self.email:
-                    Email.Customer.GiftCard.send(
-                        name=f'{self.billing_address.first_name.title()} {self.billing_address.last_name.title()}',
-                        email=self.email,
-                        gc_code=item.gift_certificate_id,
-                        amount=item.base_price,
-                    )
-                else:
-                    self.error_handler.add_error_v('Cannot Send Gift Card - No Email Provided')
 
     def get_shipping_cost(self) -> float:
         shipping_cost = 0
@@ -410,8 +393,7 @@ class ShippingAddress:
         return result
 
     def get_shipping_address(self, node):
-        if not node['shippingAddress']:
-            self.phone = ShopifyOrder.get_phone(node)
+        if not node:
             return
 
         if 'firstName' in node['shippingAddress']:

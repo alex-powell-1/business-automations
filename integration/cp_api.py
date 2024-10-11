@@ -1,7 +1,6 @@
 from setup import creds
 import requests
 import json
-import os
 import math
 from datetime import datetime
 from database import Database
@@ -13,12 +12,6 @@ from integration.models.shopify_orders import ShopifyOrder
 from integration.models.cp_orders import CPLineItem, CPNote, CPGiftCard
 from integration.models.payments import GCPayment
 from traceback import format_exc as tb
-from product_tools.products import Product
-from setup.email_engine import Email
-from setup.order_engine import utc_to_local
-from setup.barcode_engine import generate_barcode
-from docxtpl import DocxTemplate, InlineImage
-from docx.shared import Mm
 
 
 ORDER_PREFIX = 'S'
@@ -100,17 +93,22 @@ class OrderAPI(DocumentAPI):
 
     def __init__(
         self,
-        order_id: int,
+        order_id: int = None,
+        order: ShopifyOrder = None,
         session: requests.Session = requests.Session(),
         verbose: bool = False,
         print: bool = True,
         send_gift_cards: bool = True,
     ):
+        if not order and not order_id:
+            raise Exception('Order or order_id is required')
+
         super().__init__(session=session)
         self.verbose: bool = verbose
-        self.print: bool = print
-        self.send_gfc: bool = send_gift_cards
-        self.order: ShopifyOrder = Shopify.Order.get(order_id=order_id)
+        if order:
+            self.order = order
+        else:
+            self.order: ShopifyOrder = Shopify.Order.get(order_id=order_id)
         self.is_refund: bool = self.order.status in ['Refunded', 'Partially Refunded']
         self.doc_id: str = None
         self.orig_doc_id: str = None
@@ -129,29 +127,14 @@ class OrderAPI(DocumentAPI):
         self.has_gift_card_payment: bool = False
         self.total_lin_items: int = 0
         self.line_item_length: int = 0
-        self.store_id: str = self.get_store_id()
-        self.station_id: str = self.get_station_id()
-        self.drawer_id: str = self.get_drawer_id()
-        self.cust_no: str = self.get_customer_number()
+        self.store_id: str = OrderAPI.get_store_id(self.order)
+        self.station_id: str = OrderAPI.get_station_id(self.order)
+        self.drawer_id: str = OrderAPI.get_drawer_id(self.order)
+        self.cust_no: str = OrderAPI.get_customer_number(self.order)
         self.physical_items: list[CPLineItem] = self.get_physical_line_items()
         self.gift_card_purchases: list[CPGiftCard] = self.get_gift_card_purchases()
         self.notes: list[CPNote] = self.get_notes()
         self.payload = self.get_post_payload()
-
-    def get_store_id(self):
-        return 1 if self.order.channel.lower() == 'pos' else 'WEB'
-
-    def get_station_id(self):
-        return 'POS' if self.order.channel.lower() == 'pos' else 'WEB'
-
-    def get_drawer_id(self):
-        return 'POS' if self.order.channel.lower() == 'pos' else 1
-
-    def get_customer_number(self) -> str:
-        if self.station_id == 'POS' and not self.order.customer.id:
-            return 'CASH'
-        else:
-            return get_cp_cust_no(self.order)
 
     def get_physical_line_items(self) -> list[dict]:
         """Returns a list of physical line items dicts from a order."""
@@ -855,28 +838,32 @@ class OrderAPI(DocumentAPI):
         #         self.error_handler.add_error_v(response)
 
     @staticmethod
-    def send_gift_cards(oapi: 'OrderAPI'):
-        """Sends gift cards to customers."""
-        for item in oapi.order.items:
-            if item.type == 'giftcertificate' and not item.is_refunded:
-                code = Database.CP.GiftCard.create_code()
-                item.gift_certificate_id = code
-                email = oapi.order.email
-                if email:
-                    first_name = oapi.order.billing_address.first_name
-                    last_name = oapi.order.billing_address.last_name
-
-                    Email.Customer.GiftCard.send(
-                        name=f'{first_name.title()} {last_name.title()}',
-                        email=email,
-                        gc_code=item.gift_certificate_id,
-                        amount=item.base_price,
-                    )
-                else:
-                    oapi.error_handler.add_error_v('Cannot Send Gift Card - No Email Provided')
+    def get_store_id(order: ShopifyOrder):
+        return 1 if order.channel.lower() == 'pos' else 'WEB'
 
     @staticmethod
-    def process_order(order_id: int, session: requests.Session = requests.Session(), verbose: bool = False):
+    def get_station_id(order: ShopifyOrder):
+        return 'POS' if order.channel.lower() == 'pos' else 'WEB'
+
+    @staticmethod
+    def get_drawer_id(order: ShopifyOrder):
+        return 'POS' if order.channel.lower() == 'pos' else 1
+
+    @staticmethod
+    def get_customer_number(order: ShopifyOrder) -> str:
+        station = OrderAPI.get_station_id(order)
+        if station == 'POS' and not order.customer.id:
+            return 'CASH'
+        else:
+            return get_cp_cust_no(order)
+
+    @staticmethod
+    def process_order(
+        order_id: int = None,
+        order: ShopifyOrder = None,
+        session: requests.Session = requests.Session(),
+        verbose: bool = False,
+    ):
         oapi = OrderAPI(order_id, session, verbose=verbose)
         order = oapi.order
 
@@ -894,12 +881,6 @@ class OrderAPI(DocumentAPI):
 
         try:
             oapi.post_order()
-
-            if oapi.send_gfc:
-                oapi.send_gift_cards(oapi)
-
-            if oapi.print:
-                oapi.print_order(oapi)
 
         except Exception as e:
             OrderAPI.cleanup(e, oapi.cust_no)
@@ -937,160 +918,6 @@ class OrderAPI(DocumentAPI):
             Database.CP.OpenOrder.delete(doc_id=doc_id)
         elif ticket_no:
             doc_id = Database.CP.OpenOrder.delete(tkt_no=ticket_no)
-
-    @staticmethod
-    def print_order(order_id: int = None, oapi: 'OrderAPI' = None, test_mode=False):
-        """Takes Shopify Order ID ex. 5642506862759 and pulls data, converts to a BigCommerce Order (for parsing)
-        and prints a Word Document with the order details. The document is then printed to the default printer."""
-        if not oapi:
-            oapi = OrderAPI(order_id)
-
-        order = oapi.order
-
-        if order.status == 'UNFULFILLED' or order.status == 'FULFILLED':
-            OrderAPI.print_order(order_id)
-
-        elif order.status == 'Partially Refunded':
-            OrderAPI.error_handler.add_error_v(
-                error=f'Order {order_id} was partially refunded. Skipping...', origin='Design Consumer'
-            )
-        elif order.status == 'ON_HOLD':
-            OrderAPI.logger.info(message=f'Order {order_id} is on hold. Skipping...for now...')
-        else:
-            OrderAPI.logger.info(message=f'Order {order_id} status is {order.status}. Skipping...')
-
-        if not oapi.cust_no:
-            first_name = 'Web'
-            last_name = 'Customer'
-            email = 'No Email'
-            phone = 'No Phone'
-        else:
-            first_name = order.customer.first_name or 'Web'
-            last_name = order.customer.last_name or 'Customer'
-            email = order.email or 'No Email'
-            phone = order.get_phone() or 'No Phone'
-
-        # Get Product List
-        products = order.items
-        product_list = []
-        gift_card_only = True
-        for x in products:
-            if x.type == 'physical':
-                gift_card_only = False
-
-            item = Product(x.sku)
-
-            product_details = {
-                'sku': item.item_no,
-                'name': item.descr,
-                'qty': x['quantity'],
-                'base_price': x['base_price'],
-                'base_total': x['base_total'],
-            }
-
-            product_list.append(product_details)
-        # Filter out orders that only contain gift cards
-        if gift_card_only:
-            OrderAPI.logger.info(f'Order {order_id} contains only gift cards. Skipping print.')
-        else:
-            OrderAPI.logger.info('Creating barcode')
-            try:
-                barcode_file = generate_barcode(data=order['id'])
-            except Exception as err:
-                error_type = 'barcode'
-                OrderAPI.error_handler.add_error_v(error=f'Error ({error_type}): {err}', origin='Design - Barcode')
-            else:
-                OrderAPI.logger.success(f'Creating barcode - Success at {datetime.now():%H:%M:%S}')
-
-            try:
-                bc_date = order['date_created']
-                bc_date = datetime.strptime(bc_date, '%Y-%m-%dT%H:%M:%SZ')
-                # convert to local time
-                bc_date = utc_to_local(bc_date)
-                # Format Date and Time
-                # dt_date = utils.parsedate_to_datetime(bc_date)
-                date = f'{bc_date:%m/%d/%Y}'  # ex. 04/24/2024
-                time = f'{bc_date:%I:%M:%S %p}'  # ex. 02:34:24 PM
-
-                doc = DocxTemplate('./templates/order_print_template.docx')
-
-                barcode = InlineImage(doc, barcode_file, height=Mm(15))  # width in mm
-
-                context = {
-                    # Company Details
-                    'company_name': creds.Company.name,
-                    'co_address': creds.Company.address,
-                    'co_phone': creds.Company.phone,
-                    # Order Details
-                    'order_number': order['id'],
-                    'order_date': date,
-                    'order_time': time,
-                    'order_subtotal': float(order['subtotal_inc_tax']),
-                    'order_shipping': float(order['base_shipping_cost']),
-                    'order_total': float(order['total_inc_tax']),
-                    'cust_no': str(cust_no),
-                    # Customer Billing
-                    'cb_name': first_name + ' ' + last_name,
-                    'cb_phone': phone,
-                    'cb_email': email,
-                    'cb_street': order['billing_address']['street_1'] or '',
-                    'cb_city': order['billing_address']['city'] or '',
-                    'cb_state': order['billing_address']['state'] or '',
-                    'cb_zip': order['billing_address']['zip'] or '',
-                    # Customer Shipping
-                    'shipping_method': 'Delivery' if float(order['base_shipping_cost']) > 0 else 'Pickup',
-                    'cs_name': (order['shipping_addresses']['url'][0]['first_name'] or '')
-                    + ' '
-                    + (order['shipping_addresses']['url'][0]['last_name'] or ''),
-                    'cs_phone': order['shipping_addresses']['url'][0]['phone'] or '',
-                    'cs_email': order['shipping_addresses']['url'][0]['email'] or '',
-                    'cs_street': order['shipping_addresses']['url'][0]['street_1'] or '',
-                    'cs_city': order['shipping_addresses']['url'][0]['city'] or '',
-                    'cs_state': order['shipping_addresses']['url'][0]['state'] or '',
-                    'cs_zip': order['shipping_addresses']['url'][0]['zip'] or '',
-                    # Product Details
-                    'number_of_items': order['items_total'],
-                    'ticket_notes': order['customer_message'] or '',
-                    'products': product_list,
-                    'coupon_code': ', '.join(order['order_coupons']),
-                    'coupon_discount': float(order['coupons']['url'][0]['amount'])
-                    if len(order['coupons']['url']) > 0
-                    else 0,
-                    'loyalty': float(order['store_credit_amount']),
-                    'gc_amount': float(order['gift_certificate_amount'])
-                    if 'gift_certificate_amount' in order
-                    else 0,
-                    'barcode': barcode,
-                    'status': order.status,
-                }
-
-                doc.render(context)
-                ticket_name = f"ticket_{order['id']}_{datetime.now().strftime("%m_%d_%y_%H_%M_%S")}.docx"
-                file_path = creds.Company.ticket_location + '/' + ticket_name
-                doc.save(file_path)
-
-            except Exception as err:
-                error_type = 'Word Document'
-                OrderAPI.error_handler.add_error_v(
-                    error=f'Error ({error_type}): {err}', origin='Design - Word Document', traceback=tb()
-                )
-
-            else:
-                OrderAPI.logger.success(f'Creating Word Document - Success at {datetime.now():%H:%M:%S}')
-                try:
-                    # Print the file to default printer
-                    if test_mode:
-                        OrderAPI.logger.info('Test Mode: Skipping Print')
-                    else:
-                        # convert file_path to raw string
-                        file_path = utilities.convert_path_to_raw(file_path)
-                        os.startfile(file_path, 'print')  # print the file to default printer
-                        os.remove(barcode_file)  # remove barcode file after printing
-                except Exception as err:
-                    error_type = 'Printing'
-                    OrderAPI.error_handler.add_error_v(f'Error ({error_type}): {err}', origin='Design - Printing')
-                else:
-                    OrderAPI.logger.success(f'Printing - Success at {datetime.now():%H:%M:%S}')
 
 
 # This class is used to parse the BigCommerce order response.
@@ -1296,6 +1123,6 @@ class HoldOrder(DocumentAPI):
 
 
 if __name__ == '__main__':
-    OrderAPI.process_order(5713856987303, verbose=True)
+    OrderAPI.process_order(5712291233959, verbose=True, print=False, send_gfc=False)
     # OrderAPI.delete(ticket_no='S1154')
     # Database.CP.Loyalty.redeem(2, '12061')

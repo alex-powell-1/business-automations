@@ -15,8 +15,6 @@ from customer_tools.customers import add_new_customer
 import threading
 from setup.sms_engine import SMSEngine
 from setup.utilities import PhoneNumber
-from integration.orders import Order as ShopifyOrder
-from setup.print_engine import Printer
 from setup.email_engine import Email
 from database import Database
 from docxtpl import DocxTemplate
@@ -227,7 +225,7 @@ def process_design_lead(body, eh=LeadFormErrorHandler, test_mode=False):
 def process_shopify_order(order_id, eh=ProcessInErrorHandler):
     eh.logger.info(f'Beginning processing for Order #{order_id}')
     time.sleep(5)  # <-- This is to give payment processor time to complete
-    OrderAPI(order_id).process_order()
+    OrderAPI().process_order(order_id)
 
 
 def shutdown_handler(signum, frame):
@@ -300,5 +298,4 @@ if __name__ == '__main__2':
 
 
 if __name__ == '__main__':
-    shopify_order = ShopifyOrder('5712291233959')
-    shopify_order.post_shopify_order()
+    pass
