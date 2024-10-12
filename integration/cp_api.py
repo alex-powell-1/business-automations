@@ -24,10 +24,10 @@ GIFT_CARD_PAYCODE = 'GC'
 LOYALTY_MULTIPLIER = 0.05
 
 
-# This class is primarily used to interact with the NCR Counterpoint API
-# If you need documentation on the API, good luck.
-# https://github.com/NCRCounterpointAPI/APIGuide/blob/master/Endpoints/POST_Document.md
 class CounterPointAPI:
+    """This class is used to interact with the NCR Counterpoint API.
+    https://github.com/NCRCounterpointAPI/APIGuide/blob/master/Endpoints/POST_Document.md"""
+
     logger = ProcessInErrorHandler.logger
     error_handler = ProcessInErrorHandler.error_handler
 
@@ -61,8 +61,9 @@ class CounterPointAPI:
         return response
 
 
-# This class is used to interact with the NCR Counterpoint API's Document endpoint
 class DocumentAPI(CounterPointAPI):
+    """This class is used to interact with the NCR Counterpoint API's Document endpoint"""
+
     def __init__(self, session: requests.Session = requests.Session()):
         super().__init__(session=session)
         self.base_url = f'{self.base_url}Document'
@@ -450,11 +451,11 @@ class OrderAPI(DocumentAPI):
         for gift_card in self.payload['PS_DOC_HDR']['__PS_DOC_GFC__']:
             Database.CP.GiftCard.insert(
                 doc_id=self.doc_id,
-                paycode=gift_card['GFC_COD'],
-                number=gift_card['GFC_NO'],
+                pay_code=GIFT_CARD_PAYCODE,
+                card_no=gift_card['GFC_NO'],
                 amount=gift_card['AMT'],
-                line_seq_no=gift_card['LIN_SEQ_NO'],
-                description=gift_card['DESCR'],
+                lin_seq_no=gift_card['LIN_SEQ_NO'],
+                descr=gift_card['DESCR'],
                 gfc_seq_no=gift_card['GFC_SEQ_NO'],
             )
 
@@ -838,7 +839,7 @@ class OrderAPI(DocumentAPI):
     @staticmethod
     def get_customer_number(order: ShopifyOrder) -> str:
         station = OrderAPI.get_station_id(order)
-        if station == 'POS' and not order.customer.id:
+        if station == 'POS' and not order.customer:
             return 'CASH'
         else:
             return get_cp_cust_no(order)

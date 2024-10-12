@@ -259,7 +259,7 @@ class Shopify:
         prefix = 'gid://shopify/Order/'
 
         @staticmethod
-        def get(order_id: int, original=False):
+        def get(order_id: int, original=False, gift_card_override: str = None):
             response = Shopify.Query(
                 document=Shopify.Order.queries,
                 operation_name='order',

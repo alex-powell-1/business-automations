@@ -4,9 +4,7 @@ from integration.shopify_api import Shopify
 from integration.models.shopify_orders import ShopifyOrder, ShippingAddress
 from setup.email_engine import Email
 from database import Database
-from product_tools.products import Product
 import traceback
-from setup.order_engine import utc_to_local
 from setup.barcode_engine import generate_barcode
 from docxtpl import DocxTemplate, InlineImage
 from docx.shared import Mm
@@ -22,27 +20,34 @@ class Order:
     error_handler = ProcessInErrorHandler.error_handler
 
     def __init__(
-        self, order_id: int, post: bool = True, send_gfc: bool = True, print: bool = True, verbose: bool = False
+        self,
+        order_id: int,
+        post: bool = True,
+        send_gfc: bool = True,
+        print_order: bool = True,
+        verbose: bool = False,
+        gift_card_override: str = None,  # Gift Card Code Override (for testing or specific code)
     ):
         self.verbose = verbose
         self.order: ShopifyOrder = ShopifyOrder(order_id)
         self.post: bool = True
         self.send_gfc: bool = send_gfc
-        self.print: bool = print
+        self.print_it: bool = print_order
 
     def __str__(self) -> str:
         return self.order
 
-    def process(self):
+    def process(self, gfc_code_override: str = None):
+        """Process the order by sending gift cards, posting to CP, and printing the order."""
         try:
             if self.post:
-                OrderAPI.process_order(self.order)
+                OrderAPI.process_order(order=self.order, verbose=self.verbose)
 
             if self.send_gfc:
                 Order.send_gift_cards(self.order)
 
-            if self.print:
-                Order.print(self.order)
+            if self.print_it:
+                Order.print_order(order=self.order)
 
         except Exception as e:
             Order.error_handler.add_error_v(
@@ -58,8 +63,10 @@ class Order:
         """Sends gift cards to customers."""
         for item in order.physical_items:
             if item.type == 'giftcertificate' and not item.is_refunded:
-                code = Database.CP.GiftCard.create_code()
-                item.gift_certificate_id = code
+                if not item.gift_certificate_id:
+                    Order.error_handler.add_error_v('Cannot Send Gift Card - No Code Provided')
+                    continue
+
                 email = order.email
                 if email:
                     first_name = order.billing_address.first_name
@@ -100,7 +107,7 @@ class Order:
             first_name = order.customer.first_name or 'Web'
             last_name = order.customer.last_name or 'Customer'
             email = order.email or 'No Email'
-            phone = order.get_phone() or 'No Phone'
+            phone = order.get_phone(order=order) or 'No Phone'
 
         # Get Product List
         product_list = []
@@ -222,4 +229,4 @@ class OrderProcessor:
 
 
 if __name__ == '__main__':
-    Order.process(5712291233959)
+    Order(5703560200359, print_order=False, send_gfc=False).process()

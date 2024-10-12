@@ -1264,10 +1264,12 @@ class Database:
                 except:
                     return False
 
-            def set_ticket_date(doc_id: str, date: str, eh=ProcessInErrorHandler):
+            def set_ticket_date(doc_id: str, date: datetime, eh=ProcessInErrorHandler):
+                date_string = date.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
+
                 query = f"""
                 UPDATE PS_DOC_HDR
-                SET TKT_DT = '{date}'
+                SET TKT_DT = '{date_string}'
                 WHERE DOC_ID = '{doc_id}'
                 """
 
