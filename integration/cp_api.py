@@ -91,29 +91,15 @@ class OrderAPI(DocumentAPI):
     """This class is used to interact with the NCR Counterpoint API's Document endpoint
     and create orders and refunds."""
 
-    def __init__(
-        self,
-        order_id: int = None,
-        order: ShopifyOrder = None,
-        session: requests.Session = requests.Session(),
-        verbose: bool = False,
-        print: bool = True,
-        send_gift_cards: bool = True,
-    ):
-        if not order and not order_id:
-            raise Exception('Order or order_id is required')
-
+    def __init__(self, order: ShopifyOrder, session: requests.Session = requests.Session(), verbose: bool = False):
         super().__init__(session=session)
         self.verbose: bool = verbose
-        if order:
-            self.order = order
-        else:
-            self.order: ShopifyOrder = Shopify.Order.get(order_id=order_id)
+        self.order: ShopifyOrder = order
         self.is_refund: bool = self.order.status in ['Refunded', 'Partially Refunded']
         self.doc_id: str = None
         self.orig_doc_id: str = None
-        self.cp_tkt_no: str = None  # 1133
-        self.cp_tkt_no_full: str = None  # 1133R1 or S1133
+        self.cp_tkt_no: str = None  # S1133
+        self.cp_tkt_no_full: str = None  # S1133R1 or S1133 or S1133PR1
         self.discount_seq_no: int = 1
         self.total_discount_amount: float = 0
         self.total_gfc_amount: float = 0
@@ -131,26 +117,26 @@ class OrderAPI(DocumentAPI):
         self.station_id: str = OrderAPI.get_station_id(self.order)
         self.drawer_id: str = OrderAPI.get_drawer_id(self.order)
         self.cust_no: str = OrderAPI.get_customer_number(self.order)
-        self.physical_items: list[CPLineItem] = self.get_physical_line_items()
-        self.gift_card_purchases: list[CPGiftCard] = self.get_gift_card_purchases()
+        self.physical_items: list[CPLineItem] = self.get_document_lines()
+        self.gift_card_purchases: list[CPGiftCard] = self.get_gift_card_lines()
         self.notes: list[CPNote] = self.get_notes()
         self.payload = self.get_post_payload()
 
-    def get_physical_line_items(self) -> list[dict]:
+    def get_document_lines(self) -> list[CPLineItem]:
         """Returns a list of physical line items dicts from a order."""
         line_items = []
-        for item in self.order.items:
+        for item in self.order.physical_items:
             if item.type == 'physical':
                 line_items.append(CPLineItem(item))
                 self.total_lin_items += 1
         return line_items
 
-    def get_gift_card_purchases(self) -> list[CPGiftCard]:
+    def get_gift_card_lines(self) -> list[CPGiftCard]:
         """Returns a list of gift cards from a list of products from a BigCommerce order."""
 
         gift_cards = []
 
-        for i, product in enumerate(self.order.items, start=1):
+        for i, product in enumerate(self.order.physical_items, start=1):
             if self.is_partial_refund and float(product.quantity_refunded) == 0:
                 continue
 
@@ -858,16 +844,10 @@ class OrderAPI(DocumentAPI):
             return get_cp_cust_no(order)
 
     @staticmethod
-    def process_order(
-        order_id: int = None,
-        order: ShopifyOrder = None,
-        session: requests.Session = requests.Session(),
-        verbose: bool = False,
-    ):
-        oapi = OrderAPI(order_id, session, verbose=verbose)
-        order = oapi.order
+    def process_order(order: ShopifyOrder, session: requests.Session = requests.Session(), verbose: bool = False):
+        oapi = OrderAPI(order, session, verbose)
 
-        if order.is_declined:
+        if oapi.order.is_declined:
             oapi.error_handler.add_error_v('Order payment declined')
             raise Exception('Order payment declined')
 

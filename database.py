@@ -1556,6 +1556,18 @@ class Database:
                         return None
 
         class Product:
+            def get_long_descr(sku: str):
+                query = f"""
+                SELECT LONG_DESCR
+                FROM IM_ITEM
+                WHERE ITEM_NO = '{sku}'
+                """
+                response = Database.query(query)
+                try:
+                    return response[0][0]
+                except:
+                    return None
+
             def get_binding_id(item_no=None):
                 """Returns the binding id of a sku, or a list of unique and validated binding IDs
                 from the ITEM table."""

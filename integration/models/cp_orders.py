@@ -4,7 +4,7 @@ from integration.models import shopify_orders
 class CPLineItem:
     """Counterpoint Line Item"""
 
-    def __init__(self, item: shopify_orders.LineItem):
+    def __init__(self, item: shopify_orders.PhysicalItem):
         self.is_refund: bool = item.is_refunded
         self.multiplier = -1 if item.is_refunded else 1
         self.type: str = 'O'
@@ -34,7 +34,7 @@ class CPLineItem:
 
 
 class CPGiftCard:
-    def __init__(self, product: shopify_orders.LineItem, line_item_length: int, sequence: int):
+    def __init__(self, product: shopify_orders.PhysicalItem, line_item_length: int, sequence: int):
         self.pay_code: str = 'GC'
         self.number: str = product.gift_certificate_id
         self.amount: float = float(product.base_price)

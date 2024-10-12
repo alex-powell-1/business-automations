@@ -25,7 +25,7 @@ class Order:
         self, order_id: int, post: bool = True, send_gfc: bool = True, print: bool = True, verbose: bool = False
     ):
         self.verbose = verbose
-        self.order: ShopifyOrder = Shopify.Order.get(order_id)
+        self.order: ShopifyOrder = ShopifyOrder(order_id)
         self.post: bool = True
         self.send_gfc: bool = send_gfc
         self.print: bool = print
@@ -56,7 +56,7 @@ class Order:
     @staticmethod
     def send_gift_cards(order: ShopifyOrder):
         """Sends gift cards to customers."""
-        for item in order.items:
+        for item in order.physical_items:
             if item.type == 'giftcertificate' and not item.is_refunded:
                 code = Database.CP.GiftCard.create_code()
                 item.gift_certificate_id = code
@@ -85,6 +85,10 @@ class Order:
             Order.logger.info(f'Order {order_id} - Status: {order.status}. Skipping print.')
             return
 
+        if order.is_gift_card_only:
+            OrderAPI.logger.info(f'Order {order_id} contains only gift cards. Skipping print.')
+            return
+
         cust_no = OrderAPI.get_customer_number(order)
 
         if not cust_no:
@@ -99,129 +103,112 @@ class Order:
             phone = order.get_phone() or 'No Phone'
 
         # Get Product List
-        products = order.items
         product_list = []
-        gift_card_only = True
-        for x in products:
-            if x.type == 'physical':
-                gift_card_only = False
-
-            item = Product(x.sku)
-
+        for x in order.physical_items:
             product_details = {
-                'sku': item.item_no,
-                'name': item.descr,
+                'sku': x.sku,
+                'name': Database.CP.Product.get_long_descr(x.sku),
                 'qty': x.quantity,
                 'base_price': x.base_price,
                 'base_total': x.base_total,
             }
 
             product_list.append(product_details)
-        # Filter out orders that only contain gift cards
-        if gift_card_only:
-            OrderAPI.logger.info(f'Order {order_id} contains only gift cards. Skipping print.')
+
+        OrderAPI.logger.info('Creating barcode')
+
+        try:
+            barcode_file = generate_barcode(data=order.id)
+        except Exception as err:
+            error_type = 'barcode'
+            OrderAPI.error_handler.add_error_v(error=f'Error ({error_type}): {err}', origin='Order - Barcode')
+            return
+
+        OrderAPI.logger.success(f'Creating barcode - Success at {datetime.now():%H:%M:%S}')
+
+        try:
+            date = f'{order.date_created:%m/%d/%Y}'  # ex. 04/24/2024
+            time = f'{order.date_created:%I:%M:%S %p}'  # ex. 02:34:24 PM
+
+            doc = DocxTemplate('./templates/order_print_template.docx')
+
+            barcode = InlineImage(doc, barcode_file, height=Mm(15))  # width in mm
+
+            if not order.shipping_address:
+                order.shipping_address = ShippingAddress()
+
+            context = {
+                # Company Details
+                'company_name': creds.Company.name,
+                'co_address': creds.Company.address,
+                'co_phone': creds.Company.phone,
+                # Order Details
+                'order_number': order.id,
+                'order_date': date,
+                'order_time': time,
+                'order_subtotal': order.subtotal_inc_tax,
+                'order_shipping': order.base_shipping_cost,
+                'order_total': order.total_inc_tax,
+                'cust_no': cust_no,
+                # Customer Billing
+                'cb_name': first_name + ' ' + last_name,
+                'cb_phone': phone,
+                'cb_email': email,
+                'cb_street': order.billing_address.address_1 or '',
+                'cb_city': order.billing_address.city or '',
+                'cb_state': order.billing_address.province or '',
+                'cb_zip': order.billing_address.zip or '',
+                # Customer Shipping
+                'shipping_method': 'Delivery' if order.base_shipping_cost > 0 else 'Pickup',
+                'cs_name': (order.shipping_address.first_name or '')
+                + ' '
+                + (order.shipping_address.last_name or ''),
+                'cs_phone': order.shipping_address.phone or '',
+                'cs_email': order.shipping_address.email or '',
+                'cs_street': order.shipping_address.address_1 or '',
+                'cs_city': order.shipping_address.city or '',
+                'cs_state': order.shipping_address.province or '',
+                'cs_zip': order.shipping_address.zip or '',
+                # Product Details
+                'number_of_items': len(order.physical_items),
+                'ticket_notes': order.customer_message or '',
+                'products': product_list,
+                'coupon_code': ', '.join(order.coupon_codes),
+                'coupon_discount': order.coupon_amount if order.coupon_codes else 0,
+                'loyalty': order.store_credit_amount,
+                'gc_amount': 0,  # Not implemented
+                'barcode': barcode,
+                'status': order.status,
+            }
+
+            doc.render(context)
+            ticket_name = f"ticket_{order.id}_{datetime.now().strftime("%m_%d_%y_%H_%M_%S")}.docx"
+            file_path = creds.Company.ticket_location + '/' + ticket_name
+            doc.save(file_path)
+
+        except Exception as err:
+            error_type = 'Word Document'
+            OrderAPI.error_handler.add_error_v(
+                error=f'Error ({error_type}): {err}', origin='Order-Word Document', traceback=tb()
+            )
+            return
+
+        OrderAPI.logger.success(f'Creating Word Document - Success at {datetime.now():%H:%M:%S}')
+
+        try:
+            # Print the file to default printer
+            if test_mode:
+                OrderAPI.logger.info('Test Mode: Skipping Print')
+            else:
+                # convert file_path to raw string
+                file_path = utilities.convert_path_to_raw(file_path)
+                os.startfile(file_path, 'print')  # print the file to default printer
+                os.remove(barcode_file)  # remove barcode file after printing
+        except Exception as err:
+            error_type = 'Printing'
+            OrderAPI.error_handler.add_error_v(f'Error ({error_type}): {err}', origin='Design - Printing')
         else:
-            OrderAPI.logger.info('Creating barcode')
-            try:
-                barcode_file = generate_barcode(data=order['id'])
-            except Exception as err:
-                error_type = 'barcode'
-                OrderAPI.error_handler.add_error_v(error=f'Error ({error_type}): {err}', origin='Design - Barcode')
-            else:
-                OrderAPI.logger.success(f'Creating barcode - Success at {datetime.now():%H:%M:%S}')
-
-            try:
-                bc_date = order['date_created']
-                bc_date = datetime.strptime(bc_date, '%Y-%m-%dT%H:%M:%SZ')
-                # convert to local time
-                bc_date = utc_to_local(bc_date)
-                # Format Date and Time
-                # dt_date = utils.parsedate_to_datetime(bc_date)
-                date = f'{bc_date:%m/%d/%Y}'  # ex. 04/24/2024
-                time = f'{bc_date:%I:%M:%S %p}'  # ex. 02:34:24 PM
-
-                doc = DocxTemplate('./templates/order_print_template.docx')
-
-                barcode = InlineImage(doc, barcode_file, height=Mm(15))  # width in mm
-
-                if not order.shipping_address:
-                    order.shipping_address = ShippingAddress(node=None)
-
-                context = {
-                    # Company Details
-                    'company_name': creds.Company.name,
-                    'co_address': creds.Company.address,
-                    'co_phone': creds.Company.phone,
-                    # Order Details
-                    'order_number': order.id,
-                    'order_date': date,
-                    'order_time': time,
-                    'order_subtotal': order.subtotal_inc_tax,
-                    'order_shipping': order.base_shipping_cost,
-                    'order_total': order.total_inc_tax,
-                    'cust_no': cust_no,
-                    # Customer Billing
-                    'cb_name': first_name + ' ' + last_name,
-                    'cb_phone': phone,
-                    'cb_email': email,
-                    'cb_street': order.billing_address.street_1 or '',
-                    'cb_city': order.billing_address.city or '',
-                    'cb_state': order.billing_address.state or '',
-                    'cb_zip': order.billing_address.zip or '',
-                    # Customer Shipping
-                    'shipping_method': 'Delivery' if order.base_shipping_cost > 0 else 'Pickup',
-                    'cs_name': (order.shipping_address.first_name or '')
-                    + ' '
-                    + (order.shipping_address.last_name or ''),
-                    'cs_phone': order.shipping_address.phone or '',
-                    'cs_email': order.shipping_address.email or '',
-                    'cs_street': order.shipping_address.address_1 or '',
-                    'cs_city': order.shipping_address.city or '',
-                    'cs_state': order.shipping_address.state or '',
-                    'cs_zip': order.shipping_address.zip or '',
-                    # Product Details
-                    'number_of_items': order['items_total'],
-                    'ticket_notes': order['customer_message'] or '',
-                    'products': product_list,
-                    'coupon_code': ', '.join(order['order_coupons']),
-                    'coupon_discount': float(order['coupons']['url'][0]['amount'])
-                    if len(order['coupons']['url']) > 0
-                    else 0,
-                    'loyalty': float(order['store_credit_amount']),
-                    'gc_amount': float(order['gift_certificate_amount'])
-                    if 'gift_certificate_amount' in order
-                    else 0,
-                    'barcode': barcode,
-                    'status': order.status,
-                }
-
-                doc.render(context)
-                ticket_name = f"ticket_{order['id']}_{datetime.now().strftime("%m_%d_%y_%H_%M_%S")}.docx"
-                file_path = creds.Company.ticket_location + '/' + ticket_name
-                doc.save(file_path)
-
-            except Exception as err:
-                error_type = 'Word Document'
-                OrderAPI.error_handler.add_error_v(
-                    error=f'Error ({error_type}): {err}', origin='Design - Word Document', traceback=tb()
-                )
-
-            else:
-                OrderAPI.logger.success(f'Creating Word Document - Success at {datetime.now():%H:%M:%S}')
-                try:
-                    # Print the file to default printer
-                    if test_mode:
-                        OrderAPI.logger.info('Test Mode: Skipping Print')
-                    else:
-                        # convert file_path to raw string
-                        file_path = utilities.convert_path_to_raw(file_path)
-                        os.startfile(file_path, 'print')  # print the file to default printer
-                        os.remove(barcode_file)  # remove barcode file after printing
-                except Exception as err:
-                    error_type = 'Printing'
-                    OrderAPI.error_handler.add_error_v(f'Error ({error_type}): {err}', origin='Design - Printing')
-                else:
-                    OrderAPI.logger.success(f'Printing - Success at {datetime.now():%H:%M:%S}')
+            OrderAPI.logger.success(f'Printing - Success at {datetime.now():%H:%M:%S}')
 
 
 class OrderProcessor:

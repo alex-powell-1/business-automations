@@ -8,7 +8,6 @@ from pathlib import Path
 from database import Database
 from traceback import print_exc as tb
 from setup.utilities import local_to_utc
-from integration.models.shopify_orders import ShopifyOrder
 from datetime import datetime
 from product_tools import products
 import random
@@ -266,12 +265,8 @@ class Shopify:
                 operation_name='order',
                 variables={'id': f'{Shopify.Order.prefix}{order_id}'},
             )
-            if original:
-                return response.data
 
-            node = response.data['node']
-            if node:
-                return ShopifyOrder(node)
+            return response.data
 
         @staticmethod
         def get_all():
