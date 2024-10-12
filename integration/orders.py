@@ -26,22 +26,21 @@ class Order:
         send_gfc: bool = True,
         print_order: bool = True,
         verbose: bool = False,
-        gift_card_override: str = None,  # Gift Card Code Override (for testing or specific code)
     ):
         self.verbose = verbose
         self.order: ShopifyOrder = ShopifyOrder(order_id)
-        self.post: bool = True
+        self.post: bool = post
         self.send_gfc: bool = send_gfc
         self.print_it: bool = print_order
 
     def __str__(self) -> str:
         return self.order
 
-    def process(self, gfc_code_override: str = None):
+    def process(self):
         """Process the order by sending gift cards, posting to CP, and printing the order."""
         try:
             if self.post:
-                OrderAPI.process_order(order=self.order, verbose=self.verbose)
+                Order.post_order(order=self.order, verbose=self.verbose)
 
             if self.send_gfc:
                 Order.send_gift_cards(self.order)
@@ -51,7 +50,7 @@ class Order:
 
         except Exception as e:
             Order.error_handler.add_error_v(
-                error=f'Error processing order {self.order_id}',
+                error=f'Error processing order {self.order.id}',
                 origin='integration.orders',
                 traceback=traceback.format_exc(),
             )
@@ -59,8 +58,13 @@ class Order:
             Order.error_handler.add_error_v(error=str(e), origin='integration.orders')
 
     @staticmethod
+    def post_order(order: ShopifyOrder, verbose: bool = False):
+        """Post the order to CP."""
+        OrderAPI.process_order(order=order, verbose=verbose)
+
+    @staticmethod
     def send_gift_cards(order: ShopifyOrder):
-        """Sends gift cards to customers."""
+        """Emails gift cards to customers."""
         for item in order.physical_items:
             if item.type == 'giftcertificate' and not item.is_refunded:
                 if not item.gift_certificate_id:
@@ -216,6 +220,11 @@ class Order:
             OrderAPI.error_handler.add_error_v(f'Error ({error_type}): {err}', origin='Design - Printing')
         else:
             OrderAPI.logger.success(f'Printing - Success at {datetime.now():%H:%M:%S}')
+
+    @staticmethod
+    def delete(tkt_no: str):
+        """Delete an order from CP by ticket number."""
+        OrderAPI.delete(ticket_no=tkt_no)
 
 
 class OrderProcessor:

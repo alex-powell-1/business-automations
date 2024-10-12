@@ -8,9 +8,8 @@ from setup.error_handler import ProcessInErrorHandler
 from customer_tools.customers import get_cp_cust_no
 from customer_tools import customers
 from integration.shopify_api import Shopify
-from integration.models.shopify_orders import ShopifyOrder
+from integration.models.shopify_orders import ShopifyOrder, GiftCard
 from integration.models.cp_orders import CPLineItem, CPNote, CPGiftCard
-from integration.models.payments import GCPayment
 from traceback import format_exc as tb
 
 
@@ -89,14 +88,13 @@ class DocumentAPI(CounterPointAPI):
 
 
 class OrderAPI(DocumentAPI):
-    """This class is used to interact with the NCR Counterpoint API's Document endpoint
-    and create orders and refunds."""
+    """This class is used to create orders and refunds."""
 
     def __init__(self, order: ShopifyOrder, session: requests.Session = requests.Session(), verbose: bool = False):
         super().__init__(session=session)
         self.verbose: bool = verbose
         self.order: ShopifyOrder = order
-        self.is_refund: bool = self.order.status in ['Refunded', 'Partially Refunded']
+        self.is_refund: bool = self.order.is_refund
         self.doc_id: str = None
         self.orig_doc_id: str = None
         self.cp_tkt_no: str = None  # S1133
@@ -107,7 +105,7 @@ class OrderAPI(DocumentAPI):
         self.total_hdr_disc: float = 0
         self.total_lin_disc: float = 0
         self.total_paid: float = 0
-        self.is_partial_refund: bool = self.order.status == 'Partially Refunded'
+        self.is_partial_refund: bool = self.order.is_partial_refund
         self.refund_index: int = None
         self.total_tender: float = 0
         self.has_loyalty_payment: bool = False
@@ -118,8 +116,8 @@ class OrderAPI(DocumentAPI):
         self.station_id: str = OrderAPI.get_station_id(self.order)
         self.drawer_id: str = OrderAPI.get_drawer_id(self.order)
         self.cust_no: str = OrderAPI.get_customer_number(self.order)
-        self.physical_items: list[CPLineItem] = self.get_document_lines()
-        self.gift_card_purchases: list[CPGiftCard] = self.get_gift_card_lines()
+        self.doc_lines: list[CPLineItem] = self.get_document_lines()
+        self.gfc_lines: list[CPGiftCard] = self.get_gift_card_purchase_lines()
         self.notes: list[CPNote] = self.get_notes()
         self.payload = self.get_post_payload()
 
@@ -132,61 +130,21 @@ class OrderAPI(DocumentAPI):
                 self.total_lin_items += 1
         return line_items
 
-    def get_gift_card_lines(self) -> list[CPGiftCard]:
-        """Returns a list of gift cards from a list of products from a BigCommerce order."""
+    def get_gift_card_purchase_lines(self) -> list[CPGiftCard]:
+        """Returns a list of gift card purchases from a list of products from a Shopify order."""
 
         gift_cards = []
 
-        for i, product in enumerate(self.order.physical_items, start=1):
+        for i, product in enumerate(self.order.all_items, start=1):
             if self.is_partial_refund and float(product.quantity_refunded) == 0:
                 continue
 
-            if product.type == 'giftcertificate':
+            if isinstance(product, GiftCard):
                 gift_cards.append(CPGiftCard(product, self.line_item_length + 1, i))
                 self.line_item_length += 1
                 self.total_gfc_amount += float(product.base_price)
 
         return gift_cards
-
-    def get_payments(self) -> list[dict]:
-        """Returns a list of payments from a BigCommerce order."""
-        order = self.order
-        payments = [
-            {
-                'AMT': order.total_inc_tax - order.store_credit_amount,
-                'PAY_COD': SHOPIFY_PAYCODE,
-                'FINAL_PMT': 'N',
-                'PMT_LIN_TYP': 'C' if self.is_refund else 'T',
-            }
-        ]
-
-        if order.store_credit_amount > 0:
-            payments.append(
-                {
-                    'AMT': order.store_credit_amount,
-                    'PAY_COD': LOYALTY_PAYCODE,
-                    'FINAL_PMT': 'N',
-                    'PMT_LIN_TYP': 'C' if self.is_refund else 'T',
-                }
-            )
-
-        def get_gift_card_payments() -> list[dict]:
-            """Returns a list of gift card payments from a order.
-            NOTE: Gift Card Payments are not supported in our current setup."""
-            gfc_payments = []
-
-            if not self.order.transactions:
-                return gfc_payments
-
-            for pay_method in self.order.transactions['data']:
-                if pay_method['method'] == 'gift_certificate':
-                    gfc_payments.append(GCPayment(pay_method))
-
-            return gfc_payments
-
-        payments += get_gift_card_payments()
-
-        return payments
 
     def get_notes(self) -> list[CPNote]:
         """Returns a list of notes from a order."""
@@ -217,10 +175,10 @@ class OrderAPI(DocumentAPI):
                 'NORM_TAX_COD': 'EXEMPT',
                 'SHIP_VIA_COD': 'CPC_FLAT' if self.is_refund else 'T' if order.is_shipping else 'C',
                 'PS_DOC_NOTE': self.get_notes(),
-                'PS_DOC_LIN': [line_item.payload for line_item in self.physical_items],
+                'PS_DOC_LIN': [line_item.payload for line_item in self.doc_lines],
                 # "PS_DOC_GFC": self.get_gift_cards_from_bc_products(bc_products),
-                '__PS_DOC_GFC__': [gc.payload for gc in self.gift_card_purchases],
-                'PS_DOC_PMT': self.get_payments(),
+                '__PS_DOC_GFC__': [gc.payload for gc in self.gfc_lines],
+                'PS_DOC_PMT': self.order.payments.payload,
                 'PS_DOC_TAX': [
                     {
                         'AUTH_COD': 'EXEMPT',
@@ -282,7 +240,7 @@ class OrderAPI(DocumentAPI):
             self.discount_seq_no += 1
 
         # Processing line discounts
-        for i, item in enumerate(self.physical_items, start=1):
+        for i, item in enumerate(self.doc_lines, start=1):
             if item.discount_amount:
                 self.logger.info(f'Writing line discount: ${item.discount_amount}')
                 write_h(self.doc_id, self.discount_seq_no, item.discount_amount, i)

@@ -21,23 +21,20 @@ class ShopifyOrder:
         self.date_modified: str = ShopifyOrder.convert_date(self.node['updatedAt'])
         self.billing_address: BillingAddress = BillingAddress(self.node)
         self.has_shipping_address: bool = self.node['shippingAddress'] is not None
-        if self.has_shipping_address:
-            self.shipping_address: ShippingAddress = ShippingAddress(self.node)
-        else:
-            self.shipping_address: ShippingAddress = None
-        if self.node['customer'] is not None:
-            self.customer = Customer(self.node)
-        else:
-            self.customer = None
-        self.payment_status: str = self.node['displayFinancialStatus']
-        self.is_declined: bool = self.payment_status.lower() in ['declined', '']
+        self.shipping_address: ShippingAddress = ShippingAddress(self.node) if self.has_shipping_address else None
+        self.customer = Customer(self.node) if self.node['customer'] is not None else None
         self.refunds: list[dict] = self.node['refunds']
         self.status: str = self.get_status()
+        self.payment_status: str = self.node['displayFinancialStatus']
+        self.is_declined: bool = self.payment_status.lower() in ['declined', '']
         self.is_refund: bool = self.status in ['Refunded', 'Partially Refunded']
+        self.is_partial_refund: bool = self.status == 'Partially Refunded'
+        self.payments: Payments = Payments(self)
         self.delivery_from_lines: float = 0
         self.refunded_subtotal: float = 0
         self.physical_items: list[PhysicalItem] = []
         self.gift_card_purchases: list[GiftCard] = []
+        self.all_items: list[PhysicalItem | GiftCard] = []
         self.get_items()
         self.is_gift_card_only: bool = len(self.physical_items) == 0 and len(self.gift_card_purchases) > 0
         self.shipping_cost: float = self.get_shipping_cost()
@@ -57,7 +54,6 @@ class ShopifyOrder:
         self.store_credit_amount: float = self.get_store_credit_amount()
         self.gift_certificate_payment: float = 0  # Not implemented
         self.customer_message: str = self.node['note']
-        self.transactions: dict = {'data': []}  # Not implemented
 
     def __str__(self) -> str:
         result = f'\nOrder ID: {self.id}\n'
@@ -152,31 +148,33 @@ class ShopifyOrder:
             item['isGiftCard'] = 'GFC' in item['sku']
 
             if item['isGiftCard']:
-                self.gift_card_purchases.append(GiftCard(price))
+                gc = GiftCard(price)
+                self.gift_card_purchases.append(gc)
+                self.all_items.append(gc)
             else:
-                self.physical_items.append(
-                    PhysicalItem(
-                        id=item['id'],
-                        sku=item['sku'],
-                        base_price=price,
-                        price_ex_tax=price,
-                        price_inc_tax=price,
-                        price_tax=0,
-                        base_total=price,
-                        total_ex_tax=price,
-                        total_inc_tax=price,
-                        total_tax=0,
-                        quantity=item['quantity'],
-                        is_refunded=is_refunded,
-                        quantity_refunded=quantity_refunded,
-                        refund_amount=0,
-                        return_id=0,
-                        fixed_shipping_cost=0,
-                        gift_certificate_id=None,
-                        discounted_total_inc_tax=ShopifyOrder.get_money(item['discountedTotalSet']),
-                        applied_discounts=[],
-                    )
+                physical_item = PhysicalItem(
+                    id=item['id'],
+                    sku=item['sku'],
+                    base_price=price,
+                    price_ex_tax=price,
+                    price_inc_tax=price,
+                    price_tax=0,
+                    base_total=price,
+                    total_ex_tax=price,
+                    total_inc_tax=price,
+                    total_tax=0,
+                    quantity=item['quantity'],
+                    is_refunded=is_refunded,
+                    quantity_refunded=quantity_refunded,
+                    refund_amount=0,
+                    return_id=0,
+                    fixed_shipping_cost=0,
+                    gift_certificate_id=None,
+                    discounted_total_inc_tax=ShopifyOrder.get_money(item['discountedTotalSet']),
+                    applied_discounts=[],
                 )
+                self.physical_items.append(physical_item)
+                self.all_items.append(physical_item)
 
     def get_subtotal(self) -> float:
         if len(self.refunds) > 0:
@@ -538,3 +536,71 @@ class GiftCard:
     def __init__(self, amount: float):
         self.amount: float = None
         self.number: str = None
+
+
+class Payments:
+    def __init__(self, order: ShopifyOrder):
+        self.order: ShopifyOrder = order
+        self.shopify_payment: ShopifyPayment = ShopifyPayment(order)
+        self.loyalty_payment: LoyaltyPayment = LoyaltyPayment(order)
+        self.gc_payment: GCPayment = None  # GCPayment(order) - Not implemented
+        self.payload: dict = self.get_payload()
+
+    def get_payload(self) -> dict:
+        """Returns the payment payload to be used in NCR Counterpoint API"""
+        payload = []
+        if self.shopify_payment.payload:
+            payload.append(self.shopify_payment.payload)
+        if self.loyalty_payment.get_payload():
+            payload.append(self.loyalty_payment.get_payload())
+        return payload
+
+
+class Payment:
+    def __init__(self, order: ShopifyOrder):
+        self.order: ShopifyOrder = order
+        self.AMT: float = self.get_amount(order)
+        self.FINAL_PMT: str = 'N'
+        self.PMT_LIN_TYP: str = self.PMT_LIN_TYP
+
+
+class LoyaltyPayment(Payment):
+    """Loyalty Payment"""
+
+    def __init__(self, order: ShopifyOrder):
+        super().__init__(order)
+        self.PAY_COD: str = 'LOYALTY'
+
+    def get_payload(self) -> dict:
+        if self.order.store_credit_amount > 0:
+            return {
+                'AMT': self.order.store_credit_amount,
+                'PAY_COD': self.PAY_COD,
+                'FINAL_PMT': self.FINAL_PMT,
+                'PMT_LIN_TYP': self.PMT_LIN_TYP,
+            }
+
+
+class ShopifyPayment(Payment):
+    """Shopify Payment"""
+
+    def __init__(self, order: ShopifyOrder):
+        super().__init__(order)
+        self.PAY_COD: str = 'SHOP'
+        self.payload = self.get_payload()
+
+    def get_payload(self) -> dict:
+        return {
+            'AMT': self.order.total_inc_tax - self.order.store_credit_amount,
+            'PAY_COD': self.PAY_COD,
+            'FINAL_PMT': self.FINAL_PMT,
+            'PMT_LIN_TYP': 'C' if self.order.is_refund else 'T',
+        }
+
+
+class GCPayment(Payment):
+    """Gift Card Payment - Not implemented"""
+
+    def __init__(self, order: ShopifyOrder):
+        super().__init__(order)
+        self.PAY_COD: str = 'GC'
