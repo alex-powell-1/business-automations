@@ -20,8 +20,7 @@ class ShopifyOrder:
         self.date_created: str = ShopifyOrder.convert_date(self.node['createdAt'])
         self.date_modified: str = ShopifyOrder.convert_date(self.node['updatedAt'])
         self.billing_address: BillingAddress = BillingAddress(self.node)
-        self.has_shipping_address: bool = self.node['shippingAddress'] is not None
-        self.shipping_address: ShippingAddress = ShippingAddress(self.node) if self.has_shipping_address else None
+        self.shipping_address: ShippingAddress = ShippingAddress(self.node)
         self.customer = Customer(self.node) if self.node['customer'] is not None else None
         self.refunds: list[dict] = self.node['refunds']
         self.status: str = self.get_status()
@@ -68,14 +67,19 @@ class ShopifyOrder:
         result += f'Status: {self.status}\n'
         result += str(self.customer)
         result += str(self.billing_address)
-        if self.has_shipping_address:
-            result += str(self.shipping_address)
+        result += str(self.shipping_address)
         result += f'Transactions: {self.transactions}\n'
         result += '\nItems\n'
         result += '-----\n'
-
         for i, item in enumerate(self.physical_items):
             result += f'\nItem {i + 1}\n'
+            result += '---------'
+            result += str(item)
+
+        result += '\Gift Cards\n'
+        result += '-----\n'
+        for i, item in enumerate(self.gift_card_purchases):
+            result += f'\nGift Card {i + 1}\n'
             result += '---------'
             result += str(item)
 
@@ -420,7 +424,7 @@ class ShippingAddress:
         return result
 
     def get_shipping_address(self, node):
-        if not node:
+        if not node['shippingAddress']:
             return
 
         if 'firstName' in node['shippingAddress']:
@@ -537,6 +541,13 @@ class GiftCard:
         self.amount: float = None
         self.number: str = None
 
+    def __str__(self) -> str:
+        result = '\nGift Card\n'
+        result += '---------\n'
+        result += f'Amount: ${self.amount}\n'
+        result += f'Number: {self.number}\n'
+        return result
+
 
 class Payments:
     def __init__(self, order: ShopifyOrder):
@@ -545,6 +556,13 @@ class Payments:
         self.loyalty_payment: LoyaltyPayment = LoyaltyPayment(order)
         self.gc_payment: GCPayment = None  # GCPayment(order) - Not implemented
         self.payload: dict = self.get_payload()
+
+    def __str__(self) -> str:
+        result = '\nPayments\n'
+        result += '--------\n'
+        result += str(self.shopify_payment)
+        result += str(self.loyalty_payment)
+        return result
 
     def get_payload(self) -> dict:
         """Returns the payment payload to be used in NCR Counterpoint API"""
@@ -571,6 +589,15 @@ class LoyaltyPayment(Payment):
         super().__init__(order)
         self.PAY_COD: str = 'LOYALTY'
 
+    def __str__(self) -> str:
+        result = '\nLoyalty Payment\n'
+        result += '---------------\n'
+        result += f'AMT: {self.AMT}\n'
+        result += f'PAY_COD: {self.PAY_COD}\n'
+        result += f'FINAL_PMT: {self.FINAL_PMT}\n'
+        result += f'PMT_LIN_TYP: {self.PMT_LIN_TYP}\n'
+        return result
+
     def get_payload(self) -> dict:
         if self.order.store_credit_amount > 0:
             return {
@@ -589,6 +616,15 @@ class ShopifyPayment(Payment):
         self.PAY_COD: str = 'SHOP'
         self.payload = self.get_payload()
 
+    def __str__(self) -> str:
+        result = '\nShopify Payment\n'
+        result += '---------------\n'
+        result += f'AMT: {self.AMT}\n'
+        result += f'PAY_COD: {self.PAY_COD}\n'
+        result += f'FINAL_PMT: {self.FINAL_PMT}\n'
+        result += f'PMT_LIN_TYP: {self.PMT_LIN_TYP}\n'
+        return result
+
     def get_payload(self) -> dict:
         return {
             'AMT': self.order.total_inc_tax - self.order.store_credit_amount,
@@ -604,3 +640,7 @@ class GCPayment(Payment):
     def __init__(self, order: ShopifyOrder):
         super().__init__(order)
         self.PAY_COD: str = 'GC'
+
+
+if __name__ == '__main__':
+    print(ShopifyOrder(5703560200359))

@@ -285,21 +285,10 @@ class OrderAPI(DocumentAPI):
 
         order = self.order
 
-        first_name = order.billing_address.first_name
-        if not first_name and order.shipping_address:
-            first_name = order.shipping_address.first_name
-
-        last_name = order.billing_address.last_name
-        if not last_name and order.shipping_address:
-            last_name = order.shipping_address.last_name
-
-        phone_number = order.billing_address.phone
-        if not phone_number and order.shipping_address:
-            phone_number = order.shipping_address.phone
-
-        email_address = order.billing_address.email
-        if not email_address and order.shipping_address:
-            email_address = order.shipping_address.email
+        first_name = order.billing_address.first_name or order.shipping_address.first_name
+        last_name = order.billing_address.last_name or order.shipping_address.last_name
+        phone_number = order.billing_address.phone or order.shipping_address.phone
+        email_address = order.billing_address.email or order.shipping_address.email
 
         street_address = order.billing_address.address_1
         city = order.billing_address.city

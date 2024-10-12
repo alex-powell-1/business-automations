@@ -145,9 +145,6 @@ class Order:
 
             barcode = InlineImage(doc, barcode_file, height=Mm(15))  # width in mm
 
-            if not order.shipping_address:
-                order.shipping_address = ShippingAddress()
-
             context = {
                 # Company Details
                 'company_name': creds.Company.name,
