@@ -1,7 +1,7 @@
 from integration.cp_api import OrderAPI
 from setup.error_handler import ProcessInErrorHandler
 from integration.shopify_api import Shopify
-from integration.models.shopify_orders import ShopifyOrder, ShippingAddress
+from integration.models.shopify_orders import ShopifyOrder
 from setup.email_engine import Email
 from database import Database
 import traceback
@@ -65,25 +65,24 @@ class Order:
     @staticmethod
     def send_gift_cards(order: ShopifyOrder):
         """Emails gift cards to customers."""
-        for item in order.physical_items:
-            if item.type == 'giftcertificate' and not item.is_refunded:
-                if not item.gift_certificate_id:
-                    Order.error_handler.add_error_v('Cannot Send Gift Card - No Code Provided')
-                    continue
+        for gc in order.gift_card_purchases:
+            if not gc.number:
+                Order.error_handler.add_error_v('Cannot Send Gift Card - No Code Provided')
+                continue
 
-                email = order.email
-                if email:
-                    first_name = order.billing_address.first_name
-                    last_name = order.billing_address.last_name
+            email = order.email
+            if email:
+                first_name = order.billing_address.first_name
+                last_name = order.billing_address.last_name
 
-                    Email.Customer.GiftCard.send(
-                        name=f'{first_name.title()} {last_name.title()}',
-                        email=email,
-                        gc_code=item.gift_certificate_id,
-                        amount=item.base_price,
-                    )
-                else:
-                    Order.error_handler.add_error_v('Cannot Send Gift Card - No Email Provided')
+                Email.Customer.GiftCard.send(
+                    name=f'{first_name.title()} {last_name.title()}',
+                    email=email,
+                    gc_code=gc.number,
+                    amount=gc.amount,
+                )
+            else:
+                Order.error_handler.add_error_v('Cannot Send Gift Card - No Email Provided')
 
     @staticmethod
     def print_order(order_id: int = None, order: ShopifyOrder = None, test_mode=False):
@@ -92,8 +91,8 @@ class Order:
         if not order:
             order = Shopify.Order.get(order_id)
 
-        if order.status not in ['UNFULFILLED', 'FULFILLED']:
-            Order.logger.info(f'Order {order_id} - Status: {order.status}. Skipping print.')
+        if order.fulfillment_status not in ['UNFULFILLED', 'FULFILLED']:
+            Order.logger.info(f'Order {order_id} - Status: {order.fulfillment_status}. Skipping print.')
             return
 
         if order.is_gift_card_only:
@@ -115,13 +114,13 @@ class Order:
 
         # Get Product List
         product_list = []
-        for x in order.physical_items:
+        for x in order.line_items:
             product_details = {
                 'sku': x.sku,
                 'name': Database.CP.Product.get_long_descr(x.sku),
                 'qty': x.quantity,
-                'base_price': x.base_price,
-                'base_total': x.base_total,
+                'base_price': x.retail_price,
+                'base_total': x.retail_price,
             }
 
             product_list.append(product_details)
@@ -154,9 +153,9 @@ class Order:
                 'order_number': order.id,
                 'order_date': date,
                 'order_time': time,
-                'order_subtotal': order.subtotal_inc_tax,
+                'order_subtotal': order.subtotal,
                 'order_shipping': order.base_shipping_cost,
-                'order_total': order.total_inc_tax,
+                'order_total': order.total,
                 'cust_no': cust_no,
                 # Customer Billing
                 'cb_name': first_name + ' ' + last_name,
@@ -178,15 +177,15 @@ class Order:
                 'cs_state': order.shipping_address.province or '',
                 'cs_zip': order.shipping_address.zip or '',
                 # Product Details
-                'number_of_items': len(order.physical_items),
+                'number_of_items': len(order.line_items),
                 'ticket_notes': order.customer_message or '',
                 'products': product_list,
                 'coupon_code': ', '.join(order.coupon_codes),
-                'coupon_discount': order.coupon_amount if order.coupon_codes else 0,
+                'coupon_discount': order.total_discount,
                 'loyalty': order.store_credit_amount,
                 'gc_amount': 0,  # Not implemented
                 'barcode': barcode,
-                'status': order.status,
+                'status': order.fulfillment_status,
             }
 
             doc.render(context)

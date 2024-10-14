@@ -1,14 +1,147 @@
-from database import Database
 from setup.error_handler import ProcessInErrorHandler
 from setup.utilities import PhoneNumber
 from datetime import datetime, timezone
 from integration.shopify_api import Shopify
+import json
+from database import Database
+
+
+class InventoryItem:
+    def __init__(
+        self,
+        id: str,
+        sku: str,
+        base_price: float,
+        is_refunded: bool,
+        discounted_price: float,
+        quantity: float,
+        quantity_refunded: float,
+        refund_amount: float,
+        lin_seq_no: int,
+    ):
+        self.id: str = id
+        self.sku: str = sku
+        self.is_refunded: bool = is_refunded
+        self.retail_price: float = Database.CP.Product.get_retail_price(self.sku) or base_price
+        self.discounted_price: float = discounted_price
+        self.discount_amount: float = self.retail_price - discounted_price
+        self.quantity: float = quantity
+        self.cost = Database.CP.Product.get_cost(self.sku)
+        self.ext_cost: float = self.cost * self.quantity
+        self.quantity_refunded: int = quantity_refunded
+        self.refund_amount: float = refund_amount
+        self.ext_price: float = self.discounted_price * self.quantity
+        self.lin_seq_no: int = lin_seq_no
+        self.payload: dict = self.get_payload()
+
+    def __str__(self) -> str:
+        result = f'\nLine Item ID: {self.id}\n'
+        result += f'SKU: {self.sku}\n'
+        result += f'Is Refunded: {self.is_refunded}\n'
+        result += f'Quantity Refunded: {self.quantity_refunded}\n'
+        result += f'Base Price: ${self.retail_price:.2f}\n'
+        result += f'Discount Amount: ${self.discount_amount:.2f}\n'
+        result += f'Discounted Price: ${self.discounted_price:.2f}\n'
+        result += f'Quantity: {self.quantity}\n'
+        result += f'Quantity Refunded: {self.quantity_refunded}\n'
+        result += f'Refund Amount: ${self.refund_amount:.2f}\n'
+        result += f'Ext Price: ${self.ext_price:.2f}\n'
+        result += f'Cost: ${self.cost:.2f}\n'
+        result += f'Ext Cost: ${self.ext_cost:.2f}\n'
+        result += f'Line Seq No: {self.lin_seq_no}\n'
+        return result
+
+    def get_payload(self):
+        """Return the payload for the line item to be used in the CP API"""
+
+        return {
+            'LIN_TYP': 'O',
+            'ITEM_NO': self.sku,
+            'USR_ENTD_PRC': False,
+            'QTY_SOLD': self.quantity,
+            'PRC': self.retail_price,
+            'EXT_PRC': self.ext_price,
+            'EXT_COST': self.ext_cost,
+            'DSC_AMT': self.discount_amount,
+            'sku': self.sku,
+        }
+
+
+class GiftCard:
+    """Gift Card Purchase"""
+
+    def __init__(self, amount: float, lin_seq_no: int):
+        self.amount: float = amount
+        self.number: str = None
+        self.pay_code: str = 'GC'
+        self.description: str = 'Gift Certificate'
+        self.lin_seq_no: int = lin_seq_no
+        self.gfc_seq_no: int = 0
+        self.create_as_store_credit: str = 'N'
+
+    def __str__(self) -> str:
+        result = '\nGift Card\n'
+        result += '---------\n'
+        result += f'Amount: ${self.amount:.2f}\n'
+        result += f'Number: {self.number}\n'
+        result += f'Pay Code: {self.pay_code}\n'
+        result += f'Description: {self.description}\n'
+        result += f'Line Seq No: {self.lin_seq_no}\n'
+        result += f'GFC Seq No: {self.gfc_seq_no}\n'
+        result += f'Create As Store Credit: {self.create_as_store_credit}\n'
+
+        return result
+
+    def get_payload(self):
+        return {
+            'GFC_COD': self.pay_code,
+            'GFC_NO': self.number,
+            'AMT': self.amount,
+            'LIN_SEQ_NO': self.lin_seq_no,
+            'DESCR': self.description,
+            'CREATE_AS_STC': self.create_as_store_credit,
+            'GFC_SEQ_NO': self.gfc_seq_no,
+        }
+
+
+class Delivery:
+    def __init__(self, amount: float, is_refunded: bool, lin_seq_no: int):
+        self.amount: float = amount
+        self.sku: str = 'DELIVERY'
+        self.lin_typ: str = 'O'
+        self.qty: int = 1
+        self.total_discount: float = 0
+        self.ext_cost: float = 0
+        self.lin_seq_no: int = lin_seq_no
+        self.payload: dict = self.get_payload()
+
+    def __str__(self) -> str:
+        result = '\nDelivery\n'
+        result += '--------\n'
+        result += str(self.delivery)
+        return result
+
+    def get_payload(self):
+        """Return the payload for the line item to be used in the CP API"""
+
+        return {
+            'LIN_TYP': self.lin_typ,
+            'ITEM_NO': 'DELIVERY',
+            'USR_ENTD_PRC': False,
+            'QTY_SOLD': self.qty,
+            'PRC': self.amount,
+            'EXT_PRC': self.amount * self.qty,
+            'EXT_COST': self.ext_cost,
+            'DSC_AMT': self.total_discount,
+            'LIN_SEQ_NO': self.lin_seq_no,
+        }
 
 
 class ShopifyOrder:
     def __init__(self, order_id: int):
         self.order_id = order_id
         self.node = Shopify.Order.get(self.order_id)['node']
+        print(json.dumps(self.node, indent=4))
         if not self.node:
             raise Exception(f'Order {order_id} not found in Shopify')
 
@@ -18,41 +151,34 @@ class ShopifyOrder:
         self.channel: str = self.get_channel()
         self.email: str = self.node['email'] or ''
         self.date_created: str = ShopifyOrder.convert_date(self.node['createdAt'])
-        self.date_modified: str = ShopifyOrder.convert_date(self.node['updatedAt'])
         self.billing_address: BillingAddress = BillingAddress(self.node)
         self.shipping_address: ShippingAddress = ShippingAddress(self.node)
         self.customer = Customer(self.node) if self.node['customer'] is not None else None
         self.refunds: list[dict] = self.node['refunds']
-        self.status: str = self.get_status()
-        self.payment_status: str = self.node['displayFinancialStatus']
-        self.is_declined: bool = self.payment_status.lower() in ['declined', '']
-        self.is_refund: bool = self.status in ['Refunded', 'Partially Refunded']
-        self.is_partial_refund: bool = self.status == 'Partially Refunded'
-        self.payments: Payments = Payments(self)
-        self.delivery_from_lines: float = 0
-        self.refunded_subtotal: float = 0
-        self.physical_items: list[PhysicalItem] = []
-        self.gift_card_purchases: list[GiftCard] = []
-        self.all_items: list[PhysicalItem | GiftCard] = []
-        self.get_items()
-        self.is_gift_card_only: bool = len(self.physical_items) == 0 and len(self.gift_card_purchases) > 0
+        self.fulfillment_status: str = self.get_fulfillment_status()
+        self.financial_status: str = self.node['displayFinancialStatus']
+        self.is_declined: bool = self.financial_status.lower() in ['declined', '']
+        # Refund Information
+        self.is_refund: bool = self.fulfillment_status in ['Refunded', 'Partially Refunded']
+        self.is_partial_refund: bool = self.fulfillment_status == 'Partially Refunded'
+        self.refunded_subtotal: float = ShopifyOrder.get_money(self.node['totalRefundedSet'])
+        self.refund_total: float = ShopifyOrder.get_money(self.node['totalRefundedSet'])
+        self.total_refunded_shipping = ShopifyOrder.get_money(self.node['totalRefundedShippingSet'])
+        # Shipping Information
         self.shipping_cost: float = self.get_shipping_cost()
+        self.line_items: list[InventoryItem | GiftCard | Delivery] = self.get_items()
+        self.gift_card_purchases: list[GiftCard] = []
+        self.is_gift_card_only: bool = len(self.line_items) == 1 and isinstance(self.line_items[0], GiftCard)
         self.is_shipping: bool = self.shipping_cost > 0
         self.base_shipping_cost: float = self.shipping_cost
-        self.get_shipping_item()
-        self.header_discount: float = ShopifyOrder.get_money(self.node['totalDiscountsSet'])
+        self.total_discount: float = ShopifyOrder.get_money(self.node['totalDiscountsSet'])
         self.coupon_codes: list[str] = self.node['discountCodes']
-        self.coupon_amount: float = self.header_discount
         self.subtotal: float = self.get_subtotal()
-        self.subtotal_ex_tax: float = self.subtotal
-        self.subtotal_inc_tax: float = self.subtotal
         self.total: float = self.get_total()
-        self.total_ex_tax: float = self.total
-        self.total_inc_tax: float = self.total
-        self.refund_total: float = ShopifyOrder.get_money(self.node['totalRefundedSet'])
         self.store_credit_amount: float = self.get_store_credit_amount()
         self.gift_certificate_payment: float = 0  # Not implemented
         self.customer_message: str = self.node['note']
+        self.payments: Payments = Payments(self)
 
     def __str__(self) -> str:
         result = f'\nOrder ID: {self.id}\n'
@@ -60,23 +186,21 @@ class ShopifyOrder:
         result += f'Channel: {self.channel}\n'
         result += f'Email: {self.email}\n'
         result += f'Date Created: {self.date_created}\n'
-        result += f'Date Modified: {self.date_modified}\n'
         result += f'Is Refund: {self.is_refund}\n'
         result += f'Is Declined: {self.is_declined}\n'
-        result += f'Payment Status: {self.payment_status}\n'
-        result += f'Status: {self.status}\n'
+        result += f'Payment Status: {self.financial_status}\n'
+        result += f'Status: {self.fulfillment_status}\n'
         result += str(self.customer)
         result += str(self.billing_address)
         result += str(self.shipping_address)
-        result += f'Transactions: {self.transactions}\n'
-        result += '\nItems\n'
+        result += '\nInventory Items\n'
         result += '-----\n'
-        for i, item in enumerate(self.physical_items):
+        for i, item in enumerate(self.line_items):
             result += f'\nItem {i + 1}\n'
             result += '---------'
             result += str(item)
 
-        result += '\Gift Cards\n'
+        result += '\nGift Card Purchases\n'
         result += '-----\n'
         for i, item in enumerate(self.gift_card_purchases):
             result += f'\nGift Card {i + 1}\n'
@@ -86,28 +210,23 @@ class ShopifyOrder:
         result += '\nDiscounts\n'
         result += '---------\n'
         result += f'Coupon Codes: {self.coupon_codes}\n'
-        result += f'Coupon Amount: ${self.coupon_amount}\n'
-        result += f'Header Discount: ${self.header_discount}\n'
+        result += f'Total Discount: ${self.total_discount:.2f}\n'
         result += '\nTotals\n'
         result += '------\n'
-        result += f'Subtotal: ${self.subtotal}\n'
-        result += f'Subtotal Ex Tax: ${self.subtotal_ex_tax}\n'
-        result += f'Subtotal Inc Tax: ${self.subtotal_inc_tax}\n'
-        result += f'Total: ${self.total}\n'
-        result += f'Total Ex Tax: ${self.total_ex_tax}\n'
-        result += f'Total Inc Tax: ${self.total_inc_tax}\n'
-        result += f'Refund Total: ${self.refund_total}\n'
-        result += f'Store Credit Amount: ${self.store_credit_amount}\n'
+        result += f'Subtotal: ${self.subtotal:.2f}\n'
+        result += f'Total: ${self.total:.2f}\n'
+        result += f'Refund Total: ${self.refund_total:.2f}\n'
+        result += f'Store Credit Amount: ${self.store_credit_amount:.2f}\n'
 
         return result
 
-    def get_status(self) -> str:
+    def get_fulfillment_status(self) -> str:
         if len(self.refunds) > 0:
             return 'Partially Refunded'
         else:
             return self.node['displayFulfillmentStatus']
 
-    def get_items(self) -> list['PhysicalItem']:
+    def get_items(self) -> list[InventoryItem | GiftCard | Delivery]:
         node_items = []
         for i in self.node['lineItems']['edges']:
             item = i['node']
@@ -121,10 +240,14 @@ class ShopifyOrder:
         if not node_items:
             return []
 
-        for item in node_items:
-            price = ShopifyOrder.get_money(item['originalUnitPriceSet'])
+        result = []
+        for i, item in enumerate(node_items):
+            base_price = ShopifyOrder.get_money(item['originalUnitPriceSet'])
+            discounted_price = ShopifyOrder.get_money(item['discountedUnitPriceAfterAllDiscountsSet'])
+
             is_refunded = False
             quantity_refunded = 0
+            refund_amount = 0
 
             if len(self.refunds) > 0:
                 for refunds in self.refunds:
@@ -132,16 +255,11 @@ class ShopifyOrder:
                         if refund['node']['lineItem']['id'] == item['id']:
                             is_refunded = True
                             quantity_refunded = int(refund['node']['quantity'])
-                            self.refunded_subtotal += price * float(quantity_refunded)
+                            refund_amount = discounted_price * quantity_refunded
+                            self.refunded_subtotal += discounted_price * float(quantity_refunded)
 
             if item['name'] is None:
                 item['name'] = ''
-
-            if item['name'].split('-')[0].strip().lower() == 'delivery':
-                if is_refunded:
-                    item['quantity'] = quantity_refunded
-                self.delivery_from_lines += price * float(item['quantity'])
-                continue
 
             if item['name'].split('-')[0].strip().lower() == 'service':
                 item['sku'] = 'SERVICE'
@@ -149,43 +267,46 @@ class ShopifyOrder:
             if item['sku'] is None:
                 continue
 
-            item['isGiftCard'] = 'GFC' in item['sku']
-
-            if item['isGiftCard']:
-                gc = GiftCard(price)
-                self.gift_card_purchases.append(gc)
-                self.all_items.append(gc)
+            if 'GFC' in item['sku']:
+                result.append(GiftCard(base_price, lin_seq_no=i))
             else:
-                physical_item = PhysicalItem(
-                    id=item['id'],
-                    sku=item['sku'],
-                    base_price=price,
-                    price_ex_tax=price,
-                    price_inc_tax=price,
-                    price_tax=0,
-                    base_total=price,
-                    total_ex_tax=price,
-                    total_inc_tax=price,
-                    total_tax=0,
-                    quantity=item['quantity'],
-                    is_refunded=is_refunded,
-                    quantity_refunded=quantity_refunded,
-                    refund_amount=0,
-                    return_id=0,
-                    fixed_shipping_cost=0,
-                    gift_certificate_id=None,
-                    discounted_total_inc_tax=ShopifyOrder.get_money(item['discountedTotalSet']),
-                    applied_discounts=[],
+                result.append(
+                    InventoryItem(
+                        id=item['id'],
+                        sku=item['sku'],
+                        base_price=base_price,
+                        discounted_price=discounted_price,
+                        quantity=item['quantity'],
+                        is_refunded=is_refunded,
+                        quantity_refunded=quantity_refunded,
+                        refund_amount=refund_amount,
+                        lin_seq_no=i,
+                    )
                 )
-                self.physical_items.append(physical_item)
-                self.all_items.append(physical_item)
+
+        if self.shipping_cost > 0:
+            result.append(
+                Delivery(
+                    amount=self.shipping_cost,
+                    is_refund=True if self.fulfillment_status == 'Partially Refunded' else False,
+                    lin_seq_no=len(self.line_items),
+                )
+            )
+
+        gc_count = 0
+        for item in result:
+            if isinstance(item, GiftCard):
+                item.gfc_seq_no = gc_count
+                gc_count += 1
+
+        return result
 
     def get_subtotal(self) -> float:
         if len(self.refunds) > 0:
             return self.refunded_subtotal
 
         return (
-            ShopifyOrder.get_money(self.node['currentSubtotalPriceSet']) + self.header_discount + self.shipping_cost
+            ShopifyOrder.get_money(self.node['currentSubtotalPriceSet']) + self.total_discount + self.shipping_cost
         )
 
     def get_total(self) -> float:
@@ -203,36 +324,7 @@ class ShopifyOrder:
             except:
                 pass
 
-        shipping_cost += self.delivery_from_lines
         return float(shipping_cost)
-
-    def get_shipping_item(self):
-        """Create Dummy Shipping Item"""
-        if self.shipping_cost > 0:
-            self.physical_items.append(
-                ShopifyOrder.LineItem(
-                    id='',
-                    sku='DELIVERY',
-                    type='physical',
-                    base_price=self.shipping_cost,
-                    price_ex_tax=self.shipping_cost,
-                    price_inc_tax=self.shipping_cost,
-                    price_tax=0,
-                    base_total=self.shipping_cost,
-                    total_ex_tax=self.shipping_cost,
-                    total_inc_tax=self.shipping_cost,
-                    total_tax=0,
-                    quantity=1,
-                    is_refunded=True if self.status == 'Partially Refunded' else False,
-                    quantity_refunded=1 if self.status == 'Partially Refunded' else 0,
-                    refund_amount=0,
-                    return_id=0,
-                    fixed_shipping_cost=0,
-                    gift_certificate_id=None,
-                    discounted_total_inc_tax=self.shipping_cost,
-                    applied_discounts=[],
-                )
-            )
 
     def get_store_credit_amount(self) -> float:
         store_credit_amount: float = 0
@@ -330,7 +422,7 @@ class BillingAddress:
         self.address_1: str = None
         self.address_2: str = None
         self.city: str = None
-        self.province: str = None
+        self.state: str = None
         self.zip: str = None
         self.country: str = None
         self.phone: str = None
@@ -346,7 +438,7 @@ class BillingAddress:
         result += f'Address 1: {self.address_1}\n'
         result += f'Address 2: {self.address_2}\n'
         result += f'City: {self.city}\n'
-        result += f'Province: {self.province}\n'
+        result += f'State: {self.state}\n'
         result += f'Zip: {self.zip}\n'
         result += f'Country: {self.country}\n'
         result += f'Phone: {self.phone}\n'
@@ -368,7 +460,7 @@ class BillingAddress:
             if 'city' in node['billingAddress']:
                 self.city: str = node['billingAddress']['city']
             if 'province' in node['billingAddress']:
-                self.province: str = node['billingAddress']['province']
+                self.state: str = node['billingAddress']['province']
             if 'zip' in node['billingAddress']:
                 self.zip: str = node['billingAddress']['zip']
             if 'country' in node['billingAddress']:
@@ -400,7 +492,7 @@ class ShippingAddress:
         self.address_1: str = None
         self.address_2: str = None
         self.city: str = None
-        self.province: str = None
+        self.state: str = None
         self.zip: str = None
         self.country: str = None
         self.phone: str = None
@@ -416,7 +508,7 @@ class ShippingAddress:
         result += f'Address 1: {self.address_1}\n'
         result += f'Address 2: {self.address_2}\n'
         result += f'City: {self.city}\n'
-        result += f'Province: {self.province}\n'
+        result += f'State: {self.state}\n'
         result += f'Zip: {self.zip}\n'
         result += f'Country: {self.country}\n'
         result += f'Phone: {self.phone}\n'
@@ -439,8 +531,8 @@ class ShippingAddress:
             self.address_2 = node['shippingAddress']['address2']
         if 'city' in node['shippingAddress']:
             self.city = node['shippingAddress']['city']
-        if 'state' in node['shippingAddress']:
-            self.state = node['shippingAddress']['state']
+        if 'province' in node['shippingAddress']:
+            self.state = node['shippingAddress']['province']
         if 'zip' in node['shippingAddress']:
             self.zip = node['shippingAddress']['zip']
         if 'country' in node['shippingAddress']:
@@ -449,104 +541,6 @@ class ShippingAddress:
             self.phone = node['shippingAddress']['phone']
         else:
             self.phone = ShopifyOrder.get_phone(node=node)
-
-
-class PhysicalItem:
-    def __init__(
-        self,
-        id: str,
-        sku: str,
-        base_price: float,
-        price_ex_tax: float,
-        price_inc_tax: float,
-        price_tax: float,
-        base_total: float,
-        total_ex_tax: float,
-        total_inc_tax: float,
-        total_tax: float,
-        quantity: float,
-        is_refunded: bool,
-        quantity_refunded: float,
-        refund_amount: float,
-        return_id: float,
-        fixed_shipping_cost: float,
-        gift_certificate_id: str,
-        discounted_total_inc_tax: float,
-        applied_discounts: list,
-    ):
-        self.id: str = id
-        self.sku: str = sku
-        self.base_price: float = base_price
-        self.price_ex_tax: float = price_ex_tax
-        self.price_inc_tax: float = price_inc_tax
-        self.price_tax: float = price_tax
-        self.base_total: float = base_total
-        self.total_ex_tax: float = total_ex_tax
-        self.total_inc_tax: float = total_inc_tax
-        self.total_tax: float = total_tax
-        self.quantity: float = quantity
-        self.cost: float = Database.CP.Product.get_cost(self.sku)
-        self.ext_cost: float = self.cost * self.quantity
-        self.is_refunded: bool = is_refunded
-        self.quantity_refunded: int = quantity_refunded
-        self.refund_amount: float = refund_amount
-        self.return_id: int = return_id
-        self.fixed_shipping_cost: float = fixed_shipping_cost
-        self.gift_certificate_id: str = gift_certificate_id
-        self.discounted_total_inc_tax: float = discounted_total_inc_tax
-        self.applied_discounts: list = applied_discounts
-        self.total_discount: float = self.get_total_discount()
-
-    def __str__(self) -> str:
-        result = f'\nLine Item ID: {self.id}\n'
-        result += f'SKU: {self.sku}\n'
-        result += f'Type: {self.type}\n'
-        result += f'Base Price: {self.base_price}\n'
-        result += f'Price Ex Tax: {self.price_ex_tax}\n'
-        result += f'Price Inc Tax: {self.price_inc_tax}\n'
-        result += f'Price Tax: {self.price_tax}\n'
-        result += f'Base Total: {self.base_total}\n'
-        result += f'Total Ex Tax: {self.total_ex_tax}\n'
-        result += f'Total Inc Tax: {self.total_inc_tax}\n'
-        result += f'Total Tax: {self.total_tax}\n'
-        result += f'Quantity: {self.quantity}\n'
-        result += f'Cost: {self.cost}\n'
-        result += f'Ext Cost: {self.ext_cost}\n'
-        result += f'Is Refunded: {self.is_refunded}\n'
-        result += f'Quantity Refunded: {self.quantity_refunded}\n'
-        result += f'Refund Amount: {self.refund_amount}\n'
-        result += f'Return ID: {self.return_id}\n'
-        result += f'Fixed Shipping Cost: {self.fixed_shipping_cost}\n'
-        result += f'Gift Certificate ID: {self.gift_certificate_id}\n'
-        result += f'Discounted Total Inc Tax: {self.discounted_total_inc_tax}\n'
-        result += f'Applied Discounts: {self.applied_discounts}\n'
-        result += f'Total Discount: {self.total_discount}\n'
-        return result
-
-    def get_total_discount(self) -> float:
-        """Returns the total discount amount associated with a line item"""
-        total_discount = 0
-        if self.type == 'physical':
-            if len(self.applied_discounts) > 0:
-                for discount in self.applied_discounts:
-                    if discount['target'] == 'product':
-                        total_discount += abs(float(discount['amount']))
-        return total_discount
-
-
-class GiftCard:
-    """Gift Card Purchase"""
-
-    def __init__(self, amount: float):
-        self.amount: float = None
-        self.number: str = None
-
-    def __str__(self) -> str:
-        result = '\nGift Card\n'
-        result += '---------\n'
-        result += f'Amount: ${self.amount}\n'
-        result += f'Number: {self.number}\n'
-        return result
 
 
 class Payments:
@@ -577,9 +571,8 @@ class Payments:
 class Payment:
     def __init__(self, order: ShopifyOrder):
         self.order: ShopifyOrder = order
-        self.AMT: float = self.get_amount(order)
         self.FINAL_PMT: str = 'N'
-        self.PMT_LIN_TYP: str = self.PMT_LIN_TYP
+        self.PMT_LIN_TYP: str = 'C' if order.is_refund else 'T'
 
 
 class LoyaltyPayment(Payment):
@@ -588,6 +581,8 @@ class LoyaltyPayment(Payment):
     def __init__(self, order: ShopifyOrder):
         super().__init__(order)
         self.PAY_COD: str = 'LOYALTY'
+        self.AMT: float = order.store_credit_amount
+        self.payload = self.get_payload
 
     def __str__(self) -> str:
         result = '\nLoyalty Payment\n'
@@ -601,7 +596,7 @@ class LoyaltyPayment(Payment):
     def get_payload(self) -> dict:
         if self.order.store_credit_amount > 0:
             return {
-                'AMT': self.order.store_credit_amount,
+                'AMT': self.AMT,
                 'PAY_COD': self.PAY_COD,
                 'FINAL_PMT': self.FINAL_PMT,
                 'PMT_LIN_TYP': self.PMT_LIN_TYP,
@@ -614,6 +609,7 @@ class ShopifyPayment(Payment):
     def __init__(self, order: ShopifyOrder):
         super().__init__(order)
         self.PAY_COD: str = 'SHOP'
+        self.AMT: float = order.total - order.store_credit_amount
         self.payload = self.get_payload()
 
     def __str__(self) -> str:
@@ -627,10 +623,10 @@ class ShopifyPayment(Payment):
 
     def get_payload(self) -> dict:
         return {
-            'AMT': self.order.total_inc_tax - self.order.store_credit_amount,
+            'AMT': self.AMT,
             'PAY_COD': self.PAY_COD,
             'FINAL_PMT': self.FINAL_PMT,
-            'PMT_LIN_TYP': 'C' if self.order.is_refund else 'T',
+            'PMT_LIN_TYP': self.PMT_LIN_TYP,
         }
 
 
@@ -643,4 +639,7 @@ class GCPayment(Payment):
 
 
 if __name__ == '__main__':
-    print(ShopifyOrder(5703560200359))
+    print(ShopifyOrder(5717619933351))
+
+    """Things to work on: Now that the appropriate discount amount is associated with each line item,
+    How will this affect the total discount amount?"""

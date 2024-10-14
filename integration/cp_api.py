@@ -9,7 +9,7 @@ from customer_tools.customers import get_cp_cust_no
 from customer_tools import customers
 from integration.shopify_api import Shopify
 from integration.models.shopify_orders import ShopifyOrder, GiftCard
-from integration.models.cp_orders import CPLineItem, CPNote, CPGiftCard
+from integration.models.cp_orders import CPNote
 from traceback import format_exc as tb
 
 
@@ -111,40 +111,12 @@ class OrderAPI(DocumentAPI):
         self.has_loyalty_payment: bool = False
         self.has_gift_card_payment: bool = False
         self.total_lin_items: int = 0
-        self.line_item_length: int = 0
         self.store_id: str = OrderAPI.get_store_id(self.order)
         self.station_id: str = OrderAPI.get_station_id(self.order)
         self.drawer_id: str = OrderAPI.get_drawer_id(self.order)
         self.cust_no: str = OrderAPI.get_customer_number(self.order)
-        self.doc_lines: list[CPLineItem] = self.get_document_lines()
-        self.gfc_lines: list[CPGiftCard] = self.get_gift_card_purchase_lines()
         self.notes: list[CPNote] = self.get_notes()
         self.payload = self.get_post_payload()
-
-    def get_document_lines(self) -> list[CPLineItem]:
-        """Returns a list of physical line items dicts from a order."""
-        line_items = []
-        for item in self.order.physical_items:
-            if item.type == 'physical':
-                line_items.append(CPLineItem(item))
-                self.total_lin_items += 1
-        return line_items
-
-    def get_gift_card_purchase_lines(self) -> list[CPGiftCard]:
-        """Returns a list of gift card purchases from a list of products from a Shopify order."""
-
-        gift_cards = []
-
-        for i, product in enumerate(self.order.all_items, start=1):
-            if self.is_partial_refund and float(product.quantity_refunded) == 0:
-                continue
-
-            if isinstance(product, GiftCard):
-                gift_cards.append(CPGiftCard(product, self.line_item_length + 1, i))
-                self.line_item_length += 1
-                self.total_gfc_amount += float(product.base_price)
-
-        return gift_cards
 
     def get_notes(self) -> list[CPNote]:
         """Returns a list of notes from a order."""
@@ -175,9 +147,7 @@ class OrderAPI(DocumentAPI):
                 'NORM_TAX_COD': 'EXEMPT',
                 'SHIP_VIA_COD': 'CPC_FLAT' if self.is_refund else 'T' if order.is_shipping else 'C',
                 'PS_DOC_NOTE': self.get_notes(),
-                'PS_DOC_LIN': [line_item.payload for line_item in self.doc_lines],
-                # "PS_DOC_GFC": self.get_gift_cards_from_bc_products(bc_products),
-                '__PS_DOC_GFC__': [gc.payload for gc in self.gfc_lines],
+                'PS_DOC_LIN': [line_item.payload for line_item in self.order.line_items],
                 'PS_DOC_PMT': self.order.payments.payload,
                 'PS_DOC_TAX': [
                     {
@@ -185,7 +155,7 @@ class OrderAPI(DocumentAPI):
                         'RUL_COD': 'TAX',
                         'TAX_DOC_PART': 'S',
                         'TAX_AMT': '0',
-                        'TOT_TXBL_AMT': order.total_inc_tax - order.base_shipping_cost,
+                        'TOT_TXBL_AMT': order.total - order.base_shipping_cost,
                     }
                 ],
             }
@@ -208,45 +178,18 @@ class OrderAPI(DocumentAPI):
 
     def write_discounts(self):
         """Write discounts to the PS_DOC_DISC table."""
-
-        def write_h(doc_id, disc_seq_no: int, disc_amt: float, lin_seq_no: int = None):
-            """Helper function to write discounts to the PS_DOC_DISC table."""
-            if self.is_refund:
-                disc_amt = -disc_amt
-
-            if not lin_seq_no:
-                self.total_hdr_disc += disc_amt
-            else:
-                self.total_lin_disc += disc_amt
-
-            self.total_discount_amount += abs(disc_amt)
-
+        # Processing order discounts
+        if self.order.total_discount:
             Database.CP.Discount.write_discount(
-                doc_id=doc_id,
-                disc_seq_no=disc_seq_no,
-                disc_amt=disc_amt,
-                disc_id='100000000000331' if lin_seq_no else '100000000000330',
-                apply_to='L' if lin_seq_no else 'H',  # L for line, H for header
+                doc_id=self.doc_id,
+                disc_seq_no=self.discount_seq_no,
+                disc_amt=-self.order.total_discount if self.is_refund else self.order.total_discount,
+                apply_to='H',  # L for line, H for header
                 disc_type='A',  # Amount,
                 disc_pct=0,
                 disc_amt_shipped=0,
-                lin_seq_no=lin_seq_no,
             )
-
-        # Processing order discounts
-        if self.order.header_discount:
-            self.logger.info(f'Writing header discount: ${self.order.header_discount}')
-            write_h(self.doc_id, self.discount_seq_no, self.order.header_discount)
-            self.discount_seq_no += 1
-
-        # Processing line discounts
-        for i, item in enumerate(self.doc_lines, start=1):
-            if item.discount_amount:
-                self.logger.info(f'Writing line discount: ${item.discount_amount}')
-                write_h(self.doc_id, self.discount_seq_no, item.discount_amount, i)
-                self.discount_seq_no += 1
-
-        self.total_lin_disc = abs(self.total_lin_disc) if self.is_refund else self.total_lin_disc
+            self.total_discount_amount = self.order.total_discount
 
     def write_loyalty(self):
         self.logger.info('Writing loyalty')
@@ -256,7 +199,7 @@ class OrderAPI(DocumentAPI):
             points = 0
 
             def write_loyalty_line(line_item: dict, lin_seq_no: int):
-                if line_item['sku'] in LOYALTY_EXCLUSIONS:
+                if line_item['ITEM_NO'] in LOYALTY_EXCLUSIONS:
                     return 0
 
                 points_earned = (float(line_item['EXT_PRC'] or 0) * LOYALTY_MULTIPLIER) or 0
@@ -292,7 +235,7 @@ class OrderAPI(DocumentAPI):
 
         street_address = order.billing_address.address_1
         city = order.billing_address.city
-        state = order.billing_address.province
+        state = order.billing_address.state
         zip_code = order.billing_address.zip
 
         self.cust_no = customers.add_new_customer(
@@ -326,7 +269,7 @@ class OrderAPI(DocumentAPI):
             email_address=customer.email,
             street_address=billing_address.address_1,
             city=billing_address.city,
-            state=billing_address.province,
+            state=billing_address.state,
             zip_code=billing_address.zip,
         )
 
@@ -344,7 +287,7 @@ class OrderAPI(DocumentAPI):
         email_address = s.email
         street_address = s.address_1
         city = s.city
-        state = s.province
+        state = s.state
         zip_code = s.zip
 
         if (
@@ -395,76 +338,28 @@ class OrderAPI(DocumentAPI):
         return index
 
     def write_gift_cards(self):
-        for gift_card in self.payload['PS_DOC_HDR']['__PS_DOC_GFC__']:
-            Database.CP.GiftCard.insert(
-                doc_id=self.doc_id,
-                pay_code=GIFT_CARD_PAYCODE,
-                card_no=gift_card['GFC_NO'],
-                amount=gift_card['AMT'],
-                lin_seq_no=gift_card['LIN_SEQ_NO'],
-                descr=gift_card['DESCR'],
-                gfc_seq_no=gift_card['GFC_SEQ_NO'],
-            )
-
-            def commit_query(query):
-                response = Database.query(query)
-                return response
-
-            def get_next_seq_no():
-                query = f"""
-                SELECT MAX(SEQ_NO) FROM SY_GFC_ACTIV
-                WHERE GFC_NO = '{gift_card["GFC_NO"]}'
-                """
-
-                response = Database.query(query)
-
-                try:
-                    return int(response[0][0]) + 1
-                except:
-                    return 1
-
-            def add_gfc_bal(amt: float | int):
-                current_date = datetime.now().strftime('%Y-%m-%d')
-
-                tkt_no = self.payload['PS_DOC_HDR']['TKT_NUM']
-
-                # if self.is_refund:
-                #     refund_index = self.get_refund_index(tkt_num=payload["PS_DOC_HDR"]["TKT_NUM"], suffix=REFUND_SUFFIX)
-                #     tkt_no = f"{payload['PS_DOC_HDR']['TKT_NUM']}{REFUND_SUFFIX}{refund_index}"
-                # else:
-                #     tkt_no = f"{payload['PS_DOC_HDR']['TKT_NUM']}"
-
-                r = commit_query(
-                    f"""
-                    INSERT INTO SY_GFC
-                    (GFC_NO, DESCR, DESCR_UPR, ORIG_DAT, ORIG_STR_ID, ORIG_STA_ID, ORIG_DOC_NO, ORIG_CUST_NO, GFC_COD, NO_EXP_DAT, ORIG_AMT, CURR_AMT, CREATE_METH, LIAB_ACCT_NO, RDM_ACCT_NO, RDM_METH, FORF_ACCT_NO, IS_VOID, LST_ACTIV_DAT, LST_MAINT_DT, LST_MAINT_USR_ID, ORIG_DOC_ID, ORIG_BUS_DAT, RS_STAT)
-                    VALUES
-                    ('{gift_card["GFC_NO"]}', 'Gift Certificate', 'GIFT CERTIFICATE', '{current_date}', 'WEB', 'WEB', '{tkt_no}', '{self.cust_no}', GIFT_CARD_PAYCODE, 'Y', {amt}, {amt}, 'G', 2090, 2090, '!', 8510, 'N', '{current_date}', GETDATE(), 'POS', '{self.doc_id}', '{current_date}', 0)
-                    """
+        for i in self.order.line_items:
+            if isinstance(i, GiftCard):
+                self.total_gfc_amount += i.amount
+                Database.CP.GiftCard.insert_ps_doc_gfc(
+                    doc_id=self.doc_id,
+                    pay_code=i.pay_code,
+                    card_no=i.number,
+                    amount=i.amount,
+                    lin_seq_no=i.lin_seq_no,
+                    descr=i.description,
+                    gfc_seq_no=i.gfc_seq_no,
                 )
-
-                if r['code'] == 200:
-                    self.logger.success('Gift card balance updated')
-                else:
-                    self.error_handler.add_error_v('Gift card balance could not be updated')
-                    self.error_handler.add_error_v(r['message'])
-
-                r = commit_query(
-                    f"""
-                    INSERT INTO SY_GFC_ACTIV
-                    (GFC_NO, SEQ_NO, DAT, STR_ID, STA_ID, DOC_NO, ACTIV_TYP, AMT, LST_MAINT_DT, LST_MAINT_USR_ID, DOC_ID)
-                    VALUES
-                    ('{gift_card["GFC_NO"]}', {get_next_seq_no()}, '{current_date}', 'WEB', 'WEB', '{tkt_no}', 'I', {amt}, GETDATE(), 'POS', '{self.doc_id}')
-                    """
+                Database.CP.GiftCard.insert_sy_gfc(
+                    doc_id=self.doc_id,
+                    card_no=i.number,
+                    tkt_no=self.cp_tkt_no_full,
+                    cust_no=self.cust_no,
+                    amount=i.amount,
                 )
-
-                if r['code'] == 200:
-                    self.logger.success('Gift card balance updated')
-                else:
-                    self.error_handler.add_error_v('Gift card balance could not be updated')
-                    self.error_handler.add_error_v(r['message'])
-
-            add_gfc_bal(gift_card['AMT'])
+                Database.CP.GiftCard.insert_activity(
+                    doc_id=self.doc_id, tkt_no=self.cp_tkt_no, card_no=i.number, amount=i.amount
+                )
 
     def post_order(self):
         """Posts an order/refund/partial refund to Counterpoint."""
@@ -505,7 +400,7 @@ class OrderAPI(DocumentAPI):
 
         if self.is_refund:
             self.invalidate_gfc_purchases()
-            self.total_paid = -self.order.total_inc_tax
+            self.total_paid = -self.order.total
             Database.CP.OpenOrder.update_payment_amount(doc_id=self.doc_id, amount=self.total_paid)
             if self.is_partial_refund:
                 self.process_partial_refund()
@@ -522,10 +417,8 @@ class OrderAPI(DocumentAPI):
         self.write_hdr_total_entry()
         Database.CP.OpenOrder.set_line_type(self.doc_id, line_type='R' if self.is_refund else 'S')
         Database.CP.OpenOrder.set_apply_type(self.doc_id, apply_type='S')
-        Database.CP.OpenOrder.set_line_totals(
-            self.doc_id, self.total_lin_items, self.order.total_inc_tax, self.is_refund
-        )
-        self.set_line_quantities()
+        Database.CP.OpenOrder.set_line_totals(self.doc_id, self.total_lin_items, self.order.total, self.is_refund)
+        self.set_ps_doc_lin_properties()
 
         # Clean up the original document and the reference to the original document.
         # The original document is the ORDER document that was created at the NCR Counterpoint API POST.
@@ -561,7 +454,10 @@ class OrderAPI(DocumentAPI):
             amt = 0 - Database.CP.GiftCard.get_balance(card_no)
             doc_id = self.doc_id
             tkt_no = self.cp_tkt_no_full
-            Database.CP.GiftCard.insert_activity(tkt_no=tkt_no, card_no=card_no, amount=amt, doc_id=doc_id)
+            activity = 'R'  # Redemption
+            Database.CP.GiftCard.insert_activity(
+                tkt_no=tkt_no, card_no=card_no, amount=amt, doc_id=doc_id, activity=activity
+            )
             Database.CP.GiftCard.update_balance(card_no, 0)
 
     def process_partial_refund(self):
@@ -572,10 +468,10 @@ class OrderAPI(DocumentAPI):
 
         remaining: float = 0
 
-        if self.order.total_inc_tax > shop_payment:
-            remaining = self.order.total_inc_tax - shop_payment
+        if self.order.total > shop_payment:
+            remaining = self.order.total - shop_payment
 
-        shop = self.order.total_inc_tax if self.order.total_inc_tax < shop_payment else shop_payment
+        shop = self.order.total if self.order.total < shop_payment else shop_payment
         gc = (remaining / 2 if self.has_loyalty_payment else remaining) if self.has_gift_card_payment else 0
         loy = (remaining / 2 if self.has_gift_card_payment else remaining) if self.has_loyalty_payment else 0
 
@@ -644,12 +540,7 @@ class OrderAPI(DocumentAPI):
         return total
 
     def write_hdr_total_entry(self):
-        sub_tot = (
-            self.order.subtotal_ex_tax - self.total_discount_amount
-            if not self.is_refund
-            else self.order.total_inc_tax
-        )
-        tot = self.order.total_inc_tax
+        sub_tot = self.order.subtotal - self.total_discount_amount if not self.is_refund else self.order.total
         gfc_amount = 0 if self.is_refund else self.total_gfc_amount
         tot_ext_cost = 0
 
@@ -663,72 +554,53 @@ class OrderAPI(DocumentAPI):
             sub_tot=-sub_tot if self.is_refund else sub_tot,
             tot_ext_cost=-tot_ext_cost if self.is_refund else tot_ext_cost,
             tot_tender=self.total_tender,
-            tot=tot,
+            tot=self.order.total,
             total_hdr_disc=self.total_hdr_disc,
             total_lin_disc=self.total_lin_disc,
             eh=ProcessInErrorHandler,
         )
 
-    def set_line_quantities(self):
+    def set_ps_doc_lin_properties(self):
         lines = self.payload['PS_DOC_HDR']['PS_DOC_LIN']
+        order_db = Database.CP.OpenOrder
+        for i, line_item in enumerate(self.order.line_items, start=1):
+            if not line_item.is_refunded:
+                Database.CP.OpenOrder.update_line(
+                    doc_id=self.doc_id,
+                    lin_seq_no=i,
+                    qty_to_rel=line_item.quantity,
+                    ext_prc=line_item.ext_price,
+                    gross_ext_prc=line_item.ext_price,
+                    gross_disp_ext_prc=line_item.ext_price,
+                    qty_entd=0,
+                    qty_to_leave=0,
+                )
+            else:
+                # Refund
+                Database.CP.OpenOrder.update_line(
+                    doc_id=self.doc_id,
+                    lin_seq_no=i,
+                    qty_entd=0,
+                    qty_to_rel=-line_item.quantity_refunded,
+                    qty_to_leave=0,
+                    qty_sold=-line_item.quantity_refunded,
+                    ext_prc=-line_item.refund_amount,
+                    gross_ext_prc=-line_item.refund_amount,
+                    gross_disp_ext_prc=-line_item.refund_amount,
+                    ext_cost=-line_item.ext_cost,
+                    prc_rul_seq_no=-1,
+                    prc_brk_descr='I',
+                )
 
-        if not self.is_refund:
-            # Order
-            order_db = Database.CP.OpenOrder
-            for i, line_item in enumerate(lines, start=1):
+                def negative_column(table: str, column: str, index: int):
+                    order_db.set_value(table, column, -order_db.get_value(table, column, index), index, self.doc_id)
 
-                def set_value_lin(column, value):
-                    order_db.set_value('PS_DOC_LIN', column, value, i, self.doc_id)
+                for i, line_item in enumerate(lines, start=1):
+                    for column in ['ORIG_QTY', 'CALC_EXT_PRC']:
+                        negative_column('PS_DOC_LIN', column, i)
 
-                def get_value_lin(column):
-                    return order_db.get_value('PS_DOC_LIN', column, i, self.doc_id)
-
-                set_value_lin('QTY_ENTD', 0)
-                set_value_lin('QTY_TO_REL', get_value_lin('QTY_SOLD'))
-                set_value_lin('QTY_TO_LEAVE', 0)
-                set_value_lin('EXT_PRC', line_item['EXT_PRC'])
-                set_value_lin('GROSS_EXT_PRC', line_item['EXT_PRC'])
-                set_value_lin('GROSS_DISP_EXT_PRC', line_item['EXT_PRC'])
-        else:
-            # Refund
-            def invert_line_qty(line_item: dict, index: int):
-                qty = -line_item['QTY_SOLD']
-                ext_prc = qty * line_item['PRC']
-                ext_cost = qty * line_item['EXT_COST']
-                Database.CP.OpenOrder.set_ps_doc_lin_quantities(self.doc_id, qty, ext_prc, ext_cost, index)
-
-            for i, line_item in enumerate(lines, start=1):
-                invert_line_qty(line_item, i)
-
-            def negative_column(table: str, column: str, index: int):
-                order_db.set_value(table, column, -order_db.get_value(table, column, index), index, self.doc_id)
-
-            for i, line_item in enumerate(lines, start=1):
-                for column in ['EXT_COST', 'ORIG_QTY', 'GROSS_EXT_PRC', 'GROSS_DISP_EXT_PRC', 'CALC_EXT_PRC']:
-                    negative_column('PS_DOC_LIN', column, i)
-
-                def set_value_lin(column, value):
-                    order_db.set_value('PS_DOC_LIN', column, value, i)
-
-                def get_value_lin(column):
-                    return order_db.get_value('PS_DOC_LIN', column, i)
-
-                set_value_lin('QTY_ENTD', 0)
-                set_value_lin('QTY_TO_REL', get_value_lin('QTY_SOLD'))
-                set_value_lin('QTY_TO_LEAVE', 0)
-
-                def set_value_prc(column, value):
-                    order_db.set_value('PS_DOC_LIN_PRICE', column, value, i)
-
-                def get_value_prc(column):
-                    return order_db.get_value('PS_DOC_LIN_PRICE', column, i)
-
-                def invert_prc(column):
-                    set_value_prc(column, -get_value_prc(column))
-
-                set_value_prc('PRC_RUL_SEQ_NO', -1)
-                set_value_prc('PRC_BRK_DESCR', "'I'")
-                invert_prc('QTY_PRCD')
+                    for column in ['QTY_PRCD']:
+                        negative_column('PS_DOC_LIN_PRICE', column, i)
 
     def more_writes(self):
         pass

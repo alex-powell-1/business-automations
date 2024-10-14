@@ -837,7 +837,7 @@ class Database:
                 else:
                     return code
 
-            def insert(
+            def insert_ps_doc_gfc(
                 doc_id: str,
                 pay_code: str,
                 card_no: str,
@@ -866,6 +866,46 @@ class Database:
                 else:
                     eh.error_handler.add_error_v(f'Gift card {card_no} could not be written')
                     eh.error_handler.add_error_v(response['message'])
+
+            def insert_sy_gfc(
+                doc_id: str,
+                card_no: str,
+                tkt_no: str,
+                cust_no: str,
+                amount: float,
+                current_date: str = datetime.now().strftime('%Y-%m-%d'),
+                store: str = 'WEB',
+                station: str = 'WEB',
+                gfc_paycode: str = 'GC',
+                description: str = 'Gift Certificate',
+                liability_acct: int = 2090,
+                rdm_acct: int = 2090,
+                forf_acct: int = 8510,
+                no_exp_dat: str = 'Y',
+                is_void: str = 'N',
+                lst_maint_dt='GETDATE()',
+                lst_maint_user='POS',
+                eh=ProcessInErrorHandler,
+            ):
+                query = f"""
+                    INSERT INTO SY_GFC
+                    (GFC_NO, DESCR, DESCR_UPR, ORIG_DAT, ORIG_STR_ID, 
+                    ORIG_STA_ID, ORIG_DOC_NO, ORIG_CUST_NO, GFC_COD, NO_EXP_DAT, ORIG_AMT, CURR_AMT, 
+                    CREATE_METH, LIAB_ACCT_NO, RDM_ACCT_NO, RDM_METH, FORF_ACCT_NO, IS_VOID, LST_ACTIV_DAT, 
+                    LST_MAINT_DT, LST_MAINT_USR_ID, ORIG_DOC_ID, ORIG_BUS_DAT, RS_STAT)
+                    VALUES
+                    ('{card_no}', '{description}', '{description.upper()}', '{current_date}', '{store}', 
+                    '{station}', '{tkt_no}', '{cust_no}', {gfc_paycode}, '{no_exp_dat}', {amount}, {amount}, 
+                    'G', {liability_acct}, {rdm_acct}, '!', {forf_acct}, '{is_void}', '{current_date}', 
+                    {lst_maint_dt}, '{lst_maint_user}', '{doc_id}', '{current_date}', 0)
+                    """
+                r = Database.query(query)
+
+                if r['code'] == 200:
+                    eh.logger.success('Gift card inserted into SY_GFC')
+                else:
+                    eh.error_handler.add_error_v('Gift card balance could not be inserted into SY_GFC')
+                    eh.error_handler.add_error_v(r['message'])
 
             def get_balance(card_no: str) -> float:
                 query = f"""
@@ -899,9 +939,9 @@ class Database:
                 card_no: str,
                 amount: float,
                 doc_id: str,
-                store: str,
-                station: str,
-                activity: str = 'R',  # R = Redeem
+                store: str = 'WEB',
+                station: str = 'WEB',
+                activity: str = 'I',  # R = Redeem # I = Issue
                 user_id: str = 'POS',
                 eh=ProcessInErrorHandler,
             ):
@@ -1053,7 +1093,7 @@ class Database:
                     eh.error_handler.add_error_v(response['message'])
 
         class OpenOrder:
-            def set_value(table, column, value, index, doc_id, eh=ProcessInErrorHandler):
+            def set_value(table: str, column: str, value, index, doc_id: str, eh=ProcessInErrorHandler):
                 query = f"""
                     UPDATE {table}
                     SET {column} = {value}
@@ -1423,6 +1463,66 @@ class Database:
                         f'Line items could not be updated for DOC_ID: {doc_id}.\nResponse: {response}\nQuery: {query}'
                     )
 
+            def update_line(
+                doc_id: str,
+                lin_seq_no: int,
+                qty_sold: int = None,
+                prc: float = None,
+                qty_to_rel: int = None,
+                ext_prc: float = None,
+                ext_cost: float = None,
+                gross_ext_prc: float = None,
+                gross_disp_ext_prc: float = None,
+                qty_entd: int = None,
+                qty_to_leave: int = None,
+                prc_rul_seq_no: int = None,
+                prc_brk_descr: str = None,
+                eh=ProcessInErrorHandler,
+                verbose: bool = False,
+            ):
+                query = """
+                UPDATE PS_DOC_LIN
+                SET """
+                query_filter = f"WHERE DOC_ID = '{doc_id}' AND LIN_SEQ_NO = {lin_seq_no}"
+
+                if qty_sold:
+                    query += f'QTY_SOLD = {qty_sold}, '
+                if prc:
+                    query += f'PRC = {prc}, '
+                if qty_to_rel:
+                    query += f'QTY_TO_REL = {qty_to_rel}, '
+                if ext_prc:
+                    query += f'EXT_PRC = {ext_prc}, '
+                if ext_cost:
+                    query += f'EXT_COST = {ext_cost}, '
+                if gross_ext_prc:
+                    query += f'GROSS_EXT_PRC = {gross_ext_prc}, '
+                if gross_disp_ext_prc:
+                    query += f'GROSS_DISP_EXT_PRC = {gross_disp_ext_prc}, '
+                if qty_entd:
+                    query += f'QTY_ENTD = {qty_entd}, '
+                if qty_to_leave:
+                    query += f'QTY_TO_LEAVE = {qty_to_leave}, '
+                if prc_rul_seq_no:
+                    query += f'PRC_RUL_SEQ_NO = {prc_rul_seq_no}, '
+                if prc_brk_descr:
+                    query += f"PRC_BRK_DESCR = '{prc_brk_descr}', "
+
+                query = query.rstrip(', ')
+                query += f' {query_filter}'
+
+                response = Database.query(query)
+                if response['code'] == 200:
+                    if verbose:
+                        eh.logger.success(f'Line {lin_seq_no} updated: {query}')
+                    else:
+                        eh.logger.success(f'Line {lin_seq_no} updated')
+                elif response['code'] == 201:
+                    eh.logger.warn(f'Line {lin_seq_no} not found')
+                else:
+                    eh.error_handler.add_error_v(f'Line {lin_seq_no} could not be updated')
+                    eh.error_handler.add_error_v(response['message'])
+
             def set_ps_doc_lin_quantities(
                 doc_id: str, qty: float, ext_prc: float, ext_cost: float, lin_seq_no: int, eh=ProcessInErrorHandler
             ):
@@ -1567,6 +1667,18 @@ class Database:
                 response = Database.query(query)
                 try:
                     return response[0][0]
+                except:
+                    return None
+
+            def get_retail_price(sku: str) -> float:
+                query = f"""
+                SELECT PRC_1
+                FROM IM_PRC
+                WHERE ITEM_NO = '{sku}'
+                """
+                response = Database.query(query)
+                try:
+                    return float(response[0][0])
                 except:
                     return None
 
@@ -3230,7 +3342,6 @@ class Database:
                 doc_id: int,
                 disc_seq_no: int,
                 disc_amt: float,
-                disc_id: str,
                 apply_to: str,
                 disc_type: str,
                 disc_pct: float,
@@ -3239,6 +3350,7 @@ class Database:
                 eh=ProcessInErrorHandler,
             ):
                 """Write an order discount to the PS_DOC_DISC table."""
+                disc_id = '100000000000331' if apply_to == 'L' else '100000000000330'
                 query = f"""
                 INSERT INTO PS_DOC_DISC
                 (DOC_ID, DISC_SEQ_NO, LIN_SEQ_NO, DISC_ID, APPLY_TO, DISC_TYP, 
@@ -3246,7 +3358,7 @@ class Database:
                 
                 VALUES
                 
-                ('{doc_id}', {disc_seq_no}, {lin_seq_no or "NULL"}, {disc_id}, '{apply_to}', '{disc_type}', 
+                ('{doc_id}', {disc_seq_no}, {lin_seq_no if apply_to == 'L' else "NULL"}, {disc_id}, '{apply_to}', '{disc_type}', 
                 {disc_amt}, {disc_pct}, {disc_amt_shipped})
                 """
 

@@ -1,230 +1,239 @@
 query order($id: ID!) {
-    node(id: $id) {
+  node(id: $id) {
+    id
+    ... on Order {
+      id
+      name
+
+      channelInformation {
         id
-        ... on Order {
+        channelId
+        channelDefinition {
+          channelName
+          handle
+          subChannelName
+        }
+      }
+
+      billingAddress {
+        address1
+        address2
+        city
+        company
+        country
+        firstName
+        lastName
+        phone
+        province
+        zip
+      }
+
+      createdAt
+
+      customer {
+        id
+        firstName
+        lastName
+        email
+        phone
+      }
+
+      email
+      discountCodes
+      note
+      requiresShipping
+
+      shippingAddress {
+        address1
+        address2
+        city
+        company
+        country
+        firstName
+        lastName
+        phone
+        province
+        zip
+      }
+
+      shippingLine {
+        discountedPriceSet {
+          shopMoney {
+            amount
+          }
+        }
+      }
+
+      updatedAt
+
+      currentSubtotalPriceSet {
+        shopMoney {
+          amount
+        }
+      }
+
+      currentTotalPriceSet {
+        shopMoney {
+          amount
+        }
+      }
+
+      displayFinancialStatus
+      displayFulfillmentStatus
+
+      subtotalLineItemsQuantity
+
+      lineItems(first: 250) {
+        edges {
+          node {
             id
             name
 
-            channelInformation {
-                id
-                channelId
-                channelDefinition {
-                    channelName
-                    handle
-                    subChannelName
-                }
+            originalTotalSet {
+              shopMoney {
+                amount
+              }
             }
 
-            billingAddress {
-                address1
-                address2
-                city
-                company
-                country
-                firstName
-                lastName
-                phone
-                province
-                zip
+            originalUnitPriceSet {
+              shopMoney {
+                amount
+              }
             }
 
-            createdAt
-
-            customer {
-                id
-                firstName
-                lastName
-                email
-                phone
+            totalDiscountSet {
+              shopMoney {
+                amount
+              }
             }
 
-            email
-            discountCodes
-            note
-            requiresShipping
-
-            shippingAddress {
-                address1
-                address2
-                city
-                company
-                country
-                firstName
-                lastName
-                phone
-                province
-                zip
+            discountedTotalSet {
+              shopMoney {
+                amount
+              }
+            }
+            discountedUnitPriceSet {
+              shopMoney {
+                amount
+              }
+            }
+            discountedUnitPriceAfterAllDiscountsSet {
+              shopMoney {
+                amount
+              }
             }
 
-            shippingLine {
-                discountedPriceSet {
-                    shopMoney {
-                        amount
-                    }
-                }
-            }
-
-            updatedAt
-
-            currentSubtotalPriceSet {
-                shopMoney {
-                    amount
-                }
-            }
-
-            currentTotalPriceSet {
-                shopMoney {
-                    amount
-                }
-            }
-
-            displayFinancialStatus
-            displayFulfillmentStatus
-
-            subtotalLineItemsQuantity
-
-            lineItems(first: 250) {
-                edges {
-                    node {
-                        id
-                        name
-
-                        originalTotalSet {
-                            shopMoney {
-                                amount
-                            }
-                        }
-
-                        originalUnitPriceSet {
-                            shopMoney {
-                                amount
-                            }
-                        }
-
-                        totalDiscountSet {
-                            shopMoney {
-                                amount
-                            }
-                        }
-
-                        discountedTotalSet {
-                            shopMoney {
-                                amount
-                            }
-                        }
-
-                        quantity
-                        sku
-
-                    }
-                }
-            }
-
-            billingAddressMatchesShippingAddress
-            cancelReason
-            cancellation {
-                staffNote
-            }
-            cancelledAt
-
-            cartDiscountAmountSet {
-                shopMoney {
-                    amount
-                }
-            }
-            currentCartDiscountAmountSet {
-                shopMoney {
-                    amount
-                }
-            }
-
-            closed
-            closedAt
-
-            currentTaxLines {
-                rate
-                ratePercentage
-                title
-                priceSet {
-                    shopMoney {
-                        amount
-                    }
-                }
-            }
-
-            currentTotalAdditionalFeesSet {
-                shopMoney {
-                    amount
-                }
-            }
-
-            currentTotalDiscountsSet {
-                shopMoney {
-                    amount
-                }
-            }
-
-            totalDiscountsSet {
-                shopMoney {
-                    amount
-                }
-            }
-
-            returnStatus
-
-            transactions(first: 10) {
-                amountSet {
-                    shopMoney {
-                        amount
-                    }
-                }
-                status
-                gateway
-                formattedGateway
-                kind
-            }
-
-            originalTotalPriceSet {
-                shopMoney {
-                    amount
-                }
-            }
-
-            discountCode
-
-            discountCodes
-
-            refunds(first: 10) {
-                refundLineItems(first: 250) {
-                    edges {
-                        node {
-                            lineItem {
-                                id
-                            }
-                            quantity
-                            subtotalSet {
-                                shopMoney {
-                                    amount
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            totalRefundedSet {
-                shopMoney {
-                    amount
-                }
-            }
-
-            totalRefundedShippingSet {
-                shopMoney {
-                    amount
-                }
-            }
+            quantity
+            sku
+          }
         }
+      }
+
+      billingAddressMatchesShippingAddress
+      cancelReason
+      cancellation {
+        staffNote
+      }
+      cancelledAt
+
+      cartDiscountAmountSet {
+        shopMoney {
+          amount
+        }
+      }
+      currentCartDiscountAmountSet {
+        shopMoney {
+          amount
+        }
+      }
+
+      closed
+      closedAt
+
+      currentTaxLines {
+        rate
+        ratePercentage
+        title
+        priceSet {
+          shopMoney {
+            amount
+          }
+        }
+      }
+
+      currentTotalAdditionalFeesSet {
+        shopMoney {
+          amount
+        }
+      }
+
+      currentTotalDiscountsSet {
+        shopMoney {
+          amount
+        }
+      }
+
+      totalDiscountsSet {
+        shopMoney {
+          amount
+        }
+      }
+
+      returnStatus
+
+      transactions(first: 10) {
+        amountSet {
+          shopMoney {
+            amount
+          }
+        }
+        status
+        gateway
+        formattedGateway
+        kind
+      }
+
+      originalTotalPriceSet {
+        shopMoney {
+          amount
+        }
+      }
+
+      discountCode
+
+      discountCodes
+
+      refunds(first: 10) {
+        refundLineItems(first: 250) {
+          edges {
+            node {
+              lineItem {
+                id
+              }
+              quantity
+              subtotalSet {
+                shopMoney {
+                  amount
+                }
+              }
+            }
+          }
+        }
+      }
+
+      totalRefundedSet {
+        shopMoney {
+          amount
+        }
+      }
+
+      totalRefundedShippingSet {
+        shopMoney {
+          amount
+        }
+      }
     }
+  }
 }
 
 query orders {
