@@ -165,8 +165,6 @@ class OrderAPI(DocumentAPI):
         if self.is_refund:
             payload['PS_DOC_HDR']['TAX_OVRD_REAS'] = 'Y'
 
-        self.sub_tot = sum([float(line_item['EXT_PRC']) for line_item in payload['PS_DOC_HDR']['PS_DOC_LIN']])
-
         if self.verbose:
             self.logger.info(f'\nPayload: \n\n{json.dumps(payload, indent=4)}\n')
 
@@ -193,14 +191,14 @@ class OrderAPI(DocumentAPI):
                 Database.CP.Discount.write_discount(
                     doc_id=self.doc_id,
                     disc_seq_no=self.discount_seq_no,
-                    disc_amt=line_item.discount_amount,
+                    disc_amt=line_item.extended_discount,
                     apply_to='L',
                     disc_type='A',
                     disc_pct=0,
                     disc_amt_shipped=0,
                     lin_seq_no=line_item.lin_seq_no,
                 )
-                self.total_lin_disc += line_item.discount_amount
+                self.total_lin_disc += line_item.extended_discount
                 self.discount_seq_no += 1
 
     def write_loyalty(self):
