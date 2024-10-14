@@ -395,7 +395,6 @@ class OrderAPI(DocumentAPI):
 
         # Set Order Properties
         self.cp_tkt_no = self.payload['PS_DOC_HDR']['TKT_NUM']  # S1133
-        gift_lines = self.payload['PS_DOC_HDR']['__PS_DOC_GFC__']
         self.total_tender = self.order.refund_total if self.is_refund else self.get_total_tender()
 
         # Write Tables
@@ -411,8 +410,7 @@ class OrderAPI(DocumentAPI):
         else:
             # Flow for Standard Orders
             self.redeem_loyalty_pmts()
-            if gift_lines:
-                self.write_gift_cards()
+            self.write_gift_cards()
 
         Database.CP.OpenOrder.set_ticket_date(self.doc_id, self.order.date_created)
         Database.CP.OpenOrder.delete_hdr_total_entry(self.doc_id)
@@ -450,17 +448,16 @@ class OrderAPI(DocumentAPI):
 
     def invalidate_gfc_purchases(self):
         """Removes the balance from PURCHASED gift cards."""
-        gift_cards = self.payload['PS_DOC_HDR']['__PS_DOC_GFC__']
-        for gift_card in gift_cards:
-            card_no = gift_card['GFC_NO']
-            amt = 0 - Database.CP.GiftCard.get_balance(card_no)
-            doc_id = self.doc_id
-            tkt_no = self.cp_tkt_no_full
-            activity = 'R'  # Redemption
-            Database.CP.GiftCard.insert_activity(
-                tkt_no=tkt_no, card_no=card_no, amount=amt, doc_id=doc_id, activity=activity
-            )
-            Database.CP.GiftCard.update_balance(card_no, 0)
+        for item in self.order.line_items:
+            if isinstance(item, GiftCard):
+                amt = 0 - Database.CP.GiftCard.get_balance(item.number)
+                doc_id = self.doc_id
+                tkt_no = self.cp_tkt_no_full
+                activity = 'R'  # Redemption
+                Database.CP.GiftCard.insert_activity(
+                    tkt_no=tkt_no, card_no=item.number, amount=amt, doc_id=doc_id, activity=activity
+                )
+                Database.CP.GiftCard.update_balance(item.number, 0)
 
     def refund_payments(self):
         order_db = Database.CP.OpenOrder
