@@ -26,12 +26,15 @@ class Order:
         send_gfc: bool = True,
         print_order: bool = True,
         verbose: bool = False,
+        gc_code_override: str = None,
     ):
         self.verbose = verbose
-        self.order: ShopifyOrder = ShopifyOrder(order_id)
+        self.order: ShopifyOrder = ShopifyOrder(order_id, gc_code_override=gc_code_override)
+        print(self.order)
         self.post: bool = post
         self.send_gfc: bool = send_gfc
         self.print_it: bool = print_order
+        self.gc_code_override: str = gc_code_override
 
     def __str__(self) -> str:
         return self.order
@@ -154,7 +157,7 @@ class Order:
                 'order_date': date,
                 'order_time': time,
                 'order_subtotal': order.subtotal,
-                'order_shipping': order.base_shipping_cost,
+                'order_shipping': order.shipping_cost,
                 'order_total': order.total,
                 'cust_no': cust_no,
                 # Customer Billing
@@ -166,7 +169,7 @@ class Order:
                 'cb_state': order.billing_address.province or '',
                 'cb_zip': order.billing_address.zip or '',
                 # Customer Shipping
-                'shipping_method': 'Delivery' if order.base_shipping_cost > 0 else 'Pickup',
+                'shipping_method': 'Delivery' if order.shipping_cost > 0 else 'Pickup',
                 'cs_name': (order.shipping_address.first_name or '')
                 + ' '
                 + (order.shipping_address.last_name or ''),
@@ -228,9 +231,9 @@ class Order:
         OrderAPI.delete(ticket_no=tkt_no)
 
         if points_earned:
-            Database.CP.Loyalty.remove_points(cust_no=customer, points=points_earned)
+            Database.CP.Loyalty.remove_points(cust_no=customer, amount=points_earned)
         if points_redeeemed:
-            Database.CP.Loyalty.add_points(cust_no=customer, points=points_redeeemed)
+            Database.CP.Loyalty.add_points(cust_no=customer, amount=points_redeeemed)
 
 
 class OrderProcessor:
@@ -244,5 +247,5 @@ class OrderProcessor:
 
 
 if __name__ == '__main__':
-    # Order.delete(tkt_no='S1158')
-    Order(5717619933351, print_order=False, send_gfc=False).process()
+    # Order.delete(tkt_no='S1151')
+    Order(5703560200359, print_order=False, send_gfc=False).process()

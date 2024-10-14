@@ -8,7 +8,7 @@ from setup.error_handler import ProcessInErrorHandler
 from customer_tools.customers import get_cp_cust_no
 from customer_tools import customers
 from integration.shopify_api import Shopify
-from integration.models.shopify_orders import ShopifyOrder, GiftCard
+from integration.models.shopify_orders import ShopifyOrder, GiftCard, InventoryItem, Delivery
 from integration.models.cp_orders import CPNote
 from traceback import format_exc as tb
 
@@ -100,7 +100,6 @@ class OrderAPI(DocumentAPI):
         self.cp_tkt_no: str = None  # S1133
         self.cp_tkt_no_full: str = None  # S1133R1 or S1133 or S1133PR1
         self.discount_seq_no: int = 1
-        self.total_discount_amount: float = 0
         self.total_gfc_amount: float = 0
         self.total_hdr_disc: float = 0
         self.total_lin_disc: float = 0
@@ -120,6 +119,13 @@ class OrderAPI(DocumentAPI):
         if self.order.customer_message:
             notes.append(CPNote(self.order))
         return notes
+
+    def get_ps_doc_lin(self) -> list[dict]:
+        result = []
+        for item in self.order.line_items:
+            if isinstance(item, InventoryItem | Delivery):
+                result.append(item.payload)
+        return result
 
     def get_post_payload(self) -> dict:
         """Returns the POST payload for a Counterpoint order."""
@@ -143,7 +149,7 @@ class OrderAPI(DocumentAPI):
                 'NORM_TAX_COD': 'EXEMPT',
                 'SHIP_VIA_COD': 'CPC_FLAT' if self.is_refund else 'T' if order.is_shipping else 'C',
                 'PS_DOC_NOTE': self.get_notes(),
-                'PS_DOC_LIN': [line_item.payload for line_item in self.order.line_items],
+                'PS_DOC_LIN': self.get_ps_doc_lin(),
                 'PS_DOC_PMT': self.order.payments.payload,
                 'PS_DOC_TAX': [
                     {
@@ -151,7 +157,7 @@ class OrderAPI(DocumentAPI):
                         'RUL_COD': 'TAX',
                         'TAX_DOC_PART': 'S',
                         'TAX_AMT': '0',
-                        'TOT_TXBL_AMT': order.total - order.base_shipping_cost,
+                        'TOT_TXBL_AMT': order.total - order.shipping_cost,
                     }
                 ],
             }
@@ -189,18 +195,21 @@ class OrderAPI(DocumentAPI):
 
         # Processing line discounts
         for line_item in self.order.line_items:
+            if isinstance(line_item, GiftCard):
+                continue
+
             if line_item.discount_amount and not line_item.is_refunded:
                 Database.CP.Discount.write_discount(
                     doc_id=self.doc_id,
                     disc_seq_no=self.discount_seq_no,
-                    disc_amt=line_item.discount_amount,
+                    disc_amt=line_item.extended_discount,
                     apply_to='L',
                     disc_type='A',
                     disc_pct=0,
                     disc_amt_shipped=0,
                     lin_seq_no=line_item.lin_seq_no,
                 )
-                self.total_lin_disc += line_item.discount_amount
+                self.total_lin_disc += line_item.extended_discount
                 self.discount_seq_no += 1
 
     def write_loyalty(self):
@@ -214,9 +223,13 @@ class OrderAPI(DocumentAPI):
         point_balance = Database.CP.Customer.get_loyalty_balance(self.cust_no)
 
         for line in self.order.line_items:
+            if isinstance(line, GiftCard):
+                continue
+
             if line.sku in LOYALTY_EXCLUSIONS:
                 continue
-            item_points_earned = (float(line.ext_price or 0) * LOYALTY_MULTIPLIER) or 0
+
+            item_points_earned = (float(line.ext_discounted_price or 0) * LOYALTY_MULTIPLIER) or 0
             points_earned += item_points_earned
             Database.CP.Loyalty.write_line(self.doc_id, line.lin_seq_no, item_points_earned)
 
@@ -263,6 +276,8 @@ class OrderAPI(DocumentAPI):
 
     def update_customer(self):
         """Update an existing customer in Counterpoint from an order."""
+        if self.cust_no == 'CASH':
+            return
         self.logger.info('Updating existing customer')
         order = self.order
         customer = order.customer
@@ -378,7 +393,6 @@ class OrderAPI(DocumentAPI):
         if not self.cust_no:
             self.error_handler.add_error_v('Valid customer number is required')
             return
-
         response = self.post_document()
 
         if response['ErrorCode'] == 'SUCCESS':
@@ -415,7 +429,7 @@ class OrderAPI(DocumentAPI):
         Database.CP.OpenOrder.set_ticket_date(self.doc_id, self.order.date_created)
         Database.CP.OpenOrder.delete_hdr_total_entry(self.doc_id)
         Database.CP.OpenOrder.set_loyalty_program(self.doc_id)
-        self.write_hdr_total_entry()
+        self.write_ps_doc_tot()
         Database.CP.OpenOrder.set_line_type(self.doc_id, line_type='R' if self.is_refund else 'S')
         Database.CP.OpenOrder.set_apply_type(self.doc_id, apply_type='S')
         Database.CP.OpenOrder.set_line_totals(self.doc_id, self.total_lin_items, self.order.total, self.is_refund)
@@ -519,25 +533,21 @@ class OrderAPI(DocumentAPI):
 
         return total
 
-    def write_hdr_total_entry(self):
-        sub_tot = self.order.subtotal - self.total_discount_amount if not self.is_refund else self.order.total
+    def write_ps_doc_tot(self):
+        sub_tot = self.order.subtotal - self.order.total_discount if not self.is_refund else self.order.total
         gfc_amount = 0 if self.is_refund else self.total_gfc_amount
-        tot_ext_cost = 0
-
-        for line_item in self.payload['PS_DOC_HDR']['PS_DOC_LIN']:
-            tot_ext_cost += Database.CP.Product.get_cost(line_item['ITEM_NO'])
 
         Database.CP.OpenOrder.insert_hdr_total_entry(
             doc_id=self.doc_id,
-            lines=len(self.payload['PS_DOC_HDR']['PS_DOC_LIN']),
+            lines=len(self.order.line_items),
             gfc_amt=gfc_amount,
             sub_tot=-sub_tot if self.is_refund else sub_tot,
-            tot_ext_cost=-tot_ext_cost if self.is_refund else tot_ext_cost,
+            tot_ext_cost=-self.order.total_extended_cost if self.is_refund else self.order.total_extended_cost,
             tot_tender=self.total_tender,
             tot=self.order.total,
             total_hdr_disc=self.total_hdr_disc,
-            total_lin_disc=self.total_lin_disc,
-            eh=ProcessInErrorHandler,
+            total_lin_disc=self.order.total_discount,
+            tot_hdr_discntbl_amt=self.order.subtotal,
         )
 
     def set_ps_doc_lin_properties(self):
@@ -545,7 +555,7 @@ class OrderAPI(DocumentAPI):
 
         if self.is_refund:
             for item in self.order.line_items:
-                if not item.is_refunded:
+                if not item.is_refunded or isinstance(item, GiftCard):
                     continue
                 else:
                     order_db.update_line(
@@ -576,6 +586,9 @@ class OrderAPI(DocumentAPI):
 
         else:
             for item in self.order.line_items:
+                if isinstance(item, GiftCard):
+                    continue
+
                 order_db.update_line(
                     doc_id=self.doc_id,
                     lin_seq_no=item.lin_seq_no,
@@ -911,4 +924,4 @@ class HoldOrder(DocumentAPI):
 
 
 if __name__ == '__main__':
-    pass
+    OrderAPI.delete(ticket_no='107437188600167')

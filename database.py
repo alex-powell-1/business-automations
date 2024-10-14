@@ -895,7 +895,7 @@ class Database:
                     LST_MAINT_DT, LST_MAINT_USR_ID, ORIG_DOC_ID, ORIG_BUS_DAT, RS_STAT)
                     VALUES
                     ('{card_no}', '{description}', '{description.upper()}', '{current_date}', '{store}', 
-                    '{station}', '{tkt_no}', '{cust_no}', {gfc_paycode}, '{no_exp_dat}', {amount}, {amount}, 
+                    '{station}', '{tkt_no}', '{cust_no}', '{gfc_paycode}', '{no_exp_dat}', {amount}, {amount}, 
                     'G', {liability_acct}, {rdm_acct}, '!', {forf_acct}, '{is_void}', '{current_date}', 
                     {lst_maint_dt}, '{lst_maint_user}', '{doc_id}', '{current_date}', 0)
                     """
@@ -1070,6 +1070,9 @@ class Database:
             def write_ps_doc_hdr_loy_pgm(
                 doc_id, points_earned: float, points_redeemed: float, point_balance: float, eh=ProcessInErrorHandler
             ):
+                if point_balance < 0:
+                    point_balance = 0
+
                 query = f"""
                 INSERT INTO PS_DOC_HDR_LOY_PGM
                 (DOC_ID, LIN_LOY_PTS_EARND, LOY_PTS_EARND_GROSS, LOY_PTS_ADJ_FOR_RDM, 
@@ -1430,6 +1433,7 @@ class Database:
                 tot: float,
                 total_hdr_disc: float,
                 total_lin_disc: float,
+                tot_hdr_discntbl_amt: float,
                 eh=ProcessInErrorHandler,
             ):
                 query = f"""
@@ -1442,9 +1446,8 @@ class Database:
                 ('{doc_id}', 'S', 0, '!', 0, {lines}, {gfc_amt}, 
                 0, {sub_tot}, 0, {tot_ext_cost}, 0, 0, 0, 
                 {tot_tender}, 0, 0, 0, {tot}, 0, {total_hdr_disc}, {total_lin_disc}, 
-                {sub_tot}, 0)
+                {tot_hdr_discntbl_amt}, 0)
                 """
-
                 response = Database.query(query)
 
                 if response['code'] == 200:

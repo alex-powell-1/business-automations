@@ -42,6 +42,7 @@ class InventoryItem:
         self.tax: float = tax
         # Totals
         self.ext_price: float = self.retail_price * self.quantity
+        self.ext_discounted_price: float = self.discounted_price * self.quantity
         self.line_total: float = self.ext_price - self.extended_discount
 
         self.payload: dict = self.get_payload()
@@ -87,14 +88,17 @@ class InventoryItem:
 class GiftCard:
     """Gift Card Purchase"""
 
-    def __init__(self, amount: float, lin_seq_no: int):
+    def __init__(self, amount: float, lin_seq_no: int, code_no: str = None):
         self.amount: float = amount
-        self.number: str = None
+        self.number: str = code_no
+        self.quantity: float = 1
         self.pay_code: str = 'GC'
         self.description: str = 'Gift Certificate'
         self.lin_seq_no: int = lin_seq_no
         self.gfc_seq_no: int = 0
         self.create_as_store_credit: str = 'N'
+        if not self.number:
+            self.number = Database.CP.GiftCard.create_code()
 
     def __str__(self) -> str:
         result = '\nGift Card\n'
@@ -127,7 +131,6 @@ class Delivery:
         self.sku: str = 'DELIVERY'
         self.lin_typ: str = 'O'
         self.qty: int = 1
-        self.total_discount: float = 0
         self.ext_cost: float = 0
         self.lin_seq_no: int = lin_seq_no
         self.payload: dict = self.get_payload()
@@ -149,14 +152,14 @@ class Delivery:
             'PRC': self.amount,
             'EXT_PRC': self.amount * self.qty,
             'EXT_COST': self.ext_cost,
-            'DSC_AMT': self.total_discount,
             'LIN_SEQ_NO': self.lin_seq_no,
         }
 
 
 class ShopifyOrder:
-    def __init__(self, order_id: int):
+    def __init__(self, order_id: int, gc_code_override: str = None):
         self.order_id = order_id
+        self.gc_code_override = gc_code_override
         self.node = Shopify.Order.get(self.order_id)['node']
         print(json.dumps(self.node, indent=4))
         if not self.node:
@@ -182,12 +185,13 @@ class ShopifyOrder:
         self.total_refunded_shipping = ShopifyOrder.get_money(self.node['totalRefundedShippingSet'])
         # Shipping Information
         self.shipping_cost: float = self.get_shipping_cost()
+        self.total_discount: float = ShopifyOrder.get_money(self.node['totalDiscountsSet'])
         self.line_items: list[InventoryItem | GiftCard | Delivery] = self.get_items()
+        self.total_extended_cost = self.get_total_extended_cost(self.line_items)
         self.gift_card_purchases: list[GiftCard] = []
         self.is_gift_card_only: bool = len(self.line_items) == 1 and isinstance(self.line_items[0], GiftCard)
         self.is_shipping: bool = self.shipping_cost > 0
         self.base_shipping_cost: float = self.shipping_cost
-        self.total_discount: float = ShopifyOrder.get_money(self.node['totalDiscountsSet'])
         self.coupon_codes: list[str] = self.node['discountCodes']
         self.subtotal: float = self.get_subtotal()
         self.total: float = self.get_total()
@@ -238,6 +242,13 @@ class ShopifyOrder:
 
         return result
 
+    def get_total_extended_cost(self, line_items: list[InventoryItem | GiftCard | Delivery]) -> float:
+        total = 0
+        for item in line_items:
+            if isinstance(item, InventoryItem):
+                total += item.ext_cost
+        return total
+
     def get_items(self) -> list[InventoryItem | GiftCard | Delivery]:
         node_items = []
         for i in self.node['lineItems']['edges']:
@@ -255,16 +266,21 @@ class ShopifyOrder:
         result = []
 
         for i, item in enumerate(node_items, start=1):
-            price = float(item['variant']['price'] or 0)
-            compare_at_price = float(item['variant']['compareAtPrice'] or 0)
+            price = float(item['variant']['price'] or 0) if item['variant'] else 0
+            compare_at_price = float(item['variant']['compareAtPrice'] or 0) if item['variant'] else 0
             retail_price = max(price, compare_at_price)
-
             discounted_price = ShopifyOrder.get_money(item['discountedUnitPriceAfterAllDiscountsSet'])
+            discount = retail_price - discounted_price
+            quantity = int(item['quantity'])
+
+            if discounted_price < retail_price:
+                self.total_discount += discount * quantity
+
             taxable = item['taxable']
             tax: float = 0 if not taxable else ShopifyOrder.get_money(item['taxLines']['priceSet'])
+
             is_refunded = False
             quantity_refunded = 0
-
             if len(self.refunds) > 0:
                 for refunds in self.refunds:
                     for refund in refunds['refundLineItems']['edges']:
@@ -283,7 +299,7 @@ class ShopifyOrder:
                 continue
 
             if 'GFC' in item['sku']:
-                result.append(GiftCard(retail_price, lin_seq_no=i))
+                result.append(GiftCard(retail_price, lin_seq_no=i, code_no=self.gc_code_override))
             else:
                 result.append(
                     InventoryItem(
@@ -291,7 +307,7 @@ class ShopifyOrder:
                         sku=item['sku'],
                         retail_price=retail_price,
                         discounted_price=discounted_price,
-                        quantity=item['quantity'],
+                        quantity=quantity,
                         tax=tax,
                         is_refunded=is_refunded,
                         quantity_refunded=quantity_refunded,

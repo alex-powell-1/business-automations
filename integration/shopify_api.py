@@ -2406,5 +2406,4 @@ def refresh_order(tkt_no):
 
 
 if __name__ == '__main__':
-    print(Shopify.Order.get(5713897619623))
-    # Shopify.Order.get_orders_not_in_cp()
+    Shopify.Order.get_orders_not_in_cp()
