@@ -171,8 +171,6 @@ class OrderAPI(DocumentAPI):
         if self.is_refund:
             payload['PS_DOC_HDR']['TAX_OVRD_REAS'] = 'Y'
 
-        self.sub_tot = sum([float(line_item['EXT_PRC']) for line_item in payload['PS_DOC_HDR']['PS_DOC_LIN']])
-
         if self.verbose:
             self.logger.info(f'\nPayload: \n\n{json.dumps(payload, indent=4)}\n')
 
