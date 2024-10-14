@@ -125,6 +125,17 @@ query order($id: ID!) {
 
             quantity
             sku
+            taxable
+            taxLines {
+              channelLiable
+              priceSet {
+                shopMoney {
+                  amount
+                }
+              }
+              rate
+              title
+            }
           }
         }
       }

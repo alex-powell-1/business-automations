@@ -11,44 +11,61 @@ class InventoryItem:
         self,
         id: str,
         sku: str,
-        base_price: float,
+        retail_price: float,
         is_refunded: bool,
         discounted_price: float,
         quantity: float,
+        tax: float,
         quantity_refunded: float,
         refund_amount: float,
         lin_seq_no: int,
     ):
         self.id: str = id
         self.sku: str = sku
+        self.lin_seq_no: int = lin_seq_no
+        # Refund Information
         self.is_refunded: bool = is_refunded
-        self.retail_price: float = Database.CP.Product.get_retail_price(self.sku) or base_price
-        self.discounted_price: float = discounted_price
-        self.discount_amount: float = self.retail_price - discounted_price
-        self.quantity: float = quantity
-        self.cost = Database.CP.Product.get_cost(self.sku)
-        self.ext_cost: float = self.cost * self.quantity
         self.quantity_refunded: int = quantity_refunded
         self.refund_amount: float = refund_amount
-        self.ext_price: float = self.discounted_price * self.quantity
-        self.lin_seq_no: int = lin_seq_no
+        # Price
+        self.retail_price: float = retail_price
+        self.quantity: float = quantity
+        # Cost
+        self.cost = Database.CP.Product.get_cost(self.sku)
+        self.ext_cost: float = self.cost * self.quantity
+        # Discount
+        self.discounted_price: float = discounted_price
+        self.discount_amount: float = self.retail_price - discounted_price
+        self.extended_discount: float = self.discount_amount * self.quantity
+        # Tax
+        self.tax: float = tax
+        # Totals
+        self.ext_price: float = self.retail_price * self.quantity
+        self.line_total: float = self.ext_price - self.extended_discount
+
         self.payload: dict = self.get_payload()
 
     def __str__(self) -> str:
         result = f'\nLine Item ID: {self.id}\n'
         result += f'SKU: {self.sku}\n'
+        result += f'Line Seq No: {self.lin_seq_no}\n'
         result += f'Is Refunded: {self.is_refunded}\n'
         result += f'Quantity Refunded: {self.quantity_refunded}\n'
-        result += f'Base Price: ${self.retail_price:.2f}\n'
-        result += f'Discount Amount: ${self.discount_amount:.2f}\n'
-        result += f'Discounted Price: ${self.discounted_price:.2f}\n'
-        result += f'Quantity: {self.quantity}\n'
-        result += f'Quantity Refunded: {self.quantity_refunded}\n'
         result += f'Refund Amount: ${self.refund_amount:.2f}\n'
+        result += f'Retail Price: ${self.retail_price:.2f}\n'
+        result += f'Quantity: {self.quantity}\n'
         result += f'Ext Price: ${self.ext_price:.2f}\n'
-        result += f'Cost: ${self.cost:.2f}\n'
+        result += '\nDiscounts\n'
+        result += f'Unit Discount Amount: ${self.discount_amount:.2f}\n'
+        result += f'Extended Discount: ${self.extended_discount:.2f}\n'
+        result += '\nCost\n'
+        result += f'Unit Cost: ${self.cost:.2f}\n'
         result += f'Ext Cost: ${self.ext_cost:.2f}\n'
-        result += f'Line Seq No: {self.lin_seq_no}\n'
+        result += '\nTax\n'
+        result += f'Tax: ${self.tax:.2f}\n'
+        result += '\nTotals\n'
+        result += f'Line Total: ${self.line_total:.2f}\n'
+
         return result
 
     def get_payload(self):
@@ -155,12 +172,11 @@ class ShopifyOrder:
         self.shipping_address: ShippingAddress = ShippingAddress(self.node)
         self.customer = Customer(self.node) if self.node['customer'] is not None else None
         self.refunds: list[dict] = self.node['refunds']
-        self.fulfillment_status: str = self.get_fulfillment_status()
+        self.is_refund: bool = len(self.refunds) > 0
         self.financial_status: str = self.node['displayFinancialStatus']
+        self.fulfillment_status: str = self.node['displayFulfillmentStatus']
         self.is_declined: bool = self.financial_status.lower() in ['declined', '']
         # Refund Information
-        self.is_refund: bool = self.fulfillment_status in ['Refunded', 'Partially Refunded']
-        self.is_partial_refund: bool = self.fulfillment_status == 'Partially Refunded'
         self.refunded_subtotal: float = ShopifyOrder.get_money(self.node['totalRefundedSet'])
         self.refund_total: float = ShopifyOrder.get_money(self.node['totalRefundedSet'])
         self.total_refunded_shipping = ShopifyOrder.get_money(self.node['totalRefundedShippingSet'])
@@ -218,13 +234,9 @@ class ShopifyOrder:
         result += f'Refund Total: ${self.refund_total:.2f}\n'
         result += f'Store Credit Amount: ${self.store_credit_amount:.2f}\n'
 
-        return result
+        result += str(self.payments)
 
-    def get_fulfillment_status(self) -> str:
-        if len(self.refunds) > 0:
-            return 'Partially Refunded'
-        else:
-            return self.node['displayFulfillmentStatus']
+        return result
 
     def get_items(self) -> list[InventoryItem | GiftCard | Delivery]:
         node_items = []
@@ -241,10 +253,14 @@ class ShopifyOrder:
             return []
 
         result = []
-        for i, item in enumerate(node_items):
-            base_price = ShopifyOrder.get_money(item['originalUnitPriceSet'])
-            discounted_price = ShopifyOrder.get_money(item['discountedUnitPriceAfterAllDiscountsSet'])
 
+        for i, item in enumerate(node_items):
+            retail_price = Database.CP.Product.get_retail_price(item['sku']) or ShopifyOrder.get_money(
+                item['originalUnitPriceSet']
+            )
+            discounted_price = ShopifyOrder.get_money(item['discountedUnitPriceAfterAllDiscountsSet'])
+            taxable = item['taxable']
+            tax: float = 0 if not taxable else ShopifyOrder.get_money(item['taxLines']['priceSet'])
             is_refunded = False
             quantity_refunded = 0
             refund_amount = 0
@@ -268,15 +284,16 @@ class ShopifyOrder:
                 continue
 
             if 'GFC' in item['sku']:
-                result.append(GiftCard(base_price, lin_seq_no=i))
+                result.append(GiftCard(retail_price, lin_seq_no=i))
             else:
                 result.append(
                     InventoryItem(
                         id=item['id'],
                         sku=item['sku'],
-                        base_price=base_price,
+                        retail_price=retail_price,
                         discounted_price=discounted_price,
                         quantity=item['quantity'],
+                        tax=tax,
                         is_refunded=is_refunded,
                         quantity_refunded=quantity_refunded,
                         refund_amount=refund_amount,
@@ -286,11 +303,7 @@ class ShopifyOrder:
 
         if self.shipping_cost > 0:
             result.append(
-                Delivery(
-                    amount=self.shipping_cost,
-                    is_refund=True if self.fulfillment_status == 'Partially Refunded' else False,
-                    lin_seq_no=len(self.line_items),
-                )
+                Delivery(amount=self.shipping_cost, is_refund=self.is_refund, lin_seq_no=len(self.line_items))
             )
 
         gc_count = 0
@@ -639,7 +652,7 @@ class GCPayment(Payment):
 
 
 if __name__ == '__main__':
-    print(ShopifyOrder(5717619933351))
+    print(ShopifyOrder(5707940429991))
 
     """Things to work on: Now that the appropriate discount amount is associated with each line item,
     How will this affect the total discount amount?"""

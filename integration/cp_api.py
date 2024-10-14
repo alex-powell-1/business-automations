@@ -95,6 +95,7 @@ class OrderAPI(DocumentAPI):
         self.verbose: bool = verbose
         self.order: ShopifyOrder = order
         self.is_refund: bool = self.order.is_refund
+        self.is_partial_refund: bool = self.order.is_partial_refund
         self.doc_id: str = None
         self.orig_doc_id: str = None
         self.cp_tkt_no: str = None  # S1133
@@ -105,7 +106,6 @@ class OrderAPI(DocumentAPI):
         self.total_hdr_disc: float = 0
         self.total_lin_disc: float = 0
         self.total_paid: float = 0
-        self.is_partial_refund: bool = self.order.is_partial_refund
         self.refund_index: int = None
         self.total_tender: float = 0
         self.has_loyalty_payment: bool = False
@@ -399,12 +399,13 @@ class OrderAPI(DocumentAPI):
         self.write_discounts()
 
         if self.is_refund:
-            self.invalidate_gfc_purchases()
             self.total_paid = -self.order.total
+            self.invalidate_gfc_purchases()
             Database.CP.OpenOrder.update_payment_amount(doc_id=self.doc_id, amount=self.total_paid)
-            if self.is_partial_refund:
-                self.process_partial_refund()
-            self.refund_payments()
+            self.restore_payments()
+            self.refund_gift_cards()
+            self.refund_loyalty()
+
         else:
             # Flow for Standard Orders
             self.redeem_loyalty_pmts()
@@ -460,69 +461,53 @@ class OrderAPI(DocumentAPI):
             )
             Database.CP.GiftCard.update_balance(card_no, 0)
 
-    def process_partial_refund(self):
+    def restore_payments(self):
         order_db = Database.CP.OpenOrder
         payments = self.payload['PS_DOC_HDR']['PS_DOC_PMT']
+        shopify_payment = 0
+        gc_payment = 0
+        loyalty_payment = 0
 
-        shop_payment = order_db.get_payment_by_code(self.doc_id, SHOPIFY_PAYCODE)
+        for payment in payments:
+            if payment['PAY_COD'] == SHOPIFY_PAYCODE:
+                shopify_payment = abs(float(payment['AMT']))
+            if payment['PAY_COD'] == LOYALTY_PAYCODE:
+                loyalty_payment = abs(float(payment['AMT']))
+            if payment['PAY_COD'] == GIFT_CARD_PAYCODE:
+                gc_payment = abs(float(payment['AMT']))
 
-        remaining: float = 0
-
-        if self.order.total > shop_payment:
-            remaining = self.order.total - shop_payment
-
-        shop = self.order.total if self.order.total < shop_payment else shop_payment
-        gc = (remaining / 2 if self.has_loyalty_payment else remaining) if self.has_gift_card_payment else 0
-        loy = (remaining / 2 if self.has_gift_card_payment else remaining) if self.has_loyalty_payment else 0
-
-        if shop_payment > 0:
-            shop_refund = -shop
+        if shopify_payment:
+            shop_refund = -shopify_payment
             Database.CP.OpenOrder.update_payment_amount(self.doc_id, shop_refund, SHOPIFY_PAYCODE)
             Database.CP.OpenOrder.update_payment_apply(self.doc_id, shop_refund, SHOPIFY_PAYCODE)
 
-        if self.has_gift_card_payment():
-            gc_refund = -gc
+        if self.has_gift_card_payment:
+            gc_refund = -gc_payment
             gc_index = order_db.get_ps_doc_pmt_index(GIFT_CARD_PAYCODE, payments)
             payments[gc_index]['AMT'] = gc_refund
             Database.CP.OpenOrder.update_payment_amount(self.doc_id, gc_refund, GIFT_CARD_PAYCODE)
             Database.CP.OpenOrder.update_payment_apply(self.doc_id, gc_refund, GIFT_CARD_PAYCODE)
 
         if self.has_loyalty_payment:
-            loy_refund = -loy
+            Database.CP.Loyalty.add_points(cust_no=self.cust_no, points=loyalty_payment)
+            loy_refund = -loyalty_payment
             loy_index = order_db.get_ps_doc_pmt_index(LOYALTY_PAYCODE)
             payments[loy_index]['AMT'] = loy_refund
             Database.CP.OpenOrder.update_payment_amount(self.doc_id, loy_refund, LOYALTY_PAYCODE)
             Database.CP.OpenOrder.update_payment_apply(self.doc_id, loy_refund, LOYALTY_PAYCODE)
 
-        self.total_paid = shop + gc + loy
+        self.total_paid = shopify_payment + gc_payment + loyalty_payment
 
-    def refund_payments(self, total_paid: float):
+    def refund_gift_cards(self):
         """Refunds payments for an order."""
-        payments = self.payload['PS_DOC_HDR']['PS_DOC_PMT']
-
-        def refund_gift_cards(payment: dict):
-            amt_spent = abs(float(payment['AMT']))
-            card_no = payment['CARD_NO']
-            Database.CP.GiftCard.update_activity(card_no, self.cp_tkt_no_full, amt_spent)
-            current_balance = Database.CP.GiftCard.get_balance(card_no)
-            new_balance = current_balance + amt_spent * 2  # ???
-            Database.CP.GiftCard.update_balance(card_no, new_balance)
-
-        def refund_loyalty_points(payment: dict):
-            for payment in payments:
-                if payment['PAY_COD'] == LOYALTY_PAYCODE:
-                    points = abs(math.floor(float(payment['AMT'])))
-                    Database.CP.Loyalty.add_points(cust_no=self.cust_no, points=points)
-
-        for payment in payments:
+        for payment in self.payload['PS_DOC_HDR']['PS_DOC_PMT']:
             if payment['PAY_COD'] == GIFT_CARD_PAYCODE:
-                refund_gift_cards(payment)
-            elif payment['PAY_COD'] == LOYALTY_PAYCODE:
-                refund_loyalty_points(payment)
-
-        # PAYMENT APPLY REFUND
-        if not self.is_partial_refund():
-            Database.CP.OpenOrder.update_payment_apply(self.doc_id, total_paid, SHOPIFY_PAYCODE)
+                amt_spent = abs(float(payment['AMT']))
+                card_no = payment['CARD_NO']
+                Database.CP.GiftCard.update_activity(card_no, self.cp_tkt_no_full, amt_spent)
+                current_balance = Database.CP.GiftCard.get_balance(card_no)
+                new_balance = current_balance + amt_spent * 2  # ???
+                Database.CP.GiftCard.update_balance(card_no, new_balance)
 
     def redeem_loyalty_pmts(self):
         for payment in self.payload['PS_DOC_HDR']['PS_DOC_PMT']:
