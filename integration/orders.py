@@ -220,7 +220,17 @@ class Order:
     @staticmethod
     def delete(tkt_no: str):
         """Delete an order from CP by ticket number."""
+        doc_id = Database.CP.OpenOrder.get_doc_id(tkt_no)
+        customer = Database.CP.OpenOrder.get_customer(doc_id)
+        points_earned = Database.CP.Loyalty.get_points_earned(doc_id)
+        points_redeeemed = Database.CP.Loyalty.get_points_redeemed(doc_id)
+
         OrderAPI.delete(ticket_no=tkt_no)
+
+        if points_earned:
+            Database.CP.Loyalty.remove_points(cust_no=customer, points=points_earned)
+        if points_redeeemed:
+            Database.CP.Loyalty.add_points(cust_no=customer, points=points_redeeemed)
 
 
 class OrderProcessor:
@@ -234,4 +244,5 @@ class OrderProcessor:
 
 
 if __name__ == '__main__':
-    Order(5703560200359, print_order=False, send_gfc=False).process()
+    # Order.delete(tkt_no='S1158')
+    Order(5717619933351, print_order=False, send_gfc=False).process()

@@ -17,19 +17,20 @@ class InventoryItem:
         quantity: float,
         tax: float,
         quantity_refunded: float,
-        refund_amount: float,
         lin_seq_no: int,
     ):
         self.id: str = id
         self.sku: str = sku
         self.lin_seq_no: int = lin_seq_no
-        # Refund Information
-        self.is_refunded: bool = is_refunded
-        self.quantity_refunded: int = quantity_refunded
-        self.refund_amount: float = refund_amount
         # Price
         self.retail_price: float = retail_price
         self.quantity: float = quantity
+
+        # Refund Information
+        self.is_refunded: bool = is_refunded
+        self.quantity_refunded: int = quantity_refunded
+        self.refund_net: float = discounted_price * quantity_refunded
+
         # Cost
         self.cost = Database.CP.Product.get_cost(self.sku)
         self.ext_cost: float = self.cost * self.quantity
@@ -51,7 +52,7 @@ class InventoryItem:
         result += f'Line Seq No: {self.lin_seq_no}\n'
         result += f'Is Refunded: {self.is_refunded}\n'
         result += f'Quantity Refunded: {self.quantity_refunded}\n'
-        result += f'Refund Amount: ${self.refund_amount:.2f}\n'
+        result += f'Refund Amount: ${self.refund_net:.2f}\n'
         result += f'Retail Price: ${self.retail_price:.2f}\n'
         result += f'Quantity: {self.quantity}\n'
         result += f'Ext Price: ${self.ext_price:.2f}\n'
@@ -79,7 +80,6 @@ class InventoryItem:
             'PRC': self.retail_price,
             'EXT_PRC': self.ext_price,
             'EXT_COST': self.ext_cost,
-            'DSC_AMT': self.discount_amount,
             'sku': self.sku,
         }
 
@@ -254,16 +254,16 @@ class ShopifyOrder:
 
         result = []
 
-        for i, item in enumerate(node_items):
-            retail_price = Database.CP.Product.get_retail_price(item['sku']) or ShopifyOrder.get_money(
-                item['originalUnitPriceSet']
-            )
+        for i, item in enumerate(node_items, start=1):
+            price = float(item['variant']['price'] or 0)
+            compare_at_price = float(item['variant']['compareAtPrice'] or 0)
+            retail_price = max(price, compare_at_price)
+
             discounted_price = ShopifyOrder.get_money(item['discountedUnitPriceAfterAllDiscountsSet'])
             taxable = item['taxable']
             tax: float = 0 if not taxable else ShopifyOrder.get_money(item['taxLines']['priceSet'])
             is_refunded = False
             quantity_refunded = 0
-            refund_amount = 0
 
             if len(self.refunds) > 0:
                 for refunds in self.refunds:
@@ -271,7 +271,6 @@ class ShopifyOrder:
                         if refund['node']['lineItem']['id'] == item['id']:
                             is_refunded = True
                             quantity_refunded = int(refund['node']['quantity'])
-                            refund_amount = discounted_price * quantity_refunded
                             self.refunded_subtotal += discounted_price * float(quantity_refunded)
 
             if item['name'] is None:
@@ -296,17 +295,16 @@ class ShopifyOrder:
                         tax=tax,
                         is_refunded=is_refunded,
                         quantity_refunded=quantity_refunded,
-                        refund_amount=refund_amount,
                         lin_seq_no=i,
                     )
                 )
 
         if self.shipping_cost > 0:
             result.append(
-                Delivery(amount=self.shipping_cost, is_refund=self.is_refund, lin_seq_no=len(self.line_items))
+                Delivery(amount=self.shipping_cost, is_refund=self.is_refund, lin_seq_no=len(self.line_items) + 1)
             )
 
-        gc_count = 0
+        gc_count = 1
         for item in result:
             if isinstance(item, GiftCard):
                 item.gfc_seq_no = gc_count
@@ -652,7 +650,7 @@ class GCPayment(Payment):
 
 
 if __name__ == '__main__':
-    print(ShopifyOrder(5707940429991))
+    print(ShopifyOrder(5717619933351))
 
     """Things to work on: Now that the appropriate discount amount is associated with each line item,
     How will this affect the total discount amount?"""

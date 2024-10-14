@@ -1011,12 +1011,38 @@ class Database:
                     eh.error_handler.add_error_v(response['message'])
 
         class Loyalty:
-            def write_line(doc_id: int, lin_seq_no: int, points_earned: int, eh=ProcessInErrorHandler):
+            def get_points_earned(doc_id: str, eh=ProcessInErrorHandler) -> float:
+                query = f"""
+                SELECT LOY_PTS_EARND_NET
+                FROM PS_DOC_HDR_LOY_PGM
+                WHERE DOC_ID = '{doc_id}'
+                """
+                response = Database.query(query)
+                try:
+                    return float(response[0][0])
+                except:
+                    return 0
+
+            def get_points_redeemed(doc_id: str, eh=ProcessInErrorHandler) -> float:
+                query = f"""
+                SELECT LOY_PTS_RDM
+                FROM PS_DOC_HDR_LOY_PGM
+                WHERE DOC_ID = '{doc_id}'
+                """
+                response = Database.query(query)
+                try:
+                    return float(response[0][0])
+                except:
+                    return 0
+
+            def write_line(
+                doc_id: int, lin_seq_no: int, points_earned: int, points_spent: float = 0, eh=ProcessInErrorHandler
+            ):
                 query = f"""
                 INSERT INTO PS_DOC_LIN_LOY 
                 (DOC_ID, LIN_SEQ_NO, LIN_LOY_PTS_EARND, LOY_PGM_RDM_ELIG, LOY_PGM_AMT_PD_WITH_PTS, LOY_PT_EARN_RUL_DESCR, LOY_PT_EARN_RUL_SEQ_NO) 
                 VALUES 
-                ('{doc_id}', {lin_seq_no}, {points_earned}, 'Y', 0, 'Basic', 5)
+                ('{doc_id}', {lin_seq_no}, {points_earned}, 'Y', {points_spent}, 'Basic', 5)
                 """
 
                 response = Database.query(query)
@@ -1046,7 +1072,9 @@ class Database:
             ):
                 query = f"""
                 INSERT INTO PS_DOC_HDR_LOY_PGM
-                (DOC_ID, LIN_LOY_PTS_EARND, LOY_PTS_EARND_GROSS, LOY_PTS_ADJ_FOR_RDM, LOY_PTS_ADJ_FOR_INC_RND, LOY_PTS_ADJ_FOR_OVER_MAX, LOY_PTS_EARND_NET, LOY_PTS_RDM, LOY_PTS_BAL)
+                (DOC_ID, LIN_LOY_PTS_EARND, LOY_PTS_EARND_GROSS, LOY_PTS_ADJ_FOR_RDM, 
+                LOY_PTS_ADJ_FOR_INC_RND, LOY_PTS_ADJ_FOR_OVER_MAX, LOY_PTS_EARND_NET, 
+                LOY_PTS_RDM, LOY_PTS_BAL)
                 VALUES
                 ('{doc_id}', 0, 0, 0, 0, 0, {points_earned}, {points_redeemed}, {point_balance})
                 """
@@ -1092,7 +1120,49 @@ class Database:
                     eh.error_handler.add_error_v('Loyalty points could not be added')
                     eh.error_handler.add_error_v(response['message'])
 
+            def remove_points(amount: int, cust_no: str, eh=ProcessInErrorHandler):
+                """Removes loyalty points from a customer's account."""
+                query = f"""
+                UPDATE {creds.Table.CP.Customers.table}
+                SET LOY_PTS_BAL = LOY_PTS_BAL - {amount}
+                WHERE CUST_NO = '{cust_no}'
+                """
+
+                response = Database.query(query)
+
+                if response['code'] == 200:
+                    eh.logger.success(f'{amount} Loyalty points removed from {cust_no}')
+                else:
+                    eh.error_handler.add_error_v('Loyalty points could not be removed')
+                    eh.error_handler.add_error_v(response['message'])
+
         class OpenOrder:
+            def get_customer(doc_id: str) -> str:
+                query = f"""
+                SELECT CUST_NO
+                FROM PS_DOC_HDR
+                WHERE DOC_ID = '{doc_id}'
+                """
+
+                response = Database.query(query)
+                try:
+                    return response[0][0]
+                except:
+                    return None
+
+            def get_doc_id(tkt_no: str) -> str:
+                query = f"""
+                SELECT DOC_ID
+                FROM PS_DOC_HDR
+                WHERE TKT_NO = '{tkt_no}'
+                """
+
+                response = Database.query(query)
+                try:
+                    return response[0][0]
+                except:
+                    return None
+
             def set_value(table: str, column: str, value, index, doc_id: str, eh=ProcessInErrorHandler):
                 query = f"""
                     UPDATE {table}
@@ -1208,8 +1278,15 @@ class Database:
                         eh.error_handler.add_error_v(f'Ticket number could not be updated in {table}.')
                         eh.error_handler.add_error_v(response['message'])
 
-            def update_payment_amount(doc_id: str, amount: float, pay_code: str = None, eh=ProcessInErrorHandler):
-                pay_code_filter = f"AND PAY_COD = '{pay_code}'" if pay_code else ''
+            def update_payment_amount(
+                doc_id: str, amount: float, pay_code: str = None, pmt_seq_no: int = None, eh=ProcessInErrorHandler
+            ):
+                if pmt_seq_no:
+                    pay_code_filter = f'AND PMT_SEQ_NO = {pmt_seq_no}'
+                elif pay_code:
+                    pay_code_filter = f"AND PAY_COD = '{pay_code}'"
+                else:
+                    pay_code_filter = ''
 
                 query = f"""
                 UPDATE PS_DOC_PMT
@@ -1230,8 +1307,16 @@ class Database:
                     eh.error_handler.add_error_v(f'Payment amount could not be updated {ending_text}')
                     eh.error_handler.add_error_v(response['message'])
 
-            def update_payment_apply(doc_id: str, amount: float, pay_code: str = None, eh=ProcessInErrorHandler):
-                pay_code_filter = f"AND PAY_COD = '{pay_code}'" if pay_code else ''
+            def update_payment_apply(
+                doc_id: str, amount: float, pay_code: str = None, pmt_seq_no: int = None, eh=ProcessInErrorHandler
+            ):
+                if pmt_seq_no:
+                    pay_code_filter = f'AND PMT_SEQ_NO = {pmt_seq_no}'
+                elif pay_code:
+                    pay_code_filter = f"AND PAY_COD = '{pay_code}'"
+                else:
+                    pay_code_filter = ''
+
                 query = f"""
                     UPDATE PS_DOC_PMT_APPLY
                     SET AMT = {amount},
@@ -3353,12 +3438,14 @@ class Database:
                 disc_id = '100000000000331' if apply_to == 'L' else '100000000000330'
                 query = f"""
                 INSERT INTO PS_DOC_DISC
-                (DOC_ID, DISC_SEQ_NO, LIN_SEQ_NO, DISC_ID, APPLY_TO, DISC_TYP, 
+                (DOC_ID, DISC_SEQ_NO, LIN_SEQ_NO, 
+                DISC_ID, APPLY_TO, DISC_TYP, 
                 DISC_AMT, DISC_PCT, DISC_AMT_SHIPPED)
                 
                 VALUES
                 
-                ('{doc_id}', {disc_seq_no}, {lin_seq_no if apply_to == 'L' else "NULL"}, {disc_id}, '{apply_to}', '{disc_type}', 
+                ('{doc_id}', {disc_seq_no}, {lin_seq_no if apply_to == 'L' else "NULL"}, 
+                {disc_id}, '{apply_to}', '{disc_type}', 
                 {disc_amt}, {disc_pct}, {disc_amt_shipped})
                 """
 
