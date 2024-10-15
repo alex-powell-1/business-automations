@@ -1241,7 +1241,7 @@ class Database:
                 except:
                     return False
 
-            def tkt_num_exists(self, tkt_num: str, suffix: str = '', index: int = 1) -> bool:
+            def tkt_num_exists(tkt_num: str, suffix: str = '', index: int = 1) -> bool:
                 """Returns true if the provided ticket number exists in the PS_DOC_HDR table."""
 
                 query = f"""
@@ -1524,26 +1524,16 @@ class Database:
                     )
                     eh.error_handler.add_error_v(response['message'])
 
-            def set_line_totals(
-                doc_id: str,
-                number_of_lines: int,
-                line_total: float,
-                is_refund: bool = False,
-                eh=ProcessInErrorHandler,
-            ):
-                table = 'RET_LINS' if is_refund else 'SAL_LINS'
-                to_release_lines = f', TO_REL_LINS = {number_of_lines}' if not is_refund else ''
-                line_tot = f', RET_LIN_TOT = {line_total}' if is_refund else f'SAL_LIN_TOT = {line_total} '
-
+            def set_sale_lines(doc_id: str, sale_lines: int, return_lines: int, eh=ProcessInErrorHandler):
                 query = f"""
                 UPDATE PS_DOC_HDR
-                SET {table} = {number_of_lines} {to_release_lines}, {line_tot}
+                SET RET_LINS = {return_lines}, SAL_LINS = {sale_lines}, TO_REL_LINS = {sale_lines}
                 WHERE DOC_ID = '{doc_id}'
                 """
                 response = Database.query(query)
 
                 if response['code'] == 200:
-                    eh.logger.success(f'Updated line items to {number_of_lines} for DOC_ID: {doc_id}')
+                    eh.logger.success(f'Updated PS_DOC_HDR sale/return lines for DOC_ID: {doc_id}')
                 elif response['code'] == 201:
                     eh.logger.info(f'No lines to update for DOC_ID: {doc_id}')
                 else:
@@ -1556,17 +1546,18 @@ class Database:
                 lin_seq_no: int,
                 qty_sold: int = None,
                 prc: float = None,
+                prc_1: float = None,
                 qty_to_rel: int = None,
                 orig_qty: int = None,
                 ext_prc: float = None,
+                unit_retail_value: float = None,
                 ext_cost: float = None,
                 gross_ext_prc: float = None,
                 gross_disp_ext_prc: float = None,
+                calc_prc: float = None,
                 calc_ext_prc: float = None,
                 qty_entd: int = None,
                 qty_to_leave: int = None,
-                prc_rul_seq_no: int = None,
-                prc_brk_descr: str = None,
                 eh=ProcessInErrorHandler,
                 verbose: bool = False,
             ):
@@ -1579,28 +1570,30 @@ class Database:
                     query += f'QTY_SOLD = {qty_sold}, '
                 if prc:
                     query += f'PRC = {prc}, '
+                if prc_1:
+                    query += f'PRC_1 = {prc_1}, '
                 if qty_to_rel:
                     query += f'QTY_TO_REL = {qty_to_rel}, '
                 if orig_qty:
                     query += f'ORIG_QTY = {orig_qty}, '
                 if ext_prc:
                     query += f'EXT_PRC = {ext_prc}, '
+                if unit_retail_value:
+                    query += f'UNIT_RETL_VAL = {unit_retail_value}, '
                 if ext_cost:
                     query += f'EXT_COST = {ext_cost}, '
                 if gross_ext_prc:
                     query += f'GROSS_EXT_PRC = {gross_ext_prc}, '
                 if gross_disp_ext_prc:
                     query += f'GROSS_DISP_EXT_PRC = {gross_disp_ext_prc}, '
+                if calc_prc:
+                    query += f'CALC_PRC = {calc_prc}, '
                 if calc_ext_prc:
                     query += f'CALC_EXT_PRC = {calc_ext_prc}, '
                 if qty_entd:
                     query += f'QTY_ENTD = {qty_entd}, '
                 if qty_to_leave:
                     query += f'QTY_TO_LEAVE = {qty_to_leave}, '
-                if prc_rul_seq_no:
-                    query += f'PRC_RUL_SEQ_NO = {prc_rul_seq_no}, '
-                if prc_brk_descr:
-                    query += f"PRC_BRK_DESCR = '{prc_brk_descr}', "
 
                 query = query.rstrip(', ')
                 query += f' {query_filter}'
@@ -1618,15 +1611,27 @@ class Database:
                     eh.error_handler.add_error_v(response['message'])
 
             def update_line_price(
-                doc_id: str, lin_seq_no: int, quantity: int, unit_price: float, eh=ProcessInErrorHandler
+                doc_id: str,
+                lin_seq_no: int,
+                quantity: int,
+                unit_price: float,
+                prc_rul_seq_no: int = None,
+                prc_brk_descr: str = None,
+                eh=ProcessInErrorHandler,
             ):
                 """Updates the price of a line item in the PS_DOC_LIN_PRICE table."""
                 query = f"""
                 UPDATE PS_DOC_LIN_PRICE
                 SET QTY_PRCD = {quantity}, UNIT_PRC = {unit_price}
-                WHERE DOC_ID = '{doc_id}'
-                AND LIN_SEQ_NO = {lin_seq_no}
                 """
+
+                if prc_rul_seq_no:
+                    query += f', PRC_RUL_SEQ_NO = {prc_rul_seq_no}'
+                if prc_brk_descr:
+                    query += f", PRC_BRK_DESCR = '{prc_brk_descr}'"
+
+                query += f" WHERE DOC_ID = '{doc_id}' AND LIN_SEQ_NO = {lin_seq_no}"
+
                 response = Database.query(query)
                 if response['code'] == 200:
                     eh.logger.success(f'PS_DOC_LIN_PRICE: DOC_ID: {doc_id}-Line:{lin_seq_no} updated')

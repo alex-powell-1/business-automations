@@ -79,7 +79,7 @@ class InventoryItem(Item):
         quantity_refunded: float,
     ):
         super().__init__(
-            self, lin_seq_no, sku, quantity, unit_retail_value, extended_unit_price, is_refunded, quantity_refunded
+            lin_seq_no, sku, quantity, unit_retail_value, extended_unit_price, is_refunded, quantity_refunded
         )
         self.id: int = id
         """Shopify ID of the item in the order"""
@@ -87,7 +87,7 @@ class InventoryItem(Item):
         self.payload: dict = self.get_payload()
 
     def __str__(self) -> str:
-        result = f'\Shopify Item ID: {self.id}\n'
+        result = f'Shopify Item ID: {self.id}\n'
         result += f'SKU: {self.sku}\n'
         result += f'Line Seq No: {self.lin_seq_no}\n'
         result += f'Is Refunded: {self.is_refunded}\n'
@@ -149,7 +149,6 @@ class Delivery(Item):
 
     def __init__(self, unit_retail_value: float, is_refunded: bool, lin_seq_no: int):
         super().__init__(
-            self,
             lin_seq_no=lin_seq_no,
             sku=Delivery.sku,
             quantity=Delivery.quantity,
@@ -168,11 +167,13 @@ class Delivery(Item):
 
 
 class ShopifyOrder:
-    def __init__(self, order_id: int, gc_code_override: str = None):
+    def __init__(self, order_id: int, gc_code_override: str = None, verbose: bool = False):
         self.order_id = order_id
         self.gc_code_override = gc_code_override
+        self.verbose = verbose
         self.node = Shopify.Order.get(self.order_id)['node']
-        print(json.dumps(self.node, indent=4))
+        if self.verbose:
+            print(json.dumps(self.node, indent=4))
         if not self.node:
             raise Exception(f'Order {order_id} not found in Shopify')
 
@@ -192,12 +193,12 @@ class ShopifyOrder:
         self.is_declined: bool = self.financial_status.lower() in ['declined', '']
         # Refund Information
         self.refunded_subtotal: float = ShopifyOrder.get_money(self.node['totalRefundedSet'])
-        self.refund_total: float = ShopifyOrder.get_money(self.node['totalRefundedSet'])
         self.total_refunded_shipping = ShopifyOrder.get_money(self.node['totalRefundedShippingSet'])
+        self.refund_total: float = 0
         # Shipping Information
         self.shipping_cost: float = self.get_shipping_cost()
         self.total_discount: float = ShopifyOrder.get_money(self.node['totalDiscountsSet'])
-        self.line_items: list[InventoryItem | GiftCard | Delivery] = self.get_items()
+        self.line_items: list[InventoryItem | GiftCard | Delivery] = []
         self.total_extended_cost = self.get_total_extended_cost(self.line_items)
         self.gift_card_purchases: list[GiftCard] = []
         self.is_gift_card_only: bool = len(self.line_items) == 1 and isinstance(self.line_items[0], GiftCard)
@@ -210,6 +211,8 @@ class ShopifyOrder:
         self.gift_certificate_payment: float = 0  # Not implemented
         self.customer_message: str = self.node['note']
         self.payments: Payments = Payments(self)
+        self.get_items()
+        self.get_total_refund_amount()
 
     def __str__(self) -> str:
         result = f'\nOrder ID: {self.id}\n'
@@ -228,7 +231,7 @@ class ShopifyOrder:
         result += '-----\n'
         for i, item in enumerate(self.line_items):
             result += f'\nItem {i + 1}\n'
-            result += '---------'
+            result += '---------\n'
             result += str(item)
 
         result += '\nGift Card Purchases\n'
@@ -246,6 +249,7 @@ class ShopifyOrder:
         result += '------\n'
         result += f'Subtotal: ${self.subtotal:.2f}\n'
         result += f'Total: ${self.total:.2f}\n'
+        result += f'Total Refunded Shipping: ${self.total_refunded_shipping:.2f}\n'
         result += f'Refund Total: ${self.refund_total:.2f}\n'
         result += f'Store Credit Amount: ${self.store_credit_amount:.2f}\n'
 
@@ -257,7 +261,7 @@ class ShopifyOrder:
         total = 0
         for item in line_items:
             if isinstance(item, InventoryItem):
-                total += item.ext_cost
+                total += item.extended_cost
         return total
 
     def get_items(self) -> list[InventoryItem | GiftCard | Delivery]:
@@ -284,9 +288,6 @@ class ShopifyOrder:
             unit_retail_value = max(price, compare_at_price)
             extended_unit_price = ShopifyOrder.get_money(item['discountedUnitPriceAfterAllDiscountsSet'])
 
-            taxable = item['taxable']
-            tax: float = 0 if not taxable else ShopifyOrder.get_money(item['taxLines']['priceSet'])
-
             is_refunded = False
             quantity_refunded = 0
             if len(self.refunds) > 0:
@@ -302,8 +303,9 @@ class ShopifyOrder:
 
             if item['name'].split('-')[0].strip().lower() == 'service':
                 item['sku'] = 'SERVICE'
-
-            if item['sku'] is None:
+            elif item['name'].split('-')[0].strip().lower() == 'custom':
+                item['sku'] = 'CUSTOM'
+            elif item['sku'] is None:
                 continue
 
             if 'GFC' in item['sku']:
@@ -312,30 +314,34 @@ class ShopifyOrder:
                 result.append(
                     InventoryItem(
                         id=item['id'].split('/')[-1],
+                        lin_seq_no=i,
                         sku=item['sku'],
+                        quantity=quantity,
                         unit_retail_value=unit_retail_value,
                         extended_unit_price=extended_unit_price,
-                        quantity=quantity,
                         is_refunded=is_refunded,
                         quantity_refunded=quantity_refunded,
-                        lin_seq_no=i,
                     )
                 )
 
-        if self.shipping_cost > 0:
-            result.append(
-                Delivery(
-                    unit_retail_value=self.shipping_cost,
-                    is_refund=self.is_refund,
-                    lin_seq_no=len(self.line_items) + 1,
-                )
-            )
-
+        # Get the gift card purchase line sequence numbers
         gc_count = 1
         for item in result:
             if isinstance(item, GiftCard):
                 item.gfc_seq_no = gc_count
                 gc_count += 1
+
+        self.line_items = result
+
+        # Add delivery line item
+        if self.shipping_cost > 0:
+            self.line_items.append(
+                Delivery(
+                    unit_retail_value=self.shipping_cost,
+                    is_refunded=self.is_refund,
+                    lin_seq_no=len(self.line_items) + 1,
+                )
+            )
 
         return result
 
@@ -346,6 +352,17 @@ class ShopifyOrder:
         return (
             ShopifyOrder.get_money(self.node['currentSubtotalPriceSet']) + self.total_discount + self.shipping_cost
         )
+
+    def get_total_refund_amount(self) -> float:
+        total: float = 0
+        if not self.refunds:
+            return total
+
+        for refund in self.refunds:
+            for refund_line in refund['refundLineItems']['edges']:
+                self.refund_total += ShopifyOrder.get_money(refund_line['node']['subtotalSet'])
+
+        self.refund_total += self.total_refunded_shipping
 
     def get_total(self) -> float:
         target = self.node['totalRefundedSet'] if len(self.refunds) > 0 else self.node['currentTotalPriceSet']
@@ -534,7 +551,7 @@ class ShippingAddress:
         self.zip: str = None
         self.country: str = None
         self.phone: str = None
-        self.email: str = node['email'] if node else None
+        self.email: str = None
         self.get_shipping_address(node)
 
     def __str__(self) -> str:
@@ -577,8 +594,8 @@ class ShippingAddress:
             self.country = node['shippingAddress']['country']
         if 'phone' in node['shippingAddress']:
             self.phone = node['shippingAddress']['phone']
-        else:
-            self.phone = ShopifyOrder.get_phone(node=node)
+        if 'email' in node['shippingAddress']:
+            self.email = node['shippingAddress']['email']
 
 
 class Payments:

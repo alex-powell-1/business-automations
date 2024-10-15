@@ -10,7 +10,7 @@ from traceback import format_exc as tb
 from datetime import datetime
 
 from integration.draft_orders import on_draft_created, on_draft_updated
-from integration.cp_api import OrderAPI
+from integration.orders import Order
 from customer_tools.customers import add_new_customer
 import threading
 from setup.sms_engine import SMSEngine
@@ -225,7 +225,7 @@ def process_design_lead(body, eh=LeadFormErrorHandler, test_mode=False):
 def process_shopify_order(order_id, eh=ProcessInErrorHandler):
     eh.logger.info(f'Beginning processing for Order #{order_id}')
     time.sleep(5)  # <-- This is to give payment processor time to complete
-    OrderAPI().process_order(order_id)
+    Order(order_id).process()
 
 
 def shutdown_handler(signum, frame):

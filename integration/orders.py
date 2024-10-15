@@ -29,7 +29,7 @@ class Order:
         gc_code_override: str = None,
     ):
         self.verbose = verbose
-        self.order: ShopifyOrder = ShopifyOrder(order_id, gc_code_override=gc_code_override)
+        self.order: ShopifyOrder = ShopifyOrder(order_id, gc_code_override, verbose)
         print(self.order)
         self.post: bool = post
         self.send_gfc: bool = send_gfc
@@ -122,8 +122,9 @@ class Order:
                 'sku': x.sku,
                 'name': Database.CP.Product.get_long_descr(x.sku),
                 'qty': x.quantity,
-                'base_price': x.retail_price,
-                'base_total': x.retail_price,
+                'retail': x.unit_retail_value,
+                'price': x.extended_unit_price,
+                'line_total': x.extended_price,
             }
 
             product_list.append(product_details)
@@ -166,7 +167,7 @@ class Order:
                 'cb_email': email,
                 'cb_street': order.billing_address.address_1 or '',
                 'cb_city': order.billing_address.city or '',
-                'cb_state': order.billing_address.province or '',
+                'cb_state': order.billing_address.state or '',
                 'cb_zip': order.billing_address.zip or '',
                 # Customer Shipping
                 'shipping_method': 'Delivery' if order.shipping_cost > 0 else 'Pickup',
@@ -177,12 +178,13 @@ class Order:
                 'cs_email': order.shipping_address.email or '',
                 'cs_street': order.shipping_address.address_1 or '',
                 'cs_city': order.shipping_address.city or '',
-                'cs_state': order.shipping_address.province or '',
+                'cs_state': order.shipping_address.state or '',
                 'cs_zip': order.shipping_address.zip or '',
                 # Product Details
                 'number_of_items': len(order.line_items),
                 'ticket_notes': order.customer_message or '',
                 'products': product_list,
+                'has_coupon': True if order.coupon_codes else False,
                 'coupon_code': ', '.join(order.coupon_codes),
                 'coupon_discount': order.total_discount,
                 'loyalty': order.store_credit_amount,
@@ -247,5 +249,5 @@ class OrderProcessor:
 
 
 if __name__ == '__main__':
-    # Order.delete(tkt_no='S1151')
-    Order(5703560200359, print_order=False, send_gfc=False).process()
+    Order.delete(tkt_no='S1161')
+    Order(5725241245863).process()
