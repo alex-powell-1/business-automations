@@ -6,83 +6,101 @@ import json
 from database import Database
 
 
-class InventoryItem:
+class Item:
+    line_type = 'O'
+
     def __init__(
         self,
-        id: str,
-        sku: str,
-        retail_price: float,
-        is_refunded: bool,
-        discounted_price: float,
-        quantity: float,
-        tax: float,
-        quantity_refunded: float,
         lin_seq_no: int,
+        sku: str,
+        quantity: int,
+        unit_retail_value: float,
+        extended_unit_price: float,
+        is_refunded: bool,
+        quantity_refunded: float,
     ):
-        self.id: str = id
-        self.sku: str = sku
         self.lin_seq_no: int = lin_seq_no
-        # Price
-        self.retail_price: float = retail_price
+
+        self.sku: str = sku
+        """SKU of the item"""
+
+        self.lin_seq_no: int = lin_seq_no
+        """The line sequence number of the item in the order"""
+
+        self.unit_retail_value: float = unit_retail_value
+        """Retail Price of the item as defined by PRC_1 in CP"""
+
+        self.extended_unit_price: float = extended_unit_price
+        """Retail price minus the discount amount"""
+
         self.quantity: float = quantity
 
-        # Refund Information
-        self.is_refunded: bool = is_refunded
-        self.quantity_refunded: int = quantity_refunded
-        self.refund_net: float = discounted_price * quantity_refunded
+        self.extended_price: float = self.extended_unit_price * self.quantity
+        """Final amount of line item after discount and quantity are applied"""
 
         # Cost
         self.cost = Database.CP.Product.get_cost(self.sku)
-        self.ext_cost: float = self.cost * self.quantity
-        # Discount
-        self.discounted_price: float = discounted_price
-        self.discount_amount: float = self.retail_price - discounted_price
-        self.extended_discount: float = self.discount_amount * self.quantity
-        # Tax
-        self.tax: float = tax
-        # Totals
-        self.ext_price: float = self.retail_price * self.quantity
-        self.ext_discounted_price: float = self.discounted_price * self.quantity
-        self.line_total: float = self.ext_price - self.extended_discount
+        """Cost of the item as defined by the cost in CP"""
+        self.extended_cost: float = self.cost * self.quantity
+        """Cost of the item multiplied by the quantity"""
 
-        self.payload: dict = self.get_payload()
-
-    def __str__(self) -> str:
-        result = f'\nLine Item ID: {self.id}\n'
-        result += f'SKU: {self.sku}\n'
-        result += f'Line Seq No: {self.lin_seq_no}\n'
-        result += f'Is Refunded: {self.is_refunded}\n'
-        result += f'Quantity Refunded: {self.quantity_refunded}\n'
-        result += f'Refund Amount: ${self.refund_net:.2f}\n'
-        result += f'Retail Price: ${self.retail_price:.2f}\n'
-        result += f'Quantity: {self.quantity}\n'
-        result += f'Ext Price: ${self.ext_price:.2f}\n'
-        result += '\nDiscounts\n'
-        result += f'Unit Discount Amount: ${self.discount_amount:.2f}\n'
-        result += f'Extended Discount: ${self.extended_discount:.2f}\n'
-        result += '\nCost\n'
-        result += f'Unit Cost: ${self.cost:.2f}\n'
-        result += f'Ext Cost: ${self.ext_cost:.2f}\n'
-        result += '\nTax\n'
-        result += f'Tax: ${self.tax:.2f}\n'
-        result += '\nTotals\n'
-        result += f'Line Total: ${self.line_total:.2f}\n'
-
-        return result
+        self.is_refunded: bool = is_refunded
+        """Is the line item refunded"""
+        self.quantity_refunded: int = quantity_refunded
+        """Quantity refunded for the line"""
+        self.refund_amount: float = self.extended_unit_price * quantity_refunded
+        """Amount refunded for the line - Positive Number"""
 
     def get_payload(self):
         """Return the payload for the line item to be used in the CP API"""
 
         return {
-            'LIN_TYP': 'O',
+            'LIN_TYP': Item.line_type,
             'ITEM_NO': self.sku,
             'USR_ENTD_PRC': False,
             'QTY_SOLD': self.quantity,
-            'PRC': self.retail_price,
-            'EXT_PRC': self.ext_price,
-            'EXT_COST': self.ext_cost,
+            'PRC': self.extended_unit_price,
+            'EXT_PRC': self.extended_price,
+            'EXT_COST': self.extended_cost,
             'sku': self.sku,
         }
+
+
+class InventoryItem(Item):
+    def __init__(
+        self,
+        id: int,
+        lin_seq_no: int,
+        sku: str,
+        quantity: int,
+        unit_retail_value: float,
+        extended_unit_price: float,
+        is_refunded: bool,
+        quantity_refunded: float,
+    ):
+        super().__init__(
+            self, lin_seq_no, sku, quantity, unit_retail_value, extended_unit_price, is_refunded, quantity_refunded
+        )
+        self.id: int = id
+        """Shopify ID of the item in the order"""
+
+        self.payload: dict = self.get_payload()
+
+    def __str__(self) -> str:
+        result = f'\Shopify Item ID: {self.id}\n'
+        result += f'SKU: {self.sku}\n'
+        result += f'Line Seq No: {self.lin_seq_no}\n'
+        result += f'Is Refunded: {self.is_refunded}\n'
+        result += f'Quantity Refunded: {self.quantity_refunded}\n'
+        result += f'Amount Refunded: ${self.refund_amount:.2f}\n'
+        result += f'Unit Retail Value: ${self.unit_retail_value:.2f}\n'
+        result += f'Extended Unit Price: ${self.extended_unit_price:.2f}\n'
+        result += f'Quantity: {self.quantity}\n'
+        result += f'Extended Price: ${self.extended_price:.2f}\n'
+        result += '\nCost\n'
+        result += f'Unit Cost: ${self.cost:.2f}\n'
+        result += f'Extended Cost: ${self.extended_cost:.2f}\n'
+        return result
 
 
 class GiftCard:
@@ -125,35 +143,28 @@ class GiftCard:
         }
 
 
-class Delivery:
-    def __init__(self, amount: float, is_refunded: bool, lin_seq_no: int):
-        self.amount: float = amount
-        self.sku: str = 'DELIVERY'
-        self.lin_typ: str = 'O'
-        self.qty: int = 1
-        self.ext_cost: float = 0
-        self.lin_seq_no: int = lin_seq_no
+class Delivery(Item):
+    sku = 'DELIVERY'
+    quantity = 1
+
+    def __init__(self, unit_retail_value: float, is_refunded: bool, lin_seq_no: int):
+        super().__init__(
+            self,
+            lin_seq_no=lin_seq_no,
+            sku=Delivery.sku,
+            quantity=Delivery.quantity,
+            unit_retail_value=unit_retail_value,
+            extended_unit_price=unit_retail_value,
+            is_refunded=is_refunded,
+            quantity_refunded=1 if is_refunded else 0,
+        )
         self.payload: dict = self.get_payload()
 
     def __str__(self) -> str:
         result = '\nDelivery\n'
         result += '--------\n'
-        result += str(self.delivery)
+        result += f'Amount: ${self.unit_retail_value:.2f}\n'
         return result
-
-    def get_payload(self):
-        """Return the payload for the line item to be used in the CP API"""
-
-        return {
-            'LIN_TYP': self.lin_typ,
-            'ITEM_NO': 'DELIVERY',
-            'USR_ENTD_PRC': False,
-            'QTY_SOLD': self.qty,
-            'PRC': self.amount,
-            'EXT_PRC': self.amount * self.qty,
-            'EXT_COST': self.ext_cost,
-            'LIN_SEQ_NO': self.lin_seq_no,
-        }
 
 
 class ShopifyOrder:
@@ -268,13 +279,10 @@ class ShopifyOrder:
         for i, item in enumerate(node_items, start=1):
             price = float(item['variant']['price'] or 0) if item['variant'] else 0
             compare_at_price = float(item['variant']['compareAtPrice'] or 0) if item['variant'] else 0
-            retail_price = max(price, compare_at_price)
-            discounted_price = ShopifyOrder.get_money(item['discountedUnitPriceAfterAllDiscountsSet'])
-            discount = retail_price - discounted_price
             quantity = int(item['quantity'])
 
-            if discounted_price < retail_price:
-                self.total_discount += discount * quantity
+            unit_retail_value = max(price, compare_at_price)
+            extended_unit_price = ShopifyOrder.get_money(item['discountedUnitPriceAfterAllDiscountsSet'])
 
             taxable = item['taxable']
             tax: float = 0 if not taxable else ShopifyOrder.get_money(item['taxLines']['priceSet'])
@@ -287,7 +295,7 @@ class ShopifyOrder:
                         if refund['node']['lineItem']['id'] == item['id']:
                             is_refunded = True
                             quantity_refunded = int(refund['node']['quantity'])
-                            self.refunded_subtotal += discounted_price * float(quantity_refunded)
+                            self.refunded_subtotal += extended_unit_price * float(quantity_refunded)
 
             if item['name'] is None:
                 item['name'] = ''
@@ -299,16 +307,15 @@ class ShopifyOrder:
                 continue
 
             if 'GFC' in item['sku']:
-                result.append(GiftCard(retail_price, lin_seq_no=i, code_no=self.gc_code_override))
+                result.append(GiftCard(unit_retail_value, lin_seq_no=i, code_no=self.gc_code_override))
             else:
                 result.append(
                     InventoryItem(
-                        id=item['id'],
+                        id=item['id'].split('/')[-1],
                         sku=item['sku'],
-                        retail_price=retail_price,
-                        discounted_price=discounted_price,
+                        unit_retail_value=unit_retail_value,
+                        extended_unit_price=extended_unit_price,
                         quantity=quantity,
-                        tax=tax,
                         is_refunded=is_refunded,
                         quantity_refunded=quantity_refunded,
                         lin_seq_no=i,
@@ -317,7 +324,11 @@ class ShopifyOrder:
 
         if self.shipping_cost > 0:
             result.append(
-                Delivery(amount=self.shipping_cost, is_refund=self.is_refund, lin_seq_no=len(self.line_items) + 1)
+                Delivery(
+                    unit_retail_value=self.shipping_cost,
+                    is_refund=self.is_refund,
+                    lin_seq_no=len(self.line_items) + 1,
+                )
             )
 
         gc_count = 1

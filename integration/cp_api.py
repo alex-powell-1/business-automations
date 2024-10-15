@@ -551,38 +551,8 @@ class OrderAPI(DocumentAPI):
     def set_ps_doc_lin_properties(self):
         order_db = Database.CP.OpenOrder
 
-        if self.is_refund:
-            for item in self.order.line_items:
-                if not item.is_refunded or isinstance(item, GiftCard):
-                    continue
-                else:
-                    order_db.update_line(
-                        doc_id=self.doc_id,
-                        lin_seq_no=item.lin_seq_no,
-                        qty_entd=0,
-                        qty_to_rel=-item.quantity_refunded,
-                        qty_to_leave=0,
-                        qty_sold=-item.quantity_refunded,
-                        ext_prc=-item.refund_net,
-                        gross_ext_prc=-item.refund_net,
-                        gross_disp_ext_prc=-item.refund_net,
-                        ext_cost=-item.ext_cost,
-                        prc_rul_seq_no=-1,
-                        prc_brk_descr='I',
-                    )
-
-                    def negative_column(table: str, column: str, index: int):
-                        order_db.set_value(
-                            table, column, -order_db.get_value(table, column, index), index, self.doc_id
-                        )
-
-                    for column in ['ORIG_QTY', 'CALC_EXT_PRC']:
-                        negative_column('PS_DOC_LIN', column, item.lin_seq_no)
-
-                    for column in ['QTY_PRCD']:
-                        negative_column('PS_DOC_LIN_PRICE', column, item.lin_seq_no)
-
-        else:
+        if not self.is_refund:
+            # Process Sales Lines
             for item in self.order.line_items:
                 if isinstance(item, GiftCard):
                     continue
@@ -591,12 +561,44 @@ class OrderAPI(DocumentAPI):
                     doc_id=self.doc_id,
                     lin_seq_no=item.lin_seq_no,
                     qty_to_rel=item.quantity,
-                    ext_prc=item.ext_price,
-                    gross_ext_prc=item.ext_price,
-                    gross_disp_ext_prc=item.ext_price,
+                    prc=item.extended_unit_price,
+                    ext_cost=item.extended_cost,
+                    ext_prc=item.extended_price,
+                    gross_ext_prc=item.extended_price,
+                    gross_disp_ext_prc=item.extended_price,
+                    calc_ext_prc=item.extended_price,
                     qty_entd=0,
                     qty_to_leave=0,
                 )
+        else:
+            # Process Refund Lines
+            for item in self.order.line_items:
+                if not item.is_refunded or isinstance(item, GiftCard):
+                    continue
+                else:
+                    order_db.update_line(
+                        doc_id=self.doc_id,
+                        lin_seq_no=item.lin_seq_no,
+                        qty_entd=0,
+                        orig_qty=-item.quantity,
+                        qty_to_rel=-item.quantity_refunded,
+                        qty_to_leave=0,
+                        qty_sold=-item.quantity_refunded,
+                        ext_prc=-item.refund_amount,
+                        gross_ext_prc=-item.refund_amount,
+                        gross_disp_ext_prc=-item.refund_amount,
+                        calc_ext_prc=-item.refund_amount,
+                        ext_cost=-item.extended_cost,
+                        prc_rul_seq_no=-1,
+                        prc_brk_descr='I',
+                    )
+
+                    order_db.update_line_price(
+                        doc_id=self.doc_id,
+                        lin_seq_no=item.lin_seq_no,
+                        quantity=item.quantity_refunded,
+                        prc=item.refund_amount,
+                    )
 
     def add_shipping_charges(self):
         pass

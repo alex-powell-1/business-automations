@@ -1557,10 +1557,12 @@ class Database:
                 qty_sold: int = None,
                 prc: float = None,
                 qty_to_rel: int = None,
+                orig_qty: int = None,
                 ext_prc: float = None,
                 ext_cost: float = None,
                 gross_ext_prc: float = None,
                 gross_disp_ext_prc: float = None,
+                calc_ext_prc: float = None,
                 qty_entd: int = None,
                 qty_to_leave: int = None,
                 prc_rul_seq_no: int = None,
@@ -1579,6 +1581,8 @@ class Database:
                     query += f'PRC = {prc}, '
                 if qty_to_rel:
                     query += f'QTY_TO_REL = {qty_to_rel}, '
+                if orig_qty:
+                    query += f'ORIG_QTY = {orig_qty}, '
                 if ext_prc:
                     query += f'EXT_PRC = {ext_prc}, '
                 if ext_cost:
@@ -1587,6 +1591,8 @@ class Database:
                     query += f'GROSS_EXT_PRC = {gross_ext_prc}, '
                 if gross_disp_ext_prc:
                     query += f'GROSS_DISP_EXT_PRC = {gross_disp_ext_prc}, '
+                if calc_ext_prc:
+                    query += f'CALC_EXT_PRC = {calc_ext_prc}, '
                 if qty_entd:
                     query += f'QTY_ENTD = {qty_entd}, '
                 if qty_to_leave:
@@ -1609,6 +1615,27 @@ class Database:
                     eh.logger.warn(f'Line {lin_seq_no} not found')
                 else:
                     eh.error_handler.add_error_v(f'Line {lin_seq_no} could not be updated')
+                    eh.error_handler.add_error_v(response['message'])
+
+            def update_line_price(
+                doc_id: str, lin_seq_no: int, quantity: int, unit_price: float, eh=ProcessInErrorHandler
+            ):
+                """Updates the price of a line item in the PS_DOC_LIN_PRICE table."""
+                query = f"""
+                UPDATE PS_DOC_LIN_PRICE
+                SET QTY_PRCD = {quantity}, UNIT_PRC = {unit_price}
+                WHERE DOC_ID = '{doc_id}'
+                AND LIN_SEQ_NO = {lin_seq_no}
+                """
+                response = Database.query(query)
+                if response['code'] == 200:
+                    eh.logger.success(f'PS_DOC_LIN_PRICE: DOC_ID: {doc_id}-Line:{lin_seq_no} updated')
+                elif response['code'] == 201:
+                    eh.logger.warn(f'PS_DOC_LIN_PRICE: DOC_ID: {doc_id}-Line:{lin_seq_no} not found')
+                else:
+                    eh.error_handler.add_error_v(
+                        f'PS_DOC_LIN_PRICE: DOC_ID: {doc_id}-Line:{lin_seq_no} could not be updated'
+                    )
                     eh.error_handler.add_error_v(response['message'])
 
             def set_ps_doc_lin_quantities(
