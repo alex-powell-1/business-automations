@@ -8,7 +8,7 @@ from setup import creds
 from setup.error_handler import ProcessInErrorHandler, ProcessOutErrorHandler, LeadFormErrorHandler
 from traceback import format_exc as tb
 from datetime import datetime
-
+from integration.orders import Order
 from integration.draft_orders import on_draft_created, on_draft_updated
 from customer_tools.customers import add_new_customer
 import threading
