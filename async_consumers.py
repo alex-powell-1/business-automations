@@ -10,7 +10,6 @@ from traceback import format_exc as tb
 from datetime import datetime
 
 from integration.draft_orders import on_draft_created, on_draft_updated
-from integration.orders import Order
 from customer_tools.customers import add_new_customer
 import threading
 from setup.sms_engine import SMSEngine
@@ -237,7 +236,7 @@ def shutdown_handler(signum, frame):
     sys.exit(0)
 
 
-if __name__ == '__main__2':
+if __name__ == '__main__':
     try:
         signal.signal(signal.SIGINT, shutdown_handler)
         signal.signal(signal.SIGTERM, shutdown_handler)
@@ -295,7 +294,3 @@ if __name__ == '__main__2':
             error=f'Unhandled exception: {e}', origin='consumers.py->main', traceback=tb()
         )
         shutdown_handler(None, None)
-
-
-if __name__ == '__main__':
-    pass
