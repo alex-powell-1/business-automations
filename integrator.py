@@ -47,7 +47,7 @@ class Integrator:
         if self.subscriber_sync:
             self.subscribers: Subscribers = Subscribers(last_sync=self.last_sync, verbose=self.verbose)
         if self.promotions_sync:
-            self.promotions: Promotions = Promotions(last_sync=self.last_sync, verbose=self.verbose)
+            self.promotions: Promotions = Promotions(last_sync=datetime(2020,1,1), verbose=self.verbose)
         if self.catalog_sync:
             self.catalog: Catalog = Catalog(dates=self.dates, last_sync=self.last_sync, verbose=self.verbose)
 

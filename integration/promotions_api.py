@@ -58,6 +58,7 @@ class Promotions:
 
         cp_promotions = [x.grp_cod for x in self.promotions]
         mw_promotions = db.Shopify.Promotion.get()
+        
         if mw_promotions:
             delete_count = 0
             for mw_promotion in mw_promotions:
@@ -723,5 +724,5 @@ class FixedPriceItem:
 if __name__ == '__main__':
     import datetime
 
-    promos = Promotions(last_sync=datetime.datetime(2024, 10, 4), verbose=True)
+    promos = Promotions(last_sync=datetime.datetime(2020, 10, 4), verbose=True)
     promos.sync()

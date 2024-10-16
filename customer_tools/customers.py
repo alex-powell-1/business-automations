@@ -298,6 +298,7 @@ def add_new_customer(
             eh.error_handler.add_error_v(f'Error: {response.status_code} - {response.text}')
 
         cust_id = response.json()['CUST_NO']
+        eh.logger.success(f'Customer {cust_id} created.')
         db.CP.Customer.update_timestamps(customer_no=cust_id)
 
         return cust_id

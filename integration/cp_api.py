@@ -679,8 +679,8 @@ class OrderAPI(DocumentAPI):
 
     @staticmethod
     def get_customer_number(order: ShopifyOrder) -> str:
-        station = OrderAPI.get_station_id(order)
-        if station == 'POS' and not order.customer:
+        store = OrderAPI.get_store_id(order)
+        if store == 'POS' and not order.customer:
             return 'CASH'
         else:
             return get_cp_cust_no(order)

@@ -249,5 +249,5 @@ class OrderProcessor:
 
 
 if __name__ == '__main__':
-    Order.delete(tkt_no='S1161')
-    Order(5725241245863).process()
+    Order.delete(tkt_no='S1162')
+    Order(5727854133415, print_order=False).process()
