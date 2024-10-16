@@ -15,6 +15,7 @@ class Promotions:
         self.last_sync = last_sync
         self.verbose = verbose
         self.promotions: list[Promotion] = []
+        self.items: list[str] = []
         self.sync_queue: list[Promotion] = []
         self.update_count = 0
         self.sale_badges = {}
@@ -38,12 +39,23 @@ class Promotions:
             for promo in promo_data:
                 if promo['GRP_COD']:  # Check for empty group codes
                     try:
-                        self.promotions.append(Promotion(promo=promo, verbose=self.verbose))
+                        promotion = Promotion(promo=promo, verbose=self.verbose)
+                        self.promotions.append(promotion)
+                        if promotion.is_enabled:
+                            self.items += promotion.items
                     except Exception as e:
                         Promotions.error_handler.add_error_v(error=e, origin='Promotion Sync', traceback=tb())
 
     def process_deletes(self):
         """Deletes promotions that are no longer in Counterpoint."""
+        on_sale_items = db.CP.Product.get_on_sale_items()
+        for item in on_sale_items:
+            if item not in self.items:
+                if self.verbose:
+                    Promotions.logger.info(f'Deleting Sale Price for Item: {item}')
+                db.CP.Product.set_sale_status(items=[item], status=False)
+                db.CP.Product.remove_sale_price(item)
+
         cp_promotions = [x.grp_cod for x in self.promotions]
         mw_promotions = db.Shopify.Promotion.get()
         if mw_promotions:
@@ -66,7 +78,6 @@ class Promotions:
 
     def sync(self):
         self.process_deletes()
-
         if not self.sync_queue:
             Promotions.logger.info('PROMOTIONS: No Promotions to update.')
         else:
@@ -115,6 +126,7 @@ class Promotion:
         self.mix_match_code = promo['MIX_MATCH_COD']
         self.max_uses = None
         self.price_rules: list[PriceRule] = []
+        self.items: list[str] = []
         self.get_start_end_dates()
         self.get_price_rules()
 
@@ -164,7 +176,9 @@ class Promotion:
         rules = db.CP.Promotion.PriceRule.get(self.grp_cod)
         if rules:
             for rule in rules:
-                self.price_rules.append(PriceRule(rule, verbose=self.verbose))
+                price_rule = PriceRule(rule, verbose=self.verbose)
+                self.price_rules.append(price_rule)
+                self.items += price_rule.items
 
     def get_bxgy_payload(self, rule: 'PriceRule') -> dict:
         """Creates the payload for the BOGO Twoofer promotion."""
@@ -331,7 +345,11 @@ class Promotion:
     def process_line_deletes(self):
         # Check for deleted lines in CP. If the line is not in CP, then remove sale prices for each item with line
         # and delete the line from MW.
+        if self.verbose:
+            Promotions.logger.info(f'Processing Line Deletes for Group Code: {self.grp_cod}')
+
         cp_lines = []
+
         query = f"""
         SELECT DISTINCT RUL_SEQ_NO 
         FROM IM_PRC_RUL
@@ -353,79 +371,50 @@ class Promotion:
 
         if mw_lines:
             delete_list = [x for x in mw_lines if x not in cp_lines]
-            if delete_list:
-                print(f'Delete List: {delete_list}')
+            if not delete_list:
+                if self.verbose:
+                    Promotions.logger.info(f'No Line Deletes for Group Code: {self.grp_cod}')
+            else:
+                if self.verbose:
+                    Promotions.logger.info(f'Delete List: {delete_list}')
+
                 for seq_no in delete_list:
                     # Get a list of item numbers for the line
-                    query = f"""
-                    SELECT ITEM_NO
-                    FROM SN_PROMO_LIN_FIX_PRC
-                    WHERE GRP_COD = '{self.grp_cod}' AND RUL_SEQ_NO = '{seq_no}'
-                    """
-                    response = db.query(query)
-                    if response:
-                        item_list = [x[0] for x in response]
-                        print(f'Item List: {item_list}')
-                        for item in item_list:
-                            db.Shopify.Promotion.FixLine.delete(
-                                group_cod=self.grp_cod, rule_seq_no=seq_no, item_no=item
-                            )
-                        db.CP.Product.set_sale_status(items=item_list, status=False)
-                        db.CP.Product.remove_sale_price(item_list)
-                
-                # Update TS of GRP for reprocessing
-                query = f"""
-                UPDATE IM_PRC_GRP
-                SET LST_MAINT_DT = GETDATE()
-                WHERE GRP_COD = '{self.grp_cod}'
-                """
-                response = db.query(query)
-                if response['code'] == 200:
-                    if self.verbose:
-                        Promotions.logger.info(f"Updated timestamp for {self.grp_cod}")
-                else:
-                    Promotions.error_handler.add_error_v(f"Error updating timestamp for {self.grp_cod}")
-
-
-
-        # Check each price rule for deleted items. If an item is not in CP, then remove the sale price and delete.
-        for rule in self.price_rules:
-            cp_rule_items = rule.items
-            mw_bogo_items = rule.mw_bogo_items
-            # check bogo items
-            if mw_bogo_items:
-                delete_list = [x for x in mw_bogo_items if x not in cp_rule_items]
-                if delete_list:
-                    print(f'GRP_COD: {self.grp_cod} BOGO Delete List: {delete_list}')
-                    db.Shopify.Promotion.BxgyLine.delete(item_no_list=delete_list)
-                    db.CP.Product.set_sale_status(items=delete_list, status=False)
-
-            mw_fixed_price = rule.mw_fixed_price_items
-            # check fixed price items
-            if mw_fixed_price:
-                delete_list = [x for x in mw_fixed_price if x not in cp_rule_items]
-                if delete_list:
-                    for item in delete_list:
+                    item_list = db.Shopify.Promotion.FixLine.get(
+                        group_cod=self.grp_cod, rule_seq_no=seq_no, verbose=self.verbose
+                    )
+                    for item in item_list:
                         db.Shopify.Promotion.FixLine.delete(
-                            group_cod=self.grp_cod, rule_seq_no=rule.seq_no, item_no=item
+                            group_cod=self.grp_cod, rule_seq_no=seq_no, item_no=item, verbose=self.verbose
                         )
-                    db.CP.Product.set_sale_status(items=delete_list, status=False)
-                                    # Update TS of GRP for reprocessing
-                    query = f"""
-                    UPDATE IM_PRC_GRP
-                    SET LST_MAINT_DT = GETDATE()
-                    WHERE GRP_COD = '{self.grp_cod}'
-                    """
-                    response = db.query(query)
-                    if response['code'] == 200:
-                        if self.verbose:
-                            Promotions.logger.info(f"Updated timestamp for {self.grp_cod}")
-                    else:
-                        Promotions.error_handler.add_error_v(f"Error updating timestamp for {self.grp_cod}")
+                    db.CP.Product.set_sale_status(items=item_list, status=False)
+                    db.CP.Product.remove_sale_price(item_list)
+
+                db.CP.Promotion.update_timestamp(self.grp_cod)
+
+        if self.verbose:
+            Promotions.logger.info(f'Line Deletes Complete for Group Code: {self.grp_cod}')
 
     def process_line_item_changes(self):
+        if self.verbose:
+            Promotions.logger.info(f'Processing Line Item Changes for Group Code: {self.grp_cod}')
+
         for rule in self.price_rules:
-            pass
+            for item in rule.mw_bogo_items:
+                print(f'BXGY Item: {item}')
+                if item not in rule.items:
+                    Promotions.logger.info(f'Deleting BOGO Item: {item}')
+                    db.Shopify.Promotion.BxgyLine.delete(item_no_list=[item])
+                    db.CP.Product.set_sale_status(items=[item], status=False)
+
+            for item in rule.mw_fixed_price_items:
+                print(f'Fixed Price Item: {item}')
+                if item not in rule.items:
+                    Promotions.logger.info(f'Deleting Fixed Price Item: {item}')
+                    db.Shopify.Promotion.FixLine.delete(
+                        group_cod=self.grp_cod, rule_seq_no=rule.seq_no, item_no=item
+                    )
+                    db.CP.Product.set_sale_status(items=[item], status=False)
 
     def set_sale_status(self, rule: 'PriceRule'):
         if rule.items:
@@ -606,12 +595,14 @@ class PriceRule:
 
         where_filter + " AND IS_ECOMM_ITEM = 'Y'"
 
-        query = f'SELECT ITEM_NO FROM IM_ITEM {where_filter}'
+        query = f"""SELECT ITEM_NO FROM IM_ITEM {where_filter} AND IS_ECOMM_ITEM = 'Y'"""
+
         response = db.query(query)
+
         if response:
             for item in response:
-                item_no = item[0]
-                result.append(item_no)
+                item = item[0]
+                result.append(item[0])
         return result
 
     def get_reward_quantity(self) -> tuple:
@@ -733,6 +724,4 @@ if __name__ == '__main__':
     import datetime
 
     promos = Promotions(last_sync=datetime.datetime(2024, 10, 4), verbose=True)
-    for promo in promos.promotions:
-        if promo.grp_cod in ['SEPT-RETAI']:
-            promo.process()
+    promos.sync()
