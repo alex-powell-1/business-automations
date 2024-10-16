@@ -269,6 +269,7 @@ class Promotion:
     def process(self):
         Promotions.logger.info(f'Processing Promotion: {self.grp_cod}')
         self.process_line_deletes()
+        self.process_line_item_changes()
 
         for rule in self.price_rules:
             if self.verbose:
@@ -353,6 +354,7 @@ class Promotion:
         if mw_lines:
             delete_list = [x for x in mw_lines if x not in cp_lines]
             if delete_list:
+                print(f'Delete List: {delete_list}')
                 for seq_no in delete_list:
                     # Get a list of item numbers for the line
                     query = f"""
@@ -363,6 +365,7 @@ class Promotion:
                     response = db.query(query)
                     if response:
                         item_list = [x[0] for x in response]
+                        print(f'Item List: {item_list}')
                         for item in item_list:
                             db.Shopify.Promotion.FixLine.delete(
                                 group_cod=self.grp_cod, rule_seq_no=seq_no, item_no=item
@@ -419,6 +422,10 @@ class Promotion:
                             Promotions.logger.info(f"Updated timestamp for {self.grp_cod}")
                     else:
                         Promotions.error_handler.add_error_v(f"Error updating timestamp for {self.grp_cod}")
+
+    def process_line_item_changes(self):
+        for rule in self.price_rules:
+            pass
 
     def set_sale_status(self, rule: 'PriceRule'):
         if rule.items:
@@ -727,6 +734,5 @@ if __name__ == '__main__':
 
     promos = Promotions(last_sync=datetime.datetime(2024, 10, 4), verbose=True)
     for promo in promos.promotions:
-        print(promo)
-        if promo.grp_cod in ['OCTPROMO1']:
+        if promo.grp_cod in ['SEPT-RETAI']:
             promo.process()

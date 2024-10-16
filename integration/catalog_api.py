@@ -1442,6 +1442,7 @@ class Product:
                     self.images.append(default_image)
                     self.media.append(default_image)
                     self.default_image = True
+                
                 else:
                     message = f'Product {self.binding_id} is missing images. Will set visibility to draft.'
                     if self.verbose:
