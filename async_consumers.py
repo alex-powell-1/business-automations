@@ -10,7 +10,7 @@ from traceback import format_exc as tb
 from datetime import datetime
 
 from integration.draft_orders import on_draft_created, on_draft_updated
-from customer_tools.customers import lookup_customer, add_new_customer
+from customer_tools.customers import add_new_customer
 import threading
 from setup.sms_engine import SMSEngine
 from setup.utilities import PhoneNumber
@@ -96,7 +96,7 @@ def process_design_lead(body, eh=LeadFormErrorHandler, test_mode=False):
 
     logger.info(f'Received message from {first_name} {last_name}. Beginning Processing...')
     # Check if this is a current customer
-    cust_no = lookup_customer(phone_number=phone, email_address=email)
+    cust_no = Database.CP.Customer.lookup_customer(phone_number=phone, email_address=email)
 
     if not cust_no:
         # Add new customer if not found
@@ -257,7 +257,7 @@ def shutdown_handler(signum, frame):
     sys.exit(0)
 
 
-if __name__ == '__main__2':
+if __name__ == '__main__':
     try:
         signal.signal(signal.SIGINT, shutdown_handler)
         signal.signal(signal.SIGTERM, shutdown_handler)
@@ -315,8 +315,3 @@ if __name__ == '__main__2':
             error=f'Unhandled exception: {e}', origin='consumers.py->main', traceback=tb()
         )
         shutdown_handler(None, None)
-
-
-if __name__ == '__main__':
-    shopify_order = ShopifyOrder('5712291233959')
-    shopify_order.post_shopify_order()
