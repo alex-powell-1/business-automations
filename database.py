@@ -1908,27 +1908,29 @@ class Database:
                     eh.error_handler.add_error_v(error=error)
                     raise Exception(error)
 
-            def remove_sale_price(items: list[str], verbose=False, eh=ProcessOutErrorHandler):
-                if len(items) > 1:
-                    where_filter = f'WHERE ITEM_NO IN {tuple(items)}'
-                else:
-                    where_filter = f"WHERE ITEM_NO = '{items[0]}'"
+            def remove_from_sale(items: list[str], verbose=False, eh=ProcessOutErrorHandler):
+                """Takes list[item_no]: removes PRC_2, IS_ON_SALE->'N', removes sale descr, removes sale cat."""
 
                 query = f"""
                 UPDATE IM_PRC
                 SET PRC_2 = NULL, LST_MAINT_DT = GETDATE()
-                {where_filter}
+                WHERE ITEM_NO IN ({','.join([f"'{x}'" for x in items])})
         
                 UPDATE IM_ITEM
                 SET IS_ON_SALE = 'N', SALE_DESCR = NULL, LST_MAINT_DT = GETDATE()
-                {where_filter}
+                WHERE ITEM_NO IN ({','.join([f"'{x}'" for x in items])})
+
+                DELETE FROM EC_CATEG_ITEM
+                WHERE ITEM_NO in ({','.join([f"'{x}'" for x in items])}) 
+                AND CATEG_ID = '{creds.Counterpoint.Categories.on_sale}'
                 """
-                # Removing Sale Price, Last Maintenance Date, and Removing from On Sale Category
+
                 response = Database.query(query)
 
                 if response['code'] == 200:
                     if verbose:
                         eh.logger.success(f'Sale Price removed successfully from {items}.')
+
                 elif response['code'] == 201:
                     if verbose:
                         eh.logger.warn(f'No Rows Affected for {items}')
@@ -1937,28 +1939,24 @@ class Database:
                         error=f'Error: {response["code"]}\n {response["message"]}, origin="Sale Price Removal")'
                     )
 
-            def set_sale_status(
-                items: list[str], status: bool, description=None, verbose=False, eh=ProcessOutErrorHandler
-            ):
+            def add_to_sale(items: list[str], description=None, verbose=False, eh=ProcessOutErrorHandler):
                 if not items:
                     raise Exception('No items provided to set sale status.')
 
                 query = f"""
                     UPDATE {Table.CP.Item.table}
-                    SET IS_ON_SALE = '{"Y" if status else "N"}', LST_MAINT_DT = GETDATE()
+                    SET IS_ON_SALE = 'Y', 
+                    SALE_DESCR = {f"'{description}'" if description else 'NULL'},
+                    LST_MAINT_DT = GETDATE()
+                    WHERE ITEM_NO IN ({','.join([f"'{x}'" for x in items])})
                     """
-                if description:
-                    query += f", SALE_DESCR = '{description}'"
-                else:
-                    query += ', SALE_DESCR = NULL'
-
-                query += f""" WHERE ITEM_NO IN ({','.join([f"'{x}'" for x in items])})"""
 
                 # Updating Sale Price, Sale Flag, Sale Description, Last Maintenance Date
                 response = Database.query(query)
                 if response['code'] == 200:
                     if verbose:
                         eh.logger.success(f'Sale status updated for {items}.')
+                    Database.CP.Product.add_to_sale_category(sku_list=items)
 
                 elif response['code'] == 201:
                     if verbose:
@@ -1967,11 +1965,6 @@ class Database:
                     error = f'Error updating sale status for {items}. \n Query: {query}\nResponse: {response}'
                     eh.error_handler.add_error_v(error=error)
                     raise Exception(error)
-
-                if status:
-                    Database.CP.Product.add_to_sale_category(sku_list=items)
-                else:
-                    Database.CP.Product.remove_from_sale_category(sku_list=items)
 
             def set_active(sku, eh=ProcessOutErrorHandler):
                 query = f"""
@@ -3281,7 +3274,7 @@ class Database:
                 else:
                     eh.error_handler.add_error_v(f'Error updating timestamp for {group_code}')
 
-            def get(group_code=None, ids_only=False):
+            def get(group_code=None, ids_only=False) -> list[dict]:
                 if group_code:
                     promotions = [group_code]
                 else:
@@ -3291,57 +3284,69 @@ class Database:
                     if ids_only:
                         return promotions
 
-                if promotions:
-                    # Get promotion details from IM_PRC_GRP and IM_PRC_GRP_RUL
-                    result = []
-                    for promo in promotions:
-                        # Get promotion details
-                        query = f"""
-                        SELECT GRP.GRP_TYP, GRP.GRP_COD, GRP.GRP_SEQ_NO, GRP.DESCR, GRP.CUST_FILT, GRP.NO_BEG_DAT, 
-                        GRP.BEG_DAT, GRP.BEG_TIM_FLG, GRP.NO_END_DAT, GRP.END_DAT, GRP.END_TIM_FLG, GRP.LST_MAINT_DT, 
-                        GRP.ENABLED, GRP.MIX_MATCH_COD                          
-                        FROM IM_PRC_GRP GRP
-                        WHERE GRP.GRP_COD = '{promo}' and GRP.GRP_TYP = 'P'
-                        """
-                        response = Database.query(query=query, mapped=True)
-                        if response['code'] == 200:
-                            promotion = response['data'][0] if response else None
-                        else:
-                            promotion = None
+                # Get promotion details from IM_PRC_GRP and IM_PRC_GRP_RUL
+                result = []
+                for promo in promotions:
+                    # Get promotion details
+                    query = f"""
+                    SELECT GRP.GRP_TYP, GRP.GRP_COD, GRP.GRP_SEQ_NO, GRP.DESCR, GRP.CUST_FILT, GRP.NO_BEG_DAT, 
+                    GRP.BEG_DAT, GRP.BEG_TIM_FLG, GRP.NO_END_DAT, GRP.END_DAT, GRP.END_TIM_FLG, GRP.LST_MAINT_DT, 
+                    GRP.ENABLED, GRP.MIX_MATCH_COD                          
+                    FROM IM_PRC_GRP GRP
+                    WHERE GRP.GRP_COD = '{promo}' and GRP.GRP_TYP = 'P'
+                    ORDER BY GRP_SEQ_NO
+                    """
+                    response = Database.query(query=query, mapped=True)
+                    if response['code'] == 200:
+                        promotion = response['data'][0] if response else None
+                    else:
+                        promotion = None
 
-                        if promotion:
-                            result.append(promotion)
-                    return result
+                    if promotion:
+                        result.append(promotion)
+                return result
+
+            def get_rul_seq_nos(group_code: str) -> list[int]:
+                """Returns a list of distinct rule sequence numbers for a promotion."""
+                query = f"""
+                SELECT DISTINCT RUL_SEQ_NO 
+                FROM IM_PRC_RUL
+                WHERE GRP_COD = '{group_code}'
+                """
+
+                response = Database.query(query)
+                return [x[0] for x in response] if response else []
 
             class PriceRule:
                 def get(group_code):
                     query = f"""
                     SELECT RUL.GRP_TYP, RUL.GRP_COD, RUL.RUL_SEQ_NO, RUL.DESCR, RUL.CUST_FILT, ITEM_FILT, 
                     SAL_FILT, IS_CUSTOM, USE_BOGO_TWOFER, REQ_FULL_GRP_FOR_BOGO_TWOFER,
-                    GRP.ENABLED
+                    GRP.ENABLED, GRP.GRP_SEQ_NO
                     FROM IM_PRC_RUL RUL
 					FULL OUTER JOIN IM_PRC_GRP GRP on GRP.GRP_COD = RUL.GRP_COD
                     WHERE RUL.GRP_COD = '{group_code}'
+                    ORDER BY RUL_SEQ_NO
                     """
                     response = Database.query(query, mapped=True)
                     if response['code'] == 200:
                         result = [rule for rule in response['data']] if response else []
-                        if result:
-                            for x in result:
-                                x['ID'] = None
-                                x['SHOP_ID'] = None
-                                x['MW_ENABLED'] = None
-                                # Check Middleware for Shopify ID, etc.
-                                query = f"""
-                                SELECT ID, SHOP_ID, ENABLED
-                                FROM {Table.Middleware.promotions}
-                                WHERE GRP_COD = '{group_code}' and RUL_SEQ_NO = '{x['RUL_SEQ_NO']}'
-                                """
-                                response = Database.query(query)
-                                if response:
-                                    x['ID'] = response[0][0]
-                                    x['SHOP_ID'] = response[0][1]
-                                    x['MW_ENABLED'] = response[0][2]
+                        # if result:
+                        #     for x in result:
+                        #         x['ID'] = None
+                        #         x['SHOP_ID'] = None
+                        #         x['MW_ENABLED'] = None
+                        #         # Check Middleware for Shopify ID, etc.
+                        #         query = f"""
+                        #         SELECT ID, SHOP_ID, ENABLED
+                        #         FROM {Table.Middleware.promotions}
+                        #         WHERE GRP_COD = '{group_code}' and RUL_SEQ_NO = '{x['RUL_SEQ_NO']}'
+                        #         """
+                        #         response = Database.query(query)
+                        #         if response:
+                        #             x['ID'] = response[0][0]
+                        #             x['SHOP_ID'] = response[0][1]
+                        #             x['MW_ENABLED'] = response[0][2]
 
                         return result
 
@@ -5078,13 +5083,20 @@ class Database:
         class Promotion:
             """Promotion Prices translated into Automatic Discounts in Shopify."""
 
-            def get(group_code=None):
+            def get(group_code=None) -> list[str]:
+                """Return all promotion group codes from the Middleware."""
                 if group_code:
                     query = f"SELECT SHOP_ID FROM {Table.Middleware.promotions} WHERE GRP_COD = '{group_code}'"
                 else:
                     query = f'SELECT GRP_COD FROM {Table.Middleware.promotions}'
                 response = Database.query(query)
-                return [x[0] for x in response] if response else None
+                return [x[0] for x in response] if response else []
+
+            def get_items_by_rule(group_code: str, rule_seq_no: int) -> list[str]:
+                """Return all items affected by a promotion rule."""
+                fixed_items = Database.Shopify.Promotion.FixLine.get(group_code, rule_seq_no)
+                bogo_items = Database.Shopify.Promotion.BxgyLine.get_by_rule_seq_no(group_code, rule_seq_no)
+                return fixed_items + bogo_items
 
             def sync(rule):
                 if not rule.shopify_id:
@@ -5136,7 +5148,7 @@ class Database:
                         origin='Middleware Promotion Update',
                     )
 
-            def delete(shopify_id):
+            def delete(shopify_id, eh=ProcessOutErrorHandler, verbose=False):
                 if not shopify_id:
                     Database.logger.warn('No Shopify ID provided for deletion.')
                     return
@@ -5154,11 +5166,42 @@ class Database:
                 response = Database.query(query)
 
                 if response['code'] == 200:
-                    Database.logger.success(f'DELETE: Promotion {shopify_id} deleted successfully from Middleware.')
+                    eh.logger.success(f'DELETE: Promotion {shopify_id} deleted successfully from Middleware.')
                 elif response['code'] == 201:
-                    Database.logger.warn(f'DELETE: Promotion {shopify_id} not found in Middleware.')
+                    eh.logger.warn(f'DELETE: Promotion {shopify_id} not found in Middleware.')
                 else:
-                    Database.error_handler.add_error_v(
+                    eh.error_handler.add_error_v(
+                        error=f'Error: {response["code"]}\n\nQuery: {query}\n\nResponse:{response["message"]}',
+                        origin='Middleware Promotion Deletion',
+                    )
+
+            def delete_items_by_rule_no(
+                group_code: str, rule_seq_no: int, verbose: bool = False, eh=ProcessOutErrorHandler
+            ):
+                if not group_code or not rule_seq_no:
+                    Database.logger.warn('Must provide group code and rule sequence number for deletion.')
+                    return
+                query = f"""
+                DELETE FROM {Table.Middleware.promotions}
+                WHERE GRP_COD = '{group_code}' AND RUL_SEQ_NO = {rule_seq_no}
+
+                DELETE FROM {Table.Middleware.promotion_lines_fixed}
+                WHERE GRP_COD = '{group_code}' AND RUL_SEQ_NO = {rule_seq_no}
+
+                DELETE FROM {Table.Middleware.promotion_lines_bogo}
+                WHERE SHOP_ID IN (SELECT SHOP_ID FROM {Table.Middleware.promotions}
+                                    WHERE GRP_COD = '{group_code}' AND RUL_SEQ_NO = {rule_seq_no})
+                """
+                response = Database.query(query)
+                if response['code'] == 200:
+                    if verbose:
+                        eh.logger.success(
+                            f'DELETE: Promotion {group_code}-{rule_seq_no} deleted successfully from Middleware.'
+                        )
+                elif response['code'] == 201:
+                    eh.logger.warn(f'DELETE: Promotion {group_code}-{rule_seq_no} not found in Middleware.')
+                else:
+                    eh.error_handler.add_error_v(
                         error=f'Error: {response["code"]}\n\nQuery: {query}\n\nResponse:{response["message"]}',
                         origin='Middleware Promotion Deletion',
                     )
@@ -5177,12 +5220,26 @@ class Database:
             class BxgyLine:
                 """Buy X Get Y Line Items"""
 
-                def get(shopify_id):
+                def get(shopify_id: int) -> list[str]:
+                    """Get all items affected by BOGO promos from middleware by Shopify ID."""
                     if not shopify_id:
                         return []
                     query = (
                         f'SELECT ITEM_NO FROM {Table.Middleware.promotion_lines_bogo} WHERE SHOP_ID = {shopify_id}'
                     )
+                    response = Database.query(query)
+                    return [x[0] for x in response] if response else []
+
+                def get_by_rule_seq_no(group_cod: str, rule_seq_no: int) -> list[str]:
+                    """Get all items affected by a BOGO promo rule from middleware."""
+                    if not group_cod or not rule_seq_no:
+                        return []
+                    query = f"""
+                    SELECT ITEM_NO FROM {Table.Middleware.promotion_lines_bogo}
+                    WHERE SHOP_ID IN (SELECT SHOP_ID 
+                                    FROM {Table.Middleware.promotions}
+                                    WHERE GRP_COD = '{group_cod}' AND RUL_SEQ_NO = {rule_seq_no})
+                    """
                     response = Database.query(query)
                     return [x[0] for x in response] if response else []
 
@@ -5203,7 +5260,7 @@ class Database:
                             if item in cp_items:
                                 continue
                             else:
-                                Database.Shopify.Promotion.BxgyLine.delete(item_no_list=[item])
+                                Database.Shopify.Promotion.BxgyLine.delete(items=[item])
 
                 def insert(item, shopify_promo_id, rule_seq_no):
                     """Insert Items affected by BOGO promos into middleware."""
@@ -5245,10 +5302,11 @@ class Database:
                             origin='Middleware Promotion Line Item Update',
                         )
 
-                def delete(shopify_id=None, item_no_list=None):
-                    if not shopify_id and not item_no_list:
+                def delete(shopify_id: int = None, items: list[str] = None, verbose: bool = False):
+                    if not shopify_id and not items:
                         Database.logger.warn('MW Discount Line Delete: Must provide promo id or item number list.')
                         return
+
                     if shopify_id:
                         # Delete all line items for a specific promotion
                         query = f'DELETE FROM {Table.Middleware.promotion_lines_bogo} WHERE SHOP_ID = {shopify_id}'
@@ -5264,25 +5322,15 @@ class Database:
                                 error=f'Error: {response["code"]}\n\nQuery: {query}\n\nResponse:{response["message"]}',
                                 origin='Middleware Promotion Line Item Deletion',
                             )
-                        return
-                    elif item_no_list:
-                        # Delete all line items for a list of item numbers
-                        if len(item_no_list) == 1:
-                            where_filter = f"ITEM_NO = '{item_no_list[0]}'"
-                        else:
-                            where_filter = f'ITEM_NO IN {tuple(item_no_list)}'
 
-                        query = f'DELETE FROM {Table.Middleware.promotion_lines_bogo} WHERE {where_filter}'
+                    elif items:
+                        query = f'DELETE FROM {Table.Middleware.promotion_lines_bogo} WHERE ITEM_NO IN ({','.join([f"'{x}'" for x in items])})'
 
                         response = Database.query(query)
                         if response['code'] == 200:
-                            Database.logger.success(
-                                f'DELETE: Promotion {item_no_list} deleted successfully from Middleware.'
-                            )
+                            Database.logger.success(f'BxgyLines {items} deleted successfully from Middleware.')
                         elif response['code'] == 201:
-                            Database.logger.warn(
-                                f'DELETE: No Promotion lines for {item_no_list} found in Middleware.'
-                            )
+                            Database.logger.warn(f'No BxgyLines lines found in MW for {items}.')
                         else:
                             Database.error_handler.add_error_v(
                                 error=f'Error: {response["code"]}\n\nQuery: {query}\n\nResponse:{response["message"]}',
@@ -5292,7 +5340,9 @@ class Database:
             class FixLine:
                 """Fixed Price Discount Line Items"""
 
-                def get(group_cod, rule_seq_no, verbose: bool = False, eh=ProcessOutErrorHandler) -> list[str]:
+                def get(
+                    group_cod: str, rule_seq_no: int, verbose: bool = False, eh=ProcessOutErrorHandler
+                ) -> list[str]:
                     """Get all items affected by a fixed price discount rule from middleware."""
                     query = f"""
                     SELECT ITEM_NO FROM {Table.Middleware.promotion_lines_fixed}
@@ -5307,39 +5357,85 @@ class Database:
                         Database.logger.success(f'Promotion {group_cod}-Rule: {rule_seq_no} Items: {items}')
                     return items
 
-                def insert(group_cod, rule_seq_no, item_no):
+                def get_rule_seq_nos(group_cod: str, eh=ProcessOutErrorHandler) -> list[int]:
+                    """Get all distinct rule sequence numbers for a promotion group code."""
                     query = f"""
-                    INSERT INTO {Table.Middleware.promotion_lines_fixed} (GRP_COD, RUL_SEQ_NO, ITEM_NO)
-                    VALUES ('{group_cod}', {rule_seq_no}, '{item_no}')
+                    SELECT DISTINCT RUL_SEQ_NO FROM {Table.Middleware.promotion_lines_fixed}
+                    WHERE GRP_COD = '{group_cod}'
+                    """
+                    response = Database.query(query)
+                    if not response:
+                        return []
+                    return [x[0] for x in response]
+
+                def insert(
+                    group_cod: str, rule_seq_no: int, item_no: str, group_seq_no: int, eh=ProcessOutErrorHandler
+                ):
+                    query = f"""
+                    INSERT INTO {Table.Middleware.promotion_lines_fixed} (GRP_COD, RUL_SEQ_NO, ITEM_NO, GRP_SEQ_NO)
+                    VALUES ('{group_cod}', {rule_seq_no}, '{item_no}', {group_seq_no})
                     """
                     response = Database.query(query)
                     if response['code'] == 200:
-                        Database.logger.success(
+                        eh.logger.success(
                             f'Promotion {group_cod}-Rule: {rule_seq_no} Item: {item_no} inserted successfully into Middleware.'
                         )
                     else:
-                        Database.error_handler.add_error_v(
+                        eh.error_handler.add_error_v(
                             error=f'Error: {response["code"]}\n\nQuery: {query}\n\nResponse:{response["message"]}',
                             origin='Middleware Promotion Line Item Insertion',
                         )
 
-                def delete(group_cod, rule_seq_no, item_no, verbose=False, eh=ProcessOutErrorHandler):
-                    query = f"""
-                    DELETE FROM {Table.Middleware.promotion_lines_fixed}
-                    WHERE GRP_COD = '{group_cod}' AND RUL_SEQ_NO = '{rule_seq_no}' AND ITEM_NO = '{item_no}'
-                    """
+                def delete(
+                    items: list[str],
+                    group_cod: str = None,
+                    rule_seq_no: int = None,
+                    verbose=False,
+                    eh=ProcessOutErrorHandler,
+                ):
+                    """Delete fixed price discount line items from middleware."""
+                    if group_cod and rule_seq_no and items:
+                        # Deletes ALL fixed line items with a given rule_seq_no, group code, and item number
+                        query = f"""
+                        DELETE FROM {Table.Middleware.promotion_lines_fixed}
+                        WHERE GRP_COD = '{group_cod}' AND RUL_SEQ_NO = '{rule_seq_no}' 
+                        AND ITEM_NO IN ({','.join([f"'{x}'" for x in items])})
+                        """
+                    elif group_cod and rule_seq_no:
+                        # Deletes ALL fixed line items with a given rule_seq_no and group code
+                        query = f"""
+                        DELETE FROM {Table.Middleware.promotion_lines_fixed}
+                        WHERE GRP_COD = '{group_cod}' AND RUL_SEQ_NO = '{rule_seq_no}'
+                        """
+                    else:
+                        # Deletes ALL fixed line items with a given item number
+                        query = f"""
+                        DELETE FROM {Table.Middleware.promotion_lines_fixed}
+                        WHERE ITEM_NO IN ({','.join([f"'{x}'" for x in items])})
+                        """
                     response = Database.query(query)
 
                     if response['code'] == 200:
                         if verbose:
-                            eh.logger.success(
-                                f'Promotion {group_cod}-Rule: {rule_seq_no} Item: {item_no} deleted successfully from Middleware.'
-                            )
+                            if group_cod and rule_seq_no:
+                                eh.logger.success(
+                                    f'Promotion {group_cod}-Rule: {rule_seq_no} Items: {items} deleted successfully from Middleware Fixed Lines.'
+                                )
+                            else:
+                                eh.logger.success(
+                                    f'Promotion Item: {items} deleted successfully from Middleware Fixed Lines.'
+                                )
+
                     elif response['code'] == 201:
                         if verbose:
-                            eh.logger.warn(
-                                f'Promotion {group_cod}-Rule: {rule_seq_no} Item: {item_no} not found for deletion in Middleware.'
-                            )
+                            if group_cod and rule_seq_no:
+                                eh.logger.warn(
+                                    f'Promotion {group_cod}-Rule: {rule_seq_no} Items: {items} not found for deletion in Middleware Fixed Lines.'
+                                )
+                            else:
+                                eh.logger.warn(
+                                    f'Promotion Items: {items} not found for deletion in Middleware Fixed Lines.'
+                                )
                     else:
                         eh.error_handler.add_error_v(
                             error=f'Error: {response["code"]}\n\nQuery: {query}\n\nResponse:{response["message"]}',
@@ -5369,4 +5465,5 @@ class Database:
 
 
 if __name__ == '__main__':
-    print(Database.CP.Customer.get_loyalty_balance('105786afd'))
+    # print(Database.CP.Customer.get_loyalty_balance('105786afd'))
+    pass

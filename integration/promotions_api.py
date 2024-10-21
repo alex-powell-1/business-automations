@@ -1,3 +1,4 @@
+from datetime import datetime
 from database import Database as db
 from setup.error_handler import ProcessOutErrorHandler
 from setup.utilities import convert_to_utc
@@ -5,6 +6,17 @@ from product_tools.products import Product
 from integration.shopify_api import Shopify
 from traceback import format_exc as tb
 import json
+
+
+class PromotionItem:
+    def __init__(self, item_no, group_code: str, group_seq_no: int, rule_seq_no: int):
+        self.item_no = item_no
+        self.group_code = group_code
+        self.group_seq_no = group_seq_no
+        self.rule_seq_no = rule_seq_no
+
+    def __str__(self) -> str:
+        return f'Item: {self.item_no} Group Code: {self.group_code} Group Seq No: {self.group_seq_no} Rule Seq No: {self.rule_seq_no}'
 
 
 class Promotions:
@@ -15,11 +27,13 @@ class Promotions:
         self.last_sync = last_sync
         self.verbose = verbose
         self.promotions: list[Promotion] = []
-        self.items: list[str] = []
+        self.valid_items: set[str] = set()
+        """A set of all items that are in a valid promotion."""
         self.sync_queue: list[Promotion] = []
         self.update_count = 0
         self.sale_badges = {}
         self.sale_badge_items = []
+
         self.get_promotions()
         self.get_sync_queue()
 
@@ -34,74 +48,238 @@ class Promotions:
 
     def get_promotions(self):
         promo_data = db.CP.Promotion.get()
-
-        if promo_data:
-            for promo in promo_data:
-                if promo['GRP_COD']:  # Check for empty group codes
-                    try:
-                        promotion = Promotion(promo=promo, verbose=self.verbose)
-                        self.promotions.append(promotion)
-                        if promotion.is_enabled:
-                            self.items += promotion.items
-                    except Exception as e:
-                        Promotions.error_handler.add_error_v(error=e, origin='Promotion Sync', traceback=tb())
+        for promo in promo_data:
+            if promo['GRP_COD']:  # Check for empty group codes
+                try:
+                    promotion = Promotion(promo=promo, verbose=self.verbose)
+                    self.promotions.append(promotion)
+                    if promotion.is_valid:
+                        for item in promotion.items:
+                            self.valid_items.add(item)
+                except Exception as e:
+                    Promotions.error_handler.add_error_v(error=e, origin='Promotion Sync', traceback=tb())
 
     def process_deletes(self):
         """Deletes promotions that are no longer in Counterpoint."""
-        on_sale_items = db.CP.Product.get_on_sale_items()
-        for item in on_sale_items:
-            if item not in self.items:
-                if self.verbose:
-                    Promotions.logger.info(f'Deleting Sale Price for Item: {item}')
-                db.CP.Product.set_sale_status(items=[item], status=False)
-                db.CP.Product.remove_sale_price(item)
 
-        cp_promotions = [x.grp_cod for x in self.promotions]
-        mw_promotions = db.Shopify.Promotion.get()
-        
-        if mw_promotions:
-            delete_count = 0
+        def delete_invalid_items(items_list: list[str]):
+            # Check if any of the items are in the valid items list. If so, these
+            # items are in another promotion and should not be removed from the sale status.
+            invalid_items: list[str] = []
+            for item in items_list:
+                if item not in self.valid_items:
+                    invalid_items.append(item)
+            # Remove the items from the sale in Counterpoint if they aren't in
+            # any other valid promotion
+            if invalid_items:
+                db.CP.Product.remove_from_sale(invalid_items, verbose=self.verbose)
+
+        def delete_dangling_items():
+            """Finds and removes items that are on sale in counterpoint but are not in
+            the validated items list."""
+            if self.verbose:
+                Promotions.logger.info('Processing Dangling Sale Items')
+            on_sale_items = db.CP.Product.get_on_sale_items()
+            if not on_sale_items:
+                if self.verbose:
+                    Promotions.logger.info('No Items on Sale.')
+                return
+
+            dangling_items = []
+
+            for item in on_sale_items:
+                if item not in self.valid_items:
+                    dangling_items.append(item)
+
+            if not dangling_items:
+                if self.verbose:
+                    Promotions.logger.info('No Dangling Sale Items.')
+                return
+
+            db.CP.Product.remove_from_sale(dangling_items, verbose=self.verbose)
+            # db.Shopify.Promotion.BxgyLine.delete(items=dangling_items, verbose=self.verbose)
+            db.Shopify.Promotion.FixLine.delete(items=dangling_items, verbose=self.verbose)
+
+        def delete_dangling_promotions():
+            """Deletes promotions that are no longer in Counterpoint."""
+            if self.verbose:
+                Promotions.logger.info('Processing Dangling Promotional Price Groups')
+            mw_promotions = db.Shopify.Promotion.get()
+            if not mw_promotions:
+                if self.verbose:
+                    Promotions.logger.info('PROMOTIONS: No Promotional Price Groups to delete.')
+                return
+
+            cp_promotions: list[str] = [x.grp_cod for x in self.promotions]
+
+            delete_queue = []
             for mw_promotion in mw_promotions:
                 if mw_promotion not in cp_promotions:
-                    shopify_id = db.Shopify.Promotion.get(mw_promotion)
-                    if shopify_id:
-                        Promotions.logger.info(f'Deleting Promotion: {mw_promotion}')
-                        Promotion.delete(shopify_discount_code_id=shopify_id)
-                    delete_count += 1
+                    delete_queue.append(mw_promotion)
 
-            if delete_count == 0 and self.verbose:
-                Promotions.logger.info('PROMOTIONS: No Promotions to delete.')
+            if not delete_queue:
+                if self.verbose:
+                    Promotions.logger.info('No Promotional Price Groups to delete.')
+                return
+
+            for promo in delete_queue:
+                shopify_id = db.Shopify.Promotion.get(promo)
+                if shopify_id:
+                    Promotions.logger.info(f'Deleting Promotional Price Groups: {promo}')
+                    Promotion.delete(shopify_discount_code_id=shopify_id)
+
+        def delete_dangling_rules():
+            """Deletes price rules that are no longer in Counterpoint."""
+            for promo in self.promotions:
+                if self.verbose:
+                    Promotions.logger.info(f'Promotion: {promo.grp_cod}-Processing Price Rule Deletes')
+
+                mw_lin_seq_nos: list[int] = db.Shopify.Promotion.FixLine.get_rule_seq_nos(group_cod=promo.grp_cod)
+                cp_lin_seq_nos = db.CP.Promotion.get_rul_seq_nos(promo.grp_cod)
+                if not mw_lin_seq_nos:
+                    if self.verbose:
+                        Promotions.logger.info(f'No Middleware Price Rule for Group Code: {promo.grp_cod}')
+                    return
+
+                delete_queue = []
+                for seq_no in mw_lin_seq_nos:
+                    if seq_no not in cp_lin_seq_nos:
+                        delete_queue.append(seq_no)
+
+                if not delete_queue:
+                    if self.verbose:
+                        Promotions.logger.info(f'No Price Rule Deletes for Group Code: {promo.grp_cod}')
+                    return
+
+                if self.verbose:
+                    Promotions.logger.info(f'{promo.grp_cod} Price Rule Delete Queue: {delete_queue}')
+
+                for seq_no in delete_queue:
+                    # Get all the items associated with the rule number from the middleware
+                    items_list = db.Shopify.Promotion.get_items_by_rule(promo.grp_cod, seq_no)
+                    delete_invalid_items(items_list)
+                    db.Shopify.Promotion.delete_items_by_rule_no(
+                        group_code=promo.grp_cod, rule_seq_no=seq_no, verbose=self.verbose
+                    )
+
+                db.CP.Promotion.update_timestamp(promo.grp_cod)
+
+                if self.verbose:
+                    Promotions.logger.info(f'Line Deletes Complete for Group Code: {promo.grp_cod}')
+
+        def delete_invalid_rules():
+            """Deletes price rules references that exist but are no longer valid.
+            ex. A rule was created for retail but then changed to wholesale after creation."""
+            for promo in self.promotions:
+                if self.verbose:
+                    Promotions.logger.info(f'Promotion: {promo.grp_cod}-Processing Invalid Price Rule Deletes')
+
+                for rule in promo.price_rules:
+                    if not rule.is_valid:
+                        if self.verbose:
+                            Promotions.logger.info(f'Deleting Invalid Rule: {rule.seq_no}')
+                        # Get all the items associated with the rule number from the middleware
+                        items_list = db.Shopify.Promotion.get_items_by_rule(promo.grp_cod, rule.seq_no)
+                        delete_invalid_items(items_list)
+                        # Delete the rule items from the middleware
+                        db.Shopify.Promotion.delete_items_by_rule_no(promo.grp_cod, rule.seq_no)
+
+        delete_dangling_items()
+        delete_dangling_promotions()
+        delete_dangling_rules()
+        delete_invalid_rules()
 
     def get_sync_queue(self):
         for promotion in self.promotions:
             if promotion.lst_maint_dt > self.last_sync:
                 self.sync_queue.append(promotion)
 
+    def process(self, promotion: 'Promotion'):
+        Promotions.logger.info(f'Processing Promotion: {promotion.grp_cod}')
+        if not promotion.is_valid:
+            if self.verbose:
+                Promotions.logger.warn(f'Promotion: {promotion.grp_cod} is not valid. Skipping...')
+            return
+
+        for rule in promotion.price_rules:
+            if not rule.is_valid:
+                if self.verbose:
+                    Promotions.logger.warn(f'Rule: {rule.seq_no} is not valid. Skipping...')
+                continue
+
+            Promotions.logger.info(f'Processing Retail Rule: {rule.seq_no}\n\n{rule}')
+
+            if rule.is_bogo_twoofer():
+                continue
+                # Processing of BOGO Twoofer Promotions has been suspended.
+                # This is due to the complexity of the promotion and the lack of
+                # a clear understanding of how the promotion should be processed.
+                # The promotion is still being processed in the middleware, but the
+                # Shopify promotion is not being updated.
+
+                #####################################################################
+                ###################### BOGO Twoofer Promotions ######################
+                #####################################################################
+                # process BOGO Twoofers
+                if promotion.is_enabled:
+                    variables = promotion.get_bxgy_payload(rule)
+                    if rule.shopify_id:
+                        Promotions.logger.info(f'Updating BOGO Twoofer: {rule.shopify_id}')
+                        Shopify.Discount.Automatic.Bxgy.update(variables)
+                    else:
+                        rule.shopify_id = Shopify.Discount.Automatic.Bxgy.create(variables)
+
+                else:
+                    Promotions.logger.info(f'Group Code: {promotion.grp_cod} Rule: {rule.seq_no} is not enabled.')
+
+                promotion.set_sale_status(rule)  # will handle activating/deactivating the promotion in Shopify
+
+                # Sync BOGO Twoofer Promotions to Middleware.
+                # Fixed Price Promotions are processed outside this block.
+                db.Shopify.Promotion.sync(rule)
+            else:
+                ######################################################################
+                ####################### Fixed Price Promotions #######################
+                ######################################################################
+                # Process Non-BOGO Twoofer Promotions by adding PRC_2 to the item if they
+                # are not already on sale. This also adds the item to the Shopify Promotion
+                # Fixed Price Line table. This table will be used to determine if an item
+                # is on sale and should be removed if the promotion is disabled.
+                if rule.is_enabled_cp:
+                    print(rule)
+                    for item in rule.items:
+                        print(item)
+                    # promotion.add_sale_price(rule)
+                # else:
+                # promotion.remove_sale_price(rule)
+
     def sync(self):
         self.process_deletes()
+
         if not self.sync_queue:
             Promotions.logger.info('PROMOTIONS: No Promotions to update.')
-        else:
-            success_count = 0
-            fail_count = 0
-            fail_group_codes = []
+            return
 
-            for promotion in self.sync_queue:
-                try:
-                    promotion.process()
-                except Exception as e:
-                    Promotions.error_handler.add_error_v(error=e, origin='Promotion Sync', traceback=tb())
-                    fail_count += 1
-                    fail_group_codes.append(promotion.grp_cod)
-                else:
-                    success_count += 1
-            if success_count > 0:
-                Promotions.logger.info(f'PROMOTIONS: {success_count} Promotions updated successfully.')
-            if fail_count > 0:
-                Promotions.logger.warn(
-                    f'PROMOTIONS: {fail_count} Promotions failed to update. \n\nGroup Codes: {fail_group_codes}'
-                )
-            Promotions.logger.info('PROMOTIONS: Sync Complete')
+        success_count = 0
+        fail_count = 0
+        fail_group_codes = []
+
+        for promotion in self.sync_queue:
+            try:
+                self.process(promotion)
+            except Exception as e:
+                Promotions.error_handler.add_error_v(error=e, origin='Promotion Sync', traceback=tb())
+                fail_count += 1
+                fail_group_codes.append(promotion.grp_cod)
+            else:
+                success_count += 1
+        if success_count > 0:
+            Promotions.logger.info(f'PROMOTIONS: {success_count} Promotions updated successfully.')
+        if fail_count > 0:
+            Promotions.logger.warn(
+                f'PROMOTIONS: {fail_count} Promotions failed to update. \n\nGroup Codes: {fail_group_codes}'
+            )
+        Promotions.logger.info('PROMOTIONS: Sync Complete')
 
 
 class Promotion:
@@ -113,14 +291,16 @@ class Promotion:
         self.verbose = verbose
         self.grp_typ = promo['GRP_TYP']
         self.grp_cod = promo['GRP_COD']
-        self.group_seq_no = promo['GRP_SEQ_NO']
+        self.grp_seq_no = promo['GRP_SEQ_NO']
         self.descr = promo['DESCR']
         self.cust_filt = promo['CUST_FILT']
         self.no_beg_date = True if promo['NO_BEG_DAT'] == 'Y' else False
-        self.beg_date = promo['BEG_DAT']
+        self.beg_date: datetime = promo['BEG_DAT']
+        self.beg_date_utc: str = None
         self.beg_time_flag = int(promo['BEG_TIM_FLG']) if promo['BEG_TIM_FLG'] else 0
         self.no_end_date = True if promo['NO_END_DAT'] == 'Y' else False
-        self.end_dat = promo['END_DAT']
+        self.end_date: datetime = promo['END_DAT']
+        self.end_date_utc: str = None
         self.end_time_flag = int(promo['END_TIM_FLG']) if promo['END_TIM_FLG'] else 0
         self.lst_maint_dt = promo['LST_MAINT_DT']
         self.is_enabled = True if promo['ENABLED'] == 'Y' else False
@@ -130,6 +310,8 @@ class Promotion:
         self.items: list[str] = []
         self.get_start_end_dates()
         self.get_price_rules()
+        self.is_valid = True
+        self.validate()
 
     def __str__(self) -> str:
         result = '-----------------------------------\n'
@@ -138,7 +320,7 @@ class Promotion:
         result += f'Description: {self.descr}\n'
         result += f'Customer Filter: {self.cust_filt}\n'
         result += f'Begin Date: {self.beg_date}\n'
-        result += f'End Date: {self.end_dat}\n'
+        result += f'End Date: {self.end_date}\n'
         result += f'Last Maintenance Date: {self.lst_maint_dt}\n'
         result += f'Enabled: {self.is_enabled}\n'
         result += f'Mix Match Code: {self.mix_match_code}\n'
@@ -159,19 +341,42 @@ class Promotion:
 
         return result
 
+    def validate(self):
+        if not self.is_enabled:
+            self.is_valid = False
+            if self.verbose:
+                Promotions.logger.warn(f'Promotion: {self.grp_cod} is disabled.')
+        if not self.no_beg_date and self.beg_date > datetime.now():
+            self.is_valid = False
+            if self.verbose:
+                Promotions.logger.warn(f'Promotion: {self.grp_cod} has not started yet.')
+        if not self.no_end_date and self.end_date < datetime.now():
+            self.is_valid = False
+            if self.verbose:
+                Promotions.logger.warn(f'Promotion: {self.grp_cod} has ended.')
+        if not self.price_rules:
+            self.is_valid = False
+            if self.verbose:
+                Promotions.logger.warn(f'Promotion: {self.grp_cod} has no price rules.')
+        if not self.items:
+            self.is_valid = False
+            if self.verbose:
+                Promotions.logger.warn(f'Promotion: {self.grp_cod} has no items.')
+
     def get_start_end_dates(self):
         """Converts the start and end dates to UTC time."""
         if self.beg_date:
             if self.beg_time_flag != 0:  # 0 represents the beginning of the day, ie. 12:00:00 AM.
                 self.beg_date = self.beg_date.replace(hour=self.beg_time_flag)
-            self.beg_date = convert_to_utc(self.beg_date)
-        if self.end_dat:
+            self.beg_date_utc = convert_to_utc(self.beg_date)
+
+        if self.end_date:
             if self.end_time_flag == 0:
                 # 0 Represents the end of the day, ie. 11:59:59 PM.
-                self.end_dat = self.end_dat.replace(hour=23, minute=59, second=59)
+                self.end_date = self.end_date.replace(hour=23, minute=59, second=59)
             else:
-                self.end_dat = self.end_dat.replace(hour=self.end_time_flag)
-            self.end_dat = convert_to_utc(self.end_dat)
+                self.end_date = self.end_date.replace(hour=self.end_time_flag)
+            self.end_dat_utc = convert_to_utc(self.end_date)
 
     def get_price_rules(self):
         rules = db.CP.Promotion.PriceRule.get(self.grp_cod)
@@ -225,218 +430,74 @@ class Promotion:
         if rule.shopify_id:  # For updating existing promotions
             payload['id'] = f'{Shopify.Discount.Automatic.prefix}{rule.shopify_id}'
 
-        if rule.items:
-            for i in rule.items:
+        for i in rule.items:
+            shopify_id = db.Shopify.Product.get_id(item_no=i)
+            variant_id = db.Shopify.Product.Variant.get_id(sku=i)
+            if shopify_id:
+                if variant_id:
+                    # Individual Variants for Bound Products
+                    payload['automaticBxgyDiscount']['customerBuys']['items']['products'][
+                        'productVariantsToAdd'
+                    ].append(f'gid://shopify/ProductVariant/{variant_id}')
+
+                    payload['automaticBxgyDiscount']['customerGets']['items']['products'][
+                        'productVariantsToAdd'
+                    ].append(f'gid://shopify/ProductVariant/{variant_id}')
+                else:
+                    # Single Product
+                    payload['automaticBxgyDiscount']['customerBuys']['items']['products']['productsToAdd'].append(
+                        f'gid://shopify/Product/{shopify_id}'
+                    )
+                    payload['automaticBxgyDiscount']['customerGets']['items']['products']['productsToAdd'].append(
+                        f'gid://shopify/Product/{shopify_id}'
+                    )
+
+        for i in rule.mw_bogo_items:
+            if i not in rule.items:
                 shopify_id = db.Shopify.Product.get_id(item_no=i)
                 variant_id = db.Shopify.Product.Variant.get_id(sku=i)
                 if shopify_id:
                     if variant_id:
                         # Individual Variants for Bound Products
                         payload['automaticBxgyDiscount']['customerBuys']['items']['products'][
-                            'productVariantsToAdd'
+                            'productVariantsToRemove'
                         ].append(f'gid://shopify/ProductVariant/{variant_id}')
 
                         payload['automaticBxgyDiscount']['customerGets']['items']['products'][
-                            'productVariantsToAdd'
+                            'productVariantsToRemove'
                         ].append(f'gid://shopify/ProductVariant/{variant_id}')
                     else:
                         # Single Product
                         payload['automaticBxgyDiscount']['customerBuys']['items']['products'][
-                            'productsToAdd'
+                            'productsToRemove'
                         ].append(f'gid://shopify/Product/{shopify_id}')
                         payload['automaticBxgyDiscount']['customerGets']['items']['products'][
-                            'productsToAdd'
+                            'productsToRemove'
                         ].append(f'gid://shopify/Product/{shopify_id}')
 
-        if rule.mw_bogo_items:
-            for i in rule.mw_bogo_items:
-                if i not in rule.items:
-                    shopify_id = db.Shopify.Product.get_id(item_no=i)
-                    variant_id = db.Shopify.Product.Variant.get_id(sku=i)
-                    if shopify_id:
-                        if variant_id:
-                            # Individual Variants for Bound Products
-                            payload['automaticBxgyDiscount']['customerBuys']['items']['products'][
-                                'productVariantsToRemove'
-                            ].append(f'gid://shopify/ProductVariant/{variant_id}')
-
-                            payload['automaticBxgyDiscount']['customerGets']['items']['products'][
-                                'productVariantsToRemove'
-                            ].append(f'gid://shopify/ProductVariant/{variant_id}')
-                        else:
-                            # Single Product
-                            payload['automaticBxgyDiscount']['customerBuys']['items']['products'][
-                                'productsToRemove'
-                            ].append(f'gid://shopify/Product/{shopify_id}')
-                            payload['automaticBxgyDiscount']['customerGets']['items']['products'][
-                                'productsToRemove'
-                            ].append(f'gid://shopify/Product/{shopify_id}')
-
         if not self.no_beg_date:
-            payload['automaticBxgyDiscount']['startsAt'] = self.beg_date
+            payload['automaticBxgyDiscount']['startsAt'] = self.beg_date_utc
 
         if self.no_end_date:
             payload['automaticBxgyDiscount']['endsAt'] = None
         else:
-            payload['automaticBxgyDiscount']['endsAt'] = self.end_dat
+            payload['automaticBxgyDiscount']['endsAt'] = self.end_date_utc
         return payload
-
-    def process(self):
-        Promotions.logger.info(f'Processing Promotion: {self.grp_cod}')
-        self.process_line_deletes()
-        self.process_line_item_changes()
-
-        for rule in self.price_rules:
-            if self.verbose:
-                print(f'Rule items {rule.items}')
-            if not rule.is_retail:
-                ############################################################################
-                ########################### Wholesale Promotions ###########################
-                ############ Wholesale Promotions are NOT added by this script. ############
-                ############################################################################
-                if self.verbose:
-                    Promotions.logger.info(
-                        f'Promotion: {self.grp_cod} Rule: {rule.seq_no} is a Wholesale Promotion. Skipping...'
-                    )
-                # Remove Sale Price if the promotion is not retail. This could happen if a promotion is setup as
-                # retail and then changed to wholesale.
-                if db.Shopify.Promotion.has_fixed_priced_items(rule):
-                    self.remove_sale_price(rule)
-            else:
-                #########################################################################
-                ########################### Retail Promotions ###########################
-                #########################################################################
-
-                Promotions.logger.info(f'Processing Retail Rule: {rule.seq_no}\n\n{rule}')
-
-                if rule.is_bogo_twoofer():
-                    ############################## RETAIL ###############################
-                    ###################### BOGO Twoofer Promotions ######################
-                    #####################################################################
-                    # process BOGO Twoofers
-                    if self.is_enabled:
-                        variables = self.get_bxgy_payload(rule)
-                        if rule.shopify_id:
-                            Promotions.logger.info(f'Updating BOGO Twoofer: {rule.shopify_id}')
-                            Shopify.Discount.Automatic.Bxgy.update(variables)
-                        else:
-                            rule.shopify_id = Shopify.Discount.Automatic.Bxgy.create(variables)
-                    else:
-                        Promotions.logger.info(f'Group Code: {self.grp_cod} Rule: {rule.seq_no} is disabled.')
-
-                    self.set_sale_status(rule)  # will handle activating/deactivating the promotion in Shopify
-
-                    # Sync BOGO Twoofer Promotions to Middleware.
-                    # Fixed Price Promotions are processed outside this block.
-                    db.Shopify.Promotion.sync(rule)
-                else:
-                    ############################## RETAIL ################################
-                    ######################################################################
-                    ####################### Fixed Price Promotions #######################
-                    ######################################################################
-                    # Process Non-BOGO Twoofer Promotions by adding PRC_2 to the item if they
-                    # are not already on sale. This also adds the item to the Shopify Promotion
-                    # Fixed Price Line table. This table will be used to determine if an item
-                    # is on sale and should be removed if the promotion is disabled.
-                    if rule.is_enabled_cp:
-                        self.add_sale_price(rule)
-                    else:
-                        self.remove_sale_price(rule)
-
-    def process_line_deletes(self):
-        # Check for deleted lines in CP. If the line is not in CP, then remove sale prices for each item with line
-        # and delete the line from MW.
-        if self.verbose:
-            Promotions.logger.info(f'Processing Line Deletes for Group Code: {self.grp_cod}')
-
-        cp_lines = []
-
-        query = f"""
-        SELECT DISTINCT RUL_SEQ_NO 
-        FROM IM_PRC_RUL
-        WHERE GRP_COD = '{self.grp_cod}'
-        """
-        response = db.query(query)
-        if response:
-            cp_lines = [x[0] for x in response]
-
-        mw_lines = []
-        query = f"""
-        SELECT DISTINCT RUL_SEQ_NO 
-        FROM SN_PROMO_LIN_FIX_PRC 
-        WHERE GRP_COD = '{self.grp_cod}'
-        """
-        response = db.query(query)
-        if response:
-            mw_lines = [x[0] for x in response]
-
-        if mw_lines:
-            delete_list = [x for x in mw_lines if x not in cp_lines]
-            if not delete_list:
-                if self.verbose:
-                    Promotions.logger.info(f'No Line Deletes for Group Code: {self.grp_cod}')
-            else:
-                if self.verbose:
-                    Promotions.logger.info(f'Delete List: {delete_list}')
-
-                for seq_no in delete_list:
-                    # Get a list of item numbers for the line
-                    item_list = db.Shopify.Promotion.FixLine.get(
-                        group_cod=self.grp_cod, rule_seq_no=seq_no, verbose=self.verbose
-                    )
-                    for item in item_list:
-                        db.Shopify.Promotion.FixLine.delete(
-                            group_cod=self.grp_cod, rule_seq_no=seq_no, item_no=item, verbose=self.verbose
-                        )
-                    db.CP.Product.set_sale_status(items=item_list, status=False)
-                    db.CP.Product.remove_sale_price(item_list)
-
-                db.CP.Promotion.update_timestamp(self.grp_cod)
-
-        if self.verbose:
-            Promotions.logger.info(f'Line Deletes Complete for Group Code: {self.grp_cod}')
-
-    def process_line_item_changes(self):
-        if self.verbose:
-            Promotions.logger.info(f'Processing Line Item Changes for Group Code: {self.grp_cod}')
-
-        for rule in self.price_rules:
-            for item in rule.mw_bogo_items:
-                print(f'BXGY Item: {item}')
-                if item not in rule.items:
-                    Promotions.logger.info(f'Deleting BOGO Item: {item}')
-                    db.Shopify.Promotion.BxgyLine.delete(item_no_list=[item])
-                    db.CP.Product.set_sale_status(items=[item], status=False)
-
-            for item in rule.mw_fixed_price_items:
-                print(f'Fixed Price Item: {item}')
-                if item not in rule.items:
-                    Promotions.logger.info(f'Deleting Fixed Price Item: {item}')
-                    db.Shopify.Promotion.FixLine.delete(
-                        group_cod=self.grp_cod, rule_seq_no=rule.seq_no, item_no=item
-                    )
-                    db.CP.Product.set_sale_status(items=[item], status=False)
 
     def set_sale_status(self, rule: 'PriceRule'):
         if rule.items:
-            db.CP.Product.set_sale_status(items=rule.items, status=rule.is_enabled_cp, description=rule.badge_text)
-
+            db.CP.Product.add_to_sale(items=rule.items, description=rule.badge_text, verbose=self.verbose)
         if rule.is_enabled_cp and not rule.is_enabled_mw:
             Shopify.Discount.Automatic.activate(rule.shopify_id)
-
         elif not rule.is_enabled_cp and rule.is_enabled_mw:
             Shopify.Discount.Automatic.deactivate(rule.shopify_id)
-
-        elif rule.is_enabled_cp == rule.is_enabled_mw:
-            pass
-
         else:
             Promotions.logger.info(f'You missed something. CP: {rule.is_enabled_cp} MW: {rule.is_enabled_mw}')
 
     def add_sale_price(self, rule: 'PriceRule'):
         """Updates the sale price for non-bogo items in the promotion. Adds on sale flag and sale description."""
 
-        def get_target_price(item, target_method, target_amount):
+        def get_target_price(item: Product, target_method, target_amount):
             if target_method == 'P':
                 # pick price. Do nothing
                 pass
@@ -455,11 +516,8 @@ class Promotion:
 
             return item_sale_price
 
-        if not rule.items:
-            Promotions.logger.warn(f'Add Sale Prices: No Items Found for Rule: {rule.seq_no}')
-            return
-
-        db.CP.Product.set_sale_status(items=rule.items, status=True, description=rule.badge_text)
+        # Add IS_ON_SALE flag to items and SALE_DESCR and Sale Category
+        db.CP.Product.add_to_sale(items=rule.items, description=rule.badge_text, verbose=self.verbose)
 
         # Set Sale Price
         target_price_break = rule.price_breaks[0]
@@ -478,13 +536,22 @@ class Promotion:
                 continue  # Skip if the sale price is already set
             else:
                 db.CP.Product.set_sale_price(sku=i, price=target_sale_price)
+
                 if rule.mw_fixed_price_items:
                     if i not in rule.mw_fixed_price_items:
                         db.Shopify.Promotion.FixLine.insert(
-                            group_cod=self.grp_cod, rule_seq_no=rule.seq_no, item_no=i
+                            group_cod=self.grp_cod,
+                            rule_seq_no=rule.seq_no,
+                            item_no=item.item_no,
+                            group_seq_no=self.grp_seq_no,
                         )
                 else:
-                    db.Shopify.Promotion.FixLine.insert(group_cod=self.grp_cod, rule_seq_no=rule.seq_no, item_no=i)
+                    db.Shopify.Promotion.FixLine.insert(
+                        group_cod=self.grp_cod,
+                        rule_seq_no=rule.seq_no,
+                        item_no=item.item_no,
+                        group_seq_no=self.grp_seq_no,
+                    )
 
     def remove_sale_price(self, rule: 'PriceRule'):
         """Removes the sale price for Non BOGO TWOOFER items in the promotion.
@@ -492,15 +559,13 @@ class Promotion:
         if not rule.items:
             Promotions.logger.warn(f'Remove Sale Prices: No Items Found for Rule: {rule.seq_no}')
             return
-        db.CP.Product.remove_sale_price(rule.items)
-
-        db.CP.Product.set_sale_status(items=rule.items, status=False)
+        db.CP.Product.remove_from_sale(rule.items)
         # Remove Sale Price
         for item in rule.items:
             db.Shopify.Promotion.FixLine.delete(group_cod=self.grp_cod, rule_seq_no=rule.seq_no, item_no=item)
 
     @staticmethod
-    def delete(group_code=None, shopify_discount_code_id=None):
+    def delete(group_code=None, shopify_discount_code_id=None, verbose=False):
         if not group_code and not shopify_discount_code_id:
             Promotions.logger.warn('PROMOTIONS: No Group Code or Shopify ID provided.')
             return
@@ -515,8 +580,7 @@ class Promotion:
         for shopify_id in rules:
             items = db.Shopify.Promotion.BxgyLine.get(shopify_id)
             if items:
-                db.CP.Product.set_sale_status(items=items, status=False)
-
+                db.CP.Product.remove_from_sale(items=items, verbose=verbose)
             Shopify.Discount.Automatic.delete(shopify_id)
             db.Shopify.Promotion.delete(shopify_id)
 
@@ -526,6 +590,7 @@ class PriceRule:
         self.verbose = verbose
         self.grp_typ = rule['GRP_TYP']
         self.grp_cod = rule['GRP_COD']
+        self.grp_seq_no = rule['GRP_SEQ_NO']
         self.seq_no: str = rule['RUL_SEQ_NO']
         self.descr: str = rule['DESCR']
         self.cust_filt = rule['CUST_FILT']
@@ -542,10 +607,11 @@ class PriceRule:
         self.is_enabled_cp = True if rule['ENABLED'] == 'Y' else False
         self.is_enabled_mw = True if rule['MW_ENABLED'] == 1 else False
         self.db_id = rule['ID']
+        self.is_valid: bool = True
 
         self.price_breaks: list[PriceBreak] = self.get_price_breaks()
 
-        self.items: list[str] = self.get_cp_items()  # List of CP Item Numbers
+        self.items: list[PromotionItem] = []
 
         self.mw_bogo_items: list[str] = db.Shopify.Promotion.BxgyLine.get(self.shopify_id)
 
@@ -554,6 +620,9 @@ class PriceRule:
         )
 
         self.badge_text = self.get_badge_text()
+
+        self.validate()
+        self.get_items()
 
     def __str__(self) -> str:
         result = f'\tRule Sequence Number: {self.seq_no}\n'
@@ -570,6 +639,26 @@ class PriceRule:
         result += f'\tRequire Full Group for BOGO Twoofer: {self.req_full_group_for_bogo}\n'
         result += f'\tBadge Text: {self.badge_text}\n'
         return result
+
+    def validate(self):
+        if not self.is_retail:
+            self.is_valid = False
+            if self.verbose:
+                Promotions.logger.warn(f'Rule: {self.seq_no} is a Wholesale Promotion. Skipping...')
+
+        if not self.items:
+            self.is_valid = False
+            if self.verbose:
+                Promotions.logger.warn(f'Rule: {self.seq_no} has no items.')
+
+    def get_items(self):
+        item_nos = self.get_cp_items()  # List of CP Item Numbers
+        for item in item_nos:
+            self.items.append(
+                PromotionItem(
+                    item_no=item, group_code=self.grp_cod, group_seq_no=self.grp_seq_no, rule_seq_no=self.seq_no
+                )
+            )
 
     def is_bogo_twoofer(self) -> bool:
         return self.use_bogo_twoofer == 'Y' and self.req_full_group_for_bogo == 'Y'
@@ -722,7 +811,5 @@ class FixedPriceItem:
 
 
 if __name__ == '__main__':
-    import datetime
-
-    promos = Promotions(last_sync=datetime.datetime(2020, 10, 4), verbose=True)
+    promos = Promotions(last_sync=datetime(2020, 10, 4), verbose=True)
     promos.sync()
