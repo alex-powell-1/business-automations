@@ -307,7 +307,7 @@ class Promotion:
         self.mix_match_code = promo['MIX_MATCH_COD']
         self.max_uses = None
         self.price_rules: list[PriceRule] = []
-        self.items: list[str] = []
+        self.items: list[PromotionItem] = []
         self.get_start_end_dates()
         self.get_price_rules()
         self.is_valid = True
@@ -603,17 +603,17 @@ class PriceRule:
         self.is_custom = rule['IS_CUSTOM']
         self.use_bogo_twoofer = rule['USE_BOGO_TWOFER']
         self.req_full_group_for_bogo = rule['REQ_FULL_GRP_FOR_BOGO_TWOFER']
-        self.shopify_id = rule['SHOP_ID']
+        # self.shopify_id = rule['SHOP_ID']
         self.is_enabled_cp = True if rule['ENABLED'] == 'Y' else False
-        self.is_enabled_mw = True if rule['MW_ENABLED'] == 1 else False
-        self.db_id = rule['ID']
+        # self.is_enabled_mw = True if rule['MW_ENABLED'] == 1 else False
+        # self.db_id = rule['ID']
         self.is_valid: bool = True
 
         self.price_breaks: list[PriceBreak] = self.get_price_breaks()
 
         self.items: list[PromotionItem] = []
 
-        self.mw_bogo_items: list[str] = db.Shopify.Promotion.BxgyLine.get(self.shopify_id)
+        # self.mw_bogo_items: list[str] = db.Shopify.Promotion.BxgyLine.get(self.shopify_id)
 
         self.mw_fixed_price_items: list[str] = db.Shopify.Promotion.FixLine.get(
             group_cod=self.grp_cod, rule_seq_no=self.seq_no
