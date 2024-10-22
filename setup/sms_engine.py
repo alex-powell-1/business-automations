@@ -170,4 +170,4 @@ class SMSEngine:
             recipient = creds.Marketing.DesignLeadForm.lead_recipient
 
         for k, v in recipient.items():
-            SMSEngine.send_text(origin='SERVER', campaign='DESIGN FORM', name=name, to_phone=v, message=message)
+            SMSEngine.send_text(origin='SERVER', campaign='DESIGN FORM', name='SERVER', to_phone=v, message=message)

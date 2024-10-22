@@ -300,6 +300,14 @@ class Database:
                         delivery = 1
                     if x == 'Professional Installation':
                         install = 1
+                    if x == 'Fire Pit':
+                        fire_pit = 1
+                    if x == 'Patio':
+                        patio = 1
+                    if x == 'Retaining Wall':
+                        wall = 1
+                    if x == 'Water Features':
+                        water_f = 1
 
             first_name = Database.sql_scrub(first_name)
             last_name = Database.sql_scrub(last_name)
@@ -310,9 +318,9 @@ class Database:
 
             query = f"""
                 INSERT INTO {Table.design_leads} (DATE, CUST_NO, FST_NAM, LST_NAM, EMAIL, PHONE, SKETCH, SCALED, DIGITAL, 
-                ON_SITE, DELIVERY, INSTALL, TIMELINE, STREET, CITY, STATE, ZIP, COMMENTS)
+                ON_SITE, DELIVERY, INSTALL, FIRE_PIT, PATIO, WALL, WATER_F, TIMELINE, STREET, CITY, STATE, ZIP, COMMENTS)
                 VALUES ('{date}', {f"'{cust_no}'" if cust_no else 'NULL'}, '{first_name}', '{last_name}', '{email}', '{phone}', {sketch}, 
-                {scaled}, {digital}, {on_site}, {delivery}, {install}, '{timeline}', 
+                {scaled}, {digital}, {on_site}, {delivery}, {install}, {fire_pit}, {patio}, {wall}, {water_f}, '{timeline}', 
                 '{street}', '{city}', '{state}', '{zip_code}', '{comments}')
                 """
             response = Database.query(query)

@@ -126,16 +126,6 @@ class ScheduledTasks:
             except Exception as err:
                 self.error_handler.add_error_v(error=err, origin='Fix First and Last Sale Dates')
 
-        if self.dates.hour == 10 and self.dates.minute == 0:  # 10 AM
-            test_text = f"""From Server: This is a test message. Today is {self.dates.today}.
-            Yesterday was {self.dates.yesterday}. One week ago was {self.dates.one_week_ago}."""
-            SMSEngine.send_text(
-                origin='SERVER',
-                campaign='Alex Test',
-                to_phone=creds.Company.network_notification_phone,
-                message=test_text,
-            )
-
         if self.dates.hour == 11 and self.dates.minute == 30:  # 11:30 AM
             # STOCK NOTIFICATION EMAIL WITH COUPON GENERATION
             # Read CSV file, check all items for stock, send auto generated emails to customer_tools

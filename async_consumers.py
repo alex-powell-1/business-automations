@@ -185,6 +185,7 @@ def process_design_lead(body, eh=LeadFormErrorHandler, test_mode=False):
         time.sleep(4)
         logger.info('Deleting Word Document')
         os.remove(ticket_name)
+    
     except Exception as err:
         error_handler.add_error_v(error=f'Error (word): {err}', origin='design_lead')
     else:
