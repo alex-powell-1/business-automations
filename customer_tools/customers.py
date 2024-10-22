@@ -248,62 +248,63 @@ def add_new_customer(
     if phone_number is not None:
         phone_number = PhoneNumber(phone_number).to_cp()
 
-    if not db.CP.Customer.is_customer(email_address=email_address, phone_number=phone_number):
-        url = f'{creds.Counterpoint.API.server}/CUSTOMER/'
-        headers = {
-            'Authorization': f'Basic {creds.Counterpoint.API.user}',
-            'APIKey': creds.Counterpoint.API.key,
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-        }
+    is_customer: bool = db.CP.Customer.is_customer(email_address=email_address, phone_number=phone_number)
+    if is_customer:
+        return 'Already a customer'
+
+    url = f'{creds.Counterpoint.API.server}/CUSTOMER/'
+    headers = {
+        'Authorization': f'Basic {creds.Counterpoint.API.user}',
+        'APIKey': creds.Counterpoint.API.key,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+    }
+    try:
+        state = states[state]
+    except KeyError:
         try:
-            state = states[state]
-        except KeyError:
-            try:
-                state = state[0:10]
-            except:
-                state = None
+            state = state[0:10]
+        except:
+            state = None
 
-        if first_name is None:
-            first_name = 'WEB'
+    if first_name is None:
+        first_name = 'WEB'
 
-        if last_name is None:
-            last_name = 'CUSTOMER'
+    if last_name is None:
+        last_name = 'CUSTOMER'
 
-        payload = {
-            'Workgroup': '1',
-            'AR_CUST': {'FST_NAM': first_name, 'LST_NAM': last_name, 'STR_ID': '1', 'EMAIL_ADRS_1': email_address},
-        }
+    payload = {
+        'Workgroup': '1',
+        'AR_CUST': {'FST_NAM': first_name, 'LST_NAM': last_name, 'STR_ID': '1', 'EMAIL_ADRS_1': email_address},
+    }
 
-        if phone_number is not None:
-            payload['AR_CUST']['PHONE_1'] = phone_number
+    if phone_number is not None:
+        payload['AR_CUST']['PHONE_1'] = phone_number
 
-        if street_address is not None:
-            payload['AR_CUST']['ADRS_1'] = street_address
+    if street_address is not None:
+        payload['AR_CUST']['ADRS_1'] = street_address
 
-        if city is not None:
-            payload['AR_CUST']['CITY'] = city
+    if city is not None:
+        payload['AR_CUST']['CITY'] = city
 
-        if state is not None:
-            payload['AR_CUST']['STATE'] = state
+    if state is not None:
+        payload['AR_CUST']['STATE'] = state
 
-        if zip_code is not None:
-            payload['AR_CUST']['ZIP_COD'] = zip_code
+    if zip_code is not None:
+        payload['AR_CUST']['ZIP_COD'] = zip_code
 
-        response = requests.post(url, headers=headers, verify=False, json=payload)
+    response = requests.post(url, headers=headers, verify=False, json=payload)
 
-        if response.status_code in [200, 201]:
-            eh.logger.success(f'Customer Added: {response.json()}')
-        else:
-            eh.error_handler.add_error_v(f'Error: {response.status_code} - {response.text}')
-
+    if response.status_code in [200, 201]:
+        eh.logger.success(f'Customer Added: {response.json()}')
         cust_id = response.json()['CUST_NO']
         eh.logger.success(f'Customer {cust_id} created.')
         db.CP.Customer.update_timestamps(customer_no=cust_id)
-
         return cust_id
+
     else:
-        return 'Already a customer'
+        eh.error_handler.add_error_v(f'Error: {response.status_code} - {response.text}')
+        raise Exception(f'Customer Creation Error: {response.status_code} - {response.text}')
 
 
 def update_customer(

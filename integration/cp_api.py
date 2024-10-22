@@ -242,16 +242,44 @@ class OrderAPI(DocumentAPI):
 
         Database.CP.Customer.set_loyalty_balance(self.cust_no, new_bal)
 
-    def create_customer(self):
-        """Create a new customer in Counterpoint from an order."""
-        OrderAPI.logger.info('Creating new customer')
+    def get_customer_details(self):
+        """Get customer details from an order. In the event that the customer details are missing,
+        the billing address is used as a fallback. If the billing address is also missing, the shipping
+        address is used as a fallback."""
 
         order = self.order
 
-        first_name = order.billing_address.first_name or order.shipping_address.first_name
-        last_name = order.billing_address.last_name or order.shipping_address.last_name
-        phone_number = order.billing_address.phone or order.shipping_address.phone
-        email_address = order.billing_address.email or order.shipping_address.email
+        if not order.customer.first_name:
+            if order.billing_address.first_name:
+                order.customer.first_name = order.billing_address.first_name
+            elif order.shipping_address.first_name:
+                order.customer.first_name = order.shipping_address.first_name
+
+        if not order.customer.last_name:
+            if order.billing_address.last_name:
+                order.customer.last_name = order.billing_address.last_name
+            elif order.shipping_address.last_name:
+                order.customer.last_name = order.shipping_address.last_name
+
+        if not order.customer.phone:
+            if order.billing_address.phone:
+                order.customer.phone = order.billing_address.phone
+            elif order.shipping_address.phone:
+                order.customer.phone = order.shipping_address.phone
+
+        if not order.customer.email:
+            if order.billing_address.email:
+                order.customer.email = order.billing_address.email
+            elif order.shipping_address.email:
+                order.customer.email = order.shipping_address.email
+
+    def create_customer(self):
+        """Create a new customer in Counterpoint from an order."""
+        OrderAPI.logger.info('Creating new customer')
+        self.get_customer_details()
+
+        order = self.order
+        customer = order.customer
 
         street_address = order.billing_address.address_1
         city = order.billing_address.city
@@ -259,10 +287,10 @@ class OrderAPI(DocumentAPI):
         zip_code = order.billing_address.zip
 
         self.cust_no = customers.add_new_customer(
-            first_name=first_name,
-            last_name=last_name,
-            phone_number=phone_number,
-            email_address=email_address,
+            first_name=customer.first_name,
+            last_name=customer.last_name,
+            phone_number=customer.phone,
+            email_address=customer.email,
             street_address=street_address,
             city=city,
             state=state,
@@ -279,6 +307,8 @@ class OrderAPI(DocumentAPI):
         if self.cust_no == 'CASH':
             return
         self.logger.info('Updating existing customer')
+        self.get_customer_details()
+
         order = self.order
         customer = order.customer
         billing_address = order.billing_address
@@ -705,8 +735,6 @@ class OrderAPI(DocumentAPI):
     @staticmethod
     def process_order(order: ShopifyOrder, session: requests.Session = requests.Session(), verbose: bool = False):
         oapi = OrderAPI(order, session, verbose)
-        print(oapi.payload)
-        raise Exception('OrderAPI.process_order() is not implemented')
 
         if oapi.order.is_declined:
             oapi.error_handler.add_error_v('Order payment declined')
