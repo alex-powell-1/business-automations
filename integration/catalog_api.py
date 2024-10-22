@@ -938,6 +938,7 @@ class Product:
         self.meta_title = None
         self.meta_description = None
         self.visible: bool = False
+        self.track_inventory: bool = False
         self.featured: bool = False
         self.is_new: bool = False
         self.is_back_in_stock: bool = False
@@ -1054,6 +1055,7 @@ class Product:
                     self.meta_title = bound.meta_title
                     self.meta_description = bound.meta_description
                     self.visible = bound.visible
+                    self.track_inventory = bound.track_inventory
                     self.in_store_only = bound.in_store_only
                     self.featured = bound.featured
                     self.is_new = bound.is_new
@@ -1201,6 +1203,7 @@ class Product:
             # Statuses
             self.in_store_only = single.in_store_only
             self.visible = single.visible
+            self.track_inventory = single.track_inventory
             self.featured = single.featured
             self.is_new = single.is_new
             self.is_back_in_stock = single.is_back_in_stock
@@ -1442,7 +1445,7 @@ class Product:
                     self.images.append(default_image)
                     self.media.append(default_image)
                     self.default_image = True
-                
+
                 else:
                     message = f'Product {self.binding_id} is missing images. Will set visibility to draft.'
                     if self.verbose:
@@ -2043,7 +2046,9 @@ class Product:
             variant_payload = {
                 'inventoryItem': {
                     'cost': child.cost,
-                    'tracked': True if not (self.is_preorder or self.is_workshop) else False,
+                    'tracked': True
+                    if not (self.is_preorder or self.is_workshop or self.track_inventory)
+                    else False,
                     'requiresShipping': True,
                     'sku': child.sku,
                 },
@@ -2119,7 +2124,9 @@ class Product:
                     'measurement': {},
                     'requiresShipping': True,
                     'sku': self.sku,
-                    'tracked': True if not (self.is_preorder or self.is_workshop) else False,
+                    'tracked': True
+                    if not (self.is_preorder or self.is_workshop or self.track_inventory)
+                    else False,
                 },
                 'inventoryPolicy': 'DENY',
                 'price': self.default_price,
@@ -2704,6 +2711,7 @@ class Variant:
 
         # Status
         self.visible: bool = product_data['web_visible']
+        self.track_inventory: bool = product_data['track_inventory']
         self.featured: bool = product_data['is_featured']
         self.is_preorder: bool = product_data['is_preorder']
         self.is_new: bool = product_data['is_new']
@@ -3166,7 +3174,8 @@ class Variant:
                 ITEM.{Table.CP.Item.Column.is_new} as 'IS_NEW(114)',
                 MW.CF_IS_NEW as 'CUSTOM_IS_NEW_ID(115)',
                 ITEM.{Table.CP.Item.Column.is_back_in_stock} as 'IS_BACK_IN_STOCK(116)',
-                MW.CF_IS_BACK_IN_STOCK as 'CUSTOM_IS_BACK_IN_STOCK_ID(117)'
+                MW.CF_IS_BACK_IN_STOCK as 'CUSTOM_IS_BACK_IN_STOCK_ID(117)',
+                ITEM.TRK_INV as 'TRACK_INVENTORY(118)'
 
                 FROM {Table.CP.Item.table} ITEM
                 LEFT OUTER JOIN IM_PRC PRC ON ITEM.ITEM_NO=PRC.ITEM_NO
@@ -3314,6 +3323,7 @@ class Variant:
                     'custom_is_new_id': item[0][115],
                     'is_back_in_stock': True if item[0][116] == 'Y' else False,
                     'custom_is_back_in_stock_id': item[0][117],
+                    'track_inventory': True if item[0][118] == 'Y' else False,
                 }
             except KeyError:
                 Variant.error_handler.add_error_v(

@@ -25,7 +25,7 @@ class Database:
         """Runs Query Against SQL Database. Use Commit Kwarg for updating database"""
         connection_string = f"""
         DRIVER={{ODBC Driver 18 for SQL Server}};
-        SERVER='MAINSERVER';
+        SERVER={Database.SERVER};
         PORT={Database.PORT};
         DATABASE={Database.DATABASE};
         UID={Database.USERNAME};
