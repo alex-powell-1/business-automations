@@ -23,10 +23,9 @@ class Database:
 
     def query(query, mapped=False):
         """Runs Query Against SQL Database. Use Commit Kwarg for updating database"""
-
         connection_string = f"""
         DRIVER={{ODBC Driver 18 for SQL Server}};
-        SERVER={Database.SERVER};
+        SERVER='MAINSERVER';
         PORT={Database.PORT};
         DATABASE={Database.DATABASE};
         UID={Database.USERNAME};
