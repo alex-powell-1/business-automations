@@ -2047,7 +2047,7 @@ class Product:
                 'inventoryItem': {
                     'cost': child.cost,
                     'tracked': True
-                    if not (self.is_preorder or self.is_workshop or self.track_inventory)
+                    if self.track_inventory and not (self.is_preorder or self.is_workshop)
                     else False,
                     'requiresShipping': True,
                     'sku': child.sku,
@@ -2125,7 +2125,7 @@ class Product:
                     'requiresShipping': True,
                     'sku': self.sku,
                     'tracked': True
-                    if not (self.is_preorder or self.is_workshop or self.track_inventory)
+                    if self.track_inventory and not (self.is_preorder or self.is_workshop)
                     else False,
                 },
                 'inventoryPolicy': 'DENY',
@@ -3753,17 +3753,17 @@ class Video:
             )
 
 
-if __name__ == '__main__':
-    from setup.date_presets import Dates
+# if __name__ == '__main__':
+    # from setup.date_presets import Dates
 
-    cat = Catalog(
-        last_sync=datetime(2024, 9, 25, 16),
-        dates=Dates(),
-        # verbose=True,
-        # test_mode=True,
-        # test_queue=[
-        #     # {'sku': '202944', 'binding_id': 'B9999'},
-        #     {'sku': '202962'}
-        # ],
-    )
-    cat.sync()
+    # cat = Catalog(
+    #     last_sync=datetime(2024, 9, 25, 16),
+    #     dates=Dates(),
+    #     # verbose=True,
+    #     # test_mode=True,
+    #     # test_queue=[
+    #     #     # {'sku': '202944', 'binding_id': 'B9999'},
+    #     #     {'sku': '202962'}
+    #     # ],
+    # )
+    # cat.sync()
