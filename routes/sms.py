@@ -1,15 +1,30 @@
 from flask import Blueprint, request
 from twilio.twiml.messaging_response import MessagingResponse
-from setup import creds
 from setup.creds import API
 from database import Database
-from traceback import format_exc as tb
 import urllib.parse
-import pika
 from routes.limiter import limiter
 from setup.error_handler import ProcessInErrorHandler
+from setup.sms_engine import SMSEngine
+from setup.utilities import is_after_hours, get_hours_message
 
 sms_routes = Blueprint('sms_routes', __name__, template_folder='routes')
+
+
+def get_media(msg: dict) -> str:
+    """Get media URL from MMS messages."""
+    media_url = ''
+    if int(msg['NumMedia'][0]) > 0:
+        for i in range(int(msg['NumMedia'][0])):
+            media_key_index = f'MediaUrl{i}'
+            url = msg[media_key_index][0]
+            if i < (int(msg['NumMedia'][0]) - 1):
+                # Add separator per front-end request.
+                media_url += url + ';;;'
+            else:
+                media_url += url
+
+    return media_url
 
 
 @sms_routes.route(API.Route.sms, methods=['POST'])
@@ -26,76 +41,14 @@ def incoming_sms():
 
     from_phone = msg['From'][0]
     to_phone = msg['To'][0]
+
     if 'Body' in msg:
         body = msg['Body'][0]
     else:
         body = ''
     sid = msg['SmsMessageSid'][0]
 
-    # Get MEDIA URL for MMS Messages
-    if int(msg['NumMedia'][0]) > 0:
-        media_url = ''
-
-        for i in range(int(msg['NumMedia'][0])):
-            media_key_index = f'MediaUrl{i}'
-            url = msg[media_key_index][0]
-            if i < (int(msg['NumMedia'][0]) - 1):
-                # Add separator per front-end request.
-                media_url += url + ';;;'
-            else:
-                media_url += url
-    else:
-        media_url = None
-
-    if body.lower() == creds.Integrator.sms_sync_keyword:
-        # Run sync process
-        try:
-            connection = pika.BlockingConnection(pika.ConnectionParameters('localhost'))
-            channel = connection.channel()
-
-            channel.queue_declare(queue=creds.Consumer.sync_on_demand, durable=True)
-
-            channel.basic_publish(
-                exchange='',
-                routing_key=creds.Consumer.sync_on_demand,
-                body=from_phone,
-                properties=pika.BasicProperties(delivery_mode=pika.DeliveryMode.Persistent),
-            )
-            connection.close()
-
-        except Exception as e:
-            eh.error_handler.add_error_v(
-                error=f'Error sending sync request  to RabbitMQ: {e}', origin=API.Route.sms, traceback=tb()
-            )
-
-        # Return Response to Twilio
-        resp = MessagingResponse()
-        return str(resp)
-
-    elif body.lower().startswith(creds.Integrator.sms_sync_keyword):
-        if body.lower().strip().endswith('restart'):
-            try:
-                connection = pika.BlockingConnection(pika.ConnectionParameters('localhost'))
-                channel = connection.channel()
-
-                channel.queue_declare(queue=creds.Consumer.sync_on_demand, durable=True)
-
-                channel.basic_publish(
-                    exchange='',
-                    routing_key=creds.Consumer.restart_services,
-                    body=from_phone,
-                    properties=pika.BasicProperties(delivery_mode=pika.DeliveryMode.Persistent),
-                )
-                connection.close()
-
-            except Exception as e:
-                eh.error_handler.add_error_v(
-                    error=f'Error sending sync request  to RabbitMQ: {e}', origin=API.Route.sms, traceback=tb()
-                )
-
-            # Return Response to Twilio
-            resp = MessagingResponse()
-            return str(resp)
+    media_url = get_media(msg)
 
     # Get Customer Name and Category from SQL
     customer_number, full_name, category = Database.CP.Customer.get_customer_by_phone(from_phone)
@@ -126,6 +79,14 @@ def incoming_sms():
         'remove me',
     ]:
         Database.SMS.unsubscribe(origin='WEBHOOK', campaign=API.Route.sms, phone=from_phone, eh=eh)
+
+    if is_after_hours():
+        hours_response = f"""
+        Thank you for your message. 
+        Our office hours are {get_hours_message()}. 
+        We will respond to your message during our next business hours."""
+
+        SMSEngine.send_text(origin='WEBHOOK', to_phone=from_phone, message=hours_response)
 
     # Subscribe user to SMS marketing
     elif body.lower().strip() in ['start', 'subscribe', 'start please', 'please start', 'opt in', 'add me']:

@@ -17,6 +17,28 @@ import hashlib
 import hmac
 
 
+def is_after_hours() -> bool:
+    """Check if current time is outside of business hours."""
+    now = datetime.now()
+    month = str(now.month)
+    day_of_week = str(now.isoweekday())
+
+    open_hour = creds.Company.hours['month'][month]['day'][day_of_week]['open_hour']
+    open_minute = creds.Company.hours['month'][month]['day'][day_of_week]['open_minute']
+    close_hour = creds.Company.hours['month'][month]['day'][day_of_week]['close_hour']
+    close_minute = creds.Company.hours['month'][month]['day'][day_of_week]['close_minute']
+
+    open_time = now.replace(hour=open_hour, minute=open_minute, second=0, microsecond=0)
+    close_time = now.replace(hour=close_hour, minute=close_minute, second=0, microsecond=0)
+
+    return now < open_time or now > close_time
+
+
+def get_hours_message() -> str:
+    """Get the message to send when a customer texts outside of business hours."""
+    return creds.Company.hours['month'][str(datetime.now().month)]['string']
+
+
 def timer(func):
     def wrapper(*args, eh=ScheduledTasksErrorHandler, operation='', **kwargs):
         start_time = time.time()
@@ -528,4 +550,6 @@ states = {
     'Wyoming': 'WY',
 }
 if '__main__' == __name__:
-    print(generate_random_code(8))
+    print(is_after_hours())
+    print(get_hours_message())
+    print(datetime.now().isoweekday())

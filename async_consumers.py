@@ -256,11 +256,6 @@ if __name__ == '__main__':
                 'error_handler': ProcessInErrorHandler,
             },
             {
-                'queue_name': creds.Consumer.sync_on_demand,
-                'callback': sync_on_demand,
-                'error_handler': ProcessOutErrorHandler,
-            },
-            {
                 'queue_name': creds.Consumer.orders,
                 'callback': process_shopify_order,
                 'error_handler': ProcessInErrorHandler,
@@ -269,11 +264,6 @@ if __name__ == '__main__':
                 'queue_name': creds.Consumer.design_lead_form,
                 'callback': process_design_lead,
                 'error_handler': LeadFormErrorHandler,
-            },
-            {
-                'queue_name': creds.Consumer.restart_services,
-                'callback': restart_services,
-                'error_handler': ProcessInErrorHandler,
             },
         ]
 

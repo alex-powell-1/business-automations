@@ -124,7 +124,7 @@ class Company:
     address_html_1 = address_html.split('<br>')[0]
     address_html_2 = address_html.split('<br>')[1]
     url = Config.company['url']
-    hours = Config.company['hours']['month']
+    hours = Config.company['hours']
     logo = Config.company['logo']
     product_images = Config.company['item_images']
     category_images = Config.company['category_images']
@@ -548,3 +548,8 @@ class Marketing:
         discount: int = Config.marketing['stock_notification']['discount']  # $ Amount
         min_amt: int = Config.marketing['stock_notification']['min_amt']  # $ Amount
         exclusions: list[str] = Config.marketing['stock_notification']['exclusions']
+
+
+import datetime
+
+print(datetime.datetime.now())
