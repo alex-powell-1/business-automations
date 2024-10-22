@@ -383,26 +383,6 @@ def update_customer(
     return response
 
 
-def get_cp_cust_no(order: 'ShopifyOrder') -> str:
-    """Takes a ShopifyOrder and returns the CP Customer ID"""
-    email = order.email
-    if not email and order.billing_address.email:
-        email = order.billing_address.email
-
-    if not email and order.shipping_address:
-        email = order.shipping_address.email
-
-    phone = None
-
-    if order.billing_address.phone:
-        phone = order.billing_address.phone
-
-    if not phone and order.shipping_address:
-        phone = order.shipping_address.phone
-
-    return db.CP.Customer.lookup_customer(email, phone)
-
-
 def update_customer_shipping(
     cust_no: str | int,
     first_name: str,

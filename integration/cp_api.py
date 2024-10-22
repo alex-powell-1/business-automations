@@ -5,7 +5,6 @@ import math
 from datetime import datetime
 from database import Database
 from setup.error_handler import ProcessInErrorHandler
-from customer_tools.customers import get_cp_cust_no
 from customer_tools import customers
 from integration.shopify_api import Shopify
 from integration.models.shopify_orders import ShopifyOrder, GiftCard, InventoryItem, Delivery
@@ -679,15 +678,35 @@ class OrderAPI(DocumentAPI):
 
     @staticmethod
     def get_customer_number(order: ShopifyOrder) -> str:
-        store = OrderAPI.get_store_id(order)
-        if store == 'POS' and not order.customer:
+        if order.channel.lower() == 'pos' and not order.customer:
+            # If the order is a POS order and the customer is not provided, the customer is CASH.
             return 'CASH'
+
+        # Email
+        if order.email:
+            email = order.email
+        elif order.billing_address.email:
+            email = order.billing_address.email
+        elif order.shipping_address.email:
+            email = order.shipping_address.email
         else:
-            return get_cp_cust_no(order)
+            email = None
+
+        # Phone
+        if order.billing_address.phone:
+            phone = order.billing_address.phone
+        elif order.shipping_address.phone:
+            phone = order.shipping_address.phone
+        else:
+            phone = None
+
+        return Database.CP.Customer.lookup_customer(email, phone)
 
     @staticmethod
     def process_order(order: ShopifyOrder, session: requests.Session = requests.Session(), verbose: bool = False):
         oapi = OrderAPI(order, session, verbose)
+        print(oapi.payload)
+        raise Exception('OrderAPI.process_order() is not implemented')
 
         if oapi.order.is_declined:
             oapi.error_handler.add_error_v('Order payment declined')

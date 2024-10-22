@@ -18,12 +18,12 @@ from setup.error_handler import ScheduledTasksErrorHandler
 #
 # A product is selected to be processed by this script when:
 # - Qty available is < 1 and status is active and category is not 'SERVICES'
-# - Product is not on an open order
+# - Product not in inactive_exclude
 # - Product is not in category 'BONNIE'
 #
 
 
-def get_active_products_with_no_stock():
+def get_active_products_with_no_stock() -> list[str]:
     query = """
     SELECT item.ITEM_NO
     FROM IM_ITEM item
@@ -32,14 +32,10 @@ def get_active_products_with_no_stock():
     ORDER BY inv.QTY_AVAIL DESC
     """
     response = db.query(query)
-    if response is not None:
-        result = []
-        for x in response:
-            result.append(x[0])
-        return result
+    return [x[0] for x in response] if response is not None else []
 
 
-def get_products_on_open_order():
+def get_products_on_open_order() -> list[str]:
     query = """
     SELECT DISTINCT ITEM_NO
     FROM PS_DOC_LIN
@@ -51,12 +47,11 @@ def get_products_on_open_order():
         for x in response:
             item = x[0]
             item_list.append(item)
-        return item_list
-    else:
-        return
+
+    return item_list
 
 
-def get_bonnie_items():
+def get_bonnie_items() -> list[str]:
     query = """
     SELECT ITEM_NO
     FROM IM_ITEM
@@ -68,12 +63,11 @@ def get_bonnie_items():
         for x in response:
             item = x[0]
             item_list.append(item)
-        return item_list
-    else:
-        return
+
+    return item_list
 
 
-def get_products_on_open_documents():
+def get_products_on_open_documents() -> list[str]:
     query = """
     SELECT DISTINCT ITEM_NO
     FROM PS_DOC_LIN
@@ -85,38 +79,30 @@ def get_products_on_open_documents():
         for x in response:
             item = x[0]
             item_list.append(item)
-        return item_list
-    else:
-        return
+    return item_list
 
 
 def set_products_to_inactive(eh=ScheduledTasksErrorHandler):
     count = 0
     eh.logger.info(f'Inactive Products: Starting at {datetime.now():%H:%M:%S}')
     active_products = get_active_products_with_no_stock()
-    if active_products is not None:
-        # Update: Items on open order are not taken into account as of April 24
-        # order_products = get_products_on_open_order()
-        bonnie_products = get_bonnie_items()
-        # Update: Hold Products are not taken into account as of April 24
-        # hold_quote_products = get_products_on_quotes_or_holds()
-        for x in active_products:
-            item = Product(x)
-            # If item is on open order, hold, or quote, skip this iteration
-            # if item_number in order_products or item_number in hold_quote_products:
-            # if item.item_no in order_products:
-            #     print(f"Skipping {item.item_no}: {item.long_descr} - On Open Order")
-            #     continue
-            if item.item_no in bonnie_products:
-                eh.logger.info(f'Skipping {item.item_no}: {item.long_descr} - Bonnie Product')
-                continue
+    if not active_products:
+        eh.logger.info('No products found with no stock.')
+        return
+    EXCLUDED_ITEMS = ['MULCH']
+
+    for x in active_products:
+        item = Product(x)
+        if item.item_no in EXCLUDED_ITEMS or item.item_no in get_bonnie_items():
+            eh.logger.info(f'Skipping {item.item_no}: {item.long_descr} - Excluded Product')
+            continue
+        else:
+            try:
+                db.CP.Product.set_inactive(item.item_no, eh=eh)
+            except Exception as err:
+                eh.error_handler.add_error_v(error=err, origin='Inactive Products')
             else:
-                try:
-                    db.CP.Product.set_inactive(item.item_no, eh=eh)
-                except:
-                    continue
-                else:
-                    count += 1
+                count += 1
 
     eh.logger.info(f'{count} product statuses changed. Process completed at {datetime.now():%H:%M:%S}.')
 

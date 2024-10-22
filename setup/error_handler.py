@@ -1,6 +1,8 @@
 from datetime import datetime
 from setup import creds
 from setup.creds import Logs
+import os
+import platform
 
 
 class Logger:
@@ -32,8 +34,13 @@ class Logger:
 
     def log(self, message: str):
         self.update_log_file()
-        with open(self.log_file, 'a') as file:
-            file.write(f'{message}\n')
+        try:
+            with open(self.log_file, 'a') as file:
+                file.write(f'{message}\n')
+        except FileNotFoundError:
+            if not platform.system() == 'Windows':
+                # Local development
+                os.system(f'open {os.getenv("SHARE_FILESERVER")}')
 
     def success(self, message: str, origin=''):
         self.update_log_file()
