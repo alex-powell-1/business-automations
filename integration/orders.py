@@ -250,4 +250,4 @@ class OrderProcessor:
 
 if __name__ == '__main__':
     order = Order(5738684154023, send_gfc=False, print_order=False)
-    order.process()
+    # order.process()
