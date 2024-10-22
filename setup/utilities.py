@@ -552,4 +552,3 @@ states = {
 if '__main__' == __name__:
     print(is_after_hours())
     print(get_hours_message())
-    print(datetime.now().isoweekday())
