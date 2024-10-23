@@ -14,7 +14,7 @@ from traceback import format_exc as tb
 
 ORDER_PREFIX = 'S'
 REFUND_SUFFIX = 'R'
-LOYALTY_EXCLUSIONS = ['SERVICE', 'DELIVERY']
+LOYALTY_EXCLUSIONS = ['SERVICE', 'DELIVERY', 'ONSITE']
 LOYALTY_CUSTOMER_EXCLUSIONS = ['CASH']
 SHOPIFY_PAYCODE = 'SHOP'
 LOYALTY_PAYCODE = 'LOYALTY'
@@ -852,6 +852,9 @@ class HoldOrder(DocumentAPI):
 
             if self.name.lower() == 'custom':
                 sku = 'CUSTOM'
+            
+            if self.name.replace('-', '').lower() in ['onsite', 'on-site consultation']:
+                sku = 'ONSITE'
 
             return {
                 'LIN_TYP': 'S',
