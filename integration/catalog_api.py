@@ -659,18 +659,42 @@ class Collections:
         def menu_helper(category: Collection):
             # Sort category children by sort order
             category.children.sort(key=lambda x: x.sort_order)
+
             items = [menu_helper(child) for child in category.children]
+
+            ###########################
+            ##### Static Subpages #####
+            ###########################
+
             if category.name == 'Services':
-                items.append(
+                service_static_pages = [
+                    {
+                        'title': 'Installation',
+                        'type': 'PAGE',
+                        'resourceId': 'gid://shopify/Page/101760958631',
+                        'items': [],
+                    },
+                    {
+                        'title': 'Plant Rental',
+                        'type': 'PAGE',
+                        'resourceId': 'gid://shopify/Page/101760991399',
+                        'items': [],
+                    },
                     {
                         'title': 'Portfolio',
                         'type': 'PAGE',
                         'resourceId': 'gid://shopify/Page/101755781287',
-                        'id': 'gid://shopify/MenuItem/517461868711',
                         'items': [],
-                    }
-                )
-                
+                    },
+                ]
+
+                for page in service_static_pages:
+                    items.append(page)
+
+            ###########################
+            ###########################
+            ###########################
+
             menu_item = {
                 'title': category.name,
                 'type': 'COLLECTION',
@@ -688,7 +712,7 @@ class Collections:
             main_menu['items'].append(menu_helper(category))
 
         # # Add the Landing Page to the Main Menu
-        
+
         # Static Pages
         main_menu['items'].append(
             {
@@ -696,7 +720,7 @@ class Collections:
                 'type': 'PAGE',
                 'resourceId': 'gid://shopify/Page/98894217383',
                 'id': 'gid://shopify/MenuItem/482709209255',
-                'items': []
+                'items': [],
             }
         )
 
@@ -721,12 +745,6 @@ class Collections:
                         category.menu_id = cat['id'].split('/')[-1]
 
         get_menu_ids(response)
-
-
-
-
-                
-        
 
     def update_middleware(self):
         # Update Entire Category Tree in Middleware
@@ -3774,16 +3792,16 @@ class Video:
 
 
 # if __name__ == '__main__':
-    # from setup.date_presets import Dates
+# from setup.date_presets import Dates
 
-    # cat = Catalog(
-    #     last_sync=datetime(2024, 9, 25, 16),
-    #     dates=Dates(),
-    #     # verbose=True,
-    #     # test_mode=True,
-    #     # test_queue=[
-    #     #     # {'sku': '202944', 'binding_id': 'B9999'},
-    #     #     {'sku': '202962'}
-    #     # ],
-    # )
-    # cat.sync()
+# cat = Catalog(
+#     last_sync=datetime(2024, 9, 25, 16),
+#     dates=Dates(),
+#     # verbose=True,
+#     # test_mode=True,
+#     # test_queue=[
+#     #     # {'sku': '202944', 'binding_id': 'B9999'},
+#     #     {'sku': '202962'}
+#     # ],
+# )
+# cat.sync()
