@@ -307,7 +307,7 @@ class ShopifyOrder:
             elif item['name'].split('-')[0].strip().lower() == 'custom':
                 item['sku'] = 'CUSTOM'
             
-            elif self.name.replace('-', '').lower() in ['onsite', 'on-site consultation']:
+            elif item['name'].replace('-', '').lower() in ['onsite', 'on-site consultation']:
                 item['sku'] = 'ONSITE'
             
             elif item['sku'] is None:

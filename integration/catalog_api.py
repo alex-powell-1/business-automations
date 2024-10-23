@@ -672,18 +672,21 @@ class Collections:
                         'title': 'Installation',
                         'type': 'PAGE',
                         'resourceId': 'gid://shopify/Page/101760958631',
+                        'id': 'gid://shopify/MenuItem/517475991719',
                         'items': [],
                     },
                     {
                         'title': 'Plant Rental',
                         'type': 'PAGE',
                         'resourceId': 'gid://shopify/Page/101760991399',
+                        'id': 'gid://shopify/MenuItem/517476024487',
                         'items': [],
                     },
                     {
                         'title': 'Portfolio',
                         'type': 'PAGE',
                         'resourceId': 'gid://shopify/Page/101755781287',
+                        'id': 'gid://shopify/MenuItem/517476024487',
                         'items': [],
                     },
                 ]

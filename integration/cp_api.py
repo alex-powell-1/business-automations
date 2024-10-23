@@ -110,7 +110,6 @@ class OrderAPI(DocumentAPI):
         self.drawer_id: str = OrderAPI.get_drawer_id(self.order)
         self.cust_no: str = OrderAPI.get_customer_number(self.order)
         self.notes: list[CPNote] = self.get_notes()
-        self.payload = self.get_post_payload()
 
     def get_notes(self) -> list[CPNote]:
         """Returns a list of notes from a order."""
@@ -423,6 +422,8 @@ class OrderAPI(DocumentAPI):
         if not self.cust_no:
             self.error_handler.add_error_v('Valid customer number is required')
             return
+        
+        self.payload = self.get_post_payload()
         response = self.post_document()
 
         if response['ErrorCode'] == 'SUCCESS':
