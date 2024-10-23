@@ -659,12 +659,23 @@ class Collections:
         def menu_helper(category: Collection):
             # Sort category children by sort order
             category.children.sort(key=lambda x: x.sort_order)
-
+            items = [menu_helper(child) for child in category.children]
+            if category.name == 'Services':
+                items.append(
+                    {
+                        'title': 'Portfolio',
+                        'type': 'PAGE',
+                        'resourceId': 'gid://shopify/Page/101755781287',
+                        'id': 'gid://shopify/MenuItem/517461868711',
+                        'items': [],
+                    }
+                )
+                
             menu_item = {
                 'title': category.name,
                 'type': 'COLLECTION',
                 'resourceId': f'gid://shopify/Collection/{category.collection_id}',
-                'items': [menu_helper(child) for child in category.children],
+                'items': items,
             }
 
             if category.menu_id:
@@ -677,12 +688,15 @@ class Collections:
             main_menu['items'].append(menu_helper(category))
 
         # # Add the Landing Page to the Main Menu
+        
+        # Static Pages
         main_menu['items'].append(
             {
                 'title': 'Landscape Design',
                 'type': 'PAGE',
                 'resourceId': 'gid://shopify/Page/98894217383',
-                'items': [],
+                'id': 'gid://shopify/MenuItem/482709209255',
+                'items': []
             }
         )
 
@@ -707,6 +721,12 @@ class Collections:
                         category.menu_id = cat['id'].split('/')[-1]
 
         get_menu_ids(response)
+
+
+
+
+                
+        
 
     def update_middleware(self):
         # Update Entire Category Tree in Middleware

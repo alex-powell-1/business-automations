@@ -5472,5 +5472,5 @@ class Database:
 
 
 if __name__ == '__main__':
-    # print(Database.CP.Customer.get_loyalty_balance('105786afd'))
-    pass
+    print(Database.CP.Customer.get_loyalty_balance('105786afd'))
+    
