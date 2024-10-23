@@ -89,11 +89,22 @@ def set_products_to_inactive(eh=ScheduledTasksErrorHandler):
     if not active_products:
         eh.logger.info('No products found with no stock.')
         return
-    EXCLUDED_ITEMS = ['MULCH']
+
+    # Get Items that are not checked track inventory at 10X tab
+    non_tracked_items = []
+
+    query = """
+    SELECT ITEM_NO
+    FROM IM_ITEM
+    WHERE TRK_INV = 'N'
+    """
+    response = db.query(query, mapped=True)
+    if response['code'] == 200:
+        non_tracked_items = [x[0] for x in response]
 
     for x in active_products:
         item = Product(x)
-        if item.item_no in EXCLUDED_ITEMS or item.item_no in get_bonnie_items():
+        if item.item_no in non_tracked_items or item.item_no in get_bonnie_items():
             eh.logger.info(f'Skipping {item.item_no}: {item.long_descr} - Excluded Product')
             continue
         else:
@@ -108,4 +119,4 @@ def set_products_to_inactive(eh=ScheduledTasksErrorHandler):
 
 
 if __name__ == '__main__':
-    set_products_to_inactive()
+    pass
