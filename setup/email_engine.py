@@ -364,7 +364,7 @@ class Email:
                     'invisible_items': product_reports.get_invisible_items(),
                     'missing_photo_data': product_reports.get_missing_image_list(),
                     'items_with_negative_qty': product_reports.get_negative_items(),
-                    'non_web_enabled_items': product_reports.get_non_ecomm_enabled_items(),
+                    'non_web_enabled_items': product_reports.get_non_web_enabled_items(),
                     'missing_ecomm_category_data': product_reports.get_items_with_no_ecomm_category(),
                     'binding_key_issues': products.get_binding_id_issues(),
                     'inactive_items_with_stock': product_reports.get_inactive_items_with_stock(),
@@ -462,7 +462,5 @@ class Email:
 
 
 if __name__ == '__main__':
-    from setup.date_presets import Dates
 
-    dates = Dates()
-    Email.Staff.ItemReport.send(['accounting', 'alex'])
+    Email.Staff.ItemReport.send(['alex'])

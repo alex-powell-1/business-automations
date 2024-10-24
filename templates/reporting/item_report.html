@@ -74,10 +74,16 @@
                 {% endif %}
                 
                 
-                {% if non_web_enabled_items != "<p>No Items</p>" %}
+                {% if non_web_enabled_items %}
                  <div>
                     <h2>Non Web-Enabled Items</h2>
-                    {{ non_web_enabled_items }}
+                    <p><u>Total items</u>: <b>{{ non_web_enabled_items|length }}</b></p>
+                    
+                    {% for i in range(non_web_enabled_items|length - 1) %}
+                        <p>#{{ i }}: {{ non_web_enabled_items[i]['sku'] }}, {{ non_web_enabled_items[i]['name'] }}, In-Stock: {{ non_web_enabled_items[i]['qty'] }}</p>
+                    
+                        {% endfor %}
+
                 </div>
                 {% endif %}
 

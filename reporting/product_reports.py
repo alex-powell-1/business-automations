@@ -674,76 +674,25 @@ def get_low_stock_items(number_of_items, dates: Dates):
         return '\n<p>No Low-Stock Items</p>'
 
 
-def get_non_ecomm_enabled_items():
-    """Creates a list of items with positive stock that are not e-commerce enabled for review by staff"""
-    query = """
-    SELECT item.item_no, item.ADDL_DESCR_1, inv.qty_avail, item.CATEG_COD
-    FROM im_item item
-    inner join IM_INV inv
-    ON item.ITEM_NO=inv.ITEM_NO
-    LEFT JOIN EC_CATEG_ITEM ecomm
-    ON item.ITEM_NO=ecomm.ITEM_NO
-    WHERE STAT = 'A' AND
-    item.CATEG_COD != 'SERVICES' AND
-    inv.QTY_AVAIL > 0 AND
-    ADDL_DESCR_1 != 'EXCLUDE' AND
-    IS_ECOMM_ITEM = 'N' AND
-	item.USR_IN_STORE_ONLY = 'N'
-    ORDER BY inv.QTY_AVAIL DESC
+def get_non_web_enabled_items() -> list:
+    """Creates a list of items with positive buffered stock that are not e-commerce enabled for review by staff.
     """
-    response = db.query(query)
-    result = ''
-    fix_list = []
-    counter = 1
-    if response is not None:
-        for item in response:
-            fix_list.append({'item_no': item[0], 'category': item[3]})
-    if fix_list:
-        for x in fix_list:
-            if x['category'] == 'DECOR':
-                print(f'Item {x["item_no"]} is not e-commerce enabled and is in the Decor category.')
-
-                response = db.query(
-                    f"""UPDATE IM_ITEM 
-                    SET 
-                         IS_ECOMM_ITEM = 'Y', 
-                         USR_CPC_IS_ENABLED = 'Y', 
-                         LST_MAINT_DT = GETDATE()
-                         WHERE ITEM_NO = '{x['item_no']}'""",
-                    commit=True,
-                )
-                if response['code'] != 200:
-                    print(f'Error updating item {x["item_no"]}')
-
-                # Get the Decor E-Comm Category ID
-                decor_cat_query = """
-                SELECT CATEG_ID FROM EC_CATEG
-                WHERE DESCR = 'Decor'
-                """
-                response = db.query(decor_cat_query)
-                if response is not None:
-                    decor_cat = response[0][0]
-
-                # Insert the item into the EC_CATEG_ITEM table
-                insert_query = f"""
-                INSERT INTO EC_CATEG_ITEM(ITEM_NO, CATEG_ID, LST_MAINT_DT, LST_MAINT_USR_ID)
-                VALUES('{x}', '{decor_cat}', GETDATE(), 'AP')"""
-                response = db.query(insert_query)
-                if response['code'] != 200:
-                    print(f'Error inserting item {x} into EC_CATEG_ITEM')
-
-    response = db.query(query)
-    if response is not None:
-        result += f'<p><u>Total items</u>: <b>{len(response)}</b></p>'
-        for item in response:
-            sku = item[0]
-            name = item[1]
-            qty = int(item[2])
-            result += f'<p>#{counter}: {sku}, {name}, In-Stock: {qty}</p>'
-            counter += 1
-        return result
-    else:
-        return '<p>No Items</p>'
+    query = """
+    SELECT ITEM_NO, ADDL_DESCR_1, (QTY_AVAIL - PROF_NO_1) as BUFFERED_QTY
+    FROM VI_IM_ITEM_WITH_INV
+    WHERE IS_ECOMM_ITEM = 'N' AND (QTY_AVAIL - PROF_NO_1 > 0)
+    ORDER BY BUFFERED_QTY DESC
+    """
+    response = db.query(query, mapped=True)
+    result = []
+    if response['code'] == 200:
+        for item in response['data']:
+            sku = item['ITEM_NO']
+            name = item['ADDL_DESCR_1']
+            qty = int(item['BUFFERED_QTY'])
+            result.append({"sku": sku, "name": name, "qty": qty})
+    
+    return result
 
 
 def get_inactive_items_with_stock():
@@ -1132,4 +1081,4 @@ def report_generator(
 
 
 if __name__ == '__main__':
-    print(get_quantity_available('DECO12', buffered=True))
+    print(get_non_ecomm_enabled_itemsv2())
