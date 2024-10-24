@@ -311,6 +311,7 @@ class Catalog:
                 binding_list = [x for x in sku_list if x in Catalog.all_binding_ids]
 
                 sku_list = tuple(sku_list)
+                
                 if binding_list:
                     if len(binding_list) > 1:
                         binding_list = tuple(binding_list)
@@ -319,11 +320,13 @@ class Catalog:
                         where_filter = f" or {Table.CP.Item.Column.binding_id} = '{binding_list[0]}'"
                 else:
                     where_filter = ''
+                
                 query = f"""
                     UPDATE {Table.CP.Item.table}
                     SET LST_MAINT_DT = GETDATE()
                     WHERE (ITEM_NO in {sku_list} {where_filter}) AND
                     {Table.CP.Item.Column.web_enabled} = 'Y'"""
+                
                 response = db.query(query, mapped=True)
                 if response['code'] == 200:
                     if self.verbose:
@@ -3486,96 +3489,93 @@ class Image:
     def validate(self):
         """Images will be validated for size and format before being uploaded and written to middleware.
         Images that have been written to database previously will be considered valid and will pass."""
-        if self.db_id:
-            # These items have already been through check before.
-            return True
-        else:
-            # Check for valid file size/format
-            size = (1280, 1280)
-            q = 90
-            exif_orientation = 0x0112
-            if self.name.lower().endswith('jpg'):
-                # Resize files larger than 1.8 MB
-                if self.size > 1800000:
-                    Image.logger.warn(f'Found large file {self.name}. Attempting to resize.')
-                    try:
-                        im = PILImage.open(self.file_path)
-                        im.thumbnail(size, PILImage.LANCZOS)
-                        code = im.getexif().get(exif_orientation, 1)
-                        if code and code != 1:
-                            im = ImageOps.exif_transpose(im)
-                        im.save(self.file_path, 'JPEG', quality=q)
-                        im.close()
-                        self.size = os.path.getsize(self.file_path)
-                    except Exception as e:
-                        Image.error_handler.add_error_v(f'Error resizing {self.name}: {e}', origin='Image Resize')
-                        return False
-                    else:
-                        Image.logger.success(f'Image {self.name} was resized.')
-
-            # Remove Alpha Layer and Convert PNG to JPG
-            if self.name.lower().endswith('png'):
-                Image.logger.warn(f'Found PNG file: {self.name}. Attempting to reformat.')
+        # Check for valid file size/format
+        size = (1280, 1280)
+        q = 90
+        exif_orientation = 0x0112
+        print(f'Validating {self.name}, size {self.size}')
+        if self.name.lower().endswith('jpg'):
+            # Resize files larger than 1.8 MB
+            if self.size > 1800000:
+                Image.logger.warn(f'Found large file {self.name}. Attempting to resize.')
                 try:
                     im = PILImage.open(self.file_path)
                     im.thumbnail(size, PILImage.LANCZOS)
-                    # Preserve Rotational Data
                     code = im.getexif().get(exif_orientation, 1)
                     if code and code != 1:
                         im = ImageOps.exif_transpose(im)
-                    rgb_im = im.convert('RGB')
-                    new_image_name = self.name.split('.')[0] + '.jpg'
-                    new_file_path = f'{creds.Company.product_images}/{new_image_name}'
-                    rgb_im.save(new_file_path, 'JPEG', quality=q)
+                    im.save(self.file_path, 'JPEG', quality=q)
                     im.close()
-                    os.remove(self.file_path)
-                    self.file_path = new_file_path
-                    self.name = new_image_name
+                    self.size = os.path.getsize(self.file_path)
                 except Exception as e:
-                    Image.error_handler.add_error_v(
-                        error=f'Error converting {self.name}: {e}', origin='Reformat PNG'
-                    )
+                    Image.error_handler.add_error_v(f'Error resizing {self.name}: {e}', origin='Image Resize')
                     return False
                 else:
-                    Image.logger.success(f'{self.name}: Conversion from PNG to JPG successful.')
+                    Image.logger.success(f'Image {self.name} was resized.')
 
-            # replace .JPEG with .JPG
-            if self.name.lower().endswith('jpeg'):
-                Image.logger.warn('Found file ending with .JPEG. Attempting to reformat.')
-                try:
-                    im = PILImage.open(self.file_path)
-                    im.thumbnail(size, PILImage.LANCZOS)
-                    # Preserve Rotational Data
-                    code = im.getexif().get(exif_orientation, 1)
-                    if code and code != 1:
-                        im = ImageOps.exif_transpose(im)
-                    new_image_name = self.name.split('.')[0] + '.jpg'
-                    new_file_path = f'{creds.Company.product_images}/{new_image_name}'
-                    im.save(new_file_path, 'JPEG', quality=q)
-                    im.close()
-                    os.remove(self.file_path)
-                    self.file_path = new_file_path
-                    self.name = new_image_name
-                except Exception as e:
-                    Image.error_handler.add_error_v(
-                        error=f'Error converting {self.name}: {e}', origin='Image Rename JPEG'
-                    )
-                    return False
-                else:
-                    Image.logger.success(f'Conversion successful for {self.name}')
-
-            # check for description that is too long
-            if len(self.description) >= 500:
-                Image.error_handler.add_error_v(f'Description for {self.name} is too long. Validation failed.')
+        # Remove Alpha Layer and Convert PNG to JPG
+        if self.name.lower().endswith('png'):
+            Image.logger.warn(f'Found PNG file: {self.name}. Attempting to reformat.')
+            try:
+                im = PILImage.open(self.file_path)
+                im.thumbnail(size, PILImage.LANCZOS)
+                # Preserve Rotational Data
+                code = im.getexif().get(exif_orientation, 1)
+                if code and code != 1:
+                    im = ImageOps.exif_transpose(im)
+                rgb_im = im.convert('RGB')
+                new_image_name = self.name.split('.')[0] + '.jpg'
+                new_file_path = f'{creds.Company.product_images}/{new_image_name}'
+                rgb_im.save(new_file_path, 'JPEG', quality=q)
+                im.close()
+                os.remove(self.file_path)
+                self.file_path = new_file_path
+                self.name = new_image_name
+            except Exception as e:
+                Image.error_handler.add_error_v(
+                    error=f'Error converting {self.name}: {e}', origin='Reformat PNG'
+                )
                 return False
+            else:
+                Image.logger.success(f'{self.name}: Conversion from PNG to JPG successful.')
 
-            # Check for images with words or trailing numbers in the name
-            if '^' in self.name and not self.name.split('.')[0].split('^')[1].isdigit():
-                Image.error_handler.add_error_v(f'Image {self.name} is not valid.', origin='Image Validation')
+        # replace .JPEG with .JPG
+        if self.name.lower().endswith('jpeg'):
+            Image.logger.warn('Found file ending with .JPEG. Attempting to reformat.')
+            try:
+                im = PILImage.open(self.file_path)
+                im.thumbnail(size, PILImage.LANCZOS)
+                # Preserve Rotational Data
+                code = im.getexif().get(exif_orientation, 1)
+                if code and code != 1:
+                    im = ImageOps.exif_transpose(im)
+                new_image_name = self.name.split('.')[0] + '.jpg'
+                new_file_path = f'{creds.Company.product_images}/{new_image_name}'
+                im.save(new_file_path, 'JPEG', quality=q)
+                im.close()
+                os.remove(self.file_path)
+                self.file_path = new_file_path
+                self.name = new_image_name
+            except Exception as e:
+                Image.error_handler.add_error_v(
+                    error=f'Error converting {self.name}: {e}', origin='Image Rename JPEG'
+                )
                 return False
+            else:
+                Image.logger.success(f'Conversion successful for {self.name}')
 
-            # Valid Image
-            return True
+        # check for description that is too long
+        if len(self.description) >= 500:
+            Image.error_handler.add_error_v(f'Description for {self.name} is too long. Validation failed.')
+            return False
+
+        # Check for images with words or trailing numbers in the name
+        if '^' in self.name and not self.name.split('.')[0].split('^')[1].isdigit():
+            Image.error_handler.add_error_v(f'Image {self.name} is not valid.', origin='Image Validation')
+            return False
+
+        # Valid Image
+        return True
 
     def set_image_details(self):
         def get_item_no_from_image_name(image_name):
@@ -3611,6 +3611,7 @@ class Image:
 
         self.sku, self.binding_id = get_item_no_from_image_name(self.name)
         self.number = get_image_number()
+        self.size = get_filesize(self.file_path)
 
         # self.size = os.path.getsize(self.file_path)
 

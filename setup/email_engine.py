@@ -368,7 +368,7 @@ class Email:
                     'missing_ecomm_category_data': product_reports.get_items_with_no_ecomm_category(),
                     'binding_key_issues': products.get_binding_id_issues(),
                     'inactive_items_with_stock': product_reports.get_inactive_items_with_stock(),
-                    'missing_item_descriptions': product_reports.get_missing_item_descriptions(min_length=10),
+                    'missing_item_descriptions': product_reports.get_missing_item_descriptions(min_length=30),
                 }
 
                 email_content = jinja_template.render(data)
