@@ -898,7 +898,8 @@ class Shopify:
                         Shopify.logger.success(f'Product {product_id} deleted from Shopify.')
                     else:
                         eh.logger(f'No match. deleted_product_id: {deleted_product_id}, product_id: {product_id}')
-                except:
+                except Exception as e:
+                    print(e)
                     Shopify.error_handler.add_error_v(error=f'Could not get deleted product ID: {response.data}')
 
                 return response.data
@@ -2406,4 +2407,8 @@ def refresh_order(tkt_no):
 
 
 if __name__ == '__main__':
-    print(Shopify.Menu.get_all())
+    shopify_product_ids = Shopify.Product.get()
+    for x in shopify_product_ids:
+        res = Database.query(f"SELECT * FROM SN_SHOP_PROD WHERE PRODUCT_ID = {x}", mapped=True)
+        if res['code'] == 201:
+            Shopify.Product.delete(product_id=x)

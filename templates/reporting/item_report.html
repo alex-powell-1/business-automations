@@ -66,10 +66,15 @@
 
             <div id="main">
 
-                {% if invisible_items != "<p>No Items</p>" %}
+                {% if invisible_items %}
                 <div>
                     <h2>Non Web Visible Items</h2>
-                    {{ invisible_items }}
+                    <p><u>Total items</u>: <b>{{ invisible_items|length }}</b></p>
+                    
+                    {% for i in range(invisible_items|length - 1) %}
+                        <p>#{{ i + 1 }}: {{ invisible_items[i]['sku'] }}, {{ invisible_items[i]['name'] }}, In-Stock: {{ invisible_items[i]['qty'] }}</p>
+                    
+                        {% endfor %}
                 </div>
                 {% endif %}
                 
@@ -80,46 +85,88 @@
                     <p><u>Total items</u>: <b>{{ non_web_enabled_items|length }}</b></p>
                     
                     {% for i in range(non_web_enabled_items|length - 1) %}
-                        <p>#{{ i }}: {{ non_web_enabled_items[i]['sku'] }}, {{ non_web_enabled_items[i]['name'] }}, In-Stock: {{ non_web_enabled_items[i]['qty'] }}</p>
+                        <p>#{{ i + 1 }}: {{ non_web_enabled_items[i]['sku'] }}, {{ non_web_enabled_items[i]['name'] }}, In-Stock: {{ non_web_enabled_items[i]['qty'] }}</p>
                     
                         {% endfor %}
 
                 </div>
                 {% endif %}
 
-                {% if missing_ecomm_category_data != "<p>No Items</p>" %}
+
+                {% if missing_ecomm_category_data %}
                 <div>
                     <h2>No Ecomm Category</h2>
-                    {{ missing_ecomm_category_data }}
+                    <p><u>Total items</u>: <b>{{ missing_ecomm_category_data|length }}</b></p>
+                    
+                    {% for i in range(missing_ecomm_category_data|length - 1) %}
+                        <p>#{{ i + 1 }}: {{ missing_ecomm_category_data[i]['sku'] }}, {{ missing_ecomm_category_data[i]['name'] }}, In-Stock: {{ missing_ecomm_category_data[i]['qty'] }}</p>
+                    
+                    {% endfor %}
                 </div>
                 {% endif %}
 
-                {% if binding_key_issues != "<p>No Items</p>" %}
+
+                {% if binding_key_issues %}
                 <div>
                     <h2>Binding Key Issues</h2>
-                    {{ binding_key_issues }}
+                    <p><u>Total items</u>: <b>{{ binding_key_issues|length }}</b></p>
+                    
+                    {% for i in binding_key_issues %}
+                        <p>Binding ID- {{ i['id'] }} - Error: {{ i['error'] }}</p>
+                    {% endfor %}
                 </div>
                 {% endif %}
 
+                {% if missing_photo_data %}
                 <div>
                     <h2>Missing Images</h2>
-                    {{ missing_photo_data }}
+                    <p><u>Total items</u>: <b>{{ missing_photo_data|length }}</b></p>
+                    
+                    {% for i in range(missing_photo_data|length - 1) %}
+                        <p>#{{ i + 1 }}: {{ missing_photo_data[i]['sku'] }}, {{ missing_photo_data[i]['name'] }}, In-Stock: {{ missing_photo_data[i]['qty'] }}</p>
+                    
+                    {% endfor %}
                 </div>
+                {% endif %}
 
+                
+                {% if items_with_negative_qty %}
                 <div>
                     <h2>Negative Quantity</h2>
-                    {{ items_with_negative_qty }}
+                    <p><u>Total items</u>: <b>{{ items_with_negative_qty|length }}</b></p>
+                    
+                    {% for i in range(items_with_negative_qty|length - 1) %}
+                        <p>#{{ i + 1 }}: {{ items_with_negative_qty[i]['sku'] }}, {{ items_with_negative_qty[i]['name'] }}, In-Stock: {{ items_with_negative_qty[i]['qty'] }}</p>
+                    
+                    {% endfor %}
                 </div>
+                {% endif %}
 
+
+                {% if inactive_items_with_stock %}
                 <div>
                     <h2>Inactive Items with Stock</h2>
-                    {{ inactive_items_with_stock }}
+                    <p><u>Total items</u>: <b>{{ inactive_items_with_stock|length }}</b></p>
+                    
+                    {% for i in range(inactive_items_with_stock|length - 1) %}
+                        <p>#{{ i + 1 }}: {{ inactive_items_with_stock[i]['sku'] }}, {{ inactive_items_with_stock[i]['name'] }}, In-Stock: {{ inactive_items_with_stock[i]['qty'] }}</p>
+                    
+                    {% endfor %}
                 </div>
+                {% endif %}
 
+
+                {% if missing_item_descriptions %}
                 <div>
                     <h2>Missing Product Descriptions</h2>
-                    {{ missing_item_descriptions }}
+                    <p><u>Total items</u>: <b>{{ missing_item_descriptions|length }}</b></p>
+                    
+                    {% for i in range(missing_item_descriptions|length - 1) %}
+                        <p>#{{ i + 1 }}: {{ missing_item_descriptions[i]['sku'] }}, {{ missing_item_descriptions[i]['name'] }}, In-Stock: {{ missing_item_descriptions[i]['qty'] }}</p>
+                    
+                    {% endfor %}
                 </div>
+                {% endif %}
 
             </div>
         </div>

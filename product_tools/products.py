@@ -956,26 +956,23 @@ def get_top_child_product(binding_key):
         return top_child
 
 
-def get_binding_id_issues():
+def get_binding_id_issues() -> list[dict]:
     """prints merged items with no parent or who have multiple parents"""
-    result = ''
+    result = []
     binding_ids = get_binding_ids()
     for x in binding_ids:
-        pattern = r'B\d{4}'
-        if not bool(re.fullmatch(pattern, x)):
-            result += f'<p>Binding ID: {x}, does not match pattern.</p>\n'
+        if not bool(re.fullmatch(creds.Company.binding_id_format, x)):
+            result.append({"id": x, "error": "Does not match pattern"})
+    
     for x in binding_ids:
         parent = get_parent_product(x)
-        if parent is None or type(parent) is list:
-            result += f'<p>Binding ID: {x}, has no parent.</p>\n'
-        if type(parent) is list:
-            result += f'<p>Binding ID: {x}, has multiple parents: {get_parent_product(x)}</p>\n'
-
-    if result == '':
-        result = '<p>No Items</p>'
+        if not parent:
+            result.append({"id": x, "error": "Has no parent"})        
+        elif isinstance(parent, list):
+            result.append({"id": x, "error": f"Has multiple parents: {get_parent_product(x)}"})
 
     return result
 
 
 if __name__ == '__main__':
-    print(get_all_back_in_stock_items(date_presets.one_year_ago))
+    print(get_binding_id_issues())

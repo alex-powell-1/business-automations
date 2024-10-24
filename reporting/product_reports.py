@@ -45,30 +45,23 @@ def cost_of_goods_sold(start_date, stop_date, store):
             return 0
 
 
-def get_invisible_items():
+def get_non_web_visibile_items():
     query = """
-    SELECT IM_ITEM.ITEM_NO, IM_ITEM.ADDL_DESCR_1, IM_ITEM.USR_PROF_ALPHA_17, IM_INV.QTY_AVAIL
-    FROM IM_ITEM
-    INNER JOIN IM_INV ON IM_ITEM.ITEM_NO = IM_INV.ITEM_NO
-    WHERE (IM_INV.QTY_AVAIL-IM_ITEM.PROF_NO_1) > 0 AND IS_ECOMM_ITEM = 'Y'AND USR_CPC_IS_ENABLED = 'N'
-    AND CATEG_COD != 'WORKSHOP'
-    ORDER BY IM_INV.QTY_AVAIL DESC
+    SELECT ITEM_NO, ADDL_DESCR_1, (QTY_AVAIL - PROF_NO_1) as BUFFERED_QTY
+    FROM VI_IM_ITEM_WITH_INV
+    WHERE (QTY_AVAIL-PROF_NO_1) > 0 AND IS_ECOMM_ITEM = 'Y'AND USR_CPC_IS_ENABLED = 'N'
+    ORDER BY BUFFERED_QTY DESC
     """
-    response = db.query(query)
-    result = ''
-    counter = 1
-    if response is not None:
-        result += f'<p><u>Total items</u>: <b>{len(response)}</b></p>'
-        for item in response:
-            sku = item[0]
-            name = item[1]
-            qty = int(item[3]) if item[3] is not None else None
-            result += f'\n<p>#{counter}: {sku}, {name}, Current Stock: {qty}</p>'
-            counter += 1
-
-        return result
-    else:
-        return '<p>No Items</p>'
+    response = db.query(query, mapped=True)
+    result = []
+    if response['code'] == 200:
+        for item in response['data']:
+            sku = item['ITEM_NO']
+            name = item['ADDL_DESCR_1']
+            qty = int(item['BUFFERED_QTY'])
+            result.append({"sku": sku, "name": name, "qty": qty})
+    
+    return result
 
 
 def revenue_sales_report(start_date, stop_date, split=True, anna_mode=False, short=False):
@@ -462,7 +455,7 @@ def get_missing_variant_names():
                 print(f'Item {y[0]} (Binding ID {x}) is missing its variant name.')
 
 
-def get_missing_image_list():
+def get_missing_image_list_OLD():
     from product_tools.products import Product
 
     """Returns a sorted list of e-commerce items with missing images"""
@@ -549,60 +542,69 @@ def get_missing_image_list():
         return contents
 
 
-def get_negative_items():
+def get_missing_image_list() -> list[dict]:
+    """Returns a list of items that have no image."""
+    query = """
+    SELECT img.ITEM_NO, item.ADDL_DESCR_1, item.QTY_AVAIL-item.PROF_NO_1 as 'BUFFERED_QTY' 
+    FROM SN_SHOP_IMAGES img
+    INNER JOIN VI_IM_ITEM_WITH_INV item on img.ITEM_NO = item.ITEM_NO
+    WHERE IMAGE_NAME = 'coming-soon.jpg'
+    ORDER BY BUFFERED_QTY DESC"""
+
+    response = db.query(query, mapped=True)
+    result = []
+    if response['code'] == 200:
+        for item in response['data']:
+            sku = item['ITEM_NO']
+            name = item['ADDL_DESCR_1']
+            qty = int(item['BUFFERED_QTY'])
+            result.append({"sku": sku, "name": name, "qty": qty})
+    
+    return result
+
+
+def get_negative_items() -> list[dict]:
     """Creates a list of items that have negative stock values"""
     query = """
-    SELECT IM_ITEM.ITEM_NO, IM_ITEM.ADDL_DESCR_1, IM_ITEM.USR_PROF_ALPHA_17, IM_INV.QTY_AVAIL
-    FROM IM_ITEM
-    INNER JOIN IM_INV ON IM_ITEM.ITEM_NO = IM_INV.ITEM_NO
-    WHERE IM_INV.QTY_AVAIL < 0
-    ORDER BY IM_INV.QTY_AVAIL ASC
+    SELECT ITEM_NO, LONG_DESCR, QTY_AVAIL
+    FROM VI_IM_ITEM_WITH_INV
+    WHERE QTY_AVAIL < 0
+    ORDER BY QTY_AVAIL ASC
     """
-    response = db.query(query)
-    result = ''
-    counter = 1
-    if response is not None:
-        result += f'<p><u>Total items</u>: <b>{len(response)}</b></p>'
-        for item in response:
-            sku = item[0]
-            name = item[1]
-            qty = int(item[3])
-            result += f'\n<p>#{counter}: {sku}, {name}, Current Stock: {qty}</p>'
-            counter += 1
-        return result
-    else:
-        return '<p>No Items</p>'
+    response = db.query(query, mapped=True)
+    result = []
+    if response['code'] == 200:
+        for item in response['data']:
+            sku = item['ITEM_NO']
+            name = item['LONG_DESCR']
+            qty = int(item['QTY_AVAIL'])
+            result.append({"sku": sku, "name": name, "qty": qty})
+    
+    return result
 
 
-def get_items_with_no_ecomm_category():
+def get_items_with_no_ecomm_category() -> list[dict]:
     """Creates a list of items that have no e-commerce category."""
     query = """
-    SELECT item.ITEM_NO, item.ADDL_DESCR_1, inv.qty_avail
+    SELECT item.ITEM_NO, item.ADDL_DESCR_1, inv.QTY_AVAIL
     FROM im_item item
     INNER JOIN im_inv inv
     ON item.ITEM_NO=inv.item_no
     LEFT JOIN EC_CATEG_ITEM ecomm
     ON item.ITEM_NO=ecomm.ITEM_NO
-    WHERE ecomm.CATEG_ID IS NULL AND
-    STAT = 'A' AND
-    ADDL_DESCR_1 != 'EXCLUDE' AND
-    item.CATEG_COD != 'services'
+    WHERE item.IS_ECOMM_ITEM = 'Y' AND ecomm.CATEG_ID IS NULL
     ORDER BY inv.QTY_AVAIL DESC
     """
-    response = db.query(query)
-    result = ''
-    counter = 1
-    if response is not None:
-        result += f'<p><u>Total items</u>: <b>{len(response)}</b></p>'
-        for item in response:
-            sku = item[0]
-            name = item[1]
-            qty = int(item[2])
-            result += f'\n<p>#{counter}: {sku}, {name}, Current Stock: {qty}</p>'
-            counter += 1
-        return result
-    else:
-        return '<p>No Items</p>'
+    response = db.query(query, mapped=True)
+    result = []
+    if response['code'] == 200:
+        for item in response['data']:
+            sku = item['ITEM_NO']
+            name = item['ADDL_DESCR_1']
+            qty = int(item['QTY_AVAIL'])
+            result.append({"sku": sku, "name": name, "qty": qty})
+    
+    return result
 
 
 def get_low_stock_items(number_of_items, dates: Dates):
@@ -674,7 +676,71 @@ def get_low_stock_items(number_of_items, dates: Dates):
         return '\n<p>No Low-Stock Items</p>'
 
 
-def get_non_web_enabled_items() -> list:
+def get_low_stock_items_NOT_IMPLEMENTED(number_of_items, dates: Dates) -> list[dict]:
+    """Creates a sorted list of items with low stock. Sorted from the greatest revenue generated during a similar
+    time period last year."""
+    result = []
+    top_items_query = f"""
+    "{creds.SQL.DATABASE}"."dbo"."USP_RPT_SA_BY_X";1
+    'select distinct IM_ITEM.ITEM_NO as GRP_ID, IM_ITEM.DESCR as GRP_DESCR
+    from IM_ITEM
+    INNER JOIN IM_INV on IM_ITEM.ITEM_NO = IM_INV.ITEM_NO where ( (1=1) )
+    union
+    select distinct VI_PS_TKT_HIST_LIN.ITEM_NO as GRP_ID, NULL as GRP_DESCR
+    from %HISTORY%
+    WHERE NOT EXISTS(select 1 from IM_ITEM where IM_ITEM.ITEM_NO = VI_PS_TKT_HIST_LIN.ITEM_NO) and
+    ((VI_PS_TKT_HIST.STR_ID = ''1'')) and ( (1=1) )
+    and %ANYPERIODFILTER%',
+    'select VI_PS_TKT_HIST_LIN.ITEM_NO as GRP_ID, %HISTCOLUMNS%
+    from %HISTORY%
+    where ( (1=1) ) and %PERIODFILTER%', ' (VI_PS_TKT_HIST.POST_DAT >= ''{dates.one_year_ago}'') and
+    (VI_PS_TKT_HIST.POST_DAT <= ''{dates.last_year_forecast}'')', ' (1=0) ', ' (1=0) ', 500, 0,
+    'SLS_EXT_PRC_A - RTN_EXT_PRC_VALID_A - RTN_EXT_PRC_NONVALID_A', 2
+    """
+    top_items = db.query(top_items_query)
+    top_items_list = []
+    if top_items is not None:
+        for item in top_items:
+            sku = item[0]
+            name = item[1]
+            revenue = round(float(item[2]), 2)
+            units_sold = int(item[4])
+            top_items_list.append([sku, name, revenue, units_sold])
+    else:
+        return 'No Top Items'
+    # Get Items with Low Stock
+    low_stock_query = """
+    SELECT item.ITEM_NO, inv.QTY_AVAIL
+    FROM IM_ITEM item
+    INNER JOIN IM_INV inv
+    ON item.ITEM_NO = inv.ITEM_NO
+    WHERE inv.QTY_AVAIL <= 50
+    """
+    items_with_low_stock = db.query(low_stock_query)
+    low_stock_list = []
+    low_stock_list_with_qty = []
+    if items_with_low_stock is not None:
+        for x in items_with_low_stock:
+            low_stock_list.append(x[0])
+            low_stock_list_with_qty.append([x[0], int(x[1])])
+
+        # print(low_stock_list_with_qty)
+        target_items = []
+
+        for x in top_items_list:
+            for item in low_stock_list_with_qty:
+                if item[0] == x[0]:
+                    # print(item)
+                    x.append(item[1])
+                    target_items.append(x)
+        for item in target_items[0:number_of_items]:
+            result.append(
+                {"sku": item[0], "name": item[1], "revenue": round(item[2] / 1000, 1), "sold": item[3], "qty": item[4]}
+                )
+    
+    return result
+
+def get_non_web_enabled_items() -> list[dict]:
     """Creates a list of items with positive buffered stock that are not e-commerce enabled for review by staff.
     """
     query = """
@@ -695,28 +761,24 @@ def get_non_web_enabled_items() -> list:
     return result
 
 
-def get_inactive_items_with_stock():
+def get_inactive_items_with_stock() -> list[dict]:
     """Creates a list of items with a positive stock amount that are marked 'inactive' for review by staff."""
     query = """
-    SELECT item.ITEM_NO, item.DESCR, QTY_AVAIL
-    FROM IM_ITEM item
-    INNER JOIN IM_INV inv on item.ITEM_NO = inv.ITEM_NO
+    SELECT ITEM_NO, LONG_DESCR, QTY_AVAIL
+    FROM VI_IM_ITEM_WITH_INV
     WHERE STAT = 'V' and QTY_AVAIL > 0
     ORDER BY QTY_AVAIL DESC
     """
-    response = db.query(query)
-    result = ''
-    count = 1
-    if response is not None:
-        # Header
-        result += f'\n<p><u>Total items</u>: <b>{len(response)}</b></p>'
-        # Contents
-        for x in response:
-            result += f'\n<p>#{count}: {x[0]}, {x[1]}, Stock: {int(x[2])}</p>'
-            count += 1
-        return result
-    else:
-        return '\n<p>No Inactive Items with Stock</p>'
+    response = db.query(query, mapped=True)
+    result = []
+    if response['code'] == 200:
+        for item in response['data']:
+            sku = item['ITEM_NO']
+            name = item['LONG_DESCR']
+            qty = int(item['QTY_AVAIL'])
+            result.append({"sku": sku, "name": name, "qty": qty})
+    
+    return result
 
 
 def get_all_ecommerce_items():
@@ -751,44 +813,27 @@ def get_item_descriptions():
         return item_descriptions
 
 
-def get_missing_item_descriptions(min_length):
-    from product_tools.products import Product
-
+def get_missing_item_descriptions(min_length) -> list[dict]:
+    """Takes in a minimum character length and returns a list of items with descriptions less than that length."""
     query = f"""
-    SELECT IM_ITEM.ITEM_NO
-    FROM EC_ITEM_DESCR
-    RIGHT OUTER JOIN IM_ITEM 
-    ON EC_ITEM_DESCR.ITEM_NO = IM_ITEM.ITEM_NO
-    INNER JOIN IM_INV
-    ON IM_ITEM.ITEM_NO = IM_INV.ITEM_NO
-    WHERE IM_ITEM.STAT = 'A' and IM_ITEM.IS_ECOMM_ITEM = 'Y' AND
-    (IM_INV.QTY_AVAIL - IM_ITEM.PROF_NO_1 > 0) AND ADDL_DESCR_1 != 'EXCLUDE' AND (DATALENGTH(HTML_DESCR) IS NULL
-    or DATALENGTH(HTML_DESCR) < {min_length}) AND (IM_ITEM.IS_ADM_TKT = 'Y' OR IM_ITEM.USR_PROF_ALPHA_16 IS NULL)
-    ORDER BY IM_INV.QTY_AVAIL DESC"""
+    SELECT item.ITEM_NO, item.ADDL_DESCR_1, (item.QTY_AVAIL - item.PROF_NO_1) as 'BUFFERED_QTY'
+    FROM EC_ITEM_DESCR ec
+    RIGHT JOIN VI_IM_ITEM_WITH_INV item on ec.ITEM_NO = item.ITEM_NO
+    WHERE item.IS_ECOMM_ITEM = 'Y' AND
+    (item.QTY_AVAIL - item.PROF_NO_1 > 0) AND (DATALENGTH(HTML_DESCR) IS NULL
+    or DATALENGTH(HTML_DESCR) < {min_length}) AND (item.IS_ADM_TKT = 'Y' OR item.USR_PROF_ALPHA_16 IS NULL)
+    ORDER BY item.QTY_AVAIL DESC"""
 
-    response = db.query(query)
-    if response is not None:
-        result = ''
-        list_size = len(response)
-
-        # Section Header
-        result += f'\n<p><u>Total products with no description</u>: <b>{list_size}</b></p>'
-        counter = 1
-        for x in response:
-            item = Product(x[0])
-            if item.buffered_quantity_available > 0:
-                if item.item_url is not None:
-                    result += (
-                        f'\n<p>#{counter}: {item.item_no}, <a href="{item.item_url}">{item.web_title}</a>, '
-                        f'Current Stock: {item.quantity_available}</p>'
-                    )
-                else:
-                    result += (
-                        f'\n<p>#{counter}: {item.item_no}, {item.web_title}, '
-                        f'Current Stock: {item.quantity_available}</p>'
-                    )
-                counter += 1
-        return result
+    response = db.query(query, mapped=True)
+    result = []
+    if response['code'] == 200:
+        for item in response['data']:
+            sku = item['ITEM_NO']
+            name = item['ADDL_DESCR_1']
+            qty = int(item['BUFFERED_QTY'])
+            result.append({"sku": sku, "name": name, "qty": qty})
+    
+    return result
 
 
 def report_generator(
@@ -799,16 +844,10 @@ def report_generator(
     last_year_mtd_report=False,
     forecasting_report=False,
     top_items_by_category=False,
-    missing_images_report=False,
-    negatives_report=False,
-    ecomm_category_report=False,
-    non_web_enabled_report=False,
     low_stock_items_report=False,
     sales_rep_report=False,
     wholesale_report=False,
-    inactive_items_report=False,
     cogs_report=False,
-    missing_descriptions_report=False,
     year_to_date=False,
     title='Administrative Report',
 ):
@@ -1081,4 +1120,4 @@ def report_generator(
 
 
 if __name__ == '__main__':
-    print(get_non_ecomm_enabled_itemsv2())
+    print(get_missing_item_descriptions(10))

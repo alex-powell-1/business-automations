@@ -361,7 +361,7 @@ class Email:
                 jinja_template = Template(template_str)
 
                 data = {
-                    'invisible_items': product_reports.get_invisible_items(),
+                    'invisible_items': product_reports.get_non_web_visibile_items(),
                     'missing_photo_data': product_reports.get_missing_image_list(),
                     'items_with_negative_qty': product_reports.get_negative_items(),
                     'non_web_enabled_items': product_reports.get_non_web_enabled_items(),

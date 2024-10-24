@@ -2,7 +2,7 @@ import time
 
 import flask
 
-from flask import request, jsonify, send_from_directory
+from flask import request, jsonify, send_from_directory, Response
 from werkzeug.exceptions import NotFound, BadRequest
 from flask_cors import CORS
 from jsonschema import ValidationError
@@ -102,6 +102,10 @@ def index():
     return jsonify({'status': 'Server is running'}), 200
 
 
+@app.route('/hls')
+def stream_hls():
+    return send_from_directory("static/videos/hls/landscaping", "output.m3u8")
+
 if __name__ == '__main__':
     if dev:
         app.run(debug=False, port=API.port)
@@ -129,3 +133,5 @@ if __name__ == '__main__':
             # Stop the server if Keyboard Interrupt
             running = False
             print('Flask Server Stopped')
+
+
